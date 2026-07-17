@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Mailgun (email) and Twilio (SMS).
- * Version:     2.15.0
+ * Version:     2.16.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.15.0');
-define('LMEG_DB_VERSION',  '2.15.0');
+define('LMEG_VERSION',     '2.16.0');
+define('LMEG_DB_VERSION',  '2.16.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -95,7 +95,7 @@ function lmeg_maybe_migrate() {
 
     // v2.3 → v2.4: backfill auto-tags for everyone already in the table.
     // Cheap on small lists; on huge lists the activation may pause briefly.
-    if (version_compare($current, '2.15.0', '<')) {
+    if (version_compare($current, '2.16.0', '<')) {
         $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE);
         if ($rows) {
             foreach ($rows as $r) {
@@ -899,10 +899,42 @@ function lmeg_handle_submit() {
     }
 
     $redirect = isset($_POST['redirect']) ? esc_url_raw(wp_unslash($_POST['redirect'])) : home_url('/');
+    $after    = isset($_POST['lmeg_after']) ? sanitize_text_field(wp_unslash($_POST['lmeg_after'])) : '';
 
     // Honeypot — silently accept and redirect.
     if (!empty($_POST['lmeg_hp'])) {
         lmeg_set_cookie();
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    // Fast path: existing member clicking a tier button. The paywall
+    // doesn't render an email input for signed-in members, so there's
+    // nothing to validate — go straight to Stripe.
+    $existing_member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
+    if ($existing_member && strpos($after, 'checkout:') === 0 && function_exists('lmeg_stripe_create_checkout')) {
+        $parts    = explode(':', $after);
+        $tier_id  = isset($parts[1]) ? (int) $parts[1] : 0;
+        $interval = isset($parts[2]) && $parts[2] === 'annual' ? 'annual' : 'monthly';
+        $tier     = $tier_id ? lmeg_tier($tier_id) : null;
+        if (!$tier) {
+            wp_die('Tier not found. Configure at Email Gate → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
+        }
+        $session = lmeg_stripe_create_checkout($existing_member, $tier, $interval);
+        if (is_wp_error($session)) {
+            wp_die('Stripe checkout failed: ' . esc_html($session->get_error_message()) . '<br><br>Common causes: (1) Stripe test/live keys missing or wrong mode in Settings, (2) tier is missing its Stripe price ID (e.g. price_XXXXX) for the monthly or annual button clicked.',
+                'Checkout error', ['response' => 500, 'back_link' => true]);
+        }
+        if (empty($session['url'])) {
+            wp_die('Stripe returned no checkout URL. Check the raw Stripe response in your dashboard → Developers → Logs.', 'Checkout error', ['response' => 500, 'back_link' => true]);
+        }
+        wp_safe_redirect(esc_url_raw($session['url']));
+        exit;
+    }
+
+    // Fast path: existing member submitting the plain "free" button (or
+    // anything else) — just bounce them back, they already have access.
+    if ($existing_member && $after === 'free') {
         wp_safe_redirect($redirect);
         exit;
     }
@@ -989,13 +1021,19 @@ function lmeg_handle_submit() {
             $tier_id  = isset($parts[1]) ? (int) $parts[1] : 0;
             $interval = isset($parts[2]) && $parts[2] === 'annual' ? 'annual' : 'monthly';
             $tier     = $tier_id ? lmeg_tier($tier_id) : null;
-            if ($tier) {
-                $session = lmeg_stripe_create_checkout($found, $tier, $interval);
-                if (!is_wp_error($session) && !empty($session['url'])) {
-                    wp_safe_redirect(esc_url_raw($session['url']));
-                    exit;
-                }
+            if (!$tier) {
+                wp_die('Tier not found. Configure at Email Gate → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
             }
+            $session = lmeg_stripe_create_checkout($found, $tier, $interval);
+            if (is_wp_error($session)) {
+                wp_die('Stripe checkout failed: ' . esc_html($session->get_error_message()) . '<br><br>Common causes: (1) Stripe test/live keys missing or wrong mode in Settings, (2) tier is missing its Stripe price ID for the button clicked (monthly vs annual).',
+                    'Checkout error', ['response' => 500, 'back_link' => true]);
+            }
+            if (!empty($session['url'])) {
+                wp_safe_redirect(esc_url_raw($session['url']));
+                exit;
+            }
+            wp_die('Stripe returned no checkout URL. Check Stripe dashboard → Developers → Logs.', 'Checkout error', ['response' => 500, 'back_link' => true]);
         }
     }
 
