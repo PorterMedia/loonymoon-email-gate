@@ -26,7 +26,38 @@ add_filter('plugins_api',                            'lmeg_updater_info',  20, 3
 add_filter('upgrader_source_selection',              'lmeg_updater_rename_folder', 10, 3);
 
 const LMEG_UPDATER_CACHE_KEY = 'lmeg_github_release';
-const LMEG_UPDATER_CACHE_TTL = 6 * HOUR_IN_SECONDS;
+const LMEG_UPDATER_CACHE_TTL = 15 * MINUTE_IN_SECONDS;
+
+/**
+ * Custom 15-minute cron schedule + tick that clears WP's own
+ * "update_plugins" transient. This forces WP to re-run its update
+ * scan (which fires our `pre_set_site_transient_update_plugins`
+ * filter) on the next request, so new releases surface within ~15
+ * minutes instead of waiting for WP's default twice-a-day check.
+ */
+add_filter('cron_schedules', 'lmeg_updater_cron_schedules');
+function lmeg_updater_cron_schedules($schedules) {
+    if (!isset($schedules['lmeg_quarter_hour'])) {
+        $schedules['lmeg_quarter_hour'] = [
+            'interval' => 15 * MINUTE_IN_SECONDS,
+            'display'  => 'Every 15 minutes (Loonymoon Email Gate)',
+        ];
+    }
+    return $schedules;
+}
+
+add_action('init', 'lmeg_updater_ensure_cron');
+function lmeg_updater_ensure_cron() {
+    if (!wp_next_scheduled('lmeg_updater_tick')) {
+        wp_schedule_event(time() + 60, 'lmeg_quarter_hour', 'lmeg_updater_tick');
+    }
+}
+
+add_action('lmeg_updater_tick', 'lmeg_updater_tick_handler');
+function lmeg_updater_tick_handler() {
+    delete_site_transient(LMEG_UPDATER_CACHE_KEY);
+    delete_site_transient('update_plugins');
+}
 
 /**
  * Fetch and cache the latest release payload from GitHub. Returns the
