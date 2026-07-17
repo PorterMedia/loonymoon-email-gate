@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Mailgun (email) and Twilio (SMS).
- * Version:     2.18.0
+ * Version:     2.19.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.18.0');
-define('LMEG_DB_VERSION',  '2.18.0');
+define('LMEG_VERSION',     '2.19.0');
+define('LMEG_DB_VERSION',  '2.19.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -95,7 +95,7 @@ function lmeg_maybe_migrate() {
 
     // v2.3 → v2.4: backfill auto-tags for everyone already in the table.
     // Cheap on small lists; on huge lists the activation may pause briefly.
-    if (version_compare($current, '2.18.0', '<')) {
+    if (version_compare($current, '2.19.0', '<')) {
         $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE);
         if ($rows) {
             foreach ($rows as $r) {
@@ -403,6 +403,7 @@ function lmeg_default_settings() {
         'color_border'             => '',   // blank = default translucent black
         'color_card_bg'            => '',   // blank = default white
         'color_card_text'          => '',   // blank = default #1a1a1a
+        'color_page_bg'            => '',   // blank = theme's background shows through
         'signin_heading'           => 'Sign in',
         'signin_message'           => "Enter your email and we'll send you a sign-in link.",
         'magic_link_subject'       => 'Your sign-in link for {site_name}',
@@ -763,6 +764,17 @@ function lmeg_template_include($template) {
     $d = lmeg_gate_decision();
     if ($d === false || $d === 'ok') return $template;
     return LMEG_PLUGIN_DIR . 'templates/gate.php';
+}
+
+// Add a body class when the gate template is active, so `body.lmeg-page-bg`
+// can pick up the page-background color setting.
+add_filter('body_class', 'lmeg_body_class');
+function lmeg_body_class($classes) {
+    $d = lmeg_gate_decision();
+    if ($d && $d !== 'ok') {
+        $classes[] = 'lmeg-page-bg';
+    }
+    return $classes;
 }
 
 add_filter('the_content', 'lmeg_filter_content', 999);
@@ -1142,24 +1154,45 @@ function lmeg_enqueue() {
     wp_enqueue_style('lmeg-gate', LMEG_PLUGIN_URL . 'assets/gate.css', [], LMEG_VERSION);
     wp_enqueue_script('lmeg-gate', LMEG_PLUGIN_URL . 'assets/gate.js', [], LMEG_VERSION, true);
 
-    // Emit the customisable palette as CSS variables scoped to every top-level
-    // plugin container. Gate.css declarations use var(--lmeg-*) with fallbacks
-    // so an install with no saved colors gets the same look as before.
+    // Emit the customisable palette. Two layers:
+    //   1) CSS variables scoped to plugin containers (the polite default —
+    //      lets an advanced user override via theme CSS if they want).
+    //   2) Direct property overrides with !important on the specific
+    //      selectors that need them — this is what actually beats a theme's
+    //      body/main/main-content rules that would otherwise leak through.
     $s = lmeg_get_settings();
-    $decls = [
-        '--lmeg-primary: ' . sanitize_hex_color($s['color_primary'])           . ';',
-        '--lmeg-primary-text: ' . sanitize_hex_color($s['color_primary_text']) . ';',
-        '--lmeg-accent: ' . sanitize_hex_color($s['color_accent'])             . ';',
-    ];
-    if (!empty($s['color_border']) && sanitize_hex_color($s['color_border'])) {
-        $decls[] = '--lmeg-border: ' . sanitize_hex_color($s['color_border']) . ';';
+    $primary      = sanitize_hex_color($s['color_primary'])      ?: '#111111';
+    $primary_text = sanitize_hex_color($s['color_primary_text']) ?: '#ffffff';
+    $accent       = sanitize_hex_color($s['color_accent'])       ?: '#3b82f6';
+    $border       = sanitize_hex_color($s['color_border']       ?? '');
+    $card_bg      = sanitize_hex_color($s['color_card_bg']      ?? '');
+    $card_text    = sanitize_hex_color($s['color_card_text']    ?? '');
+    $page_bg      = sanitize_hex_color($s['color_page_bg']      ?? '');
+
+    // Layer 1: CSS variables on every plugin container.
+    $vars = ["--lmeg-primary: $primary;", "--lmeg-primary-text: $primary_text;", "--lmeg-accent: $accent;"];
+    if ($border)    $vars[] = "--lmeg-border: $border;";
+    if ($card_bg)   $vars[] = "--lmeg-card-bg: $card_bg;";
+    if ($card_text) $vars[] = "--lmeg-card-text: $card_text;";
+
+    $css  = '.lmeg-form,.lmeg-paywall,.lmeg-embed,.lmeg-upgrade,.lmeg-locked-wrap,.lmeg-gate{' . implode('', $vars) . '}';
+
+    // Layer 2: Direct !important overrides — only when settings are set.
+    if ($card_bg) {
+        $css .= '.lmeg-paywall,.lmeg-gate,.lmeg-embed--card{background:' . $card_bg . ' !important;}';
     }
-    if (!empty($s['color_card_bg']) && sanitize_hex_color($s['color_card_bg'])) {
-        $decls[] = '--lmeg-card-bg: ' . sanitize_hex_color($s['color_card_bg']) . ';';
+    if ($card_text) {
+        $css .= '.lmeg-paywall,.lmeg-paywall *,.lmeg-gate,.lmeg-gate *,.lmeg-embed--card,.lmeg-embed--card *{color:' . $card_text . ' !important;}';
+        // Preserve button text color — those buttons use --lmeg-primary-text.
+        $css .= '.lmeg-paywall .lmeg-button,.lmeg-gate .lmeg-button,.lmeg-embed--card .lmeg-button{color:' . $primary_text . ' !important;}';
     }
-    if (!empty($s['color_card_text']) && sanitize_hex_color($s['color_card_text'])) {
-        $decls[] = '--lmeg-card-text: ' . sanitize_hex_color($s['color_card_text']) . ';';
+    if ($page_bg) {
+        $css .= '.lmeg-locked-wrap{background:' . $page_bg . ' !important;}';
+        // Also cover the parent theme wrappers commonly used for the post
+        // area, so the color extends edge-to-edge instead of leaving a
+        // theme-colored gap around the gate.
+        $css .= 'body.lmeg-page-bg{background:' . $page_bg . ' !important;}';
     }
-    $css = '.lmeg-form,.lmeg-paywall,.lmeg-embed,.lmeg-upgrade,.lmeg-locked-wrap,.lmeg-gate{' . implode('', $decls) . '}';
+
     wp_add_inline_style('lmeg-gate', $css);
 }

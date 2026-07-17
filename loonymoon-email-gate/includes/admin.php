@@ -983,6 +983,7 @@ function lmeg_admin_settings() {
             'color_border'            => !empty($_POST['color_border_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_border'] ?? '')) ?: ''),
             'color_card_bg'           => !empty($_POST['color_card_bg_reset'])   ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_bg']   ?? '')) ?: ''),
             'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_text'] ?? '')) ?: ''),
+            'color_page_bg'           => !empty($_POST['color_page_bg_reset'])   ? '' : (sanitize_hex_color(wp_unslash($_POST['color_page_bg']   ?? '')) ?: ''),
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -1075,7 +1076,18 @@ function lmeg_admin_settings() {
                         <label style="margin-left:10px;"><input type="checkbox" name="color_card_text_reset" value="1" /> Reset to default</label>
                         <p class="description">Text color on the paywall + gate card. Flip to white if you set a dark background.</p>
                     </td></tr>
+                <tr><th><label for="color_page_bg">Page background</label></th>
+                    <td>
+                        <input type="color" name="color_page_bg" id="color_page_bg" value="<?php echo esc_attr($s['color_page_bg'] ?: '#000000'); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_page_bg'] ? esc_html($s['color_page_bg']) : '(default — theme shows through)'; ?></code>
+                        <label style="margin-left:10px;"><input type="checkbox" name="color_page_bg_reset" value="1" /> Reset to default</label>
+                        <p class="description">Whole gated-page background. Overrides theme CSS with <code>!important</code>. Applies only when a post is gated — non-gated pages stay whatever the theme wants.</p>
+                    </td></tr>
             </table>
+
+            <p class="description" style="margin-top:8px;">
+                <strong>Note:</strong> Card and page background colors are output with <code>!important</code>, so they beat any theme CSS. If you “unset” a value with Reset to default, the plugin drops back to letting the theme decide.
+            </p>
 
             <h2>Where to gate</h2>
             <table class="form-table" role="presentation">
