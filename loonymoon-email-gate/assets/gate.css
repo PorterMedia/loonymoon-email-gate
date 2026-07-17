@@ -750,6 +750,37 @@
     font-size: 0.9em;
 }
 
+/* "or" divider between free signup and tier cards inside [lmeg_signup]. */
+.lmeg-embed__divider {
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    color: rgba(0, 0, 0, 0.4);
+    font-size: 0.85em;
+    text-transform: lowercase;
+    margin: 1em 0 0.8em;
+}
+
+.lmeg-embed__divider::before,
+.lmeg-embed__divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* When the parent card overrides color, borrow that for the divider lines
+   so the strokes stay visible on dark backgrounds. */
+.lmeg-embed--card .lmeg-embed__divider::before,
+.lmeg-embed--card .lmeg-embed__divider::after {
+    background: color-mix(in srgb, var(--lmeg-card-text, #1a1a1a) 15%, transparent);
+}
+
+.lmeg-embed__member {
+    margin: 0 0 0.6em;
+    font-size: 0.9em;
+}
+
 /* Success state — same shape as embed, celebratory */
 .lmeg-embed--success {
     text-align: center;

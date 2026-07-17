@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Mailgun (email) and Twilio (SMS).
- * Version:     2.20.0
+ * Version:     2.21.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.20.0');
-define('LMEG_DB_VERSION',  '2.20.0');
+define('LMEG_VERSION',     '2.21.0');
+define('LMEG_DB_VERSION',  '2.21.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -95,7 +95,7 @@ function lmeg_maybe_migrate() {
 
     // v2.3 → v2.4: backfill auto-tags for everyone already in the table.
     // Cheap on small lists; on huge lists the activation may pause briefly.
-    if (version_compare($current, '2.20.0', '<')) {
+    if (version_compare($current, '2.21.0', '<')) {
         $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE);
         if ($rows) {
             foreach ($rows as $r) {

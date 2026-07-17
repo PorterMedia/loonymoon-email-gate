@@ -31,7 +31,28 @@ function lmeg_shortcode_signup($atts = []) {
         'consent'  => 'auto',       // auto (from settings) | none | custom text
         'redirect' => '',           // where to send them after signup
         'success'  => "You're in! Check your inbox to confirm.",
+        'tiers'    => '',           // ''=free only; 'all'=every active tier; '1,2'=specific IDs
+        'divider'  => 'or',         // text shown between free button and tier cards
     ], $atts, 'lmeg_signup');
+
+    // Resolve tier list. Empty = no tiers (current behavior); "all" = every
+    // active tier; comma list = filter to those IDs.
+    $tier_list = [];
+    if (!empty($atts['tiers']) && function_exists('lmeg_all_tiers')) {
+        $all = lmeg_all_tiers(true);
+        if (strtolower($atts['tiers']) === 'all') {
+            $tier_list = $all;
+        } else {
+            $wanted = array_filter(array_map('intval', explode(',', $atts['tiers'])));
+            if ($wanted) {
+                $tier_list = array_values(array_filter($all, function ($t) use ($wanted) {
+                    return in_array((int) $t->id, $wanted, true);
+                }));
+            }
+        }
+    }
+    $show_tiers = !empty($tier_list);
+    $member     = ($show_tiers && function_exists('lmeg_current_member')) ? lmeg_current_member() : null;
 
     // Per-render instance id so multiple embeds on one page each get a
     // scroll anchor and unique field ids.
@@ -87,50 +108,86 @@ function lmeg_shortcode_signup($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="US" />
-            <input type="hidden" name="lmeg_after"        value="free" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
             </div>
 
-            <?php if ($show_phone) : ?>
-                <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
-                    <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
-                    <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
-                </div>
-            <?php endif; ?>
-
-            <div class="lmeg-embed__row">
-                <div class="lmeg-field lmeg-field-email">
-                    <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Email</label>
-                    <input type="email" id="<?php echo esc_attr($id); ?>-email" name="email" required autocomplete="email"
-                           placeholder="you@example.com" class="lmeg-input" />
-                </div>
-
+            <?php if ($member) : ?>
+                <p class="lmeg-embed__member">
+                    Signed in as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
+                    <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
+                </p>
+            <?php else : ?>
                 <?php if ($show_phone) : ?>
-                    <div class="lmeg-field lmeg-field-phone" hidden>
-                        <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-phone">Phone</label>
-                        <div class="lmeg-phone-row">
-                            <select name="phone_country" class="lmeg-select" aria-label="Country">
-                                <?php foreach ($countries as $c) :
-                                    $sel = ($c[0] === 'US') ? ' selected' : '';
-                                ?>
-                                    <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
-                                        <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="lmeg-dial" aria-hidden="true">+1</span>
-                            <input type="tel" id="<?php echo esc_attr($id); ?>-phone" name="phone" inputmode="tel"
-                                   placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
-                        </div>
+                    <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
+                        <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
+                        <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
                     </div>
                 <?php endif; ?>
 
-                <button type="submit" class="lmeg-button lmeg-embed__button"><?php echo esc_html($atts['button']); ?></button>
-            </div>
+                <div class="lmeg-embed__row">
+                    <div class="lmeg-field lmeg-field-email">
+                        <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Email</label>
+                        <input type="email" id="<?php echo esc_attr($id); ?>-email" name="email" required autocomplete="email"
+                               placeholder="you@example.com" class="lmeg-input" />
+                    </div>
 
-            <?php if ($consent) : ?>
+                    <?php if ($show_phone) : ?>
+                        <div class="lmeg-field lmeg-field-phone" hidden>
+                            <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-phone">Phone</label>
+                            <div class="lmeg-phone-row">
+                                <select name="phone_country" class="lmeg-select" aria-label="Country">
+                                    <?php foreach ($countries as $c) :
+                                        $sel = ($c[0] === 'US') ? ' selected' : '';
+                                    ?>
+                                        <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
+                                            <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="lmeg-dial" aria-hidden="true">+1</span>
+                                <input type="tel" id="<?php echo esc_attr($id); ?>-phone" name="phone" inputmode="tel"
+                                       placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <button type="submit" name="lmeg_after" value="free" class="lmeg-button lmeg-embed__button"><?php echo esc_html($atts['button']); ?></button>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($show_tiers) : ?>
+                <?php if (!$member) : ?>
+                    <div class="lmeg-embed__divider"><span><?php echo esc_html($atts['divider']); ?></span></div>
+                <?php endif; ?>
+                <div class="lmeg-tiers lmeg-tiers--grid">
+                    <?php foreach ($tier_list as $t) : ?>
+                        <div class="lmeg-tier">
+                            <div class="lmeg-tier__name"><?php echo esc_html($t->name); ?></div>
+                            <?php if ($t->description) : ?>
+                                <p class="lmeg-tier__desc"><?php echo esc_html($t->description); ?></p>
+                            <?php endif; ?>
+                            <div class="lmeg-tier__prices">
+                                <?php if ($t->price_monthly) : ?>
+                                    <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:monthly" class="lmeg-button lmeg-tier__cta">
+                                        <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_monthly, $t->currency)); ?></span>
+                                        <span class="lmeg-tier__period">/ month</span>
+                                    </button>
+                                <?php endif; ?>
+                                <?php if ($t->price_annual) : ?>
+                                    <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:annual" class="lmeg-button lmeg-button--outline lmeg-tier__cta">
+                                        <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_annual, $t->currency)); ?></span>
+                                        <span class="lmeg-tier__period">/ year</span>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($consent && !$member) : ?>
                 <p class="lmeg-embed__consent"><?php echo esc_html($consent); ?></p>
             <?php endif; ?>
         </form>
