@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, mailgun, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.22.0
+Stable tag: 2.23.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Mailgun (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.23.0 =
+* Fix: clicking a tier button was bouncing to wp-login.php instead of Stripe Checkout. Root cause: I was using `wp_safe_redirect()` on the external Stripe URL — that function is only for internal URLs and silently falls back to `/wp-admin/`. Switched to `wp_redirect()` for all four Stripe redirect sites (paywall member fast-path, paywall non-member checkout, member portal, member checkout endpoint).
+
 = 2.22.0 =
 * Update check interval cut to 2 minutes (from 15) — surface new releases much faster during active dev.
 * Interval is now configurable via wp-config.php: `define('LMEG_UPDATE_INTERVAL_MINUTES', 15);` (clamped 1min – 24h).

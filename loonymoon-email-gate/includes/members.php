@@ -535,7 +535,7 @@ function lmeg_handle_checkout() {
     if (is_wp_error($session)) {
         lmeg_render_full_page('<h1>Checkout unavailable</h1><p>' . esc_html($session->get_error_message()) . '</p>');
     }
-    wp_safe_redirect(esc_url_raw($session['url']));
+    wp_redirect(esc_url_raw($session['url']));
     exit;
 }
 
@@ -591,7 +591,7 @@ function lmeg_handle_portal() {
     if (is_wp_error($session)) {
         lmeg_render_full_page('<h1>Portal unavailable</h1><p>' . esc_html($session->get_error_message()) . '</p>');
     }
-    wp_safe_redirect(esc_url_raw($session['url']));
+    wp_redirect(esc_url_raw($session['url']));
     exit;
 }
 
