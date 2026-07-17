@@ -30,10 +30,16 @@ function lmeg_shortcode_signup($atts = []) {
         'phone'    => 'no',         // yes | no
         'consent'  => 'auto',       // auto (from settings) | none | custom text
         'redirect' => '',           // where to send them after signup
-        'success'  => "You're in! Check your inbox to confirm.",
+        'success'  => '',           // blank = use the Settings message; set to override per-embed
         'tiers'    => '',           // ''=free only; 'all'=every active tier; '1,2'=specific IDs
         'divider'  => 'or',         // text shown between free button and tier cards
     ], $atts, 'lmeg_signup');
+
+    // Success copy: per-embed attr wins; otherwise the site-wide setting.
+    if ($atts['success'] === '') {
+        $s_all = lmeg_get_settings();
+        $atts['success'] = $s_all['signup_success_message'] ?: 'Thank you for joining the loonybin';
+    }
 
     // Resolve tier list. Empty = no tiers (current behavior); "all" = every
     // active tier; comma list = filter to those IDs.

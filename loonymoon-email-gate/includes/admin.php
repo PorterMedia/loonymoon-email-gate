@@ -996,6 +996,7 @@ function lmeg_admin_settings() {
             'paywall_premium_label'   => sanitize_text_field(wp_unslash($_POST['paywall_premium_label'] ?? '')),
             'logo_url'                => esc_url_raw(wp_unslash($_POST['logo_url'] ?? '')),
             'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
+            'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: 'Thank you for joining the loonybin',
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1054,6 +1055,9 @@ function lmeg_admin_settings() {
                     <td><input type="text" name="button_text" id="button_text" value="<?php echo esc_attr($s['button_text']); ?>" class="regular-text" /></td></tr>
                 <tr><th><label for="consent_text">Consent line</label></th>
                     <td><textarea name="consent_text" id="consent_text" rows="2" class="large-text"><?php echo esc_textarea($s['consent_text']); ?></textarea></td></tr>
+                <tr><th><label for="signup_success_message">Signup success message</label></th>
+                    <td><input type="text" name="signup_success_message" id="signup_success_message" class="regular-text" value="<?php echo esc_attr($s['signup_success_message'] ?? 'Thank you for joining the loonybin'); ?>" />
+                        <p class="description">Shown in place of the <code>[lmeg_signup]</code> form after someone joins. A per-embed <code>success="…"</code> attribute overrides this.</p></td></tr>
             </table>
 
             <h2>Colors</h2>
