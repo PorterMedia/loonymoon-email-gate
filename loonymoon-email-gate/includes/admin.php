@@ -977,6 +977,10 @@ function lmeg_admin_settings() {
             'paywall_heading'         => sanitize_text_field(wp_unslash($_POST['paywall_heading'] ?? '')),
             'paywall_unlock_label'    => sanitize_text_field(wp_unslash($_POST['paywall_unlock_label'] ?? '')),
             'paywall_premium_label'   => sanitize_text_field(wp_unslash($_POST['paywall_premium_label'] ?? '')),
+            'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
+            'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
+            'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
+            'color_border'            => !empty($_POST['color_border_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_border'] ?? '')) ?: ''),
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -1028,6 +1032,33 @@ function lmeg_admin_settings() {
                     <td><input type="text" name="button_text" id="button_text" value="<?php echo esc_attr($s['button_text']); ?>" class="regular-text" /></td></tr>
                 <tr><th><label for="consent_text">Consent line</label></th>
                     <td><textarea name="consent_text" id="consent_text" rows="2" class="large-text"><?php echo esc_textarea($s['consent_text']); ?></textarea></td></tr>
+            </table>
+
+            <h2>Colors</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="color_primary">Primary button</label></th>
+                    <td>
+                        <input type="color" name="color_primary" id="color_primary" value="<?php echo esc_attr($s['color_primary']); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_primary']); ?></code>
+                        <p class="description">Background of Unlock / Subscribe / tier CTAs.</p>
+                    </td></tr>
+                <tr><th><label for="color_primary_text">Primary button text</label></th>
+                    <td>
+                        <input type="color" name="color_primary_text" id="color_primary_text" value="<?php echo esc_attr($s['color_primary_text']); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_primary_text']); ?></code>
+                    </td></tr>
+                <tr><th><label for="color_accent">Accent</label></th>
+                    <td>
+                        <input type="color" name="color_accent" id="color_accent" value="<?php echo esc_attr($s['color_accent']); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_accent']); ?></code>
+                        <p class="description">Soft paywall tint, input focus rings.</p>
+                    </td></tr>
+                <tr><th><label for="color_border">Card border</label></th>
+                    <td>
+                        <input type="color" name="color_border" id="color_border" value="<?php echo esc_attr($s['color_border'] ?: '#e5e5e5'); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_border'] ? esc_html($s['color_border']) : '(default translucent black)'; ?></code>
+                        <label style="margin-left:10px;"><input type="checkbox" name="color_border_reset" value="1" /> Reset to default</label>
+                    </td></tr>
             </table>
 
             <h2>Where to gate</h2>

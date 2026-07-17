@@ -8,7 +8,7 @@
 .lmeg-gate {
     margin: 2em 0;
     padding: 2em 1.5em;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.08));
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.03);
 }
@@ -88,7 +88,7 @@
 
 .lmeg-input:focus,
 .lmeg-select:focus {
-    outline: 2px solid currentColor;
+    outline: 2px solid var(--lmeg-accent, currentColor);
     outline-offset: 1px;
 }
 
@@ -158,8 +158,8 @@
 
 .lmeg-button {
     padding: 0.85em 1.5em;
-    background: #111;
-    color: #fff;
+    background: var(--lmeg-primary, #111);
+    color: var(--lmeg-primary-text, #fff);
     border: 0;
     border-radius: 6px;
     font-size: 1em;
@@ -239,14 +239,14 @@
 
 .lmeg-button--outline {
     background: transparent;
-    color: inherit;
-    border: 1px solid currentColor;
+    color: var(--lmeg-primary, inherit);
+    border: 1px solid var(--lmeg-primary, currentColor);
 }
 
 /* Soft paywall variant — same layout, softer tone */
 .lmeg-upgrade--soft {
-    background: rgba(59, 130, 246, 0.05);
-    border-color: rgba(59, 130, 246, 0.2);
+    background: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 5%, transparent);
+    border-color: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 20%, transparent);
 }
 
 .lmeg-soft-decline {
@@ -272,15 +272,15 @@
     max-width: 640px;
     margin: 2.5em auto;
     padding: 2em 1.75em;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.1));
     border-radius: 14px;
     background: #fff;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .lmeg-paywall--soft {
-    background: rgba(59, 130, 246, 0.03);
-    border-color: rgba(59, 130, 246, 0.18);
+    background: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 4%, transparent);
+    border-color: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 22%, transparent);
 }
 
 .lmeg-paywall__head {
@@ -583,7 +583,7 @@
 /* Card style — default. Contained panel with padding & rounded corners. */
 .lmeg-embed--card {
     padding: 1.5em 1.4em;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.1));
     border-radius: 12px;
     background: rgba(0, 0, 0, 0.02);
 }

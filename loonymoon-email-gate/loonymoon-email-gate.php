@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Mailgun (email) and Twilio (SMS).
- * Version:     2.13.0
+ * Version:     2.14.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.13.0');
-define('LMEG_DB_VERSION',  '2.13.0');
+define('LMEG_VERSION',     '2.14.0');
+define('LMEG_DB_VERSION',  '2.14.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -93,7 +93,7 @@ function lmeg_maybe_migrate() {
 
     // v2.3 → v2.4: backfill auto-tags for everyone already in the table.
     // Cheap on small lists; on huge lists the activation may pause briefly.
-    if (version_compare($current, '2.13.0', '<')) {
+    if (version_compare($current, '2.14.0', '<')) {
         $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE);
         if ($rows) {
             foreach ($rows as $r) {
@@ -394,6 +394,11 @@ function lmeg_default_settings() {
         'paywall_heading'          => 'Unlock the Loonybin',
         'paywall_premium_label'    => 'Get premium access',
         'paywall_unlock_label'     => 'Unlock',
+        // Front-end theming
+        'color_primary'            => '#111111',
+        'color_primary_text'       => '#ffffff',
+        'color_accent'             => '#3b82f6',
+        'color_border'             => '',   // blank = default translucent black
         'signin_heading'           => 'Sign in',
         'signin_message'           => "Enter your email and we'll send you a sign-in link.",
         'magic_link_subject'       => 'Your sign-in link for {site_name}',
@@ -1094,4 +1099,19 @@ function lmeg_enqueue() {
     // if a .lmeg-form element exists.
     wp_enqueue_style('lmeg-gate', LMEG_PLUGIN_URL . 'assets/gate.css', [], LMEG_VERSION);
     wp_enqueue_script('lmeg-gate', LMEG_PLUGIN_URL . 'assets/gate.js', [], LMEG_VERSION, true);
+
+    // Emit the customisable palette as CSS variables scoped to every top-level
+    // plugin container. Gate.css declarations use var(--lmeg-*) with fallbacks
+    // so an install with no saved colors gets the same look as before.
+    $s = lmeg_get_settings();
+    $decls = [
+        '--lmeg-primary: ' . sanitize_hex_color($s['color_primary'])           . ';',
+        '--lmeg-primary-text: ' . sanitize_hex_color($s['color_primary_text']) . ';',
+        '--lmeg-accent: ' . sanitize_hex_color($s['color_accent'])             . ';',
+    ];
+    if (!empty($s['color_border']) && sanitize_hex_color($s['color_border'])) {
+        $decls[] = '--lmeg-border: ' . sanitize_hex_color($s['color_border']) . ';';
+    }
+    $css = '.lmeg-form,.lmeg-paywall,.lmeg-embed,.lmeg-upgrade,.lmeg-locked-wrap{' . implode('', $decls) . '}';
+    wp_add_inline_style('lmeg-gate', $css);
 }

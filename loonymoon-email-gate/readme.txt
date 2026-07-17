@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, mailgun, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.13.0
+Stable tag: 2.14.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Mailgun (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.14.0 =
+* Colors section in Settings — customize the primary button color + text, accent (soft paywall tint, focus rings), and card border.
+* Color values are output as scoped CSS custom properties (`--lmeg-primary`, `--lmeg-primary-text`, `--lmeg-accent`, `--lmeg-border`) via `wp_add_inline_style`, so themes and installs without saved colors get the same look as before.
+* Uses HTML5 native color pickers — no jQuery UI dependency.
+
 = 2.13.0 =
 * GitHub-driven self-updater: WP admin now shows "Update available" whenever a new release is published on GitHub. One-click update, no manual zip uploads.
 * Repo target configurable via LMEG_GITHUB_OWNER + LMEG_GITHUB_REPO constants (defaults: loonymoonchild/loonymoon-email-gate).
