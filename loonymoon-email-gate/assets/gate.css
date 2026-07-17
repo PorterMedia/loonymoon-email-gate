@@ -10,8 +10,13 @@
     padding: 2em 1.5em;
     border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.08));
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.03);
+    background: var(--lmeg-card-bg, #fff);
+    color: var(--lmeg-card-text, #1a1a1a);
 }
+
+.lmeg-gate a { color: inherit; }
+.lmeg-gate .lmeg-tab { color: var(--lmeg-card-text, #1a1a1a); }
+.lmeg-gate .lmeg-tab.is-active { color: var(--lmeg-card-text, #1a1a1a); }
 
 .lmeg-gate-inner {
     max-width: 520px;
@@ -274,9 +279,28 @@
     padding: 2em 1.75em;
     border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.1));
     border-radius: 14px;
-    background: #fff;
+    background: var(--lmeg-card-bg, #fff);
+    /* Explicit text color so the paywall stays readable on dark themes
+       where the body inherits color:white. Overridable via --lmeg-card-text. */
+    color: var(--lmeg-card-text, #1a1a1a);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
+
+.lmeg-paywall a { color: inherit; }
+.lmeg-paywall h1, .lmeg-paywall h2, .lmeg-paywall h3, .lmeg-paywall p,
+.lmeg-paywall label, .lmeg-paywall span {
+    color: inherit;
+}
+
+/* Icon: was inheriting theme color (white on dark themes) → invisible.
+   Use a fixed muted gray that reads on any card background. */
+.lmeg-paywall__icon { color: #666; }
+.lmeg-paywall__icon svg { stroke: currentColor; }
+
+/* Tab pill: was rendering white text on a white active-tab bg. Force
+   explicit dark text so it's readable no matter the outer theme. */
+.lmeg-paywall .lmeg-tab { color: var(--lmeg-card-text, #1a1a1a); }
+.lmeg-paywall .lmeg-tab.is-active { color: var(--lmeg-card-text, #1a1a1a); }
 
 .lmeg-paywall--soft {
     background: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 4%, transparent);
@@ -585,8 +609,13 @@
     padding: 1.5em 1.4em;
     border: 1px solid var(--lmeg-border, rgba(0, 0, 0, 0.1));
     border-radius: 12px;
-    background: rgba(0, 0, 0, 0.02);
+    background: var(--lmeg-card-bg, #fff);
+    color: var(--lmeg-card-text, #1a1a1a);
 }
+
+.lmeg-embed--card a { color: inherit; }
+.lmeg-embed--card .lmeg-tab { color: var(--lmeg-card-text, #1a1a1a); }
+.lmeg-embed--card .lmeg-tab.is-active { color: var(--lmeg-card-text, #1a1a1a); }
 
 .lmeg-embed--card .lmeg-embed__row {
     display: flex;

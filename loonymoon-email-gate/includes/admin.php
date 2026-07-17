@@ -981,6 +981,8 @@ function lmeg_admin_settings() {
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
             'color_border'            => !empty($_POST['color_border_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_border'] ?? '')) ?: ''),
+            'color_card_bg'           => !empty($_POST['color_card_bg_reset'])   ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_bg']   ?? '')) ?: ''),
+            'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_text'] ?? '')) ?: ''),
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -1058,6 +1060,20 @@ function lmeg_admin_settings() {
                         <input type="color" name="color_border" id="color_border" value="<?php echo esc_attr($s['color_border'] ?: '#e5e5e5'); ?>" />
                         <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_border'] ? esc_html($s['color_border']) : '(default translucent black)'; ?></code>
                         <label style="margin-left:10px;"><input type="checkbox" name="color_border_reset" value="1" /> Reset to default</label>
+                    </td></tr>
+                <tr><th><label for="color_card_bg">Card background</label></th>
+                    <td>
+                        <input type="color" name="color_card_bg" id="color_card_bg" value="<?php echo esc_attr($s['color_card_bg'] ?: '#ffffff'); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_card_bg'] ? esc_html($s['color_card_bg']) : '(default white)'; ?></code>
+                        <label style="margin-left:10px;"><input type="checkbox" name="color_card_bg_reset" value="1" /> Reset to default</label>
+                        <p class="description">Paywall + gate card background. Set to a dark color to match a dark theme.</p>
+                    </td></tr>
+                <tr><th><label for="color_card_text">Card text</label></th>
+                    <td>
+                        <input type="color" name="color_card_text" id="color_card_text" value="<?php echo esc_attr($s['color_card_text'] ?: '#1a1a1a'); ?>" />
+                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_card_text'] ? esc_html($s['color_card_text']) : '(default near-black)'; ?></code>
+                        <label style="margin-left:10px;"><input type="checkbox" name="color_card_text_reset" value="1" /> Reset to default</label>
+                        <p class="description">Text color on the paywall + gate card. Flip to white if you set a dark background.</p>
                     </td></tr>
             </table>
 
