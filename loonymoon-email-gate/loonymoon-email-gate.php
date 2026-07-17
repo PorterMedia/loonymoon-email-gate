@@ -25,7 +25,7 @@ define('LMEG_PLUGIN_URL',  plugin_dir_url(__FILE__));
 // GitHub repo for self-updater. Override in wp-config.php with:
 //   define('LMEG_GITHUB_OWNER', 'yourname');
 //   define('LMEG_GITHUB_REPO', 'loonymoon-email-gate');
-if (!defined('LMEG_GITHUB_OWNER')) define('LMEG_GITHUB_OWNER', 'loonymoonchild');
+if (!defined('LMEG_GITHUB_OWNER')) define('LMEG_GITHUB_OWNER', 'PorterMedia');
 if (!defined('LMEG_GITHUB_REPO'))  define('LMEG_GITHUB_REPO',  'loonymoon-email-gate');
 
 require_once LMEG_PLUGIN_DIR . 'includes/tags.php';
