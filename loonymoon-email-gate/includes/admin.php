@@ -31,6 +31,23 @@ add_action('admin_enqueue_scripts', 'lmeg_admin_assets');
 function lmeg_admin_assets($hook) {
     if (strpos((string) $hook, 'lmeg') === false) return;
     wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', [], LMEG_VERSION);
+    // Media picker for the logo field.
+    wp_enqueue_media();
+    wp_add_inline_script('jquery-core', "
+        jQuery(function($){
+            var frame;
+            $(document).on('click', '#lmeg-pick-logo', function(e){
+                e.preventDefault();
+                if (frame) { frame.open(); return; }
+                frame = wp.media({ title: 'Choose a logo', button: { text: 'Use this' }, multiple: false });
+                frame.on('select', function(){
+                    var att = frame.state().get('selection').first().toJSON();
+                    $('#logo_url').val(att.url);
+                });
+                frame.open();
+            });
+        });
+    ");
 }
 
 /* ---------------------------------------------------------------------------
@@ -977,6 +994,8 @@ function lmeg_admin_settings() {
             'paywall_heading'         => sanitize_text_field(wp_unslash($_POST['paywall_heading'] ?? '')),
             'paywall_unlock_label'    => sanitize_text_field(wp_unslash($_POST['paywall_unlock_label'] ?? '')),
             'paywall_premium_label'   => sanitize_text_field(wp_unslash($_POST['paywall_premium_label'] ?? '')),
+            'logo_url'                => esc_url_raw(wp_unslash($_POST['logo_url'] ?? '')),
+            'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1232,6 +1251,18 @@ function lmeg_admin_settings() {
                 <tr><th><label for="paywall_premium_label">Premium button label</label></th>
                     <td><input type="text" name="paywall_premium_label" id="paywall_premium_label" class="regular-text" value="<?php echo esc_attr($s['paywall_premium_label']); ?>" placeholder="Get premium access" />
                         <p class="description">The button below the "or" divider that reveals tier options on click.</p></td></tr>
+                <tr><th><label for="logo_url">Logo (above card)</label></th>
+                    <td>
+                        <input type="url" name="logo_url" id="logo_url" class="regular-text" value="<?php echo esc_attr($s['logo_url'] ?? ''); ?>" placeholder="https://…/logo.png" />
+                        <button type="button" class="button" id="lmeg-pick-logo">Choose from media library</button>
+                        <p class="description">Optional image shown above the paywall card. Upload via WP Media Library (or paste any URL).</p>
+                        <?php if (!empty($s['logo_url'])) : ?>
+                            <p style="margin-top:8px;"><img src="<?php echo esc_url($s['logo_url']); ?>" alt="" style="max-width:200px;max-height:120px;object-fit:contain;border:1px solid #ddd;padding:6px;background:#fafafa;" /></p>
+                        <?php endif; ?>
+                    </td></tr>
+                <tr><th><label for="logo_max_width">Logo max width (px)</label></th>
+                    <td><input type="number" name="logo_max_width" id="logo_max_width" class="small-text" min="20" max="800" value="<?php echo (int) ($s['logo_max_width'] ?? 200); ?>" /> px
+                        <p class="description">Constrain the logo width so it doesn't overflow the paywall card.</p></td></tr>
                 <tr><th><label for="upgrade_heading">Upgrade heading (hard paywall)</label></th>
                     <td><input type="text" name="upgrade_heading" id="upgrade_heading" class="regular-text" value="<?php echo esc_attr($s['upgrade_heading']); ?>" /></td></tr>
                 <tr><th><label for="upgrade_message">Upgrade message (hard paywall)</label></th>

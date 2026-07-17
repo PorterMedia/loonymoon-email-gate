@@ -560,6 +560,65 @@
     margin-top: 1.4em;
 }
 
+/* Logo above the card. Centered, honors max-width inline style from settings. */
+.lmeg-paywall-logo {
+    max-width: 640px;
+    margin: 0 auto 1em;
+    text-align: center;
+}
+
+.lmeg-paywall-logo img {
+    max-width: 200px;      /* fallback if the inline style is missing */
+    height: auto;
+    display: inline-block;
+}
+
+/* Sign-in view — same overall vibe as the main view, with a small back link. */
+.lmeg-paywall__signin-view {
+    text-align: center;
+}
+
+.lmeg-paywall__signin-view .lmeg-field {
+    margin-top: 1em;
+}
+
+.lmeg-paywall__signin-view .lmeg-signin-back {
+    display: block;
+    margin: 0 0 0.8em;
+    text-align: left;
+}
+
+.lmeg-paywall__signin-view .lmeg-signin-back:hover {
+    opacity: 1 !important;
+    text-decoration: underline;
+}
+
+.lmeg-paywall__signin-view .lmeg-button {
+    margin-top: 1em;
+}
+
+/* "Check your inbox" success view — landed after sign-in submit. */
+.lmeg-paywall__signin-sent {
+    text-align: center;
+    padding: 0.5em 0;
+}
+
+.lmeg-paywall__signin-sent .lmeg-paywall__icon {
+    font-size: 34px;
+    line-height: 1;
+    color: #1a6f1a;
+}
+
+.lmeg-paywall__signin-sent h2 {
+    margin-top: 0.4em;
+}
+
+/* Paid-only paywall: the tier panel sits directly in the card
+   without a Get-premium toggle. Give it a bit of top space. */
+.lmeg-paywall--paid-only .lmeg-paywall__premium-panel {
+    margin-top: 0.9em;
+}
+
 /* ─── Embeddable [lmeg_signup] shortcode ─────────────────────── */
 
 .lmeg-embed {

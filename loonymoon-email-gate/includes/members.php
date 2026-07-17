@@ -483,6 +483,18 @@ function lmeg_handle_send_magic() {
         wp_die('Security check failed.', 'Error', ['response' => 403]);
     }
     lmeg_send_magic_link($_POST['email'] ?? '');
+
+    // Inline sign-in: redirect back to the referring page with
+    // ?lmeg_signin=sent so the paywall can render the confirmation state
+    // inside the same card instead of a full-page swap.
+    if (!empty($_POST['inline_redirect'])) {
+        $back = esc_url_raw(wp_unslash($_POST['inline_redirect']));
+        $back = add_query_arg('lmeg_signin', 'sent', $back);
+        wp_safe_redirect($back);
+        exit;
+    }
+
+    // Fallback: full-page render for direct visits to ?lmeg_member=signin.
     lmeg_render_full_page(
         '<h1>Check your inbox</h1><p>If we have your address, a sign-in link is on its way. It expires in 24 hours.</p>' .
         '<p><a href="' . esc_url(home_url('/')) . '">← Back home</a></p>'
@@ -625,154 +637,260 @@ function lmeg_signin_form_html() {
  * `checkout:<tier_id>:<interval>` → stripe checkout.
  */
 function lmeg_paywall_html_v2($post_id) {
-    $s       = lmeg_get_settings();
-    $access  = lmeg_post_access_level($post_id);
-    $is_soft = ($access === 'soft-paid');
-    $tiers   = lmeg_all_tiers(true);
-    $member  = lmeg_current_member();
+    $s        = lmeg_get_settings();
+    $access   = lmeg_post_access_level($post_id);
+    $is_soft  = ($access === 'soft-paid');
+    // "Paid only" = hard paid or tier-specific — NO free unlock path shown.
+    $is_paid_only = ($access === 'paid' || (is_array($access) && $access[0] === 'tier'));
+    $tiers    = lmeg_all_tiers(true);
+
+    // Tier-specific posts: filter the tier list to just the required tier.
+    if (is_array($access) && $access[0] === 'tier') {
+        $required_tier_id = (int) $access[1];
+        $tiers = array_values(array_filter($tiers, function ($t) use ($required_tier_id) {
+            return (int) $t->id === $required_tier_id;
+        }));
+    }
+
+    $member    = lmeg_current_member();
     $countries = function_exists('lmeg_countries') ? lmeg_countries() : [];
 
     $heading      = $s['paywall_heading']       ?: ('Unlock ' . get_bloginfo('name'));
     $unlock_label = $s['paywall_unlock_label']  ?: 'Unlock';
     $premium_lbl  = $s['paywall_premium_label'] ?: 'Get premium access';
 
+    $logo_url       = trim((string) ($s['logo_url'] ?? ''));
+    $logo_max_width = max(20, (int) ($s['logo_max_width'] ?? 200));
+
     $nonce   = wp_create_nonce('lmeg_submit');
     $action  = esc_url(admin_url('admin-post.php'));
     $field   = 'lmeg-pw-' . $post_id;
-    $premium_open = ($member && !$is_soft && $access !== 'free') ? '' : ' hidden';
+    $current_url = get_permalink($post_id) ?: home_url('/');
+
+    // "Sign-in link sent" landing state — the inline sign-in submit
+    // redirects back with ?lmeg_signin=sent so we can render a confirmation
+    // in the same card instead of a full-page swap.
+    $signin_sent = !empty($_GET['lmeg_signin']) && $_GET['lmeg_signin'] === 'sent';
 
     ob_start(); ?>
-    <div class="lmeg-paywall lmeg-paywall--v2<?php echo $is_soft ? ' lmeg-paywall--soft' : ''; ?>" role="region" aria-label="Unlock content">
-        <div class="lmeg-paywall__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 9-3"></path>
-            </svg>
+    <?php if ($logo_url) : ?>
+        <div class="lmeg-paywall-logo">
+            <img src="<?php echo esc_url($logo_url); ?>" alt="" style="max-width:<?php echo (int) $logo_max_width; ?>px;" />
         </div>
-        <h2 class="lmeg-paywall__heading"><?php echo esc_html($heading); ?></h2>
+    <?php endif; ?>
 
-        <form class="lmeg-form lmeg-paywall__form" method="post" action="<?php echo $action; ?>" novalidate>
-            <input type="hidden" name="action"           value="lmeg_submit" />
-            <input type="hidden" name="_wpnonce"         value="<?php echo esc_attr($nonce); ?>" />
-            <input type="hidden" name="post_id"          value="<?php echo esc_attr($post_id); ?>" />
-            <input type="hidden" name="redirect"         value="<?php echo esc_url(get_permalink($post_id) ?: home_url('/')); ?>" />
-            <input type="hidden" name="contact_type"     value="email" />
-            <input type="hidden" name="phone_country_iso" value="US" />
+    <div class="lmeg-paywall lmeg-paywall--v2<?php echo $is_soft ? ' lmeg-paywall--soft' : ''; ?><?php echo $is_paid_only ? ' lmeg-paywall--paid-only' : ''; ?>"
+         role="region" aria-label="Unlock content">
 
-            <div class="lmeg-hp-wrap" aria-hidden="true">
-                <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
+        <?php if ($signin_sent) : ?>
+            <div class="lmeg-paywall__signin-sent">
+                <div class="lmeg-paywall__icon" aria-hidden="true" style="color:#1a6f1a;">✓</div>
+                <h2 class="lmeg-paywall__heading">Check your inbox</h2>
+                <p>If we have your address, a sign-in link is on its way. It expires in 24 hours.</p>
+                <p style="margin-top:1.4em;"><a href="<?php echo esc_url($current_url); ?>">← Back to the post</a></p>
             </div>
+        <?php else : ?>
 
-            <?php if (!$member) : ?>
-                <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
-                    <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
-                    <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
+        <!-- ─── MAIN VIEW ─── -->
+        <div class="lmeg-paywall__main">
+            <div class="lmeg-paywall__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 9-3"></path>
+                </svg>
+            </div>
+            <h2 class="lmeg-paywall__heading"><?php echo esc_html($heading); ?></h2>
+
+            <form class="lmeg-form lmeg-paywall__form" method="post" action="<?php echo $action; ?>" novalidate>
+                <input type="hidden" name="action"            value="lmeg_submit" />
+                <input type="hidden" name="_wpnonce"          value="<?php echo esc_attr($nonce); ?>" />
+                <input type="hidden" name="post_id"           value="<?php echo esc_attr($post_id); ?>" />
+                <input type="hidden" name="redirect"          value="<?php echo esc_url($current_url); ?>" />
+                <input type="hidden" name="contact_type"      value="email" />
+                <input type="hidden" name="phone_country_iso" value="US" />
+
+                <div class="lmeg-hp-wrap" aria-hidden="true">
+                    <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
                 </div>
 
-                <div class="lmeg-field lmeg-field-email">
-                    <input type="email" id="<?php echo esc_attr($field); ?>-email" name="email" required autocomplete="email"
+                <?php if (!$member && $is_soft) : ?>
+                    <!-- Soft-paid + non-member: full free-unlock form (email/phone toggle + Unlock button) -->
+                    <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
+                        <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
+                        <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
+                    </div>
+                    <div class="lmeg-field lmeg-field-email">
+                        <input type="email" id="<?php echo esc_attr($field); ?>-email" name="email" required autocomplete="email"
+                               placeholder="you@example.com" class="lmeg-input" />
+                    </div>
+                    <div class="lmeg-field lmeg-field-phone" hidden>
+                        <div class="lmeg-phone-row">
+                            <select name="phone_country" class="lmeg-select" aria-label="Country">
+                                <?php foreach ($countries as $c) : $sel = ($c[0] === 'US') ? ' selected' : ''; ?>
+                                    <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
+                                        <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span class="lmeg-dial" aria-hidden="true">+1</span>
+                            <input type="tel" id="<?php echo esc_attr($field); ?>-phone" name="phone" inputmode="tel"
+                                   placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
+                        </div>
+                    </div>
+                    <button type="submit" name="lmeg_after" value="free" class="lmeg-button lmeg-paywall__unlock">
+                        <?php echo esc_html($unlock_label); ?>
+                    </button>
+
+                <?php elseif (!$member && $is_paid_only) : ?>
+                    <!-- Paid-only + non-member: compact email input (no toggle, no Unlock button — premium is the only path) -->
+                    <div class="lmeg-field lmeg-field-email">
+                        <label class="lmeg-label" for="<?php echo esc_attr($field); ?>-email">Your email</label>
+                        <input type="email" id="<?php echo esc_attr($field); ?>-email" name="email" required autocomplete="email"
+                               placeholder="you@example.com" class="lmeg-input" />
+                    </div>
+
+                <?php elseif ($member) : ?>
+                    <p class="lmeg-paywall__member">
+                        Signed in as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
+                        <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
+                    </p>
+                    <?php if ($is_soft) :
+                        $grant_url = wp_nonce_url(
+                            add_query_arg(['lmeg_member' => 'grant_free', 'post' => (int) $post_id], home_url('/')),
+                            'lmeg_grant_' . (int) $post_id
+                        );
+                    ?>
+                        <a href="<?php echo esc_url($grant_url); ?>" class="lmeg-button lmeg-paywall__unlock">
+                            Keep reading free →
+                        </a>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php if ($tiers) : ?>
+                    <?php if ($is_soft) : ?>
+                        <!-- Soft-paid: collapsible "Get premium access" section -->
+                        <div class="lmeg-paywall__divider"><span>or</span></div>
+                        <?php $premium_open = ($member) ? '' : ' hidden'; ?>
+                        <button type="button"
+                                class="lmeg-button lmeg-button--outline lmeg-paywall__premium-toggle"
+                                aria-expanded="<?php echo $premium_open ? 'false' : 'true'; ?>"
+                                data-target="lmeg-premium-<?php echo (int) $post_id; ?>">
+                            <?php echo esc_html($premium_lbl); ?>
+                        </button>
+                        <div id="lmeg-premium-<?php echo (int) $post_id; ?>" class="lmeg-paywall__premium-panel"<?php echo $premium_open; ?>>
+                            <?php echo lmeg_render_tier_cards($tiers); ?>
+                        </div>
+                    <?php else : ?>
+                        <!-- Paid-only: tiers are the ONLY option, so render them directly. -->
+                        <div class="lmeg-paywall__premium-panel">
+                            <?php echo lmeg_render_tier_cards($tiers); ?>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <p class="lmeg-paywall__signin">
+                    Already subscribed?
+                    <a href="#" class="lmeg-signin-toggle" data-target="lmeg-signin-<?php echo (int) $post_id; ?>">Sign in →</a>
+                </p>
+            </form>
+        </div>
+
+        <!-- ─── SIGN-IN VIEW (hidden by default; toggles inline) ─── -->
+        <div class="lmeg-paywall__signin-view" id="lmeg-signin-<?php echo (int) $post_id; ?>" hidden>
+            <button type="button" class="lmeg-signin-back" style="background:none;border:0;padding:0;font-size:.9em;color:inherit;cursor:pointer;opacity:.7;margin-bottom:1em;">← Back</button>
+            <div class="lmeg-paywall__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10 17 15 12 10 7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                </svg>
+            </div>
+            <h2 class="lmeg-paywall__heading">Sign in</h2>
+            <p>Enter your email and we'll send you a one-click sign-in link.</p>
+            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_member', 'send-magic', home_url('/'))); ?>" novalidate>
+                <?php wp_nonce_field('lmeg_signin'); ?>
+                <input type="hidden" name="inline_redirect" value="<?php echo esc_url($current_url); ?>" />
+                <div class="lmeg-field" style="text-align:left;">
+                    <label class="lmeg-label" for="<?php echo esc_attr($field); ?>-signin-email">Email</label>
+                    <input type="email" id="<?php echo esc_attr($field); ?>-signin-email" name="email" required autocomplete="email"
                            placeholder="you@example.com" class="lmeg-input" />
                 </div>
+                <button type="submit" class="lmeg-button lmeg-paywall__unlock">Email me a sign-in link</button>
+            </form>
+        </div>
 
-                <div class="lmeg-field lmeg-field-phone" hidden>
-                    <div class="lmeg-phone-row">
-                        <select name="phone_country" class="lmeg-select" aria-label="Country">
-                            <?php foreach ($countries as $c) :
-                                $sel = ($c[0] === 'US') ? ' selected' : '';
-                            ?>
-                                <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
-                                    <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <span class="lmeg-dial" aria-hidden="true">+1</span>
-                        <input type="tel" id="<?php echo esc_attr($field); ?>-phone" name="phone" inputmode="tel"
-                               placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
-                    </div>
-                </div>
-
-                <button type="submit" name="lmeg_after" value="free" class="lmeg-button lmeg-paywall__unlock">
-                    <?php echo esc_html($unlock_label); ?>
-                </button>
-            <?php else : ?>
-                <p class="lmeg-paywall__member">
-                    Signed in as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
-                    <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
-                </p>
-                <?php if ($is_soft) :
-                    $grant_url = wp_nonce_url(
-                        add_query_arg(['lmeg_member' => 'grant_free', 'post' => (int) $post_id], home_url('/')),
-                        'lmeg_grant_' . (int) $post_id
-                    );
-                ?>
-                    <a href="<?php echo esc_url($grant_url); ?>" class="lmeg-button lmeg-paywall__unlock">
-                        Keep reading free →
-                    </a>
-                <?php endif; ?>
-            <?php endif; ?>
-
-            <?php if ($tiers) : ?>
-                <div class="lmeg-paywall__divider"><span>or</span></div>
-
-                <button type="button"
-                        class="lmeg-button lmeg-button--outline lmeg-paywall__premium-toggle"
-                        aria-expanded="<?php echo $premium_open ? 'false' : 'true'; ?>"
-                        data-target="lmeg-premium-<?php echo (int) $post_id; ?>">
-                    <?php echo esc_html($premium_lbl); ?>
-                </button>
-
-                <div id="lmeg-premium-<?php echo (int) $post_id; ?>" class="lmeg-paywall__premium-panel"<?php echo $premium_open; ?>>
-                    <div class="lmeg-tiers lmeg-tiers--grid">
-                        <?php foreach ($tiers as $t) : ?>
-                            <div class="lmeg-tier">
-                                <div class="lmeg-tier__name"><?php echo esc_html($t->name); ?></div>
-                                <?php if ($t->description) : ?>
-                                    <p class="lmeg-tier__desc"><?php echo esc_html($t->description); ?></p>
-                                <?php endif; ?>
-                                <div class="lmeg-tier__prices">
-                                    <?php if ($t->price_monthly) : ?>
-                                        <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:monthly" class="lmeg-button lmeg-tier__cta">
-                                            <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_monthly, $t->currency)); ?></span>
-                                            <span class="lmeg-tier__period">/ month</span>
-                                        </button>
-                                    <?php endif; ?>
-                                    <?php if ($t->price_annual) : ?>
-                                        <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:annual" class="lmeg-button lmeg-button--outline lmeg-tier__cta">
-                                            <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_annual, $t->currency)); ?></span>
-                                            <span class="lmeg-tier__period">/ year</span>
-                                        </button>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php endif; ?>
-
-            <p class="lmeg-paywall__signin">
-                Already subscribed? <a href="?lmeg_member=signin">Sign in →</a>
-            </p>
-        </form>
+        <?php endif; ?>
     </div>
+
     <script>
     (function () {
-        var t = document.querySelector('.lmeg-paywall__premium-toggle[data-target="lmeg-premium-<?php echo (int) $post_id; ?>"]');
-        if (!t) return;
-        var panel = document.getElementById(t.dataset.target);
-        if (!panel) return;
-        t.addEventListener('click', function () {
-            var open = !panel.hasAttribute('hidden');
-            if (open) {
-                panel.setAttribute('hidden', '');
-                t.setAttribute('aria-expanded', 'false');
-            } else {
-                panel.removeAttribute('hidden');
-                t.setAttribute('aria-expanded', 'true');
-                panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-            }
+        var pid = <?php echo (int) $post_id; ?>;
+        // Premium panel toggle (only present on soft-paid posts).
+        var t = document.querySelector('.lmeg-paywall__premium-toggle[data-target="lmeg-premium-' + pid + '"]');
+        if (t) {
+            var panel = document.getElementById(t.dataset.target);
+            if (panel) t.addEventListener('click', function () {
+                var open = !panel.hasAttribute('hidden');
+                if (open) { panel.setAttribute('hidden', ''); t.setAttribute('aria-expanded', 'false'); }
+                else      { panel.removeAttribute('hidden'); t.setAttribute('aria-expanded', 'true');
+                            panel.scrollIntoView({behavior: 'smooth', block: 'nearest'}); }
+            });
+        }
+        // Sign-in view toggle — swaps the card between main and sign-in inline.
+        var mainView = document.querySelector('.lmeg-paywall__main');
+        var signView = document.getElementById('lmeg-signin-' + pid);
+        var toBtns   = document.querySelectorAll('.lmeg-signin-toggle[data-target="lmeg-signin-' + pid + '"]');
+        var backBtns = signView ? signView.querySelectorAll('.lmeg-signin-back') : [];
+        toBtns.forEach(function (b) {
+            b.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (mainView) mainView.hidden = true;
+                if (signView) signView.hidden = false;
+                var emailInput = signView && signView.querySelector('input[type="email"]');
+                if (emailInput) emailInput.focus();
+            });
+        });
+        backBtns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                if (signView) signView.hidden = true;
+                if (mainView) mainView.hidden = false;
+            });
         });
     })();
     </script>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Render the tier-card grid — shared by paywall main view and premium panel.
+ */
+function lmeg_render_tier_cards($tiers) {
+    ob_start(); ?>
+    <div class="lmeg-tiers lmeg-tiers--grid">
+        <?php foreach ($tiers as $t) : ?>
+            <div class="lmeg-tier">
+                <div class="lmeg-tier__name"><?php echo esc_html($t->name); ?></div>
+                <?php if ($t->description) : ?>
+                    <p class="lmeg-tier__desc"><?php echo esc_html($t->description); ?></p>
+                <?php endif; ?>
+                <div class="lmeg-tier__prices">
+                    <?php if ($t->price_monthly) : ?>
+                        <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:monthly" class="lmeg-button lmeg-tier__cta">
+                            <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_monthly, $t->currency)); ?></span>
+                            <span class="lmeg-tier__period">/ month</span>
+                        </button>
+                    <?php endif; ?>
+                    <?php if ($t->price_annual) : ?>
+                        <button type="submit" name="lmeg_after" value="checkout:<?php echo (int) $t->id; ?>:annual" class="lmeg-button lmeg-button--outline lmeg-tier__cta">
+                            <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_annual, $t->currency)); ?></span>
+                            <span class="lmeg-tier__period">/ year</span>
+                        </button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
     <?php
     return ob_get_clean();
 }
