@@ -26,30 +26,44 @@ add_filter('plugins_api',                            'lmeg_updater_info',  20, 3
 add_filter('upgrader_source_selection',              'lmeg_updater_rename_folder', 10, 3);
 
 const LMEG_UPDATER_CACHE_KEY = 'lmeg_github_release';
-const LMEG_UPDATER_CACHE_TTL = 15 * MINUTE_IN_SECONDS;
+
+function lmeg_updater_interval_seconds() {
+    $mins = defined('LMEG_UPDATE_INTERVAL_MINUTES') ? (int) LMEG_UPDATE_INTERVAL_MINUTES : 15;
+    // Clamp: fastest 60s (WP cron granularity), slowest 24h.
+    return max(60, min($mins * MINUTE_IN_SECONDS, DAY_IN_SECONDS));
+}
 
 /**
- * Custom 15-minute cron schedule + tick that clears WP's own
- * "update_plugins" transient. This forces WP to re-run its update
- * scan (which fires our `pre_set_site_transient_update_plugins`
- * filter) on the next request, so new releases surface within ~15
- * minutes instead of waiting for WP's default twice-a-day check.
+ * Custom cron schedule + tick that clears WP's own "update_plugins"
+ * transient. This forces WP to re-run its update scan (which fires our
+ * `pre_set_site_transient_update_plugins` filter) on the next request,
+ * so new releases surface within LMEG_UPDATE_INTERVAL_MINUTES instead
+ * of waiting for WP's default twice-a-day check.
  */
 add_filter('cron_schedules', 'lmeg_updater_cron_schedules');
 function lmeg_updater_cron_schedules($schedules) {
-    if (!isset($schedules['lmeg_quarter_hour'])) {
-        $schedules['lmeg_quarter_hour'] = [
-            'interval' => 15 * MINUTE_IN_SECONDS,
-            'display'  => 'Every 15 minutes (Loonymoon Email Gate)',
-        ];
-    }
+    $secs = lmeg_updater_interval_seconds();
+    $schedules['lmeg_update_check'] = [
+        'interval' => $secs,
+        'display'  => 'Every ' . (int) round($secs / 60) . ' minutes (Loonymoon Email Gate)',
+    ];
     return $schedules;
 }
 
 add_action('init', 'lmeg_updater_ensure_cron');
 function lmeg_updater_ensure_cron() {
-    if (!wp_next_scheduled('lmeg_updater_tick')) {
-        wp_schedule_event(time() + 60, 'lmeg_quarter_hour', 'lmeg_updater_tick');
+    // If a stale event exists (e.g. after changing the interval), unschedule
+    // it so the next scheduling picks up the fresh interval.
+    $existing = wp_next_scheduled('lmeg_updater_tick');
+    if ($existing) {
+        $ev = wp_get_scheduled_event('lmeg_updater_tick');
+        if ($ev && isset($ev->schedule) && $ev->schedule !== 'lmeg_update_check') {
+            wp_unschedule_event($existing, 'lmeg_updater_tick');
+            $existing = false;
+        }
+    }
+    if (!$existing) {
+        wp_schedule_event(time() + 30, 'lmeg_update_check', 'lmeg_updater_tick');
     }
 }
 
@@ -71,6 +85,7 @@ function lmeg_updater_fetch_release($force = false) {
         $cached = get_site_transient(LMEG_UPDATER_CACHE_KEY);
         if ($cached !== false) return $cached ?: null;
     }
+    $ttl = lmeg_updater_interval_seconds();
 
     $url = sprintf(
         'https://api.github.com/repos/%s/%s/releases/latest',
@@ -86,16 +101,16 @@ function lmeg_updater_fetch_release($force = false) {
     ]);
     if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) {
         // Cache a short empty result so we don't hammer the API on every load.
-        set_site_transient(LMEG_UPDATER_CACHE_KEY, [], MINUTE_IN_SECONDS * 15);
+        set_site_transient(LMEG_UPDATER_CACHE_KEY, [], min($ttl, 15 * MINUTE_IN_SECONDS));
         return null;
     }
     $data = json_decode(wp_remote_retrieve_body($resp), true);
     if (!is_array($data) || empty($data['tag_name'])) {
-        set_site_transient(LMEG_UPDATER_CACHE_KEY, [], MINUTE_IN_SECONDS * 15);
+        set_site_transient(LMEG_UPDATER_CACHE_KEY, [], min($ttl, 15 * MINUTE_IN_SECONDS));
         return null;
     }
 
-    set_site_transient(LMEG_UPDATER_CACHE_KEY, $data, LMEG_UPDATER_CACHE_TTL);
+    set_site_transient(LMEG_UPDATER_CACHE_KEY, $data, $ttl);
     return $data;
 }
 
