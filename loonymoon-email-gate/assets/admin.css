@@ -1,0 +1,116 @@
+/* Loonymoon Email Gate — admin styling. Tag chips, audience picker. */
+
+/* Tag chip — pill with a colored left rail. Inspired by Mailchimp's tag UI. */
+.lmeg-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px 3px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 25%, transparent);
+    color: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 88%, #111);
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 500;
+    white-space: nowrap;
+    position: relative;
+}
+
+.lmeg-chip::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--lmeg-chip-color, #6b7280);
+    flex: 0 0 auto;
+}
+
+.lmeg-chip__count {
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 20%, transparent);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.9;
+}
+
+.lmeg-chip--auto {
+    font-style: italic;
+}
+
+.lmeg-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Tag picker on Compose */
+.lmeg-audience {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 720px;
+}
+
+.lmeg-audience-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: #fafafa;
+    min-height: 44px;
+}
+
+.lmeg-chip-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.lmeg-chip-label input {
+    margin: 0;
+}
+
+.lmeg-chip-label input:checked + .lmeg-chip {
+    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 24%, transparent);
+    box-shadow: 0 0 0 1px var(--lmeg-chip-color, #6b7280);
+}
+
+.lmeg-audience-controls {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+}
+
+.lmeg-audience-count {
+    padding: 10px 14px;
+    background: #f0f6ff;
+    border: 1px solid #c8dcff;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #1e3a8a;
+}
+
+.lmeg-audience-count strong {
+    font-variant-numeric: tabular-nums;
+}
+
+.lmeg-tags-table input[type="text"] { min-width: 200px; }
+.lmeg-tags-table input[type="color"] { vertical-align: middle; }
+
+/* Fallback for browsers without color-mix (Safari < 16.4, etc.) */
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .lmeg-chip {
+        background: var(--lmeg-chip-color, #6b7280);
+        color: #fff;
+        border-color: var(--lmeg-chip-color, #6b7280);
+    }
+    .lmeg-chip::before { background: rgba(255,255,255,0.7); }
+    .lmeg-chip__count  { background: rgba(255,255,255,0.18); color: #fff; }
+}

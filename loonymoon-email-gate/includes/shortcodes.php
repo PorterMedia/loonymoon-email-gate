@@ -1,0 +1,139 @@
+<?php
+/**
+ * Shortcodes — embeddable signup form.
+ *
+ * Usage:
+ *   [lmeg_signup]
+ *   [lmeg_signup heading="Get the newsletter" message="Weekly essays. Free."]
+ *   [lmeg_signup style="inline" button="Join"]
+ *   [lmeg_signup style="minimal" phone="yes"]
+ *
+ * All signups POST to the same admin-post handler as the main gate, so
+ * subscribers created here go through auto-tagging, welcome email, member
+ * cookie, and everything else. On success the user lands back on the
+ * embedding page with `?lmeg_signup=ok` — which the shortcode swaps for
+ * a confirmation panel in-place.
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+add_shortcode('lmeg_signup', 'lmeg_shortcode_signup');
+function lmeg_shortcode_signup($atts = []) {
+    $atts = shortcode_atts([
+        'heading'  => '',
+        'message'  => '',
+        'button'   => 'Subscribe',
+        'style'    => 'card',       // card | inline | minimal
+        'phone'    => 'no',         // yes | no
+        'consent'  => 'auto',       // auto (from settings) | none | custom text
+        'redirect' => '',           // where to send them after signup
+        'success'  => "You're in! Check your inbox to confirm.",
+    ], $atts, 'lmeg_signup');
+
+    // Per-render instance id so multiple embeds on one page each get a
+    // scroll anchor and unique field ids.
+    static $inst = 0;
+    $inst++;
+    $id = 'lmeg-embed-' . $inst;
+
+    $style = in_array($atts['style'], ['card', 'inline', 'minimal'], true) ? $atts['style'] : 'card';
+    $show_phone = strtolower($atts['phone']) === 'yes';
+
+    // Consent copy: 'auto' pulls the site-wide consent line from settings;
+    // 'none' hides it entirely; anything else is used verbatim.
+    $consent = '';
+    if ($atts['consent'] === 'auto') {
+        $s = lmeg_get_settings();
+        $consent = $s['consent_text'] ?? '';
+    } elseif ($atts['consent'] !== 'none') {
+        $consent = $atts['consent'];
+    }
+
+    // Success state — same page, ?lmeg_signup=ok query param, anchor to the
+    // first embed instance. If several embeds are on the page they'll all
+    // show the success message; that's acceptable and cheaper than tracking.
+    if (!empty($_GET['lmeg_signup']) && $_GET['lmeg_signup'] === 'ok') {
+        return '<div id="' . esc_attr($id) . '" class="lmeg-embed lmeg-embed--' . esc_attr($style) . ' lmeg-embed--success" role="status">'
+             . '<div class="lmeg-embed__success-icon" aria-hidden="true">✓</div>'
+             . '<p>' . esc_html($atts['success']) . '</p>'
+             . '</div>';
+    }
+
+    // Compute the return URL: the current page + ?lmeg_signup=ok + #anchor.
+    $current   = home_url(add_query_arg(null, null));
+    $redirect  = $atts['redirect'] ?: $current;
+    $redirect  = add_query_arg('lmeg_signup', 'ok', $redirect) . '#' . $id;
+
+    $nonce     = wp_create_nonce('lmeg_submit');
+    $action    = esc_url(admin_url('admin-post.php'));
+    $countries = function_exists('lmeg_countries') ? lmeg_countries() : [];
+
+    ob_start();
+    ?>
+    <div id="<?php echo esc_attr($id); ?>" class="lmeg-embed lmeg-embed--<?php echo esc_attr($style); ?>">
+        <?php if ($atts['heading']) : ?>
+            <div class="lmeg-embed__heading"><?php echo esc_html($atts['heading']); ?></div>
+        <?php endif; ?>
+        <?php if ($atts['message']) : ?>
+            <p class="lmeg-embed__message"><?php echo esc_html($atts['message']); ?></p>
+        <?php endif; ?>
+
+        <form class="lmeg-form lmeg-embed__form" method="post" action="<?php echo $action; ?>" novalidate>
+            <input type="hidden" name="action"            value="lmeg_submit" />
+            <input type="hidden" name="_wpnonce"          value="<?php echo esc_attr($nonce); ?>" />
+            <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
+            <input type="hidden" name="contact_type"      value="email" />
+            <input type="hidden" name="phone_country_iso" value="US" />
+            <input type="hidden" name="lmeg_after"        value="free" />
+
+            <div class="lmeg-hp-wrap" aria-hidden="true">
+                <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
+            </div>
+
+            <?php if ($show_phone) : ?>
+                <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
+                    <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
+                    <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
+                </div>
+            <?php endif; ?>
+
+            <div class="lmeg-embed__row">
+                <div class="lmeg-field lmeg-field-email">
+                    <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Email</label>
+                    <input type="email" id="<?php echo esc_attr($id); ?>-email" name="email" required autocomplete="email"
+                           placeholder="you@example.com" class="lmeg-input" />
+                </div>
+
+                <?php if ($show_phone) : ?>
+                    <div class="lmeg-field lmeg-field-phone" hidden>
+                        <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-phone">Phone</label>
+                        <div class="lmeg-phone-row">
+                            <select name="phone_country" class="lmeg-select" aria-label="Country">
+                                <?php foreach ($countries as $c) :
+                                    $sel = ($c[0] === 'US') ? ' selected' : '';
+                                ?>
+                                    <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
+                                        <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span class="lmeg-dial" aria-hidden="true">+1</span>
+                            <input type="tel" id="<?php echo esc_attr($id); ?>-phone" name="phone" inputmode="tel"
+                                   placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <button type="submit" class="lmeg-button lmeg-embed__button"><?php echo esc_html($atts['button']); ?></button>
+            </div>
+
+            <?php if ($consent) : ?>
+                <p class="lmeg-embed__consent"><?php echo esc_html($consent); ?></p>
+            <?php endif; ?>
+        </form>
+    </div>
+    <?php
+    return ob_get_clean();
+}
