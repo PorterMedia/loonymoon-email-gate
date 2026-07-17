@@ -617,6 +617,18 @@
 .lmeg-embed--card .lmeg-tab { color: var(--lmeg-card-text, #1a1a1a); }
 .lmeg-embed--card .lmeg-tab.is-active { color: var(--lmeg-card-text, #1a1a1a); }
 
+/* The inline and minimal embed styles don't have a card wrapper, so the
+   text color inherits from the theme. On themes that set white body text
+   the tab pill goes invisible — force an explicit dark text there too. */
+.lmeg-embed--inline .lmeg-tab,
+.lmeg-embed--minimal .lmeg-tab {
+    color: #1a1a1a;
+}
+.lmeg-embed--inline .lmeg-tab.is-active,
+.lmeg-embed--minimal .lmeg-tab.is-active {
+    color: #1a1a1a;
+}
+
 .lmeg-embed--card .lmeg-embed__row {
     display: flex;
     flex-direction: column;

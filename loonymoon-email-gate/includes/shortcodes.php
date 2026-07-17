@@ -19,7 +19,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-add_shortcode('lmeg_signup', 'lmeg_shortcode_signup');
+add_shortcode('lmeg_signup',  'lmeg_shortcode_signup');
+add_shortcode('lmeg_premium', 'lmeg_shortcode_premium');
 function lmeg_shortcode_signup($atts = []) {
     $atts = shortcode_atts([
         'heading'  => '',
@@ -131,6 +132,149 @@ function lmeg_shortcode_signup($atts = []) {
 
             <?php if ($consent) : ?>
                 <p class="lmeg-embed__consent"><?php echo esc_html($consent); ?></p>
+            <?php endif; ?>
+        </form>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * [lmeg_premium] — embeddable tier-selection form for premium access.
+ *
+ * Renders tier cards (from Email Gate → Tiers (Paid)) and lets visitors
+ * subscribe in one form submission — email captured + Stripe Checkout
+ * created in a single request. Existing members skip the email input
+ * and go straight to checkout on tier click.
+ *
+ * Params:
+ *   heading   — bold heading above the tiers
+ *   message   — subheading / blurb text
+ *   style     — card (default, boxed) | minimal (no card chrome)
+ *   tiers     — comma-separated tier IDs to show (default: all active)
+ *   button    — override the CTA on tier buttons (rarely needed)
+ *
+ * Examples:
+ *   [lmeg_premium]
+ *   [lmeg_premium heading="Support the work" message="Join the club."]
+ *   [lmeg_premium style="minimal" tiers="1,2"]
+ */
+function lmeg_shortcode_premium($atts = []) {
+    $atts = shortcode_atts([
+        'heading' => '',
+        'message' => '',
+        'style'   => 'card',
+        'tiers'   => '',
+    ], $atts, 'lmeg_premium');
+
+    if (!function_exists('lmeg_all_tiers')) {
+        return '';
+    }
+
+    $all_tiers = lmeg_all_tiers(true);
+    if (!empty($atts['tiers'])) {
+        $wanted = array_filter(array_map('intval', explode(',', $atts['tiers'])));
+        if ($wanted) {
+            $all_tiers = array_values(array_filter($all_tiers, function ($t) use ($wanted) {
+                return in_array((int) $t->id, $wanted, true);
+            }));
+        }
+    }
+
+    if (empty($all_tiers)) {
+        return '<div class="lmeg-embed lmeg-embed--card lmeg-embed--premium"><em>No paid tiers configured yet. Add one at Email Gate → Tiers (Paid).</em></div>';
+    }
+
+    $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
+    $style  = in_array($atts['style'], ['card', 'minimal'], true) ? $atts['style'] : 'card';
+
+    static $inst = 0;
+    $inst++;
+    $id = 'lmeg-premium-' . $inst;
+
+    // Redirect back to the current page after signup — the paywall handler
+    // will divert to Stripe Checkout when lmeg_after=checkout:... is set, so
+    // this fallback URL is only used if something goes wrong upstream.
+    $current  = home_url(add_query_arg(null, null));
+    $redirect = $current;
+
+    $nonce  = wp_create_nonce('lmeg_submit');
+    $action = esc_url(admin_url('admin-post.php'));
+
+    ob_start();
+    ?>
+    <div id="<?php echo esc_attr($id); ?>" class="lmeg-embed lmeg-embed--<?php echo esc_attr($style); ?> lmeg-embed--premium">
+        <?php if ($atts['heading']) : ?>
+            <div class="lmeg-embed__heading"><?php echo esc_html($atts['heading']); ?></div>
+        <?php endif; ?>
+        <?php if ($atts['message']) : ?>
+            <p class="lmeg-embed__message"><?php echo esc_html($atts['message']); ?></p>
+        <?php endif; ?>
+
+        <form class="lmeg-form lmeg-embed__form" method="post" action="<?php echo $action; ?>" novalidate>
+            <input type="hidden" name="action"            value="lmeg_submit" />
+            <input type="hidden" name="_wpnonce"          value="<?php echo esc_attr($nonce); ?>" />
+            <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
+            <input type="hidden" name="contact_type"      value="email" />
+            <input type="hidden" name="phone_country_iso" value="US" />
+
+            <div class="lmeg-hp-wrap" aria-hidden="true">
+                <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
+            </div>
+
+            <?php if (!$member) : ?>
+                <div class="lmeg-field lmeg-embed__field">
+                    <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Your email</label>
+                    <input type="email"
+                           id="<?php echo esc_attr($id); ?>-email"
+                           name="email"
+                           required
+                           autocomplete="email"
+                           placeholder="you@example.com"
+                           class="lmeg-input" />
+                </div>
+            <?php else : ?>
+                <p class="lmeg-embed__member">
+                    Signed in as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
+                    <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
+                </p>
+            <?php endif; ?>
+
+            <div class="lmeg-tiers lmeg-tiers--grid">
+                <?php foreach ($all_tiers as $t) : ?>
+                    <div class="lmeg-tier">
+                        <div class="lmeg-tier__name"><?php echo esc_html($t->name); ?></div>
+                        <?php if ($t->description) : ?>
+                            <p class="lmeg-tier__desc"><?php echo esc_html($t->description); ?></p>
+                        <?php endif; ?>
+                        <div class="lmeg-tier__prices">
+                            <?php if ($t->price_monthly) : ?>
+                                <button type="submit"
+                                        name="lmeg_after"
+                                        value="checkout:<?php echo (int) $t->id; ?>:monthly"
+                                        class="lmeg-button lmeg-tier__cta">
+                                    <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_monthly, $t->currency)); ?></span>
+                                    <span class="lmeg-tier__period">/ month</span>
+                                </button>
+                            <?php endif; ?>
+                            <?php if ($t->price_annual) : ?>
+                                <button type="submit"
+                                        name="lmeg_after"
+                                        value="checkout:<?php echo (int) $t->id; ?>:annual"
+                                        class="lmeg-button lmeg-button--outline lmeg-tier__cta">
+                                    <span class="lmeg-tier__price"><?php echo esc_html(lmeg_format_price($t->price_annual, $t->currency)); ?></span>
+                                    <span class="lmeg-tier__period">/ year</span>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (!$member) : ?>
+                <p class="lmeg-embed__signin">
+                    Already subscribed? <a href="?lmeg_member=signin">Sign in →</a>
+                </p>
             <?php endif; ?>
         </form>
     </div>
