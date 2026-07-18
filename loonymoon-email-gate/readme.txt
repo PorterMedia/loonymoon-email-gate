@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.28.0
+Stable tag: 2.29.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.29.0 =
+* Branded email template (on by default): cream backdrop, white rounded card, logo header (from Settings → Logo), accent rule + link color from the primary color setting. Applies to broadcasts, welcome, magic links, sequences, and test sends.
+* Body content now renders basic HTML properly (wpautop + make_clickable) instead of escaping it; bare URLs become links automatically.
+* New settings: "Branded template" toggle + "Footer note" line above the unsubscribe link.
+
 = 2.28.0 =
 * Mailgun removed entirely — Brevo is the only email provider. All sends (broadcast, welcome, magic link, sequences, tests) go through Brevo unconditionally.
 * Migration scrubs the dead provider/Mailgun settings keys so nothing can ever route to Mailgun again ("Mailgun is not configured" errors are gone for good).

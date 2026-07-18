@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.28.0
+ * Version:     2.29.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.28.0');
-define('LMEG_DB_VERSION',  '2.28.0');
+define('LMEG_VERSION',     '2.29.0');
+define('LMEG_DB_VERSION',  '2.29.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -99,7 +99,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.28.0', '<')) {
+    if (version_compare($current, '2.29.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -407,6 +407,9 @@ function lmeg_default_settings() {
         'logo_max_width'           => 200,  // max width in px
         'signup_success_message'   => 'Thank you for joining the loonybin',
         'default_test_email'       => 'ian@portermedia.ca',
+        // Branded email template
+        'email_template_enabled'   => 1,
+        'email_footer_note'        => "You're receiving this because you joined the loonybin.",
         // Front-end theming
         'color_primary'            => '#111111',
         'color_primary_text'       => '#ffffff',

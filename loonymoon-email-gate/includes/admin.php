@@ -992,6 +992,9 @@ function lmeg_admin_settings() {
             'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
             'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: 'Thank you for joining the loonybin',
             'default_test_email'      => sanitize_email(wp_unslash($_POST['default_test_email'] ?? '')),
+            // Branded email template
+            'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
+            'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1137,6 +1140,16 @@ function lmeg_admin_settings() {
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="brevo" class="button">Save &amp; test Brevo</button>
                         <p class="description">Hits Brevo's account endpoint with your saved key and reports the result above.</p></td></tr>
+            </table>
+
+            <h2>Email template</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Branded template</th>
+                    <td><label><input type="checkbox" name="email_template_enabled" value="1" <?php checked($s['email_template_enabled'] ?? 1); ?> /> Wrap all outgoing emails in the branded loonybin template</label>
+                        <p class="description">Cream backdrop, white card with your logo up top, links and the accent rule in your primary color (Settings → Colors → Primary button). Applies to broadcasts, welcome emails, magic links, and sequences. Unchecked = plain text-style emails.</p></td></tr>
+                <tr><th><label for="email_footer_note">Footer note</label></th>
+                    <td><input type="text" name="email_footer_note" id="email_footer_note" class="regular-text" value="<?php echo esc_attr($s['email_footer_note'] ?? ''); ?>" />
+                        <p class="description">Small line above the unsubscribe link, e.g. "You're receiving this because you joined the loonybin."</p></td></tr>
             </table>
 
             <h2>Twilio (SMS)</h2>

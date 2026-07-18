@@ -33,11 +33,118 @@ function lmeg_build_email_with_footer($body, $unsub_url) {
     );
 
     $text = $body . "\n\n-- \n" . $footer_text;
-    $html = nl2br(esc_html($body))
-          . '<hr style="border:0;border-top:1px solid #ddd;margin:24px 0 12px;" />'
-          . '<p style="font-size:12px;color:#888;font-family:sans-serif;">' . $footer_html . '</p>';
+
+    if (!empty($s['email_template_enabled'])) {
+        $html = lmeg_branded_email_html($body, $footer_html);
+    } else {
+        // Legacy plain rendering.
+        $html = nl2br(esc_html($body))
+              . '<hr style="border:0;border-top:1px solid #ddd;margin:24px 0 12px;" />'
+              . '<p style="font-size:12px;color:#888;font-family:sans-serif;">' . $footer_html . '</p>';
+    }
 
     return [$text, $html];
+}
+
+/**
+ * Wrap email content in the branded loonybin template.
+ *
+ * Design pulled from the /subscribe/ page: warm cream backdrop, white
+ * rounded card, the site's primary (pink) accent for links and the top
+ * rule, logo centered in the header. Email-safe: tables, inline styles,
+ * system font stack, no external assets besides the logo image.
+ */
+function lmeg_branded_email_html($body, $footer_html) {
+    $s      = lmeg_get_settings();
+    $accent = sanitize_hex_color($s['color_primary'] ?? '') ?: '#d05fa2';
+    $logo   = trim((string) ($s['logo_url'] ?? ''));
+    $logo_w = max(60, min(300, (int) ($s['logo_max_width'] ?? 180)));
+    $site   = get_bloginfo('name');
+    $note   = trim((string) ($s['email_footer_note'] ?? ''));
+
+    // Body was sanitized with wp_kses_post at save time. Autoparagraph it
+    // and make bare URLs clickable (magic links arrive as plain URLs).
+    $content = wpautop(make_clickable($body));
+    // Give paragraphs + links email-safe inline styles.
+    $content = str_replace('<p>', '<p style="margin:0 0 1.15em;font-size:16px;line-height:1.65;color:#2f2a2c;">', $content);
+    $content = preg_replace('/<a(?![^>]*style=)/', '<a style="color:' . $accent . ';text-decoration:underline;"', $content);
+    // Footer links (unsubscribe) get a muted tone instead of default blue.
+    $footer_html = preg_replace('/<a(?![^>]*style=)/', '<a style="color:#9a8f94;text-decoration:underline;"', $footer_html);
+
+    $font = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+    ob_start();
+    ?>
+<div style="margin:0;padding:0;background-color:#faf6f1;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf6f1;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+
+        <!-- accent rule -->
+        <tr>
+          <td style="height:4px;background-color:<?php echo esc_attr($accent); ?>;border-radius:4px 4px 0 0;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+
+        <!-- card -->
+        <tr>
+          <td style="background-color:#ffffff;border:1px solid #efe6dd;border-top:0;border-radius:0 0 14px 14px;padding:0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+              <?php if ($logo) : ?>
+              <tr>
+                <td align="center" style="padding:34px 40px 6px;">
+                  <img src="<?php echo esc_url($logo); ?>" alt="<?php echo esc_attr($site); ?>" width="<?php echo (int) $logo_w; ?>" style="display:block;max-width:<?php echo (int) $logo_w; ?>px;width:100%;height:auto;border:0;" />
+                </td>
+              </tr>
+              <?php else : ?>
+              <tr>
+                <td align="center" style="padding:34px 40px 6px;font-family:<?php echo $font; ?>;font-size:22px;font-weight:700;color:#2f2a2c;letter-spacing:-0.01em;">
+                  <?php echo esc_html($site); ?>
+                </td>
+              </tr>
+              <?php endif; ?>
+
+              <!-- content -->
+              <tr>
+                <td style="padding:26px 40px 8px;font-family:<?php echo $font; ?>;">
+                  <?php echo $content; ?>
+                </td>
+              </tr>
+
+              <!-- footer -->
+              <tr>
+                <td style="padding:8px 40px 30px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr><td style="border-top:1px solid #f0e8e0;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    <tr>
+                      <td style="padding-top:14px;font-family:<?php echo $font; ?>;font-size:12px;line-height:1.6;color:#9a8f94;">
+                        <?php if ($note) : ?><?php echo esc_html($note); ?><br /><?php endif; ?>
+                        <?php echo $footer_html; ?>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+
+        <!-- sub-card sign-off -->
+        <tr>
+          <td align="center" style="padding:18px 8px 0;font-family:<?php echo $font; ?>;font-size:11px;color:#b9aeb3;">
+            © <?php echo esc_html(date('Y') . ' ' . $site); ?>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</div>
+    <?php
+    return ob_get_clean();
 }
 
 /**
