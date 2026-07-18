@@ -1,13 +1,13 @@
 === Loonymoon Email Gate ===
 Contributors: portermedia
-Tags: email gate, content lock, opt-in, sms, mailgun, twilio
+Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.27.0
+Stable tag: 2.28.0
 License: GPLv2 or later
 
-Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Mailgun (email) or Twilio (SMS).
+Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
 
 == Description ==
 Single posts (and optionally the blog index) are replaced with an opt-in form. Visitors choose Email or Phone, submit, and unlock the site for 30 days via a cookie. Logged-in editors and admins always see the full content.
@@ -17,13 +17,13 @@ Captured data:
 - optional address block: street, city, region (province/state), postal code, country
 
 Broadcasts:
-- Compose & queue email blasts via Mailgun or SMS blasts via Twilio.
+- Compose & queue email blasts via Brevo or SMS blasts via Twilio.
 - Optional country filter.
 - wp_cron processes 25 recipients per minute and logs success/failure per recipient.
 - "Send test" button for sanity-checking before broadcasting.
 
 == Requirements ==
-- A Mailgun account + verified sending domain for email broadcasts.
+- A Brevo account + verified sender for email broadcasts.
 - A Twilio account + verified from-number for SMS broadcasts.
 - Working wp_cron (the default on most hosts). For high-volume sends, hook a real OS-level cron to wp-cron.php.
 
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.28.0 =
+* Mailgun removed entirely — Brevo is the only email provider. All sends (broadcast, welcome, magic link, sequences, tests) go through Brevo unconditionally.
+* Migration scrubs the dead provider/Mailgun settings keys so nothing can ever route to Mailgun again ("Mailgun is not configured" errors are gone for good).
+* Settings page: provider dropdown and Mailgun section removed; Brevo is the email section.
+
 = 2.27.0 =
 * Fix: broadcast batches could stall with rows stuck in "pending" if PHP's max_execution_time killed the cron tick mid-batch (slow provider calls). The tick now requests a 300s runway via set_time_limit + ignore_user_abort, so every row in the batch gets marked sent or failed.
 

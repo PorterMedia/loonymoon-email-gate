@@ -556,10 +556,7 @@ function lmeg_admin_compose() {
                 </tr>
             </table>
 
-            <?php
-            $active_provider = (lmeg_get_settings()['email_provider'] ?? 'brevo') === 'brevo' ? 'Brevo' : 'Mailgun';
-            ?>
-            <h2>Email (via <?php echo esc_html($active_provider); ?>) — sent to <?php echo $count_email; ?> subscriber<?php echo $count_email === 1 ? '' : 's'; ?></h2>
+            <h2>Email (via Brevo) — sent to <?php echo $count_email; ?> subscriber<?php echo $count_email === 1 ? '' : 's'; ?></h2>
             <table class="form-table" role="presentation">
                 <tr>
                     <th><label for="subject">Subject</label></th>
@@ -955,15 +952,7 @@ function lmeg_admin_settings() {
             'enable_address'      => !empty($_POST['enable_address']) ? 1 : 0,
             'address_required'    => !empty($_POST['address_required']) ? 1 : 0,
             'address_message'     => sanitize_textarea_field(wp_unslash($_POST['address_message'] ?? '')),
-            // Email provider selection
-            'email_provider'      => in_array($_POST['email_provider'] ?? 'brevo', ['mailgun', 'brevo'], true) ? $_POST['email_provider'] : 'brevo',
-            // Mailgun
-            'mailgun_api_key'     => sanitize_text_field(wp_unslash($_POST['mailgun_api_key'] ?? '')),
-            'mailgun_domain'      => sanitize_text_field(wp_unslash($_POST['mailgun_domain'] ?? '')),
-            'mailgun_region'      => in_array($_POST['mailgun_region'] ?? 'us', ['us', 'eu'], true) ? $_POST['mailgun_region'] : 'us',
-            'mailgun_from_email'  => sanitize_email(wp_unslash($_POST['mailgun_from_email'] ?? '')),
-            'mailgun_from_name'   => sanitize_text_field(wp_unslash($_POST['mailgun_from_name'] ?? '')),
-            // Brevo
+            // Brevo (the email provider)
             'brevo_api_key'       => sanitize_text_field(wp_unslash($_POST['brevo_api_key'] ?? '')),
             'brevo_from_email'    => sanitize_email(wp_unslash($_POST['brevo_from_email'] ?? '')),
             'brevo_from_name'     => sanitize_text_field(wp_unslash($_POST['brevo_from_name'] ?? '')),
@@ -1021,12 +1010,7 @@ function lmeg_admin_settings() {
         // Verify-connection buttons piggyback on the same form so the user
         // doesn't have to save settings before testing.
         if (isset($_POST['lmeg_test'])) {
-            if ($_POST['lmeg_test'] === 'mailgun') {
-                $r = lmeg_mailgun_verify();
-                $verify_notice = is_wp_error($r)
-                    ? '<div class="notice notice-error"><p>Mailgun: ' . esc_html($r->get_error_message()) . '</p></div>'
-                    : '<div class="notice notice-success"><p>Mailgun: ' . esc_html($r) . '</p></div>';
-            } elseif ($_POST['lmeg_test'] === 'twilio') {
+            if ($_POST['lmeg_test'] === 'twilio') {
                 $r = lmeg_twilio_verify();
                 $verify_notice = is_wp_error($r)
                     ? '<div class="notice notice-error"><p>Twilio: ' . esc_html($r->get_error_message()) . '</p></div>'
@@ -1138,39 +1122,6 @@ function lmeg_admin_settings() {
                 <tr><th><label for="address_message">Address block message</label></th>
                     <td><textarea name="address_message" id="address_message" rows="2" class="large-text"><?php echo esc_textarea($s['address_message']); ?></textarea>
                         <p class="description">Shown above the address fields when expanded.</p></td></tr>
-            </table>
-
-            <h2>Email provider</h2>
-            <table class="form-table" role="presentation">
-                <tr><th><label for="email_provider">Send emails via</label></th>
-                    <td>
-                        <select name="email_provider" id="email_provider">
-                            <option value="brevo"   <?php selected($s['email_provider'], 'brevo'); ?>>Brevo (standard)</option>
-                            <option value="mailgun" <?php selected($s['email_provider'], 'mailgun'); ?>>Mailgun</option>
-                        </select>
-                        <p class="description">All broadcast, welcome, magic-link, and sequence emails go through the selected provider. Configure both below — you can switch at any time.</p>
-                    </td></tr>
-            </table>
-
-            <h2>Mailgun (email)</h2>
-            <table class="form-table" role="presentation">
-                <tr><th><label for="mailgun_api_key">API key</label></th>
-                    <td><input type="text" name="mailgun_api_key" id="mailgun_api_key" value="<?php echo esc_attr($s['mailgun_api_key']); ?>" class="regular-text" autocomplete="off" />
-                        <p class="description">From Mailgun → Sending → API Keys → Private API key.</p></td></tr>
-                <tr><th><label for="mailgun_domain">Sending domain</label></th>
-                    <td><input type="text" name="mailgun_domain" id="mailgun_domain" value="<?php echo esc_attr($s['mailgun_domain']); ?>" class="regular-text" placeholder="mg.loonymoonchild.com" /></td></tr>
-                <tr><th><label for="mailgun_region">Region</label></th>
-                    <td><select name="mailgun_region" id="mailgun_region">
-                        <option value="us" <?php selected($s['mailgun_region'], 'us'); ?>>US</option>
-                        <option value="eu" <?php selected($s['mailgun_region'], 'eu'); ?>>EU</option>
-                    </select></td></tr>
-                <tr><th><label for="mailgun_from_email">From email</label></th>
-                    <td><input type="email" name="mailgun_from_email" id="mailgun_from_email" value="<?php echo esc_attr($s['mailgun_from_email']); ?>" class="regular-text" placeholder="hello@loonymoonchild.com" /></td></tr>
-                <tr><th><label for="mailgun_from_name">From name</label></th>
-                    <td><input type="text" name="mailgun_from_name" id="mailgun_from_name" value="<?php echo esc_attr($s['mailgun_from_name']); ?>" class="regular-text" /></td></tr>
-                <tr><th>Test connection</th>
-                    <td><button type="submit" name="lmeg_test" value="mailgun" class="button">Save &amp; test Mailgun</button>
-                        <p class="description">Hits Mailgun's domain endpoint with your saved credentials and reports the result above.</p></td></tr>
             </table>
 
             <h2>Brevo (email)</h2>

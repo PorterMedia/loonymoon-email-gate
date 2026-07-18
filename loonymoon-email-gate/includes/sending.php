@@ -1,6 +1,6 @@
 <?php
 /**
- * Mailgun + Twilio API clients and the wp_cron-driven broadcast processor.
+ * Brevo + Twilio API clients and the wp_cron-driven broadcast processor.
  *
  * All sends use wp_remote_post — no SDK dependencies. Errors are stored
  * per-recipient in the broadcast_log table so they can be inspected from
@@ -67,64 +67,6 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id) {
     }
 
     return $html;
-}
-
-/* ---------------------------------------------------------------------------
- * Mailgun
- * ------------------------------------------------------------------------- */
-
-/**
- * Send a single email via Mailgun's HTTP API.
- *
- * @return true|WP_Error
- */
-function lmeg_mailgun_send($to, $subject, $body_text, $body_html = '') {
-    $s = lmeg_get_settings();
-    $api_key = $s['mailgun_api_key'] ?? '';
-    $domain  = $s['mailgun_domain']  ?? '';
-    $from_e  = $s['mailgun_from_email'] ?? '';
-    $from_n  = $s['mailgun_from_name']  ?? '';
-
-    if (!$api_key || !$domain || !$from_e) {
-        return new WP_Error('lmeg_mailgun_unconfigured', 'Mailgun is not configured.');
-    }
-
-    $endpoint = 'https://api.mailgun.net/v3/' . rawurlencode($domain) . '/messages';
-    // EU customers — flip to api.eu.mailgun.net if Mailgun region is EU.
-    if (!empty($s['mailgun_region']) && $s['mailgun_region'] === 'eu') {
-        $endpoint = 'https://api.eu.mailgun.net/v3/' . rawurlencode($domain) . '/messages';
-    }
-
-    $from = $from_n ? sprintf('%s <%s>', $from_n, $from_e) : $from_e;
-    $body = [
-        'from'    => $from,
-        'to'      => $to,
-        'subject' => $subject,
-        'text'    => $body_text,
-    ];
-    if ($body_html) {
-        $body['html'] = $body_html;
-    }
-
-    $resp = wp_remote_post($endpoint, [
-        'timeout' => 20,
-        'headers' => [
-            'Authorization' => 'Basic ' . base64_encode('api:' . $api_key),
-        ],
-        'body' => $body,
-    ]);
-
-    if (is_wp_error($resp)) {
-        return $resp;
-    }
-    $code = wp_remote_retrieve_response_code($resp);
-    if ($code < 200 || $code >= 300) {
-        return new WP_Error(
-            'lmeg_mailgun_http_' . $code,
-            'Mailgun returned ' . $code . ': ' . wp_remote_retrieve_body($resp)
-        );
-    }
-    return true;
 }
 
 /* ---------------------------------------------------------------------------
@@ -218,11 +160,6 @@ function lmeg_brevo_verify() {
  * provider-specific functions.
  */
 function lmeg_email_send($to, $subject, $body_text, $body_html = '') {
-    $s = lmeg_get_settings();
-    $provider = $s['email_provider'] ?? 'brevo';
-    if ($provider === 'mailgun') {
-        return lmeg_mailgun_send($to, $subject, $body_text, $body_html);
-    }
     return lmeg_brevo_send($to, $subject, $body_text, $body_html);
 }
 
@@ -274,38 +211,6 @@ function lmeg_twilio_send($to_e164, $body) {
 /* ---------------------------------------------------------------------------
  * Credential verification (used by Settings page "Test connection" buttons)
  * ------------------------------------------------------------------------- */
-
-/**
- * Hit Mailgun's domain info endpoint with the saved credentials.
- * Returns a friendly status string on success, or WP_Error on failure.
- */
-function lmeg_mailgun_verify() {
-    $s = lmeg_get_settings();
-    if (!$s['mailgun_api_key'] || !$s['mailgun_domain']) {
-        return new WP_Error('lmeg_mailgun_unconfigured', 'Fill in the API key and sending domain first.');
-    }
-    $host = ($s['mailgun_region'] === 'eu') ? 'api.eu.mailgun.net' : 'api.mailgun.net';
-    $resp = wp_remote_get('https://' . $host . '/v3/domains/' . rawurlencode($s['mailgun_domain']), [
-        'timeout' => 15,
-        'headers' => [
-            'Authorization' => 'Basic ' . base64_encode('api:' . $s['mailgun_api_key']),
-        ],
-    ]);
-    if (is_wp_error($resp)) return $resp;
-    $code = wp_remote_retrieve_response_code($resp);
-    if ($code === 200) {
-        $data   = json_decode(wp_remote_retrieve_body($resp), true);
-        $state  = $data['domain']['state'] ?? 'unknown';
-        return 'Connected. Domain "' . $s['mailgun_domain'] . '" is ' . $state . '.';
-    }
-    if ($code === 401) {
-        return new WP_Error('lmeg_mailgun_auth', 'Authentication failed (HTTP 401). Check the API key.');
-    }
-    if ($code === 404) {
-        return new WP_Error('lmeg_mailgun_domain', 'Domain not found (HTTP 404). Check the sending domain spelling and region.');
-    }
-    return new WP_Error('lmeg_mailgun_http_' . $code, 'Mailgun returned HTTP ' . $code . ': ' . wp_remote_retrieve_body($resp));
-}
 
 /**
  * Hit Twilio's Account info endpoint with the saved credentials.
@@ -474,7 +379,7 @@ function lmeg_cron_schedules($s) {
 }
 
 /**
- * Per-tick batch size. Twilio Trial accounts cap throughput; Mailgun handles
+ * Per-tick batch size. Twilio Trial accounts cap throughput; Brevo handles
  * far more — but we keep both modest so a single PHP cron tick stays fast.
  */
 function lmeg_batch_size() {
