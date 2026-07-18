@@ -579,8 +579,10 @@ function lmeg_admin_compose() {
                 <tr>
                     <th><label for="test_to_email">Test email to</label></th>
                     <td>
-                        <input type="email" name="test_to_email" id="test_to_email" class="regular-text" placeholder="you@example.com" />
+                        <?php $default_test = lmeg_get_settings()['default_test_email'] ?? ''; ?>
+                        <input type="email" name="test_to_email" id="test_to_email" class="regular-text" placeholder="you@example.com" value="<?php echo esc_attr($default_test); ?>" />
                         <button type="submit" name="lmeg_action" value="send_test_email" class="button">Send email test</button>
+                        <p class="description">Pre-filled from Settings → "Default test recipient". Change it here for a one-off.</p>
                     </td>
                 </tr>
             </table>
@@ -997,6 +999,7 @@ function lmeg_admin_settings() {
             'logo_url'                => esc_url_raw(wp_unslash($_POST['logo_url'] ?? '')),
             'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
             'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: 'Thank you for joining the loonybin',
+            'default_test_email'      => sanitize_email(wp_unslash($_POST['default_test_email'] ?? '')),
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1058,6 +1061,9 @@ function lmeg_admin_settings() {
                 <tr><th><label for="signup_success_message">Signup success message</label></th>
                     <td><input type="text" name="signup_success_message" id="signup_success_message" class="regular-text" value="<?php echo esc_attr($s['signup_success_message'] ?? 'Thank you for joining the loonybin'); ?>" />
                         <p class="description">Shown in place of the <code>[lmeg_signup]</code> form after someone joins. A per-embed <code>success="…"</code> attribute overrides this.</p></td></tr>
+                <tr><th><label for="default_test_email">Default test recipient</label></th>
+                    <td><input type="email" name="default_test_email" id="default_test_email" class="regular-text" value="<?php echo esc_attr($s['default_test_email'] ?? ''); ?>" placeholder="ian@portermedia.ca" />
+                        <p class="description">Pre-fills the "Test email to" field on Compose Broadcast so you don't have to retype it.</p></td></tr>
             </table>
 
             <h2>Colors</h2>

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, mailgun, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.24.0
+Stable tag: 2.25.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Mailgun (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.25.0 =
+* New "Default test recipient" setting (defaults to ian@portermedia.ca) — pre-fills the "Test email to" field on Compose Broadcast.
+
 = 2.24.0 =
 * Signup success message now defaults to "Thank you for joining the loonybin" (no more "check your inbox" copy — nothing to confirm).
 * New Settings field (Form copy → Signup success message) to customize it site-wide; per-embed `success="…"` attribute still overrides.
