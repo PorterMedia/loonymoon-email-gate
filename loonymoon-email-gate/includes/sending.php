@@ -490,6 +490,14 @@ function lmeg_process_broadcast_tick() {
     $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
     $log_tbl   = $wpdb->prefix . 'lmeg_broadcast_log';
 
+    // A batch of slow provider calls (20s timeout each) can exceed PHP's
+    // default max_execution_time and kill the tick mid-loop, leaving rows
+    // stuck in 'pending' forever. Ask for enough runway to finish the batch.
+    if (function_exists('set_time_limit')) {
+        @set_time_limit(300);
+    }
+    @ignore_user_abort(true);
+
     // Pick the oldest broadcast that's eligible to send right now. A
     // scheduled broadcast is invisible to the picker until its scheduled_for
     // moment passes — it sits patiently in 'queued' state until then.
