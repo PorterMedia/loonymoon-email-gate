@@ -556,7 +556,10 @@ function lmeg_admin_compose() {
                 </tr>
             </table>
 
-            <h2>Email (Mailgun) — sent to <?php echo $count_email; ?> subscriber<?php echo $count_email === 1 ? '' : 's'; ?></h2>
+            <?php
+            $active_provider = (lmeg_get_settings()['email_provider'] ?? 'brevo') === 'brevo' ? 'Brevo' : 'Mailgun';
+            ?>
+            <h2>Email (via <?php echo esc_html($active_provider); ?>) — sent to <?php echo $count_email; ?> subscriber<?php echo $count_email === 1 ? '' : 's'; ?></h2>
             <table class="form-table" role="presentation">
                 <tr>
                     <th><label for="subject">Subject</label></th>
@@ -953,7 +956,7 @@ function lmeg_admin_settings() {
             'address_required'    => !empty($_POST['address_required']) ? 1 : 0,
             'address_message'     => sanitize_textarea_field(wp_unslash($_POST['address_message'] ?? '')),
             // Email provider selection
-            'email_provider'      => in_array($_POST['email_provider'] ?? 'mailgun', ['mailgun', 'brevo'], true) ? $_POST['email_provider'] : 'mailgun',
+            'email_provider'      => in_array($_POST['email_provider'] ?? 'brevo', ['mailgun', 'brevo'], true) ? $_POST['email_provider'] : 'brevo',
             // Mailgun
             'mailgun_api_key'     => sanitize_text_field(wp_unslash($_POST['mailgun_api_key'] ?? '')),
             'mailgun_domain'      => sanitize_text_field(wp_unslash($_POST['mailgun_domain'] ?? '')),
@@ -1142,8 +1145,8 @@ function lmeg_admin_settings() {
                 <tr><th><label for="email_provider">Send emails via</label></th>
                     <td>
                         <select name="email_provider" id="email_provider">
+                            <option value="brevo"   <?php selected($s['email_provider'], 'brevo'); ?>>Brevo (standard)</option>
                             <option value="mailgun" <?php selected($s['email_provider'], 'mailgun'); ?>>Mailgun</option>
-                            <option value="brevo"   <?php selected($s['email_provider'], 'brevo'); ?>>Brevo</option>
                         </select>
                         <p class="description">All broadcast, welcome, magic-link, and sequence emails go through the selected provider. Configure both below — you can switch at any time.</p>
                     </td></tr>

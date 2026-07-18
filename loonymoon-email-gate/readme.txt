@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, mailgun, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.25.0
+Stable tag: 2.26.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Mailgun (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.26.0 =
+* Brevo is now the standard email provider — new default everywhere (settings default, save fallback, send fallback, dropdown order).
+* Migration: installs whose provider was still "mailgun" with no Mailgun API key configured are auto-flipped to Brevo.
+* Fix: Compose Broadcast heading was hardcoded "Email (Mailgun)" regardless of the active provider — now shows "Email (via Brevo/Mailgun)" dynamically.
+
 = 2.25.0 =
 * New "Default test recipient" setting (defaults to ian@portermedia.ca) — pre-fills the "Test email to" field on Compose Broadcast.
 

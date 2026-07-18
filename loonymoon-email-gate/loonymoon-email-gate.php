@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Mailgun (email) and Twilio (SMS).
- * Version:     2.25.0
+ * Version:     2.26.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.25.0');
-define('LMEG_DB_VERSION',  '2.25.0');
+define('LMEG_VERSION',     '2.26.0');
+define('LMEG_DB_VERSION',  '2.26.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -95,6 +95,19 @@ function lmeg_maybe_migrate() {
         $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
         $log_tbl   = $wpdb->prefix . 'lmeg_broadcast_log';
         $wpdb->query("UPDATE $log_tbl l JOIN $bcast_tbl b ON b.id = l.broadcast_id SET l.channel = b.channel WHERE l.channel = 'email' AND b.channel IN ('email','sms')");
+    }
+
+    // v2.26: Brevo becomes the standard email provider. If the saved setting
+    // still says mailgun but Mailgun was never configured (no API key), it
+    // couldn't have been sending anyway — flip to Brevo.
+    if (version_compare($current, '2.26.0', '<')) {
+        $opts = get_option(LMEG_OPTION, []);
+        if (is_array($opts)
+            && ($opts['email_provider'] ?? 'mailgun') === 'mailgun'
+            && empty($opts['mailgun_api_key'])) {
+            $opts['email_provider'] = 'brevo';
+            update_option(LMEG_OPTION, $opts);
+        }
     }
 
     // v2.3 → v2.4: backfill auto-tags for everyone already in the table.
@@ -357,7 +370,7 @@ function lmeg_default_settings() {
         'address_required'    => 0,
         'address_message'     => 'Optional: where should we send mail?',
         // Email provider selection
-        'email_provider'      => 'mailgun', // 'mailgun' | 'brevo'
+        'email_provider'      => 'brevo', // 'mailgun' | 'brevo'
         // Mailgun
         'mailgun_api_key'     => '',
         'mailgun_domain'      => '',

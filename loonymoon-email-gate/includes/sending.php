@@ -219,11 +219,11 @@ function lmeg_brevo_verify() {
  */
 function lmeg_email_send($to, $subject, $body_text, $body_html = '') {
     $s = lmeg_get_settings();
-    $provider = $s['email_provider'] ?? 'mailgun';
-    if ($provider === 'brevo') {
-        return lmeg_brevo_send($to, $subject, $body_text, $body_html);
+    $provider = $s['email_provider'] ?? 'brevo';
+    if ($provider === 'mailgun') {
+        return lmeg_mailgun_send($to, $subject, $body_text, $body_html);
     }
-    return lmeg_mailgun_send($to, $subject, $body_text, $body_html);
+    return lmeg_brevo_send($to, $subject, $body_text, $body_html);
 }
 
 /* ---------------------------------------------------------------------------
