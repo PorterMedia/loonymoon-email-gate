@@ -827,3 +827,140 @@
     margin-top: 0;
     line-height: 1.2;
 }
+
+/* ─── Tour listings ─────────────────────────────────────────── */
+
+.lmeg-tour { max-width: 720px; margin: 1.5em auto; }
+
+.lmeg-tour__row {
+    display: flex;
+    align-items: center;
+    gap: 1.2em;
+    padding: 0.95em 0.4em;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.22);
+}
+
+.lmeg-tour__row.is-soldout { opacity: 0.55; }
+
+.lmeg-tour__date {
+    flex: 0 0 110px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.lmeg-tour__where { flex: 1; min-width: 0; }
+.lmeg-tour__venue { font-weight: 600; }
+.lmeg-tour__city  { font-size: 0.88em; opacity: 0.7; }
+
+.lmeg-tour__cta { display: flex; gap: 0.45em; align-items: center; flex-wrap: wrap; }
+
+.lmeg-tour__btn {
+    padding: 0.5em 1.1em !important;
+    font-size: 0.88em !important;
+    margin-top: 0 !important;
+    text-decoration: none !important;
+    display: inline-block;
+}
+
+.lmeg-tour__soldout {
+    font-size: 0.85em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.lmeg-tour__locked { font-size: 0.85em; opacity: 0.75; }
+.lmeg-tour__empty  { text-align: center; opacity: 0.75; }
+
+@media (max-width: 560px) {
+    .lmeg-tour__row { flex-wrap: wrap; gap: 0.4em 1em; }
+    .lmeg-tour__date { flex-basis: 100%; }
+}
+
+/* ─── Surveys ────────────────────────────────────────────────── */
+
+.lmeg-survey {
+    max-width: 520px;
+    margin: 1.5em auto;
+    padding: 1.5em 1.4em;
+    border: 1px solid var(--lmeg-border, rgba(128,128,128,0.25));
+    border-radius: 12px;
+    background: var(--lmeg-card-bg, #fff);
+    color: var(--lmeg-card-text, #1a1a1a);
+}
+
+.lmeg-survey__q { font-weight: 700; font-size: 1.1em; margin-bottom: 0.9em; }
+
+.lmeg-survey__opt {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    padding: 0.75em 1em;
+    margin: 0.4em 0;
+    border: 1px solid var(--lmeg-border, rgba(128,128,128,0.3));
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    font-size: 1em;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.lmeg-survey__opt:hover { border-color: var(--lmeg-primary, #111); background: rgba(128,128,128,0.06); }
+.lmeg-survey__opt.is-disabled { opacity: 0.55; cursor: default; }
+
+.lmeg-survey__result {
+    position: relative;
+    margin: 0.4em 0;
+    padding: 0.65em 1em;
+    border-radius: 9px;
+    overflow: hidden;
+    display: flex;
+    justify-content: space-between;
+    gap: 1em;
+    border: 1px solid var(--lmeg-border, rgba(128,128,128,0.2));
+}
+
+.lmeg-survey__result.is-mine { border-color: var(--lmeg-primary, #111); }
+
+.lmeg-survey__bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: color-mix(in srgb, var(--lmeg-accent, #3b82f6) 22%, transparent);
+    z-index: 0;
+}
+
+.lmeg-survey__label, .lmeg-survey__pct { position: relative; z-index: 1; }
+.lmeg-survey__pct { font-weight: 700; font-variant-numeric: tabular-nums; }
+.lmeg-survey__note { font-size: 0.85em; opacity: 0.7; margin: 0.7em 0 0; }
+
+/* ─── Contests ───────────────────────────────────────────────── */
+
+.lmeg-contest {
+    max-width: 520px;
+    margin: 1.5em auto;
+    padding: 1.6em 1.5em;
+    border: 1px solid var(--lmeg-border, rgba(128,128,128,0.25));
+    border-radius: 12px;
+    background: var(--lmeg-card-bg, #fff);
+    color: var(--lmeg-card-text, #1a1a1a);
+    text-align: center;
+}
+
+.lmeg-contest__title { font-weight: 700; font-size: 1.25em; margin-bottom: 0.4em; }
+.lmeg-contest__desc  { opacity: 0.8; margin: 0 0 1em; }
+.lmeg-contest__btn   { display: inline-block; }
+.lmeg-contest__note  { font-size: 0.85em; opacity: 0.75; margin-top: 0.9em; line-height: 1.5; }
+.lmeg-contest__entered { font-size: 1.05em; }
+.lmeg-contest__winner  { font-size: 1.1em; }
+.lmeg-contest__reflink {
+    display: inline-block;
+    margin-top: 0.35em;
+    padding: 0.35em 0.7em;
+    background: rgba(128,128,128,0.1);
+    border-radius: 6px;
+    font-size: 0.85em;
+    word-break: break-all;
+}

@@ -139,6 +139,13 @@ function lmeg_shop_sync($force = false) {
                     (int) $subscriber_id, $ordered_local, $attribution
                 );
                 if ($broadcast_id) $attributed++;
+
+                // "customer" auto-tag — first attach fires lmeg_tag_attached,
+                // which enrolls the fan into any post-purchase sequence.
+                if (function_exists('lmeg_get_or_create_tag')) {
+                    $ct = lmeg_get_or_create_tag('customer', 'Customer', true, '#F59E0B');
+                    if ($ct) lmeg_attach_tag((int) $subscriber_id, $ct->id);
+                }
             }
         }
 

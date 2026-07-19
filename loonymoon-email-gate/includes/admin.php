@@ -1814,7 +1814,15 @@ function lmeg_admin_sequences() {
     <div class="wrap">
         <h1>Email Gate — Sequences</h1>
         <?php echo $notice; ?>
-        <p>Automated multi-step drips. Pick a trigger tag; every subscriber who receives that tag gets enrolled and works through the sequence at the pace you set.</p>
+        <p>Automated multi-step journeys. Pick a trigger tag; every subscriber who receives that tag gets enrolled and works through the steps at the pace you set.</p>
+        <p class="description" style="max-width:760px;">
+            <strong>Recipes — trigger tag → journey:</strong><br />
+            · <code>channel:email</code> → welcome series for every new email signup<br />
+            · <code>customer</code> → post-purchase thank-you / upsell (applied automatically on their first shop order)<br />
+            · <code>channel:paid</code> or <code>tier:&lt;slug&gt;</code> → new paid-member onboarding<br />
+            · <code>fan-type:dormant</code> → win-back campaign (fan types refresh daily)<br />
+            · any manual tag → whatever you dream up — bulk-apply from the Subscribers page to enroll a batch
+        </p>
 
         <h2>Create a sequence</h2>
         <form method="post" style="margin-bottom:24px;">
@@ -2413,6 +2421,16 @@ function lmeg_admin_shop() {
 
 function lmeg_admin_fan_profile($fan_id) {
     global $wpdb;
+
+    // Save bio fields (first name + private notes).
+    if (isset($_POST['lmeg_fanbio_nonce']) && wp_verify_nonce($_POST['lmeg_fanbio_nonce'], 'lmeg_fanbio_' . $fan_id)) {
+        $wpdb->update($wpdb->prefix . LMEG_TABLE, [
+            'first_name' => sanitize_text_field(wp_unslash($_POST['first_name'] ?? '')) ?: null,
+            'notes'      => sanitize_textarea_field(wp_unslash($_POST['notes'] ?? '')) ?: null,
+        ], ['id' => (int) $fan_id]);
+        echo '<div class="notice notice-success is-dismissible"><p>Fan bio saved.</p></div>';
+    }
+
     $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $fan_id));
     if (!$sub) {
         echo '<div class="wrap"><h1>Fan not found.</h1></div>';
@@ -2468,6 +2486,19 @@ function lmeg_admin_fan_profile($fan_id) {
                 <?php if ($sub->post_id) : ?><tr><th>Signed up on</th><td><a href="<?php echo esc_url(get_permalink($sub->post_id)); ?>" target="_blank" rel="noopener"><?php echo esc_html(get_the_title($sub->post_id)); ?></a></td></tr><?php endif; ?>
             </tbody>
         </table>
+
+        <h2>Bio</h2>
+        <form method="post" style="max-width:560px;margin-bottom:22px;">
+            <?php wp_nonce_field('lmeg_fanbio_' . $fan_id, 'lmeg_fanbio_nonce'); ?>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="first_name">First name</label></th>
+                    <td><input type="text" name="first_name" id="first_name" class="regular-text" value="<?php echo esc_attr($sub->first_name ?? ''); ?>" placeholder="Used by the {name} merge tag" /></td></tr>
+                <tr><th><label for="notes">Private notes</label></th>
+                    <td><textarea name="notes" id="notes" rows="4" class="large-text" placeholder="Superfan from Toronto, front row at the June show…"><?php echo esc_textarea($sub->notes ?? ''); ?></textarea>
+                        <p class="description">Only visible here in the admin.</p></td></tr>
+            </table>
+            <p><button type="submit" class="button button-primary">Save bio</button></p>
+        </form>
 
         <h2>Timeline</h2>
         <?php if (empty($timeline)) : ?>

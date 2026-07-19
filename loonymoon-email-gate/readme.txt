@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.34.0
+Stable tag: 2.35.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,13 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.35.0 =
+* Tour Listings: dates CRUD in admin + [lmeg_tour] shortcode. Presale links can be members-only — non-members see a locked hint, a built-in reason to join.
+* Surveys: one-question polls, members-only single voting, animated result bars after voting. [lmeg_survey id=N] + admin results.
+* Contests: one-click entry for members, +3 bonus entries per referred friend during the contest, weighted-random "Draw winner" in admin. [lmeg_contest id=N].
+* Automations expanded: new "customer" auto-tag applied on a fan's first shop order — trigger post-purchase journeys from it. Sequences page now lists trigger recipes (welcome, post-purchase, paid onboarding, dormant win-back).
+* Fan Bios: first name + private notes editable on every fan profile; the {name} merge tag now prefers the stored first name.
+
 = 2.34.0 =
 * Rich HTML broadcasts: Compose and Templates now use the WordPress visual editor (TinyMCE) with Media Library buttons — bold, links, headings, lists, blockquotes, and inline images, no hand-written HTML needed.
 * The branded template inline-styles imgs (max-width, rounded), h1–h3, lists, and blockquotes so rich content renders correctly in Gmail/Apple Mail/Outlook.

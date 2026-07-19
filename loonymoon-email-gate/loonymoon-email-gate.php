@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.34.0
+ * Version:     2.35.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.34.0');
-define('LMEG_DB_VERSION',  '2.34.0');
+define('LMEG_VERSION',     '2.35.0');
+define('LMEG_DB_VERSION',  '2.35.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -40,6 +40,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/shortcodes.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shop.php';
 require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
 require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
+require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/updater.php';
 require_once LMEG_PLUGIN_DIR . 'includes/admin.php';
 
@@ -102,7 +103,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.34.0', '<')) {
+    if (version_compare($current, '2.35.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -158,6 +159,8 @@ function lmeg_create_tables() {
         billing_interval VARCHAR(10) DEFAULT NULL,
         referral_code VARCHAR(12) DEFAULT NULL,
         referred_by BIGINT(20) UNSIGNED DEFAULT NULL,
+        first_name VARCHAR(80) DEFAULT NULL,
+        notes TEXT DEFAULT NULL,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_email (email),
@@ -363,6 +366,62 @@ function lmeg_create_tables() {
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_slug (slug)
+    ) $charset;");
+
+    $tour = $wpdb->prefix . 'lmeg_tour_dates';
+    dbDelta("CREATE TABLE $tour (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        show_date DATE NOT NULL,
+        venue VARCHAR(190) NOT NULL,
+        city VARCHAR(120) NOT NULL,
+        region VARCHAR(120) DEFAULT NULL,
+        ticket_url TEXT,
+        presale_url TEXT,
+        presale_members_only TINYINT(1) NOT NULL DEFAULT 1,
+        status VARCHAR(16) NOT NULL DEFAULT 'onsale',
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        KEY idx_date (show_date)
+    ) $charset;");
+
+    $surveys = $wpdb->prefix . 'lmeg_surveys';
+    $votes   = $wpdb->prefix . 'lmeg_survey_votes';
+    dbDelta("CREATE TABLE $surveys (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        question VARCHAR(255) NOT NULL,
+        options_json TEXT NOT NULL,
+        is_open TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset;");
+    dbDelta("CREATE TABLE $votes (
+        survey_id BIGINT(20) UNSIGNED NOT NULL,
+        subscriber_id BIGINT(20) UNSIGNED NOT NULL,
+        option_idx INT UNSIGNED NOT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (survey_id, subscriber_id),
+        KEY idx_survey (survey_id)
+    ) $charset;");
+
+    $contests = $wpdb->prefix . 'lmeg_contests';
+    $entries  = $wpdb->prefix . 'lmeg_contest_entries';
+    dbDelta("CREATE TABLE $contests (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title VARCHAR(190) NOT NULL,
+        description TEXT,
+        ends_at DATETIME DEFAULT NULL,
+        winner_subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        is_open TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset;");
+    dbDelta("CREATE TABLE $entries (
+        contest_id BIGINT(20) UNSIGNED NOT NULL,
+        subscriber_id BIGINT(20) UNSIGNED NOT NULL,
+        entries INT UNSIGNED NOT NULL DEFAULT 1,
+        entered_at DATETIME NOT NULL,
+        PRIMARY KEY  (contest_id, subscriber_id),
+        KEY idx_contest (contest_id)
     ) $charset;");
 
     $orders = $wpdb->prefix . 'lmeg_shop_orders';
@@ -682,11 +741,12 @@ function lmeg_merge_tag_map($sub) {
         '{country}'     => (string) ($sub->country ?? ''),
         '{site_name}'   => (string) get_bloginfo('name'),
         '{site_url}'    => (string) home_url('/'),
-        // Human-friendly fallback: use the local part of the email as a
-        // stand-in "name" if no explicit name field exists.
-        '{name}'        => !empty($sub->email)
-            ? (string) explode('@', $sub->email)[0]
-            : (string) ($sub->phone ?? 'friend'),
+        // Prefer the stored first name; fall back to the email local part.
+        '{name}'        => !empty($sub->first_name)
+            ? (string) $sub->first_name
+            : (!empty($sub->email)
+                ? (string) explode('@', $sub->email)[0]
+                : (string) ($sub->phone ?? 'friend')),
         '{unique_code}'   => (!empty($sub->id) && function_exists('lmeg_get_fan_code'))
             ? (string) lmeg_get_fan_code($sub->id) : '',
         '{referral_link}' => (!empty($sub->id) && function_exists('lmeg_referral_url'))
