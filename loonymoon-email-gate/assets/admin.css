@@ -1,23 +1,478 @@
-/* Loonymoon Email Gate — admin styling. Tag chips, audience picker. */
+/* ============================================================================
+   Loonybin admin — premium dark theme (OpenStage-inspired)
+   Scoped to body.lmeg-admin so the rest of wp-admin is untouched.
+   System: bg #0E0F16 · surface #161826 · text #F4F5F7 · muted #8B90A0
+           accent #D05FA2 (loonybin pink) · secondary #7C6CF6 · positive #34D399
+   Type:   DM Sans
+   ========================================================================== */
 
-/* Tag chip — pill with a colored left rail. Inspired by Mailchimp's tag UI. */
-.lmeg-chip {
+body.lmeg-admin {
+    --lmegA-bg:      #0E0F16;
+    --lmegA-bg2:     #12141F;
+    --lmegA-card:    #161826;
+    --lmegA-card2:   #1C1F2E;
+    --lmegA-border:  rgba(255, 255, 255, 0.07);
+    --lmegA-border2: rgba(255, 255, 255, 0.12);
+    --lmegA-text:    #F4F5F7;
+    --lmegA-muted:   #8B90A0;
+    --lmegA-accent:  #D05FA2;
+    --lmegA-accent-2:#7C6CF6;
+    --lmegA-pos:     #34D399;
+    --lmegA-neg:     #F87171;
+    --lmegA-warn:    #FBBF24;
+    --lmegA-radius:  14px;
+    --lmegA-font:    'DM Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---- canvas ------------------------------------------------------------- */
+
+body.lmeg-admin #wpcontent,
+body.lmeg-admin #wpbody,
+body.lmeg-admin #wpbody-content {
+    background: var(--lmegA-bg);
+}
+
+body.lmeg-admin #wpfooter,
+body.lmeg-admin #wpfooter a {
+    color: var(--lmegA-muted);
+}
+
+body.lmeg-admin #wpbody-content .wrap {
+    font-family: var(--lmegA-font);
+    color: var(--lmegA-text);
+    max-width: 1180px;
+    margin: 8px auto 40px;
+    padding: 0 12px;
+}
+
+body.lmeg-admin .wrap a {
+    color: var(--lmegA-accent);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+body.lmeg-admin .wrap a:hover {
+    color: #E58BBD;
+}
+
+/* ---- app bar ------------------------------------------------------------ */
+
+.lmeg-appbar {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding: 14px 24px;
+    margin-left: -20px;
+    background: var(--lmegA-bg2, #12141F);
+    border-bottom: 1px solid var(--lmegA-border, rgba(255,255,255,0.07));
+    font-family: 'DM Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 10;
+}
+
+.lmeg-appbar__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #F4F5F7 !important;
+    text-decoration: none !important;
+}
+
+.lmeg-appbar__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #D05FA2, #7C6CF6);
+    box-shadow: 0 0 12px rgba(208, 95, 162, 0.55);
+}
+
+.lmeg-appbar__nav {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.lmeg-appbar__link {
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #8B90A0 !important;
+    text-decoration: none !important;
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.lmeg-appbar__link:hover {
+    color: #F4F5F7 !important;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.lmeg-appbar__link.is-active {
+    color: #fff !important;
+    background: linear-gradient(135deg, rgba(208, 95, 162, 0.28), rgba(124, 108, 246, 0.28));
+    box-shadow: inset 0 0 0 1px rgba(208, 95, 162, 0.45);
+}
+
+.lmeg-appbar__site {
+    margin-left: auto;
+    font-size: 12.5px;
+    color: #8B90A0 !important;
+    text-decoration: none !important;
+    transition: color 0.2s ease;
+}
+
+.lmeg-appbar__site:hover { color: #F4F5F7 !important; }
+
+/* ---- headings ------------------------------------------------------------ */
+
+body.lmeg-admin .wrap h1 {
+    font-family: var(--lmegA-font);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--lmegA-text);
+    padding: 18px 0 4px;
+}
+
+body.lmeg-admin .wrap h2 {
+    font-family: var(--lmegA-font);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--lmegA-muted);
+    margin: 34px 0 12px;
+}
+
+body.lmeg-admin .wrap p,
+body.lmeg-admin .wrap td,
+body.lmeg-admin .wrap th,
+body.lmeg-admin .wrap li,
+body.lmeg-admin .wrap label {
+    color: var(--lmegA-text);
+}
+
+body.lmeg-admin .wrap .description,
+body.lmeg-admin .wrap p em,
+body.lmeg-admin .wrap p.description {
+    color: var(--lmegA-muted);
+}
+
+body.lmeg-admin .wrap hr {
+    border: 0;
+    border-top: 1px solid var(--lmegA-border);
+}
+
+body.lmeg-admin .wrap code {
+    background: var(--lmegA-card2);
+    color: #E9D5FF;
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-size: 12px;
+}
+
+body.lmeg-admin .wrap pre,
+body.lmeg-admin .wrap pre[style] {
+    background: var(--lmegA-card) !important;
+    color: var(--lmegA-text) !important;
+    border: 1px solid var(--lmegA-border);
+    border-radius: 10px !important;
+}
+
+/* ---- stat cards ----------------------------------------------------------- */
+
+body.lmeg-admin .lmeg-stat {
+    padding: 18px 20px !important;
+    background: linear-gradient(160deg, var(--lmegA-card), var(--lmegA-card2)) !important;
+    border: 1px solid var(--lmegA-border) !important;
+    border-radius: var(--lmegA-radius) !important;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+body.lmeg-admin .lmeg-stat:hover {
+    border-color: rgba(208, 95, 162, 0.35) !important;
+}
+
+body.lmeg-admin .lmeg-stat__label {
+    font-size: 11px !important;
+    font-weight: 600;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase;
+    color: var(--lmegA-muted) !important;
+    opacity: 1 !important;
+}
+
+body.lmeg-admin .lmeg-stat__value {
+    font-size: 26px;
+    font-weight: 700 !important;
+    color: var(--lmegA-text);
+    margin: 6px 0 3px !important;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+body.lmeg-admin .lmeg-stat__hint {
+    font-size: 12px !important;
+    color: var(--lmegA-muted) !important;
+    opacity: 1 !important;
+}
+
+/* ---- tables --------------------------------------------------------------- */
+
+body.lmeg-admin .wrap table.widefat {
+    background: var(--lmegA-card);
+    border: 1px solid var(--lmegA-border);
+    border-radius: var(--lmegA-radius);
+    overflow: hidden;
+    box-shadow: none;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 6px;
+}
+
+body.lmeg-admin .wrap table.widefat thead th,
+body.lmeg-admin .wrap table.widefat thead td {
+    background: var(--lmegA-card2);
+    color: var(--lmegA-muted);
+    font-family: var(--lmegA-font);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--lmegA-border);
+    padding: 12px 14px;
+}
+
+body.lmeg-admin .wrap table.widefat tbody td,
+body.lmeg-admin .wrap table.widefat tbody th {
+    background: transparent;
+    color: var(--lmegA-text);
+    border-bottom: 1px solid var(--lmegA-border);
+    padding: 12px 14px;
+    font-size: 13.5px;
+    vertical-align: middle;
+}
+
+body.lmeg-admin .wrap table.widefat.striped > tbody > :nth-child(odd),
+body.lmeg-admin .wrap table.widefat.striped > tbody > tr:nth-child(odd) > td,
+body.lmeg-admin .wrap table.widefat.striped > tbody > tr:nth-child(odd) > th {
+    background: transparent;
+}
+
+body.lmeg-admin .wrap table.widefat tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+body.lmeg-admin .wrap table.widefat tbody tr:hover > td,
+body.lmeg-admin .wrap table.widefat tbody tr:hover > th {
+    background: rgba(208, 95, 162, 0.05);
+}
+
+body.lmeg-admin .wrap table.widefat tbody tr:last-child > td,
+body.lmeg-admin .wrap table.widefat tbody tr:last-child > th {
+    border-bottom: 0;
+}
+
+/* form-table (settings) */
+body.lmeg-admin .wrap table.form-table {
+    background: var(--lmegA-card);
+    border: 1px solid var(--lmegA-border);
+    border-radius: var(--lmegA-radius);
+    padding: 6px 18px;
+    margin-top: 6px;
+}
+
+body.lmeg-admin .wrap table.form-table th {
+    color: var(--lmegA-text);
+    font-family: var(--lmegA-font);
+    font-weight: 600;
+    font-size: 13.5px;
+    padding: 18px 14px 18px 4px;
+}
+
+body.lmeg-admin .wrap table.form-table td {
+    padding: 14px 4px;
+    color: var(--lmegA-text);
+}
+
+/* ---- inputs --------------------------------------------------------------- */
+
+body.lmeg-admin .wrap input[type="text"],
+body.lmeg-admin .wrap input[type="email"],
+body.lmeg-admin .wrap input[type="url"],
+body.lmeg-admin .wrap input[type="number"],
+body.lmeg-admin .wrap input[type="password"],
+body.lmeg-admin .wrap input[type="datetime-local"],
+body.lmeg-admin .wrap select,
+body.lmeg-admin .wrap textarea {
+    background: var(--lmegA-bg2);
+    border: 1px solid var(--lmegA-border2);
+    border-radius: 9px;
+    color: var(--lmegA-text);
+    font-family: var(--lmegA-font);
+    padding: 8px 12px;
+    box-shadow: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+body.lmeg-admin .wrap input:focus,
+body.lmeg-admin .wrap select:focus,
+body.lmeg-admin .wrap textarea:focus {
+    border-color: var(--lmegA-accent);
+    box-shadow: 0 0 0 3px rgba(208, 95, 162, 0.2);
+    outline: none;
+}
+
+body.lmeg-admin .wrap input::placeholder,
+body.lmeg-admin .wrap textarea::placeholder {
+    color: rgba(139, 144, 160, 0.65);
+}
+
+body.lmeg-admin .wrap input[type="checkbox"],
+body.lmeg-admin .wrap input[type="radio"] {
+    background: var(--lmegA-bg2);
+    border-color: var(--lmegA-border2);
+}
+
+body.lmeg-admin .wrap input[type="checkbox"]:checked {
+    background: var(--lmegA-accent);
+    border-color: var(--lmegA-accent);
+}
+
+body.lmeg-admin .wrap input[type="color"] {
+    background: var(--lmegA-bg2);
+    border: 1px solid var(--lmegA-border2);
+    border-radius: 8px;
+    height: 34px;
+    cursor: pointer;
+}
+
+/* ---- buttons -------------------------------------------------------------- */
+
+body.lmeg-admin .wrap .button,
+body.lmeg-admin .wrap .button-secondary {
+    background: var(--lmegA-card2);
+    border: 1px solid var(--lmegA-border2);
+    border-radius: 9px;
+    color: var(--lmegA-text);
+    font-family: var(--lmegA-font);
+    font-weight: 500;
+    padding: 4px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    text-shadow: none;
+    box-shadow: none;
+}
+
+body.lmeg-admin .wrap .button:hover,
+body.lmeg-admin .wrap .button-secondary:hover {
+    background: #232637;
+    border-color: rgba(208, 95, 162, 0.5);
+    color: #fff;
+}
+
+body.lmeg-admin .wrap .button-primary {
+    background: linear-gradient(135deg, #D05FA2, #A855F7);
+    border: 0;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 2px 12px rgba(208, 95, 162, 0.35);
+}
+
+body.lmeg-admin .wrap .button-primary:hover {
+    background: linear-gradient(135deg, #DA74B0, #B36BF8);
+    color: #fff;
+    box-shadow: 0 3px 16px rgba(208, 95, 162, 0.5);
+}
+
+body.lmeg-admin .wrap .button-link-delete {
+    color: var(--lmegA-neg) !important;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+body.lmeg-admin .wrap .button-link-delete:hover {
+    text-decoration: underline;
+}
+
+/* ---- notices -------------------------------------------------------------- */
+
+body.lmeg-admin .wrap .notice,
+body.lmeg-admin #wpbody-content .notice {
+    background: var(--lmegA-card);
+    border: 1px solid var(--lmegA-border);
+    border-left-width: 4px;
+    border-radius: 10px;
+    color: var(--lmegA-text);
+    box-shadow: none;
+}
+
+body.lmeg-admin .notice p { color: var(--lmegA-text); }
+body.lmeg-admin .notice.notice-success { border-left-color: var(--lmegA-pos); }
+body.lmeg-admin .notice.notice-error   { border-left-color: var(--lmegA-neg); }
+body.lmeg-admin .notice.notice-warning { border-left-color: var(--lmegA-warn); }
+body.lmeg-admin .notice.notice-info    { border-left-color: var(--lmegA-accent-2); }
+
+/* ---- status filter pills (subsubsub) -------------------------------------- */
+
+body.lmeg-admin .wrap .subsubsub {
+    margin: 10px 0 4px;
+}
+
+body.lmeg-admin .wrap .subsubsub li { color: transparent; display: inline; }
+
+body.lmeg-admin .wrap .subsubsub a {
+    display: inline-block;
+    padding: 5px 13px;
+    border-radius: 999px;
+    background: var(--lmegA-card);
+    border: 1px solid var(--lmegA-border);
+    color: var(--lmegA-muted);
+    font-size: 12.5px;
+    margin: 0 2px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+body.lmeg-admin .wrap .subsubsub a:hover { color: var(--lmegA-text); }
+
+body.lmeg-admin .wrap .subsubsub a.current {
+    background: linear-gradient(135deg, rgba(208, 95, 162, 0.25), rgba(124, 108, 246, 0.25));
+    border-color: rgba(208, 95, 162, 0.5);
+    color: #fff;
+    font-weight: 600;
+}
+
+/* ---- bulk action bar ------------------------------------------------------- */
+
+body.lmeg-admin .wrap .tablenav {
+    height: auto;
+    padding: 8px 0;
+}
+
+/* ---- tag chips (shared with pre-dark styles, tuned for dark) ---------------- */
+
+body.lmeg-admin .lmeg-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 10px 3px 8px;
+    padding: 3px 11px 3px 9px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 25%, transparent);
-    color: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 88%, #111);
+    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 40%, transparent);
+    color: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 65%, #fff);
     font-size: 12px;
-    line-height: 1.4;
+    line-height: 1.5;
     font-weight: 500;
     white-space: nowrap;
-    position: relative;
 }
 
-.lmeg-chip::before {
+body.lmeg-admin .lmeg-chip::before {
     content: "";
     width: 7px;
     height: 7px;
@@ -26,91 +481,83 @@
     flex: 0 0 auto;
 }
 
-.lmeg-chip__count {
+body.lmeg-admin .lmeg-chip__count {
     margin-left: 4px;
     padding: 0 6px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 20%, transparent);
+    background: rgba(255, 255, 255, 0.1);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    opacity: 0.9;
 }
 
-.lmeg-chip--auto {
-    font-style: italic;
+body.lmeg-admin .lmeg-chip--auto { font-style: italic; }
+
+body.lmeg-admin .lmeg-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+/* audience picker on Compose */
+body.lmeg-admin .lmeg-audience-tags {
+    background: var(--lmegA-bg2);
+    border: 1px solid var(--lmegA-border2);
+    border-radius: 10px;
 }
 
-.lmeg-chips {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 4px;
+body.lmeg-admin .lmeg-chip-label { cursor: pointer; }
+
+body.lmeg-admin .lmeg-chip-label input:checked + .lmeg-chip {
+    box-shadow: 0 0 0 1.5px var(--lmeg-chip-color, #6b7280);
+    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 32%, transparent);
 }
 
-/* Tag picker on Compose */
-.lmeg-audience {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-width: 720px;
-}
-
-.lmeg-audience-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    background: #fafafa;
-    min-height: 44px;
-}
-
-.lmeg-chip-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    user-select: none;
-}
-
-.lmeg-chip-label input {
-    margin: 0;
-}
-
-.lmeg-chip-label input:checked + .lmeg-chip {
-    background: color-mix(in srgb, var(--lmeg-chip-color, #6b7280) 24%, transparent);
-    box-shadow: 0 0 0 1px var(--lmeg-chip-color, #6b7280);
-}
-
-.lmeg-audience-controls {
-    display: flex;
-    gap: 16px;
-    font-size: 13px;
-}
-
-.lmeg-audience-count {
-    padding: 10px 14px;
-    background: #f0f6ff;
-    border: 1px solid #c8dcff;
-    border-radius: 6px;
+body.lmeg-admin .lmeg-audience-count {
+    background: linear-gradient(135deg, rgba(208, 95, 162, 0.14), rgba(124, 108, 246, 0.14));
+    border: 1px solid rgba(208, 95, 162, 0.35);
+    border-radius: 10px;
+    color: var(--lmegA-text);
+    padding: 12px 16px;
     font-size: 14px;
-    color: #1e3a8a;
 }
 
-.lmeg-audience-count strong {
-    font-variant-numeric: tabular-nums;
+/* sms/email meta line on compose */
+body.lmeg-admin #lmeg-sms-meta span,
+body.lmeg-admin #lmeg-email-meta span {
+    color: var(--lmegA-muted);
 }
 
-.lmeg-tags-table input[type="text"] { min-width: 200px; }
-.lmeg-tags-table input[type="color"] { vertical-align: middle; }
+body.lmeg-admin #lmeg-sms-enc,
+body.lmeg-admin #lmeg-email-read {
+    background: rgba(124, 108, 246, 0.2) !important;
+    color: #C4B5FD !important;
+}
 
-/* Fallback for browsers without color-mix (Safari < 16.4, etc.) */
-@supports not (background: color-mix(in srgb, red 50%, blue)) {
-    .lmeg-chip {
-        background: var(--lmeg-chip-color, #6b7280);
-        color: #fff;
-        border-color: var(--lmeg-chip-color, #6b7280);
-    }
-    .lmeg-chip::before { background: rgba(255,255,255,0.7); }
-    .lmeg-chip__count  { background: rgba(255,255,255,0.18); color: #fff; }
+/* ---- fan profile timeline --------------------------------------------------- */
+
+body.lmeg-admin .wrap div[style*="border-bottom:1px solid rgba(0,0,0,.06)"] {
+    border-bottom-color: var(--lmegA-border) !important;
+}
+
+/* audience bars: rails need to read on dark */
+body.lmeg-admin .wrap div[style*="background:rgba(0,0,0,.05)"] {
+    background: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* inline tables the pages set to max-width look better with the card treatment */
+body.lmeg-admin .wrap table.widefat a { font-weight: 500; }
+
+/* ---- media/logo preview borders --------------------------------------------- */
+
+body.lmeg-admin .wrap img[style*="border:1px solid #ddd"] {
+    border-color: var(--lmegA-border2) !important;
+    background: var(--lmegA-bg2) !important;
+}
+
+/* ---- responsive -------------------------------------------------------------- */
+
+@media (max-width: 782px) {
+    .lmeg-appbar { margin-left: -10px; padding: 12px 14px; gap: 12px; }
+    .lmeg-appbar__site { display: none; }
+    body.lmeg-admin .wrap h1 { font-size: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.lmeg-admin * { transition: none !important; }
 }

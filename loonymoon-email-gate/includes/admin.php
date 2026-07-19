@@ -33,7 +33,8 @@ function lmeg_admin_menu() {
 add_action('admin_enqueue_scripts', 'lmeg_admin_assets');
 function lmeg_admin_assets($hook) {
     if (strpos((string) $hook, 'lmeg') === false) return;
-    wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', [], LMEG_VERSION);
+    wp_enqueue_style('lmeg-admin-font', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap', [], null);
+    wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', ['lmeg-admin-font'], LMEG_VERSION);
     // Media picker for the logo field.
     wp_enqueue_media();
     wp_add_inline_script('jquery-core', "
@@ -51,6 +52,53 @@ function lmeg_admin_assets($hook) {
             });
         });
     ");
+}
+
+/**
+ * Scope the premium dark theme to our pages only via a body class.
+ */
+add_filter('admin_body_class', 'lmeg_admin_body_class');
+function lmeg_admin_body_class($classes) {
+    if (!empty($_GET['page']) && strpos((string) $_GET['page'], 'lmeg') === 0) {
+        $classes .= ' lmeg-admin';
+    }
+    return $classes;
+}
+
+/**
+ * App-style header bar rendered above every plugin page — brand mark +
+ * primary nav pills. Injected once via in_admin_header, no per-page edits.
+ */
+add_action('in_admin_header', 'lmeg_admin_app_bar');
+function lmeg_admin_app_bar() {
+    if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
+    $current = sanitize_text_field($_GET['page']);
+    $items = [
+        'lmeg'            => 'Fans',
+        'lmeg-audience'   => 'Audience',
+        'lmeg-compose'    => 'Compose',
+        'lmeg-broadcasts' => 'Broadcasts',
+        'lmeg-shop'       => 'Revenue',
+        'lmeg-members'    => 'Members',
+        'lmeg-smartlinks' => 'Smartlinks',
+        'lmeg-sequences'  => 'Sequences',
+        'lmeg-settings'   => 'Settings',
+    ];
+    ?>
+    <div class="lmeg-appbar">
+        <a class="lmeg-appbar__brand" href="<?php echo esc_url(admin_url('admin.php?page=lmeg')); ?>">
+            <span class="lmeg-appbar__dot" aria-hidden="true"></span>
+            loonybin
+        </a>
+        <nav class="lmeg-appbar__nav" aria-label="Loonybin sections">
+            <?php foreach ($items as $slug => $label) : ?>
+                <a class="lmeg-appbar__link<?php echo $current === $slug ? ' is-active' : ''; ?>"
+                   href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>"><?php echo esc_html($label); ?></a>
+            <?php endforeach; ?>
+        </nav>
+        <a class="lmeg-appbar__site" href="<?php echo esc_url(home_url('/')); ?>" target="_blank" rel="noopener">View site ↗</a>
+    </div>
+    <?php
 }
 
 /* ---------------------------------------------------------------------------
@@ -2187,17 +2235,6 @@ function lmeg_admin_members() {
             </tbody>
         </table>
     </div>
-    <style>
-    .lmeg-stat {
-        padding: 16px 18px;
-        background: #fff;
-        border: 1px solid rgba(0,0,0,0.08);
-        border-radius: 10px;
-    }
-    .lmeg-stat__label { font-size: 11px; opacity: 0.6; text-transform: uppercase; letter-spacing: .05em; }
-    .lmeg-stat__value { font-size: 26px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
-    .lmeg-stat__hint  { font-size: 12px; opacity: 0.6; }
-    </style>
     <?php
 }
 
@@ -2331,12 +2368,6 @@ function lmeg_admin_shop() {
 
         <p style="margin-top:16px;opacity:.7;max-width:760px;"><em>How attribution works: an order is matched to a subscriber by email, then to the most recent broadcast that subscriber clicked (falling back to opened) within the attribution window before purchase — last click wins. Configure the window under Settings → Shop (Shopify).</em></p>
     </div>
-    <style>
-    .lmeg-stat { padding:16px 18px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
-    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
-    .lmeg-stat__value { font-size:24px;font-weight:700;line-height:1.1;margin:4px 0 2px;font-variant-numeric:tabular-nums; }
-    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
-    </style>
     <?php
 }
 
@@ -2417,12 +2448,6 @@ function lmeg_admin_fan_profile($fan_id) {
             </div>
         <?php endif; ?>
     </div>
-    <style>
-    .lmeg-stat { padding:14px 16px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
-    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
-    .lmeg-stat__value { font-weight:700;line-height:1.2;margin:4px 0 2px; }
-    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
-    </style>
     <?php
 }
 
@@ -2563,12 +2588,6 @@ function lmeg_admin_audience() {
             </tbody>
         </table>
     </div>
-    <style>
-    .lmeg-stat { padding:14px 16px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
-    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
-    .lmeg-stat__value { font-weight:700;line-height:1.2;margin:4px 0 2px; }
-    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
-    </style>
     <?php
 }
 

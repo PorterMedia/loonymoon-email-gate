@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.31.0
+Stable tag: 2.32.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.32.0 =
+* Premium dark admin theme (OpenStage-inspired) scoped to the plugin's pages only — deep #0E0F16 canvas, card surfaces, DM Sans, loonybin pink + indigo accents.
+* App-style header bar on every plugin page: brand mark + pill navigation (Fans / Audience / Compose / Broadcasts / Revenue / Members / Smartlinks / Sequences / Settings) + View site link.
+* Restyled: stat cards (gradient surfaces, hover glow), tables (rounded cards, uppercase headers, row hover), filter pills, buttons (pink-gradient primary), inputs (focus rings), notices (colored rails), tag chips tuned for dark, audience bars, fan timeline.
+* Rest of wp-admin untouched; prefers-reduced-motion respected.
+
 = 2.31.0 =
 * Fan CRM (OpenStage-inspired): click any subscriber to open their Fan Profile — status, plan, lifetime revenue, referrals, unique code, tags, and a full activity timeline (signup, sends, opens, clicks, orders, soft-paywall reads).
 * Fan Types: daily auto-scoring into superfan / engaged / casual / dormant (rolling 90d), applied as fan-type:* tags usable in broadcasts and segments. Manual recalc button on the new Audience page.
