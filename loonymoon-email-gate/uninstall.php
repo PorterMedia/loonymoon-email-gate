@@ -20,7 +20,10 @@ $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_magic_links");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_stripe_events");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_soft_grants");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_shop_orders");
+$wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_smartlinks");
 delete_option('lmeg_shop_last_sync');
+delete_option('lmeg_fan_types_last_run');
+delete_option('lmeg_smartlinks_flushed');
 
 // Clean per-post meta.
 delete_post_meta_by_key('_lmeg_access');

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.30.0
+Stable tag: 2.31.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,14 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.31.0 =
+* Fan CRM (OpenStage-inspired): click any subscriber to open their Fan Profile — status, plan, lifetime revenue, referrals, unique code, tags, and a full activity timeline (signup, sends, opens, clicks, orders, soft-paywall reads).
+* Fan Types: daily auto-scoring into superfan / engaged / casual / dormant (rolling 90d), applied as fan-type:* tags usable in broadcasts and segments. Manual recalc button on the new Audience page.
+* Audience page: fan-type distribution, country breakdown with bars, top fans by revenue, referral leaderboard.
+* Referrals: every fan gets a personal link ({referral_link} merge tag). Signups arriving via ?ref=CODE are credited to the referrer (30-day cookie).
+* Unique codes: 8-char per-fan code ({unique_code} merge tag) for presales/discounts.
+* Smartlinks: trackable short links at /go/<slug> with click counts, per-fan timeline logging for known members, and QR codes for posters/merch.
+
 = 2.30.0 =
 * Shopify shop connection — measure revenue directly attributable to email campaigns.
 * Orders sync from the Shopify Admin API (read_orders token) every ~15 min; each order is matched to a subscriber by email, then attributed last-click to the broadcast they clicked (falling back to opened) within a configurable window (default 7 days).

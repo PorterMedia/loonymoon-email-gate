@@ -16,6 +16,8 @@ function lmeg_admin_menu() {
     $cap = 'manage_options';
     add_menu_page('Email Gate', 'Email Gate', $cap, 'lmeg',           'lmeg_admin_subscribers', 'dashicons-email-alt', 30);
     add_submenu_page('lmeg', 'Subscribers',       'Subscribers',       $cap, 'lmeg',                 'lmeg_admin_subscribers');
+    add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
+    add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
     add_submenu_page('lmeg', 'Members (Paid)',    'Members (Paid)',    $cap, 'lmeg-members',         'lmeg_admin_members');
     add_submenu_page('lmeg', 'Tags',              'Tags',              $cap, 'lmeg-tags',            'lmeg_admin_tags');
     add_submenu_page('lmeg', 'Segments',          'Segments',          $cap, 'lmeg-segments',        'lmeg_admin_segments');
@@ -165,6 +167,12 @@ function lmeg_admin_subscribers() {
     global $wpdb;
     $table = $wpdb->prefix . LMEG_TABLE;
     $notice = '';
+
+    // Fan profile detail view.
+    if (!empty($_GET['fan'])) {
+        lmeg_admin_fan_profile((int) $_GET['fan']);
+        return;
+    }
 
     // Handle bulk actions — tag ops and manual tier grants.
     if (isset($_POST['lmeg_subs_nonce']) && wp_verify_nonce($_POST['lmeg_subs_nonce'], 'lmeg_subs')) {
@@ -343,7 +351,7 @@ function lmeg_admin_subscribers() {
                         <td class="check-column"><input type="checkbox" name="sub_ids[]" value="<?php echo (int) $r->id; ?>" /></td>
                         <td><?php echo $status_dot; ?></td>
                         <td><?php echo $r->contact_type === 'phone' ? '📱 SMS' : '✉️ Email'; ?></td>
-                        <td><?php echo esc_html($contact ?: '—'); ?></td>
+                        <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $r->id], admin_url('admin.php'))); ?>"><strong><?php echo esc_html($contact ?: '—'); ?></strong></a></td>
                         <td>
                             <?php $tags = $tags_by_sub[(int) $r->id] ?? []; ?>
                             <?php if ($tags) : ?>
@@ -1527,7 +1535,7 @@ function lmeg_admin_templates() {
     <div class="wrap">
         <h1>Email Gate — Templates</h1>
         <?php echo $notice; ?>
-        <p>Reusable subject + body pairs. Merge tags: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{city}</code>, <code>{country}</code>, <code>{site_name}</code>, <code>{site_url}</code>.</p>
+        <p>Reusable subject + body pairs. Merge tags: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{city}</code>, <code>{country}</code>, <code>{site_name}</code>, <code>{site_url}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>.</p>
 
         <h2><?php echo $edit ? 'Edit' : 'Create'; ?> template</h2>
         <form method="post">
@@ -2329,5 +2337,324 @@ function lmeg_admin_shop() {
     .lmeg-stat__value { font-size:24px;font-weight:700;line-height:1.1;margin:4px 0 2px;font-variant-numeric:tabular-nums; }
     .lmeg-stat__hint  { font-size:12px;opacity:.6; }
     </style>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Fan profile — one fan, full context + activity timeline
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_fan_profile($fan_id) {
+    global $wpdb;
+    $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $fan_id));
+    if (!$sub) {
+        echo '<div class="wrap"><h1>Fan not found.</h1></div>';
+        return;
+    }
+
+    $tags     = lmeg_tags_for_subscriber($fan_id);
+    $revenue  = function_exists('lmeg_fan_revenue') ? lmeg_fan_revenue($fan_id) : 0;
+    $timeline = function_exists('lmeg_fan_timeline') ? lmeg_fan_timeline($fan_id) : [];
+    $tier     = ($sub->member_tier_id && function_exists('lmeg_tier')) ? lmeg_tier($sub->member_tier_id) : null;
+    $code     = function_exists('lmeg_get_fan_code') ? lmeg_get_fan_code($fan_id) : '';
+    $referred = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE referred_by = %d", $fan_id
+    ));
+    $referrer = $sub->referred_by
+        ? $wpdb->get_row($wpdb->prepare("SELECT id, email, phone FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub->referred_by))
+        : null;
+    ?>
+    <div class="wrap">
+        <p><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg')); ?>">← All subscribers</a></p>
+        <h1><?php echo esc_html($sub->email ?: $sub->phone ?: ('Fan #' . $fan_id)); ?></h1>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:18px 0;max-width:920px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Status</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $sub->unsubscribed_at ? '👋 Unsubscribed' : '● Active'; ?></div>
+                <div class="lmeg-stat__hint">joined <?php echo esc_html($sub->created_at); ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Plan</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $tier ? esc_html($tier->name) : 'Free'; ?></div>
+                <div class="lmeg-stat__hint"><?php echo esc_html($sub->member_status); ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Lifetime revenue</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo esc_html(lmeg_format_price($revenue)); ?></div>
+                <div class="lmeg-stat__hint">from synced shop orders</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Referrals</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $referred; ?></div>
+                <div class="lmeg-stat__hint">fans they brought in</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Unique code</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><code><?php echo esc_html($code ?: '—'); ?></code></div>
+                <div class="lmeg-stat__hint">presale / referral code</div></div>
+        </div>
+
+        <p>
+            <?php foreach ((array) $tags as $t) echo lmeg_render_tag_chip($t) . ' '; ?>
+        </p>
+
+        <table class="widefat" style="max-width:560px;margin:10px 0 22px;">
+            <tbody>
+                <?php if ($sub->email) : ?><tr><th style="width:160px;">Email</th><td><?php echo esc_html($sub->email); ?></td></tr><?php endif; ?>
+                <?php if ($sub->phone) : ?><tr><th>Phone</th><td><?php echo esc_html($sub->phone); ?></td></tr><?php endif; ?>
+                <?php if ($sub->country) : ?><tr><th>Country</th><td><?php echo esc_html(lmeg_flag_emoji($sub->country) . ' ' . $sub->country); ?></td></tr><?php endif; ?>
+                <?php $addr = array_filter([$sub->street, $sub->city, $sub->region, $sub->postal_code]); ?>
+                <?php if ($addr) : ?><tr><th>Address</th><td><?php echo esc_html(implode(', ', $addr)); ?></td></tr><?php endif; ?>
+                <?php if ($referrer) : ?><tr><th>Referred by</th><td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $referrer->id], admin_url('admin.php'))); ?>"><?php echo esc_html($referrer->email ?: $referrer->phone); ?></a></td></tr><?php endif; ?>
+                <?php if ($sub->post_id) : ?><tr><th>Signed up on</th><td><a href="<?php echo esc_url(get_permalink($sub->post_id)); ?>" target="_blank" rel="noopener"><?php echo esc_html(get_the_title($sub->post_id)); ?></a></td></tr><?php endif; ?>
+            </tbody>
+        </table>
+
+        <h2>Timeline</h2>
+        <?php if (empty($timeline)) : ?>
+            <p>No activity yet.</p>
+        <?php else : ?>
+            <div style="max-width:760px;">
+                <?php foreach ($timeline as $item) : ?>
+                    <div style="display:flex;gap:12px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.06);align-items:baseline;">
+                        <span style="flex:0 0 auto;"><?php echo $item['icon']; ?></span>
+                        <span style="flex:1;"><?php echo esc_html($item['label']); ?></span>
+                        <span style="flex:0 0 auto;font-size:12px;opacity:.55;white-space:nowrap;"><?php echo esc_html($item['at']); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+    <style>
+    .lmeg-stat { padding:14px 16px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
+    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
+    .lmeg-stat__value { font-weight:700;line-height:1.2;margin:4px 0 2px; }
+    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
+    </style>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Audience — fan types, countries, top fans, referral leaderboard
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_audience() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $notice = '';
+
+    if (isset($_POST['lmeg_aud_nonce']) && wp_verify_nonce($_POST['lmeg_aud_nonce'], 'lmeg_aud')
+        && ($_POST['lmeg_action'] ?? '') === 'recalc') {
+        $counts = lmeg_recalculate_fan_types();
+        $notice = '<div class="notice notice-success"><p>Fan types recalculated: '
+            . (int) $counts['superfan'] . ' superfans, '
+            . (int) $counts['engaged'] . ' engaged, '
+            . (int) $counts['casual'] . ' casual, '
+            . (int) $counts['dormant'] . ' dormant.</p></div>';
+    }
+
+    $last_run = get_option('lmeg_fan_types_last_run', '');
+
+    // Fan type distribution from tags.
+    $types = $wpdb->get_results(
+        "SELECT t.slug, t.name, t.color, COUNT(st.subscriber_id) AS n
+         FROM {$wpdb->prefix}lmeg_tags t
+         JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id = t.id
+         WHERE t.slug LIKE 'fan-type:%'
+         GROUP BY t.id ORDER BY n DESC"
+    );
+    $type_total = array_sum(array_map(function ($r) { return (int) $r->n; }, (array) $types)) ?: 1;
+
+    // Country breakdown.
+    $countries = $wpdb->get_results(
+        "SELECT country, COUNT(*) AS n FROM $subs
+         WHERE country IS NOT NULL AND country <> '' AND unsubscribed_at IS NULL
+         GROUP BY country ORDER BY n DESC LIMIT 30"
+    );
+    $known   = array_sum(array_map(function ($r) { return (int) $r->n; }, (array) $countries));
+    $unknown = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE (country IS NULL OR country = '') AND unsubscribed_at IS NULL");
+    $cmax    = $countries ? max(array_map(function ($r) { return (int) $r->n; }, $countries)) : 1;
+
+    // Top fans by lifetime revenue.
+    $top = $wpdb->get_results(
+        "SELECT s.id, s.email, s.phone, SUM(o.total_cents) AS cents, COUNT(o.shopify_order_id) AS orders
+         FROM {$wpdb->prefix}lmeg_shop_orders o
+         JOIN $subs s ON s.id = o.subscriber_id
+         GROUP BY s.id ORDER BY cents DESC LIMIT 15"
+    );
+
+    // Referral leaderboard.
+    $refs = $wpdb->get_results(
+        "SELECT r.id, r.email, r.phone, COUNT(s.id) AS n
+         FROM $subs s JOIN $subs r ON r.id = s.referred_by
+         GROUP BY r.id ORDER BY n DESC LIMIT 15"
+    );
+    ?>
+    <div class="wrap">
+        <h1>Email Gate — Audience</h1>
+        <?php echo $notice; ?>
+
+        <form method="post" style="margin:12px 0;">
+            <?php wp_nonce_field('lmeg_aud', 'lmeg_aud_nonce'); ?>
+            <input type="hidden" name="lmeg_action" value="recalc" />
+            <button type="submit" class="button button-primary">Recalculate fan types now</button>
+            <span style="margin-left:10px;opacity:.65;">Last run: <?php echo $last_run ? esc_html($last_run) : 'never'; ?> · auto-runs daily</span>
+        </form>
+
+        <h2>Fan types</h2>
+        <?php if (empty($types)) : ?>
+            <p>No fan types yet — hit "Recalculate fan types now".</p>
+        <?php else : ?>
+            <div style="max-width:640px;">
+                <?php foreach ($types as $t) : $pct = round(100 * (int) $t->n / $type_total); ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin:6px 0;">
+                        <span style="flex:0 0 140px;"><?php echo esc_html(str_replace('Fan type: ', '', $t->name)); ?></span>
+                        <div style="flex:1;background:rgba(0,0,0,.05);border-radius:6px;height:22px;overflow:hidden;">
+                            <div style="width:<?php echo $pct; ?>%;min-width:2px;height:100%;background:<?php echo esc_attr($t->color); ?>;"></div>
+                        </div>
+                        <span style="flex:0 0 90px;text-align:right;"><strong><?php echo (int) $t->n; ?></strong> (<?php echo $pct; ?>%)</span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <p class="description">Superfan = purchased or paying member (90d) · Engaged = 2+ clicks or 5+ opens · Casual = any open/click · Dormant = silent. Each fan gets a <code>fan-type:*</code> tag — use them in broadcasts and segments.</p>
+        <?php endif; ?>
+
+        <h2 style="margin-top:28px;">Where your fans are</h2>
+        <?php if (empty($countries)) : ?>
+            <p>No country data yet — it's captured from phone signups and address blocks.</p>
+        <?php else : ?>
+            <div style="max-width:640px;">
+                <?php foreach ($countries as $c) : $pct = round(100 * (int) $c->n / max(1, $known)); ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                        <span style="flex:0 0 140px;"><?php echo esc_html(lmeg_flag_emoji($c->country) . ' ' . $c->country); ?></span>
+                        <div style="flex:1;background:rgba(0,0,0,.05);border-radius:6px;height:18px;overflow:hidden;">
+                            <div style="width:<?php echo round(100 * (int) $c->n / $cmax); ?>%;min-width:2px;height:100%;background:#3b82f6;"></div>
+                        </div>
+                        <span style="flex:0 0 90px;text-align:right;"><strong><?php echo (int) $c->n; ?></strong> (<?php echo $pct; ?>%)</span>
+                    </div>
+                <?php endforeach; ?>
+                <?php if ($unknown) : ?>
+                    <p class="description"><?php echo (int) $unknown; ?> subscribers have no country on file (email-only signups don't capture location).</p>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <h2 style="margin-top:28px;">Top fans by revenue</h2>
+        <table class="widefat striped" style="max-width:640px;">
+            <thead><tr><th>Fan</th><th>Orders</th><th>Lifetime revenue</th></tr></thead>
+            <tbody>
+            <?php if (empty($top)) : ?>
+                <tr><td colspan="3">No attributed shop orders yet.</td></tr>
+            <?php else : foreach ($top as $f) : ?>
+                <tr>
+                    <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $f->id], admin_url('admin.php'))); ?>"><?php echo esc_html($f->email ?: $f->phone); ?></a></td>
+                    <td><?php echo (int) $f->orders; ?></td>
+                    <td><strong><?php echo esc_html(lmeg_format_price((int) $f->cents)); ?></strong></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <h2 style="margin-top:28px;">Referral leaderboard</h2>
+        <table class="widefat striped" style="max-width:640px;">
+            <thead><tr><th>Fan</th><th>Fans referred</th></tr></thead>
+            <tbody>
+            <?php if (empty($refs)) : ?>
+                <tr><td colspan="2">No referrals yet. Every fan has a personal link — drop <code>{referral_link}</code> into a broadcast to start the loop ("share this with a friend").</td></tr>
+            <?php else : foreach ($refs as $f) : ?>
+                <tr>
+                    <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $f->id], admin_url('admin.php'))); ?>"><?php echo esc_html($f->email ?: $f->phone); ?></a></td>
+                    <td><strong><?php echo (int) $f->n; ?></strong></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <style>
+    .lmeg-stat { padding:14px 16px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
+    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
+    .lmeg-stat__value { font-weight:700;line-height:1.2;margin:4px 0 2px; }
+    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
+    </style>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Smartlinks — trackable short links + QR codes
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_smartlinks() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_smartlinks';
+    $notice = '';
+
+    if (isset($_POST['lmeg_sl_nonce']) && wp_verify_nonce($_POST['lmeg_sl_nonce'], 'lmeg_sl')) {
+        $act = sanitize_text_field($_POST['lmeg_action'] ?? '');
+        if ($act === 'create') {
+            $slug   = sanitize_title(wp_unslash($_POST['slug'] ?? ''));
+            $target = esc_url_raw(wp_unslash($_POST['target_url'] ?? ''));
+            if ($slug && $target) {
+                $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug));
+                if ($exists) {
+                    $notice = '<div class="notice notice-error"><p>That slug is taken.</p></div>';
+                } else {
+                    $wpdb->insert($tbl, [
+                        'slug'       => $slug,
+                        'target_url' => $target,
+                        'created_at' => current_time('mysql'),
+                    ]);
+                    $notice = '<div class="notice notice-success"><p>Smartlink created: <code>' . esc_html(lmeg_smartlink_url($slug)) . '</code></p></div>';
+                }
+            }
+        } elseif ($act === 'delete') {
+            $id = (int) ($_POST['link_id'] ?? 0);
+            if ($id) {
+                $wpdb->delete($tbl, ['id' => $id]);
+                $notice = '<div class="notice notice-success"><p>Smartlink deleted.</p></div>';
+            }
+        }
+    }
+
+    $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY created_at DESC LIMIT 200");
+    ?>
+    <div class="wrap">
+        <h1>Email Gate — Smartlinks</h1>
+        <?php echo $notice; ?>
+        <p>Short, trackable links: <code><?php echo esc_html(home_url('/go/')); ?>&lt;slug&gt;</code>. Use them in bios, posters, broadcasts — clicks are counted, and clicks by known fans land on their timeline.</p>
+
+        <h2>Create a smartlink</h2>
+        <form method="post" style="margin-bottom:24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <?php wp_nonce_field('lmeg_sl', 'lmeg_sl_nonce'); ?>
+            <input type="hidden" name="lmeg_action" value="create" />
+            <code><?php echo esc_html(home_url('/go/')); ?></code>
+            <input type="text" name="slug" placeholder="new-single" class="regular-text" style="max-width:180px;" required />
+            <span>→</span>
+            <input type="url" name="target_url" placeholder="https://open.spotify.com/track/…" class="regular-text" required />
+            <button type="submit" class="button button-primary">Create</button>
+        </form>
+
+        <table class="widefat striped">
+            <thead><tr><th>Short link</th><th>Target</th><th>Clicks</th><th>Last click</th><th>QR</th><th></th></tr></thead>
+            <tbody>
+            <?php if (empty($rows)) : ?>
+                <tr><td colspan="6">No smartlinks yet.</td></tr>
+            <?php else : foreach ($rows as $l) :
+                $short = lmeg_smartlink_url($l->slug);
+                $qr    = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' . rawurlencode($short);
+            ?>
+                <tr>
+                    <td><a href="<?php echo esc_url($short); ?>" target="_blank" rel="noopener"><code>/go/<?php echo esc_html($l->slug); ?></code></a></td>
+                    <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><a href="<?php echo esc_url($l->target_url); ?>" target="_blank" rel="noopener"><?php echo esc_html($l->target_url); ?></a></td>
+                    <td><strong><?php echo (int) $l->clicks; ?></strong></td>
+                    <td><?php echo esc_html($l->last_clicked_at ?: '—'); ?></td>
+                    <td><a href="<?php echo esc_url($qr); ?>" target="_blank" rel="noopener">View QR</a></td>
+                    <td>
+                        <form method="post" onsubmit="return confirm('Delete this smartlink? The short URL will stop working.');" style="display:inline;">
+                            <?php wp_nonce_field('lmeg_sl', 'lmeg_sl_nonce'); ?>
+                            <input type="hidden" name="lmeg_action" value="delete" />
+                            <input type="hidden" name="link_id" value="<?php echo (int) $l->id; ?>" />
+                            <button type="submit" class="button button-link-delete">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+        <p class="description" style="margin-top:10px;">QR codes are rendered by api.qrserver.com from the short URL — download the PNG from the QR view for posters/merch.</p>
+    </div>
     <?php
 }

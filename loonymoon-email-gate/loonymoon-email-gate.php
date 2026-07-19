@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.30.0
+ * Version:     2.31.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.30.0');
-define('LMEG_DB_VERSION',  '2.30.0');
+define('LMEG_VERSION',     '2.31.0');
+define('LMEG_DB_VERSION',  '2.31.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -38,6 +38,8 @@ require_once LMEG_PLUGIN_DIR . 'includes/sequences.php';
 require_once LMEG_PLUGIN_DIR . 'includes/members.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shortcodes.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shop.php';
+require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
+require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
 require_once LMEG_PLUGIN_DIR . 'includes/updater.php';
 require_once LMEG_PLUGIN_DIR . 'includes/admin.php';
 
@@ -100,7 +102,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.30.0', '<')) {
+    if (version_compare($current, '2.31.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -154,13 +156,17 @@ function lmeg_create_tables() {
         stripe_subscription_id VARCHAR(64) DEFAULT NULL,
         member_expires_at DATETIME DEFAULT NULL,
         billing_interval VARCHAR(10) DEFAULT NULL,
+        referral_code VARCHAR(12) DEFAULT NULL,
+        referred_by BIGINT(20) UNSIGNED DEFAULT NULL,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_email (email),
         UNIQUE KEY uniq_phone (phone),
+        UNIQUE KEY uniq_refcode (referral_code),
         KEY idx_unsub (unsubscribed_at),
         KEY idx_member (member_tier_id, member_status),
-        KEY idx_stripe_sub (stripe_subscription_id)
+        KEY idx_stripe_sub (stripe_subscription_id),
+        KEY idx_referred_by (referred_by)
     ) $charset;");
 
     dbDelta("CREATE TABLE $broadcasts (
@@ -345,6 +351,18 @@ function lmeg_create_tables() {
         granted_at DATETIME NOT NULL,
         PRIMARY KEY  (subscriber_id, post_id),
         KEY idx_post (post_id)
+    ) $charset;");
+
+    $smart = $wpdb->prefix . 'lmeg_smartlinks';
+    dbDelta("CREATE TABLE $smart (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        slug VARCHAR(64) NOT NULL,
+        target_url TEXT NOT NULL,
+        clicks BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        last_clicked_at DATETIME DEFAULT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_slug (slug)
     ) $charset;");
 
     $orders = $wpdb->prefix . 'lmeg_shop_orders';
@@ -669,6 +687,10 @@ function lmeg_merge_tag_map($sub) {
         '{name}'        => !empty($sub->email)
             ? (string) explode('@', $sub->email)[0]
             : (string) ($sub->phone ?? 'friend'),
+        '{unique_code}'   => (!empty($sub->id) && function_exists('lmeg_get_fan_code'))
+            ? (string) lmeg_get_fan_code($sub->id) : '',
+        '{referral_link}' => (!empty($sub->id) && function_exists('lmeg_referral_url'))
+            ? (string) lmeg_referral_url($sub->id) : (string) home_url('/'),
     ];
 }
 
