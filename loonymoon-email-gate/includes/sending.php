@@ -155,14 +155,23 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id) {
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
 
     if (!empty($s['tracking_clicks'])) {
+        $utm_source = sanitize_title($s['utm_source'] ?? '') ?: 'loonybin';
         $html = preg_replace_callback(
             '/href\s*=\s*(["\'])(https?:\/\/[^"\']+)\1/i',
-            function ($m) use ($broadcast_id, $subscriber_id) {
+            function ($m) use ($broadcast_id, $subscriber_id, $utm_source) {
                 $url = $m[2];
                 // Skip already-tokenised unsubscribe / tracker links.
                 if (strpos($url, 'lmeg_unsubscribe=') !== false || strpos($url, 'lmeg_track=') !== false) {
                     return $m[0];
                 }
+                // Tag the destination with campaign UTMs so shop analytics
+                // (Shopify etc.) can attribute traffic independently of our
+                // own click-window attribution.
+                $url = add_query_arg([
+                    'utm_source'   => $utm_source,
+                    'utm_medium'   => 'email',
+                    'utm_campaign' => 'broadcast-' . (int) $broadcast_id,
+                ], html_entity_decode($url));
                 return 'href=' . $m[1] . esc_url(lmeg_track_click_url($broadcast_id, $subscriber_id, $url)) . $m[1];
             },
             $html

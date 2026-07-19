@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.29.0
+ * Version:     2.30.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.29.0');
-define('LMEG_DB_VERSION',  '2.29.0');
+define('LMEG_VERSION',     '2.30.0');
+define('LMEG_DB_VERSION',  '2.30.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -37,6 +37,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/sending.php';
 require_once LMEG_PLUGIN_DIR . 'includes/sequences.php';
 require_once LMEG_PLUGIN_DIR . 'includes/members.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shortcodes.php';
+require_once LMEG_PLUGIN_DIR . 'includes/shop.php';
 require_once LMEG_PLUGIN_DIR . 'includes/updater.php';
 require_once LMEG_PLUGIN_DIR . 'includes/admin.php';
 
@@ -99,7 +100,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.29.0', '<')) {
+    if (version_compare($current, '2.30.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -345,6 +346,24 @@ function lmeg_create_tables() {
         PRIMARY KEY  (subscriber_id, post_id),
         KEY idx_post (post_id)
     ) $charset;");
+
+    $orders = $wpdb->prefix . 'lmeg_shop_orders';
+    dbDelta("CREATE TABLE $orders (
+        shopify_order_id BIGINT(20) UNSIGNED NOT NULL,
+        order_number VARCHAR(32) DEFAULT NULL,
+        email VARCHAR(190) DEFAULT NULL,
+        subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        broadcast_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        attribution VARCHAR(16) NOT NULL DEFAULT 'none',
+        total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        ordered_at DATETIME DEFAULT NULL,
+        synced_at DATETIME NOT NULL,
+        PRIMARY KEY  (shopify_order_id),
+        KEY idx_broadcast (broadcast_id),
+        KEY idx_subscriber (subscriber_id),
+        KEY idx_ordered (ordered_at)
+    ) $charset;");
 }
 
 /* ---------------------------------------------------------------------------
@@ -410,6 +429,11 @@ function lmeg_default_settings() {
         // Branded email template
         'email_template_enabled'   => 1,
         'email_footer_note'        => "You're receiving this because you joined the loonybin.",
+        // Shopify shop connection (revenue attribution)
+        'shopify_domain'           => '',   // e.g. loonymoonchildstore.myshopify.com
+        'shopify_admin_token'      => '',   // Admin API access token (shpat_...)
+        'attribution_window_days'  => 7,
+        'utm_source'               => 'loonybin',
         // Front-end theming
         'color_primary'            => '#111111',
         'color_primary_text'       => '#ffffff',

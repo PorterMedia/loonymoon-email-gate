@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.29.0
+Stable tag: 2.30.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,14 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.30.0 =
+* Shopify shop connection — measure revenue directly attributable to email campaigns.
+* Orders sync from the Shopify Admin API (read_orders token) every ~15 min; each order is matched to a subscriber by email, then attributed last-click to the broadcast they clicked (falling back to opened) within a configurable window (default 7 days).
+* New Shop Revenue admin page: campaign/subscriber/total revenue (30d + 1y), revenue-by-broadcast table, recent attributed orders, manual "Sync orders now".
+* Revenue column on Broadcast History + revenue line on the broadcast detail view.
+* Broadcast links now carry utm_source/utm_medium/utm_campaign so Shopify's own analytics see the traffic too.
+* Settings → Shop (Shopify): store domain, Admin API token, attribution window, UTM source, "Save & test Shopify".
+
 = 2.29.0 =
 * Branded email template (on by default): cream backdrop, white rounded card, logo header (from Settings → Logo), accent rule + link color from the primary color setting. Applies to broadcasts, welcome, magic links, sequences, and test sends.
 * Body content now renders basic HTML properly (wpautop + make_clickable) instead of escaping it; bare URLs become links automatically.

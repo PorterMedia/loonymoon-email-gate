@@ -1,0 +1,244 @@
+<?php
+/**
+ * Shopify shop connection — order sync + email-campaign revenue attribution.
+ *
+ * Model: orders are pulled from the Shopify Admin API on a cron cadence.
+ * Each order's customer email is matched against lmeg_subscribers. If the
+ * subscriber clicked a tracked broadcast link within the attribution window
+ * before the purchase, the order's revenue is attributed to that broadcast
+ * (last-click). Falls back to the most recent open, then to a plain
+ * "subscriber" attribution (they're on the list but no campaign touch).
+ *
+ * This works with Buy Button embeds where UTMs don't survive into Shopify's
+ * own order attribution — because the matching happens on OUR side from the
+ * click/open events we already record.
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+const LMEG_SHOP_API_VERSION = '2024-07';
+const LMEG_SHOP_SYNC_LOCK   = 'lmeg_shop_sync_lock';
+const LMEG_SHOP_LAST_SYNC   = 'lmeg_shop_last_sync';
+
+/* ---------------------------------------------------------------------------
+ * Shopify Admin API client
+ * ------------------------------------------------------------------------- */
+
+function lmeg_shop_configured() {
+    $s = lmeg_get_settings();
+    return !empty($s['shopify_domain']) && !empty($s['shopify_admin_token']);
+}
+
+function lmeg_shop_request($path, $query = []) {
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+    $token  = trim($s['shopify_admin_token'] ?? '');
+    if (!$domain || !$token) {
+        return new WP_Error('lmeg_shop_unconfigured', 'Shopify is not configured.');
+    }
+
+    $url = 'https://' . $domain . '/admin/api/' . LMEG_SHOP_API_VERSION . $path;
+    if ($query) {
+        $url = add_query_arg($query, $url);
+    }
+    $resp = wp_remote_get($url, [
+        'timeout' => 20,
+        'headers' => [
+            'X-Shopify-Access-Token' => $token,
+            'Accept'                 => 'application/json',
+        ],
+    ]);
+    if (is_wp_error($resp)) return $resp;
+    $code = wp_remote_retrieve_response_code($resp);
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($body) && isset($body['errors']) ? wp_json_encode($body['errors']) : 'HTTP ' . $code;
+        return new WP_Error('lmeg_shop_http_' . $code, 'Shopify returned ' . $code . ': ' . $msg);
+    }
+    return is_array($body) ? $body : [];
+}
+
+/**
+ * Verify credentials — GET /shop.json, returns friendly string or WP_Error.
+ */
+function lmeg_shop_verify() {
+    $r = lmeg_shop_request('/shop.json');
+    if (is_wp_error($r)) return $r;
+    $name = $r['shop']['name']   ?? '(unknown)';
+    $dom  = $r['shop']['domain'] ?? '';
+    return 'Connected to "' . $name . '"' . ($dom ? ' (' . $dom . ')' : '') . '.';
+}
+
+/* ---------------------------------------------------------------------------
+ * Order sync
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Pull recent orders and (re)attribute them. Runs from cron (throttled to
+ * every 15 minutes) and from the manual "Sync now" button.
+ *
+ * @return array|WP_Error ['fetched' => n, 'attributed' => n]
+ */
+function lmeg_shop_sync($force = false) {
+    global $wpdb;
+    if (!lmeg_shop_configured()) {
+        return new WP_Error('lmeg_shop_unconfigured', 'Shopify is not configured.');
+    }
+
+    if (!$force && get_site_transient(LMEG_SHOP_SYNC_LOCK)) {
+        return ['fetched' => 0, 'attributed' => 0, 'skipped' => true];
+    }
+    set_site_transient(LMEG_SHOP_SYNC_LOCK, 1, 15 * MINUTE_IN_SECONDS);
+
+    // Look back far enough to catch stragglers; first run pulls 30 days.
+    $last = get_option(LMEG_SHOP_LAST_SYNC, '');
+    $since_ts = $last ? (strtotime($last) - 2 * DAY_IN_SECONDS) : (time() - 30 * DAY_IN_SECONDS);
+
+    $r = lmeg_shop_request('/orders.json', [
+        'status'         => 'any',
+        'limit'          => 250,
+        'created_at_min' => gmdate('c', $since_ts),
+        'fields'         => 'id,order_number,email,total_price,currency,created_at,cancelled_at,financial_status',
+    ]);
+    if (is_wp_error($r)) {
+        delete_site_transient(LMEG_SHOP_SYNC_LOCK);
+        return $r;
+    }
+
+    $orders = $r['orders'] ?? [];
+    $tbl    = $wpdb->prefix . 'lmeg_shop_orders';
+    $subs   = $wpdb->prefix . LMEG_TABLE;
+    $now    = current_time('mysql');
+    $attributed = 0;
+
+    foreach ($orders as $o) {
+        $oid = (int) ($o['id'] ?? 0);
+        if (!$oid) continue;
+        // Skip cancelled / unpaid junk but keep pending payment methods.
+        if (!empty($o['cancelled_at'])) continue;
+
+        $email = sanitize_email($o['email'] ?? '');
+        $total = (int) round(((float) ($o['total_price'] ?? 0)) * 100);
+        $ordered_local = !empty($o['created_at'])
+            ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($o['created_at'])))
+            : null;
+
+        // Attribution.
+        $subscriber_id = null;
+        $broadcast_id  = null;
+        $attribution   = 'none';
+        if ($email) {
+            $subscriber_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM $subs WHERE email = %s", $email
+            ));
+            if ($subscriber_id) {
+                $attribution = 'subscriber';
+                list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
+                    (int) $subscriber_id, $ordered_local, $attribution
+                );
+                if ($broadcast_id) $attributed++;
+            }
+        }
+
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO $tbl
+                (shopify_order_id, order_number, email, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
+             VALUES (%d, %s, %s, %s, %s, %s, %d, %s, %s, %s)
+             ON DUPLICATE KEY UPDATE
+                subscriber_id = VALUES(subscriber_id),
+                broadcast_id  = VALUES(broadcast_id),
+                attribution   = VALUES(attribution),
+                total_cents   = VALUES(total_cents),
+                synced_at     = VALUES(synced_at)",
+            $oid,
+            (string) ($o['order_number'] ?? ''),
+            $email ?: null,
+            $subscriber_id ?: null,
+            $broadcast_id ?: null,
+            $attribution,
+            $total,
+            strtoupper(substr((string) ($o['currency'] ?? 'USD'), 0, 3)),
+            $ordered_local,
+            $now
+        ));
+    }
+
+    update_option(LMEG_SHOP_LAST_SYNC, $now, false);
+    return ['fetched' => count($orders), 'attributed' => $attributed];
+}
+
+/**
+ * Last-click attribution: the most recent click event by this subscriber
+ * within the attribution window before the order. Falls back to opens.
+ *
+ * @return array [broadcast_id|null, attribution string]
+ */
+function lmeg_shop_attribute_broadcast($subscriber_id, $ordered_at, $fallback) {
+    global $wpdb;
+    if (!$ordered_at) return [null, $fallback];
+
+    $s      = lmeg_get_settings();
+    $days   = max(1, (int) ($s['attribution_window_days'] ?? 7));
+    $from   = date('Y-m-d H:i:s', strtotime($ordered_at) - $days * DAY_IN_SECONDS);
+    $events = $wpdb->prefix . 'lmeg_broadcast_events';
+
+    foreach (['click', 'open'] as $type) {
+        $bid = $wpdb->get_var($wpdb->prepare(
+            "SELECT broadcast_id FROM $events
+             WHERE subscriber_id = %d AND event_type = %s
+               AND created_at BETWEEN %s AND %s
+             ORDER BY created_at DESC LIMIT 1",
+            $subscriber_id, $type, $from, $ordered_at
+        ));
+        if ($bid) return [(int) $bid, $type];
+    }
+    return [null, $fallback];
+}
+
+/**
+ * Cron: piggyback on the minute tick, self-throttled by the sync lock.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_shop_cron_sync', 40);
+function lmeg_shop_cron_sync() {
+    if (!lmeg_shop_configured()) return;
+    lmeg_shop_sync(false);
+}
+
+/* ---------------------------------------------------------------------------
+ * Revenue helpers for the admin UI
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Revenue attributed per broadcast — [broadcast_id => ['cents','orders']].
+ */
+function lmeg_shop_revenue_by_broadcast() {
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_shop_orders';
+    $rows = $wpdb->get_results(
+        "SELECT broadcast_id, SUM(total_cents) AS cents, COUNT(*) AS orders
+         FROM $tbl WHERE broadcast_id IS NOT NULL GROUP BY broadcast_id"
+    );
+    $out = [];
+    foreach ((array) $rows as $r) {
+        $out[(int) $r->broadcast_id] = ['cents' => (int) $r->cents, 'orders' => (int) $r->orders];
+    }
+    return $out;
+}
+
+function lmeg_shop_totals($days = 30) {
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_shop_orders';
+    return $wpdb->get_row($wpdb->prepare(
+        "SELECT
+            COALESCE(SUM(total_cents), 0) AS all_cents,
+            COALESCE(SUM(CASE WHEN subscriber_id IS NOT NULL THEN total_cents ELSE 0 END), 0) AS list_cents,
+            COALESCE(SUM(CASE WHEN broadcast_id IS NOT NULL THEN total_cents ELSE 0 END), 0) AS campaign_cents,
+            COUNT(*) AS all_orders,
+            SUM(CASE WHEN subscriber_id IS NOT NULL THEN 1 ELSE 0 END) AS list_orders,
+            SUM(CASE WHEN broadcast_id IS NOT NULL THEN 1 ELSE 0 END) AS campaign_orders
+         FROM $tbl WHERE ordered_at >= DATE_SUB(%s, INTERVAL %d DAY)",
+        current_time('mysql'), max(1, (int) $days)
+    ));
+}

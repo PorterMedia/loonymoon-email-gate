@@ -24,6 +24,7 @@ function lmeg_admin_menu() {
     add_submenu_page('lmeg', 'Tiers (Paid)',      'Tiers (Paid)',      $cap, 'lmeg-tiers',           'lmeg_admin_tiers');
     add_submenu_page('lmeg', 'Compose Broadcast', 'Compose Broadcast', $cap, 'lmeg-compose',         'lmeg_admin_compose');
     add_submenu_page('lmeg', 'Broadcast History', 'Broadcast History', $cap, 'lmeg-broadcasts',      'lmeg_admin_broadcasts');
+    add_submenu_page('lmeg', 'Shop Revenue',      'Shop Revenue',      $cap, 'lmeg-shop',            'lmeg_admin_shop');
     add_submenu_page('lmeg', 'Settings',          'Settings',          $cap, 'lmeg-settings',        'lmeg_admin_settings');
 }
 
@@ -852,6 +853,13 @@ function lmeg_admin_broadcasts() {
                 &nbsp;|&nbsp; <strong>Failed:</strong> <?php echo (int) $b->failed; ?>
                 &nbsp;|&nbsp; <strong>Opens:</strong> <?php echo $opens; ?> (<?php echo $orate; ?>%)
                 &nbsp;|&nbsp; <strong>Clicks:</strong> <?php echo $clicks; ?> (<?php echo $crate; ?>%)
+                <?php
+                $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
+                if (isset($rev_map[(int) $b->id])) :
+                    $rv = $rev_map[(int) $b->id];
+                ?>
+                    &nbsp;|&nbsp; <strong>Revenue:</strong> <?php echo esc_html(lmeg_format_price($rv['cents'])); ?> (<?php echo (int) $rv['orders']; ?> order<?php echo $rv['orders'] === 1 ? '' : 's'; ?>)
+                <?php endif; ?>
             </p>
             <?php if ($b->subject) : ?><p><strong>Subject:</strong> <?php echo esc_html($b->subject); ?></p><?php endif; ?>
             <?php if (!empty($b->body)) : ?>
@@ -884,16 +892,17 @@ function lmeg_admin_broadcasts() {
         return;
     }
 
-    $rows = $wpdb->get_results("SELECT * FROM $bcast_tbl ORDER BY id DESC LIMIT 100");
-    $now  = current_time('mysql');
+    $rows    = $wpdb->get_results("SELECT * FROM $bcast_tbl ORDER BY id DESC LIMIT 100");
+    $now     = current_time('mysql');
+    $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
     ?>
     <div class="wrap">
         <h1>Email Gate — Broadcast History</h1>
         <table class="widefat striped">
-            <thead><tr><th>#</th><th>Channel</th><th>Subject / Body</th><th>Status</th><th>Sent / Total</th><th>Failed</th><th>Created</th><th>Send time</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Channel</th><th>Subject / Body</th><th>Status</th><th>Sent / Total</th><th>Failed</th><th>Revenue</th><th>Created</th><th>Send time</th><th></th></tr></thead>
             <tbody>
             <?php if (empty($rows)) : ?>
-                <tr><td colspan="9">No broadcasts yet.</td></tr>
+                <tr><td colspan="10">No broadcasts yet.</td></tr>
             <?php else : foreach ($rows as $b) :
                 $preview = $b->subject ?: mb_substr((string) ($b->body ?? $b->body_sms ?? ''), 0, 60);
                 // If scheduled in the future, show "Scheduled" instead of "queued".
@@ -916,6 +925,13 @@ function lmeg_admin_broadcasts() {
                     <td><?php echo esc_html($display_status); ?></td>
                     <td><?php echo (int) $b->sent; ?> / <?php echo (int) $b->total; ?></td>
                     <td><?php echo (int) $b->failed; ?></td>
+                    <td><?php
+                        if (isset($rev_map[(int) $b->id])) {
+                            echo '<strong>' . esc_html(lmeg_format_price($rev_map[(int) $b->id]['cents'])) . '</strong> · ' . (int) $rev_map[(int) $b->id]['orders'];
+                        } else {
+                            echo '—';
+                        }
+                    ?></td>
                     <td><?php echo esc_html($b->created_at); ?></td>
                     <td><?php echo esc_html($send_time); ?></td>
                     <td><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . $b->id)); ?>">View</a></td>
@@ -995,6 +1011,11 @@ function lmeg_admin_settings() {
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
             'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
+            // Shopify shop connection
+            'shopify_domain'          => sanitize_text_field(wp_unslash($_POST['shopify_domain'] ?? '')),
+            'shopify_admin_token'     => sanitize_text_field(wp_unslash($_POST['shopify_admin_token'] ?? '')),
+            'attribution_window_days' => max(1, min(90, (int) ($_POST['attribution_window_days'] ?? 7))),
+            'utm_source'              => sanitize_title(wp_unslash($_POST['utm_source'] ?? '')) ?: 'loonybin',
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1023,6 +1044,11 @@ function lmeg_admin_settings() {
                 $verify_notice = is_wp_error($r)
                     ? '<div class="notice notice-error"><p>Brevo: ' . esc_html($r->get_error_message()) . '</p></div>'
                     : '<div class="notice notice-success"><p>Brevo: ' . esc_html($r) . '</p></div>';
+            } elseif ($_POST['lmeg_test'] === 'shopify') {
+                $r = lmeg_shop_verify();
+                $verify_notice = is_wp_error($r)
+                    ? '<div class="notice notice-error"><p>Shopify: ' . esc_html($r->get_error_message()) . '</p></div>'
+                    : '<div class="notice notice-success"><p>Shopify: ' . esc_html($r) . '</p></div>';
             }
         }
     }
@@ -1163,6 +1189,25 @@ function lmeg_admin_settings() {
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="twilio" class="button">Save &amp; test Twilio</button>
                         <p class="description">Hits Twilio's account endpoint with your saved credentials and reports the result above.</p></td></tr>
+            </table>
+
+            <h2>Shop (Shopify)</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="shopify_domain">Store domain</label></th>
+                    <td><input type="text" name="shopify_domain" id="shopify_domain" class="regular-text" value="<?php echo esc_attr($s['shopify_domain'] ?? ''); ?>" placeholder="loonymoonchildstore.myshopify.com" />
+                        <p class="description">The <code>.myshopify.com</code> domain, not the storefront URL.</p></td></tr>
+                <tr><th><label for="shopify_admin_token">Admin API access token</label></th>
+                    <td><input type="password" name="shopify_admin_token" id="shopify_admin_token" class="regular-text" value="<?php echo esc_attr($s['shopify_admin_token'] ?? ''); ?>" autocomplete="off" placeholder="shpat_..." />
+                        <p class="description">Shopify admin → Settings → Apps and sales channels → Develop apps → create an app with the <code>read_orders</code> Admin scope → install → copy the token.</p></td></tr>
+                <tr><th><label for="attribution_window_days">Attribution window (days)</label></th>
+                    <td><input type="number" min="1" max="90" name="attribution_window_days" id="attribution_window_days" class="small-text" value="<?php echo (int) ($s['attribution_window_days'] ?? 7); ?>" />
+                        <p class="description">An order counts toward a broadcast if the buyer clicked (or opened) that broadcast within this many days before purchasing. Last click wins.</p></td></tr>
+                <tr><th><label for="utm_source">UTM source</label></th>
+                    <td><input type="text" name="utm_source" id="utm_source" class="regular-text" value="<?php echo esc_attr($s['utm_source'] ?? 'loonybin'); ?>" />
+                        <p class="description">Broadcast links get <code>utm_source=&lt;this&gt;&amp;utm_medium=email&amp;utm_campaign=broadcast-N</code> appended so Shopify's own analytics see the traffic too.</p></td></tr>
+                <tr><th>Test connection</th>
+                    <td><button type="submit" name="lmeg_test" value="shopify" class="button">Save &amp; test Shopify</button>
+                        <p class="description">Hits the store's shop endpoint with your saved token and reports the result above.</p></td></tr>
             </table>
 
             <h2>Welcome email</h2>
@@ -2144,6 +2189,145 @@ function lmeg_admin_members() {
     .lmeg-stat__label { font-size: 11px; opacity: 0.6; text-transform: uppercase; letter-spacing: .05em; }
     .lmeg-stat__value { font-size: 26px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
     .lmeg-stat__hint  { font-size: 12px; opacity: 0.6; }
+    </style>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Shop Revenue — email-attributed Shopify revenue
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_shop() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $notice = '';
+
+    if (isset($_POST['lmeg_shop_nonce']) && wp_verify_nonce($_POST['lmeg_shop_nonce'], 'lmeg_shop')
+        && ($_POST['lmeg_action'] ?? '') === 'sync_now') {
+        $r = lmeg_shop_sync(true);
+        $notice = is_wp_error($r)
+            ? '<div class="notice notice-error"><p>Sync failed: ' . esc_html($r->get_error_message()) . '</p></div>'
+            : '<div class="notice notice-success"><p>Synced. Fetched ' . (int) ($r['fetched'] ?? 0) . ' recent orders; ' . (int) ($r['attributed'] ?? 0) . ' attributed to a broadcast this pass.</p></div>';
+    }
+
+    $configured = lmeg_shop_configured();
+    $last_sync  = get_option(LMEG_SHOP_LAST_SYNC, '');
+    ?>
+    <div class="wrap">
+        <h1>Email Gate — Shop Revenue</h1>
+        <?php echo $notice; ?>
+
+        <?php if (!$configured) : ?>
+            <div class="notice notice-info"><p>Shopify isn't connected yet. Add your store domain + Admin API token under
+                <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Shop (Shopify)</a>.</p></div>
+        </div>
+        <?php return; endif; ?>
+
+        <form method="post" style="margin:12px 0;">
+            <?php wp_nonce_field('lmeg_shop', 'lmeg_shop_nonce'); ?>
+            <input type="hidden" name="lmeg_action" value="sync_now" />
+            <button type="submit" class="button button-primary">Sync orders now</button>
+            <span style="margin-left:10px;opacity:.65;">Last sync: <?php echo $last_sync ? esc_html($last_sync) : 'never'; ?> · auto-syncs every ~15 min</span>
+        </form>
+
+        <?php
+        $t30 = lmeg_shop_totals(30);
+        $t365 = lmeg_shop_totals(365);
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin:20px 0;max-width:900px;">
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Campaign revenue (30d)</div>
+                <div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price((int) ($t30->campaign_cents ?? 0))); ?></div>
+                <div class="lmeg-stat__hint"><?php echo (int) ($t30->campaign_orders ?? 0); ?> orders from broadcast clicks</div>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Subscriber revenue (30d)</div>
+                <div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price((int) ($t30->list_cents ?? 0))); ?></div>
+                <div class="lmeg-stat__hint"><?php echo (int) ($t30->list_orders ?? 0); ?> orders from anyone on your list</div>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">All shop revenue (30d)</div>
+                <div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price((int) ($t30->all_cents ?? 0))); ?></div>
+                <div class="lmeg-stat__hint"><?php echo (int) ($t30->all_orders ?? 0); ?> orders synced</div>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Campaign revenue (1y)</div>
+                <div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price((int) ($t365->campaign_cents ?? 0))); ?></div>
+                <div class="lmeg-stat__hint"><?php echo (int) ($t365->campaign_orders ?? 0); ?> orders</div>
+            </div>
+        </div>
+
+        <h2>Revenue by broadcast</h2>
+        <?php
+        $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
+        $per = $wpdb->get_results(
+            "SELECT o.broadcast_id, SUM(o.total_cents) AS cents, COUNT(*) AS orders,
+                    b.subject, b.created_at AS sent_at
+             FROM {$wpdb->prefix}lmeg_shop_orders o
+             LEFT JOIN $bcast_tbl b ON b.id = o.broadcast_id
+             WHERE o.broadcast_id IS NOT NULL
+             GROUP BY o.broadcast_id ORDER BY cents DESC LIMIT 50"
+        );
+        ?>
+        <table class="widefat striped" style="max-width:900px;">
+            <thead><tr><th>Broadcast</th><th>Sent</th><th>Orders</th><th>Revenue</th><th></th></tr></thead>
+            <tbody>
+            <?php if (empty($per)) : ?>
+                <tr><td colspan="5">No attributed orders yet. Revenue appears here after a subscriber clicks a broadcast link and buys within the attribution window.</td></tr>
+            <?php else : foreach ($per as $p) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html($p->subject ?: ('#' . (int) $p->broadcast_id)); ?></strong></td>
+                    <td><?php echo esc_html($p->sent_at ?: '—'); ?></td>
+                    <td><?php echo (int) $p->orders; ?></td>
+                    <td><strong><?php echo esc_html(lmeg_format_price((int) $p->cents)); ?></strong></td>
+                    <td><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . (int) $p->broadcast_id)); ?>">View broadcast</a></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <h2>Recent attributed orders</h2>
+        <?php
+        $recent = $wpdb->get_results(
+            "SELECT * FROM {$wpdb->prefix}lmeg_shop_orders
+             WHERE subscriber_id IS NOT NULL
+             ORDER BY ordered_at DESC LIMIT 50"
+        );
+        ?>
+        <table class="widefat striped" style="max-width:900px;">
+            <thead><tr><th>Order</th><th>Email</th><th>Total</th><th>Attribution</th><th>Broadcast</th><th>Ordered</th></tr></thead>
+            <tbody>
+            <?php if (empty($recent)) : ?>
+                <tr><td colspan="6">No orders from subscribers yet.</td></tr>
+            <?php else : foreach ($recent as $o) :
+                $att_label = [
+                    'click'      => '🖱 clicked broadcast',
+                    'open'       => '✉️ opened broadcast',
+                    'subscriber' => 'on the list',
+                    'none'       => '—',
+                ][$o->attribution] ?? $o->attribution;
+            ?>
+                <tr>
+                    <td>#<?php echo esc_html($o->order_number); ?></td>
+                    <td><?php echo esc_html($o->email); ?></td>
+                    <td><?php echo esc_html(lmeg_format_price((int) $o->total_cents, $o->currency)); ?></td>
+                    <td><?php echo esc_html($att_label); ?></td>
+                    <td><?php echo $o->broadcast_id
+                        ? '<a href="' . esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . (int) $o->broadcast_id)) . '">#' . (int) $o->broadcast_id . '</a>'
+                        : '—'; ?></td>
+                    <td><?php echo esc_html($o->ordered_at ?: '—'); ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <p style="margin-top:16px;opacity:.7;max-width:760px;"><em>How attribution works: an order is matched to a subscriber by email, then to the most recent broadcast that subscriber clicked (falling back to opened) within the attribution window before purchase — last click wins. Configure the window under Settings → Shop (Shopify).</em></p>
+    </div>
+    <style>
+    .lmeg-stat { padding:16px 18px;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:10px; }
+    .lmeg-stat__label { font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em; }
+    .lmeg-stat__value { font-size:24px;font-weight:700;line-height:1.1;margin:4px 0 2px;font-variant-numeric:tabular-nums; }
+    .lmeg-stat__hint  { font-size:12px;opacity:.6; }
     </style>
     <?php
 }
