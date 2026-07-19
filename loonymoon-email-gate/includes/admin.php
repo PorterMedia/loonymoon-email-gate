@@ -35,6 +35,12 @@ function lmeg_admin_assets($hook) {
     if (strpos((string) $hook, 'lmeg') === false) return;
     wp_enqueue_style('lmeg-admin-font', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap', [], null);
     wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', ['lmeg-admin-font'], LMEG_VERSION);
+
+    // Belt-and-suspenders: some plugins clobber the admin_body_class filter
+    // (returning their own string instead of appending), which would strip
+    // our scope class and leave the dark theme dormant. Re-add it in JS the
+    // moment the DOM exists — this cannot be filtered away.
+    wp_add_inline_script('jquery-core', "document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('lmeg-admin');});");
     // Media picker for the logo field.
     wp_enqueue_media();
     wp_add_inline_script('jquery-core', "
@@ -57,7 +63,7 @@ function lmeg_admin_assets($hook) {
 /**
  * Scope the premium dark theme to our pages only via a body class.
  */
-add_filter('admin_body_class', 'lmeg_admin_body_class');
+add_filter('admin_body_class', 'lmeg_admin_body_class', PHP_INT_MAX);
 function lmeg_admin_body_class($classes) {
     if (!empty($_GET['page']) && strpos((string) $_GET['page'], 'lmeg') === 0) {
         $classes .= ' lmeg-admin';
