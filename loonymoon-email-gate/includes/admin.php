@@ -628,7 +628,15 @@ function lmeg_admin_compose() {
                 <tr>
                     <th><label for="body_email">Email body</label></th>
                     <td>
-                        <textarea name="body_email" id="body_email" rows="10" class="large-text"><?php echo esc_textarea($vals['body_email']); ?></textarea>
+                        <?php
+                        wp_editor($vals['body_email'], 'body_email', [
+                            'textarea_name' => 'body_email',
+                            'textarea_rows' => 12,
+                            'media_buttons' => true,
+                            'teeny'         => false,
+                            'quicktags'     => true,
+                        ]);
+                        ?>
                         <div id="lmeg-email-meta" style="margin-top:6px;font-size:12px;display:flex;gap:.5em;align-items:center;flex-wrap:wrap;">
                             <span id="lmeg-email-words">0 words</span>
                             <span style="opacity:.4;">·</span>
@@ -636,7 +644,7 @@ function lmeg_admin_compose() {
                             <span style="opacity:.4;">·</span>
                             <span id="lmeg-email-read" style="padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3a3a8a;">&lt; 1 min read</span>
                         </div>
-                        <p class="description">Basic HTML allowed. Leave blank to skip the email channel.</p>
+                        <p class="description">Full rich text — bold, links, images from the Media Library, lists, headings. Leave blank to skip the email channel. Merge tags work here too: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>…</p>
                     </td>
                 </tr>
                 <tr>
@@ -833,6 +841,17 @@ function lmeg_admin_compose() {
         }
 
         ta.addEventListener('input', update);
+        // With the visual editor active the textarea is hidden and silent —
+        // mirror TinyMCE content back into it so the counter stays live.
+        if (window.tinymce) {
+            tinymce.on('AddEditor', function (e) {
+                if (e.editor.id !== 'body_email') return;
+                e.editor.on('keyup change SetContent', function () {
+                    ta.value = e.editor.getContent();
+                    update();
+                });
+            });
+        }
         update();
     })();
 
@@ -870,6 +889,10 @@ function lmeg_admin_compose() {
                 var smsTa   = document.getElementById('body_sms');
                 if (subjEl)  subjEl.value  = opt.dataset.subject   || '';
                 if (emailTa) { emailTa.value = opt.dataset.bodyEmail || ''; emailTa.dispatchEvent(new Event('input')); }
+                // TinyMCE visual editor holds its own copy — sync it too.
+                if (window.tinymce && tinymce.get('body_email')) {
+                    tinymce.get('body_email').setContent(opt.dataset.bodyEmail || '');
+                }
                 if (smsTa)   { smsTa.value   = opt.dataset.bodySms   || ''; smsTa.dispatchEvent(new Event('input')); }
             });
         }
@@ -1599,7 +1622,14 @@ function lmeg_admin_templates() {
             <table class="form-table" role="presentation">
                 <tr><th>Name</th><td><input type="text" name="name" class="regular-text" required value="<?php echo esc_attr($edit->name ?? ''); ?>" /></td></tr>
                 <tr><th>Subject</th><td><input type="text" name="subject" class="regular-text" value="<?php echo esc_attr($edit->subject ?? ''); ?>" /></td></tr>
-                <tr><th>Email body</th><td><textarea name="body_email" rows="8" class="large-text"><?php echo esc_textarea($edit->body_email ?? ''); ?></textarea></td></tr>
+                <tr><th>Email body</th><td><?php
+                    wp_editor($edit->body_email ?? '', 'tpl_body_email', [
+                        'textarea_name' => 'body_email',
+                        'textarea_rows' => 10,
+                        'media_buttons' => true,
+                        'quicktags'     => true,
+                    ]);
+                ?></td></tr>
                 <tr><th>SMS body</th><td><textarea name="body_sms" rows="3" class="large-text" maxlength="1600"><?php echo esc_textarea($edit->body_sms ?? ''); ?></textarea></td></tr>
             </table>
             <p><button type="submit" class="button button-primary"><?php echo $edit ? 'Update' : 'Save'; ?> template</button>

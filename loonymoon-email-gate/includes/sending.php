@@ -32,7 +32,9 @@ function lmeg_build_email_with_footer($body, $unsub_url) {
         esc_html($template)
     );
 
-    $text = $body . "\n\n-- \n" . $footer_text;
+    // Plain-text alternative: strip markup so HTML broadcasts read cleanly
+    // in text-only clients and spam filters see matching content.
+    $text = trim(wp_strip_all_tags($body)) . "\n\n-- \n" . $footer_text;
 
     if (!empty($s['email_template_enabled'])) {
         $html = lmeg_branded_email_html($body, $footer_html);
@@ -65,9 +67,13 @@ function lmeg_branded_email_html($body, $footer_html) {
     // Body was sanitized with wp_kses_post at save time. Autoparagraph it
     // and make bare URLs clickable (magic links arrive as plain URLs).
     $content = wpautop(make_clickable($body));
-    // Give paragraphs + links email-safe inline styles.
+    // Give paragraphs, links, images, headings + lists email-safe inline styles.
     $content = str_replace('<p>', '<p style="margin:0 0 1.15em;font-size:16px;line-height:1.65;color:#2f2a2c;">', $content);
     $content = preg_replace('/<a(?![^>]*style=)/', '<a style="color:' . $accent . ';text-decoration:underline;"', $content);
+    $content = preg_replace('/<img(?![^>]*style=)/', '<img style="max-width:100%;height:auto;border:0;border-radius:10px;display:block;margin:0 auto 1.15em;"', $content);
+    $content = preg_replace('/<h([1-3])(?![^>]*style=)/', '<h$1 style="margin:1.2em 0 .5em;font-size:22px;line-height:1.25;color:#2f2a2c;"', $content);
+    $content = preg_replace('/<(ul|ol)(?![^>]*style=)/', '<$1 style="margin:0 0 1.15em;padding-left:1.4em;color:#2f2a2c;font-size:16px;line-height:1.65;"', $content);
+    $content = preg_replace('/<blockquote(?![^>]*style=)/', '<blockquote style="margin:0 0 1.15em;padding:.6em 1em;border-left:3px solid ' . $accent . ';color:#5a5257;font-style:italic;"', $content);
     // Footer links (unsubscribe) get a muted tone instead of default blue.
     $footer_html = preg_replace('/<a(?![^>]*style=)/', '<a style="color:#9a8f94;text-decoration:underline;"', $footer_html);
 
