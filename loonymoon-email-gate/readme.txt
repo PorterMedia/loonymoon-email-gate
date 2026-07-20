@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.46.0
+Stable tag: 2.47.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.47.0 =
+* Drag & drop email builder on Compose (Mailchimp-style). Block palette: Heading, Text, Image, Button, Divider, Spacer. Click or drag to add, drag handle to reorder, inline editing, per-block controls (move/duplicate/delete), Media Library image picker, merge-tag insert in text blocks, live per-block color from your brand accent.
+* Builder serializes to email-safe inline-styled HTML into the existing body_email field — flows through the branded template, tracking, and send pipeline unchanged.
+* Mode toggle: "Drag & drop builder" ↔ "Rich text / HTML" (TinyMCE) — switch freely; builder is the source of truth while active. Block layout round-trips via a body_email_blocks JSON field.
+* Self-contained vanilla JS (no bundler); builder assets load only on Compose.
+
 = 2.46.0 =
 * Open/click analytics for welcome emails and sequence steps (previously only broadcasts were tracked). Tracking pixel + link rewriting now carry a source (broadcast/welcome/sequence) + ref, stored on events with a new source/source_ref column.
 * Sequences page: welcome-email stats card (sent / open% / click%) + per-step Sent/Opens/Clicks columns in each sequence.

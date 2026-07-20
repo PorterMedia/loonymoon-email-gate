@@ -37,6 +37,12 @@ function lmeg_admin_assets($hook) {
     wp_enqueue_style('lmeg-admin-font', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap', [], null);
     wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', ['lmeg-admin-font'], LMEG_VERSION);
 
+    // Drag-and-drop email builder — only on the Compose page.
+    if (strpos((string) $hook, 'lmeg-compose') !== false) {
+        wp_enqueue_style('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.css', ['lmeg-admin'], LMEG_VERSION);
+        wp_enqueue_script('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.js', [], LMEG_VERSION, true);
+    }
+
     // Belt-and-suspenders: some plugins clobber the admin_body_class filter
     // (returning their own string instead of appending), which would strip
     // our scope class and leave the dark theme dormant. Re-add it in JS the
@@ -505,16 +511,21 @@ function lmeg_admin_compose() {
 
     $notice = '';
     $vals = [
-        'subject'        => '',
-        'body_email'     => '',
-        'body_sms'       => '',
-        'tag_ids'        => [],
-        'tag_match'      => 'any',
+        'subject'          => '',
+        'body_email'       => '',
+        'body_email_blocks'=> '',
+        'body_sms'         => '',
+        'tag_ids'          => [],
+        'tag_match'        => 'any',
     ];
 
     if (isset($_POST['lmeg_action']) && check_admin_referer('lmeg_compose', 'lmeg_compose_nonce')) {
         $vals['subject']    = sanitize_text_field(wp_unslash($_POST['subject'] ?? ''));
         $vals['body_email'] = wp_kses_post(wp_unslash($_POST['body_email'] ?? ''));
+        // Builder block JSON is round-tripped verbatim (client-generated, re-encoded server-side for safety).
+        $blocks_raw = wp_unslash($_POST['body_email_blocks'] ?? '');
+        $decoded    = json_decode($blocks_raw, true);
+        $vals['body_email_blocks'] = is_array($decoded) ? wp_json_encode($decoded) : '';
         $vals['body_sms']   = sanitize_textarea_field(wp_unslash($_POST['body_sms'] ?? ''));
         $vals['tag_ids']    = array_filter(array_map('intval', (array) ($_POST['tag_ids'] ?? [])));
         $vals['tag_match']  = ($_POST['tag_match'] ?? 'any') === 'all' ? 'all' : 'any';
@@ -674,8 +685,17 @@ function lmeg_admin_compose() {
                     <td><input type="text" name="subject" id="subject" class="regular-text" value="<?php echo esc_attr($vals['subject']); ?>" /></td>
                 </tr>
                 <tr>
-                    <th><label for="body_email">Email body</label></th>
+                    <th><label>Email body</label></th>
                     <td>
+                        <div class="lmeg-bd-modes">
+                            <button type="button" class="lmeg-bd-mode is-active" data-mode="builder">🧱 Drag &amp; drop builder</button>
+                            <button type="button" class="lmeg-bd-mode" data-mode="rich">Rich text / HTML</button>
+                        </div>
+
+                        <div id="lmeg-builder-root" data-accent="<?php echo esc_attr(lmeg_get_settings()['color_primary'] ?? '#d05fa2'); ?>"></div>
+                        <input type="hidden" id="body_email_blocks" name="body_email_blocks" value="<?php echo esc_attr($vals['body_email_blocks'] ?? ''); ?>" />
+
+                        <div id="lmeg-rich-wrap" style="display:none;">
                         <?php
                         wp_editor($vals['body_email'], 'body_email', [
                             'textarea_name' => 'body_email',
@@ -685,6 +705,8 @@ function lmeg_admin_compose() {
                             'quicktags'     => true,
                         ]);
                         ?>
+                        </div>
+
                         <div id="lmeg-email-meta" style="margin-top:6px;font-size:12px;display:flex;gap:.5em;align-items:center;flex-wrap:wrap;">
                             <span id="lmeg-email-words">0 words</span>
                             <span style="opacity:.4;">·</span>
@@ -692,7 +714,26 @@ function lmeg_admin_compose() {
                             <span style="opacity:.4;">·</span>
                             <span id="lmeg-email-read" style="padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3a3a8a;">&lt; 1 min read</span>
                         </div>
-                        <p class="description">Full rich text — bold, links, images from the Media Library, lists, headings. Leave blank to skip the email channel. Merge tags work here too: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>…</p>
+                        <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send. Leave empty to skip the email channel.</p>
+
+                        <script>
+                        (function(){
+                            var root = document.getElementById('lmeg-builder-root');
+                            var richWrap = document.getElementById('lmeg-rich-wrap');
+                            var b = window.LMEGBuilder ? window.LMEGBuilder.init(root, 'body_email') : null;
+                            document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
+                                btn.addEventListener('click', function(){
+                                    document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){x.classList.remove('is-active');});
+                                    btn.classList.add('is-active');
+                                    var builder = btn.dataset.mode === 'builder';
+                                    root.style.display = builder ? '' : 'none';
+                                    richWrap.style.display = builder ? 'none' : '';
+                                    // leaving builder → push its HTML into the editor; entering → keep builder as source
+                                    if (b) b.sync();
+                                });
+                            });
+                        })();
+                        </script>
                     </td>
                 </tr>
                 <tr>

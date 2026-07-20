@@ -1,0 +1,183 @@
+/* ============================================================================
+   Loonybin email builder — block-based drag & drop composer.
+   Scoped under .lmeg-builder. Dark-theme aware (inherits admin vars).
+   ========================================================================== */
+
+.lmeg-builder {
+    --bd-bg:      #12141F;
+    --bd-canvas:  #0E0F16;
+    --bd-block:   #1a1d2b;
+    --bd-border:  rgba(255,255,255,0.09);
+    --bd-accent:  #d05fa2;
+    --bd-text:    #F4F5F7;
+    --bd-muted:   #8B90A0;
+    display: grid;
+    grid-template-columns: 168px 1fr;
+    gap: 14px;
+    border: 1px solid var(--bd-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bd-bg);
+    font-family: 'DM Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--bd-text);
+    min-height: 420px;
+}
+
+/* ---- palette ---- */
+.lmeg-bd-palette {
+    background: var(--bd-bg);
+    border-right: 1px solid var(--bd-border);
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.lmeg-bd-palette__title {
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--bd-muted);
+    margin: 2px 0 6px;
+}
+.lmeg-bd-add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bd-block);
+    border: 1px solid var(--bd-border);
+    border-radius: 8px;
+    color: var(--bd-text);
+    font-size: 13px;
+    cursor: grab;
+    transition: border-color .15s ease, background .15s ease;
+    user-select: none;
+}
+.lmeg-bd-add:hover { border-color: var(--bd-accent); background: #232637; }
+.lmeg-bd-add svg { flex: 0 0 auto; opacity: .8; }
+
+/* ---- canvas ---- */
+.lmeg-bd-canvas {
+    background: var(--bd-canvas);
+    padding: 18px;
+    overflow-y: auto;
+    max-height: 620px;
+}
+.lmeg-bd-sheet {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 10px;
+    min-height: 200px;
+    padding: 8px;
+    color: #2f2a2c;
+}
+.lmeg-bd-empty {
+    text-align: center;
+    color: #9a8f94;
+    padding: 60px 20px;
+    font-size: 14px;
+    border: 2px dashed #e0d6cd;
+    border-radius: 10px;
+    margin: 6px;
+}
+
+/* ---- block wrapper ---- */
+.lmeg-bd-block {
+    position: relative;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    margin: 2px 0;
+    transition: border-color .12s ease;
+}
+.lmeg-bd-block:hover { border-color: rgba(208,95,162,.4); }
+.lmeg-bd-block.is-selected { border-color: var(--bd-accent); box-shadow: 0 0 0 1px var(--bd-accent); }
+.lmeg-bd-block.is-dragging { opacity: .4; }
+.lmeg-bd-block__inner { padding: 6px 10px; }
+
+/* per-block controls */
+.lmeg-bd-block__bar {
+    position: absolute;
+    top: -12px;
+    right: 8px;
+    display: none;
+    gap: 2px;
+    background: #1a1d2b;
+    border: 1px solid var(--bd-border);
+    border-radius: 7px;
+    padding: 2px;
+    z-index: 3;
+}
+.lmeg-bd-block:hover .lmeg-bd-block__bar,
+.lmeg-bd-block.is-selected .lmeg-bd-block__bar { display: flex; }
+.lmeg-bd-ctl {
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 0; border-radius: 5px;
+    color: var(--bd-muted); cursor: pointer;
+}
+.lmeg-bd-ctl:hover { background: rgba(255,255,255,.08); color: var(--bd-text); }
+.lmeg-bd-ctl--drag { cursor: grab; }
+.lmeg-bd-ctl--del:hover { color: #F87171; }
+
+/* drop indicator */
+.lmeg-bd-drop {
+    height: 3px; margin: 2px 8px; border-radius: 3px; background: transparent;
+}
+.lmeg-bd-drop.is-over { background: var(--bd-accent); }
+
+/* editable content look inside sheet */
+.lmeg-bd-block [contenteditable] { outline: none; }
+.lmeg-bd-block [contenteditable]:focus { background: rgba(208,95,162,.05); }
+
+/* inline field panel for image/button/spacer */
+.lmeg-bd-fields {
+    background: #f6f1ea;
+    border-top: 1px solid #e6ddd2;
+    border-radius: 0 0 8px 8px;
+    padding: 10px;
+    display: grid;
+    gap: 7px;
+    margin-top: 6px;
+}
+.lmeg-bd-fields label { font-size: 11px; font-weight: 600; color: #6a5f5a; display:block; margin-bottom: 2px; }
+.lmeg-bd-fields input[type=text], .lmeg-bd-fields input[type=url], .lmeg-bd-fields input[type=number] {
+    width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d8ccc0;
+    border-radius: 6px; font-size: 13px; background: #fff; color: #2f2a2c;
+}
+.lmeg-bd-fields .row { display: flex; gap: 8px; }
+.lmeg-bd-fields .row > div { flex: 1; }
+.lmeg-bd-fields button { justify-self: start; }
+
+/* text block mini toolbar */
+.lmeg-bd-tb {
+    display: none;
+    gap: 2px;
+    background: #1a1d2b;
+    border: 1px solid var(--bd-border);
+    border-radius: 7px;
+    padding: 3px;
+    position: absolute;
+    top: -12px; left: 8px;
+    z-index: 3;
+}
+.lmeg-bd-block.is-selected .lmeg-bd-tb { display: flex; }
+.lmeg-bd-tb button {
+    min-width: 26px; height: 24px; padding: 0 6px; background: transparent; border: 0;
+    color: var(--bd-muted); border-radius: 5px; cursor: pointer; font-size: 13px;
+}
+.lmeg-bd-tb button:hover { background: rgba(255,255,255,.08); color: #fff; }
+.lmeg-bd-tb select { background:#12141F; color:#F4F5F7; border:1px solid var(--bd-border); border-radius:5px; font-size:12px; }
+
+/* mode switch */
+.lmeg-bd-modes { display:flex; gap:4px; margin-bottom:10px; }
+.lmeg-bd-mode {
+    padding:6px 13px; border-radius:999px; font-size:12.5px; cursor:pointer;
+    background:#161826; border:1px solid var(--bd-border); color:#8B90A0;
+}
+.lmeg-bd-mode.is-active { background:linear-gradient(135deg,rgba(208,95,162,.28),rgba(124,108,246,.28)); color:#fff; border-color:rgba(208,95,162,.45); }
+
+@media (max-width: 782px) {
+    .lmeg-builder { grid-template-columns: 1fr; }
+    .lmeg-bd-palette { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--bd-border); }
+}
