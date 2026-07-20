@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.52.0
+Stable tag: 2.53.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.53.0 =
+* New: Shopify connection now supports dev-dashboard apps. Newer Shopify stores create apps in the dev dashboard, which give a Client ID + Secret instead of a static shpat_ token. Paste those two into Settings → Shop (Shopify) and the plugin exchanges them for a 24-hour Admin API token automatically (client credentials grant), refreshing as needed. The legacy static-token field still works and takes precedence if set. Requires the app to be installed on your store with the read_orders scope.
+
 = 2.52.0 =
 * New: true Lifetime Value. Fan revenue now combines attributed Shopify orders with subscription payments (recorded from Stripe invoice.payment_succeeded into a new member_revenue_cents accumulator). The fan profile shows the split (shop vs membership); the Audience "Top fans" table ranks by combined LTV. Membership revenue accumulates from this update forward.
 * New: Tour routing. The Audience page now has a "Your top cities" breakdown from signup address data, ranked by fan count with superfan share per city — so you can see where to book shows.

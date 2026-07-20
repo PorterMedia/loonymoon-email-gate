@@ -1241,6 +1241,8 @@ function lmeg_admin_settings() {
             // Shopify shop connection
             'shopify_domain'          => sanitize_text_field(wp_unslash($_POST['shopify_domain'] ?? '')),
             'shopify_admin_token'     => sanitize_text_field(wp_unslash($_POST['shopify_admin_token'] ?? '')),
+            'shopify_client_id'       => sanitize_text_field(wp_unslash($_POST['shopify_client_id'] ?? '')),
+            'shopify_client_secret'   => sanitize_text_field(wp_unslash($_POST['shopify_client_secret'] ?? '')),
             'attribution_window_days' => max(1, min(90, (int) ($_POST['attribution_window_days'] ?? 7))),
             'utm_source'              => sanitize_title(wp_unslash($_POST['utm_source'] ?? '')) ?: 'loonybin',
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
@@ -1285,6 +1287,7 @@ function lmeg_admin_settings() {
                     ? '<div class="notice notice-error"><p>Brevo: ' . esc_html($r->get_error_message()) . '</p></div>'
                     : '<div class="notice notice-success"><p>Brevo: ' . esc_html($r) . '</p></div>';
             } elseif ($_POST['lmeg_test'] === 'shopify') {
+                if (function_exists('lmeg_shop_flush_token')) lmeg_shop_flush_token();
                 $r = lmeg_shop_verify();
                 $verify_notice = is_wp_error($r)
                     ? '<div class="notice notice-error"><p>Shopify: ' . esc_html($r->get_error_message()) . '</p></div>'
@@ -1503,9 +1506,16 @@ function lmeg_admin_settings() {
                 <tr><th><label for="shopify_domain">Store domain</label></th>
                     <td><input type="text" name="shopify_domain" id="shopify_domain" class="regular-text" value="<?php echo esc_attr($s['shopify_domain'] ?? ''); ?>" placeholder="loonymoonchildstore.myshopify.com" />
                         <p class="description">The <code>.myshopify.com</code> domain, not the storefront URL.</p></td></tr>
+                <tr><th colspan="2" style="padding-bottom:0;"><p class="description" style="max-width:60em;font-weight:600;">Connect one of two ways. New Shopify stores create apps in the <strong>dev dashboard</strong>, which gives a Client ID + Secret (use those two fields). Older stores that still show a static <code>shpat_</code> token can paste it instead.</p></th></tr>
+                <tr><th><label for="shopify_client_id">Client ID</label></th>
+                    <td><input type="text" name="shopify_client_id" id="shopify_client_id" class="regular-text" value="<?php echo esc_attr($s['shopify_client_id'] ?? ''); ?>" autocomplete="off" placeholder="from the dev-dashboard app" />
+                        <p class="description">Dev dashboard → your app → API access / Overview. The app must be <strong>installed on this store</strong> with the <code>read_orders</code> scope.</p></td></tr>
+                <tr><th><label for="shopify_client_secret">Client secret</label></th>
+                    <td><input type="password" name="shopify_client_secret" id="shopify_client_secret" class="regular-text" value="<?php echo esc_attr($s['shopify_client_secret'] ?? ''); ?>" autocomplete="off" placeholder="from the dev-dashboard app" />
+                        <p class="description">The plugin exchanges these for a 24h access token automatically (client credentials grant) and refreshes it as needed — you never paste a token.</p></td></tr>
                 <tr><th><label for="shopify_admin_token">Admin API access token</label></th>
-                    <td><input type="password" name="shopify_admin_token" id="shopify_admin_token" class="regular-text" value="<?php echo esc_attr($s['shopify_admin_token'] ?? ''); ?>" autocomplete="off" placeholder="shpat_..." />
-                        <p class="description">Shopify admin → Settings → Apps and sales channels → Develop apps → create an app with the <code>read_orders</code> Admin scope → install → copy the token.</p></td></tr>
+                    <td><input type="password" name="shopify_admin_token" id="shopify_admin_token" class="regular-text" value="<?php echo esc_attr($s['shopify_admin_token'] ?? ''); ?>" autocomplete="off" placeholder="shpat_... (only if you have a static token)" />
+                        <p class="description">Optional — only for legacy custom apps that show a static <code>shpat_</code> token. If set, this takes precedence over the Client ID/Secret above.</p></td></tr>
                 <tr><th><label for="attribution_window_days">Attribution window (days)</label></th>
                     <td><input type="number" min="1" max="90" name="attribution_window_days" id="attribution_window_days" class="small-text" value="<?php echo (int) ($s['attribution_window_days'] ?? 7); ?>" />
                         <p class="description">An order counts toward a broadcast if the buyer clicked (or opened) that broadcast within this many days before purchasing. Last click wins.</p></td></tr>

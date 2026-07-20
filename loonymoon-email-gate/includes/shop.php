@@ -28,16 +28,86 @@ const LMEG_SHOP_LAST_SYNC   = 'lmeg_shop_last_sync';
 
 function lmeg_shop_configured() {
     $s = lmeg_get_settings();
-    return !empty($s['shopify_domain']) && !empty($s['shopify_admin_token']);
+    if (empty($s['shopify_domain'])) return false;
+    // Either a pasted static token (legacy admin-created custom apps) OR a
+    // Client ID + Secret pair (dev-dashboard apps → client credentials grant).
+    return !empty($s['shopify_admin_token'])
+        || (!empty($s['shopify_client_id']) && !empty($s['shopify_client_secret']));
+}
+
+/**
+ * Resolve an Admin API access token.
+ *
+ * Precedence:
+ *   1. A manually pasted static token (shopify_admin_token) — legacy custom
+ *      apps created in the store admin still hand these out.
+ *   2. Client credentials grant — the dev-dashboard model. We exchange the
+ *      app's Client ID + Secret at /admin/oauth/access_token for a token that
+ *      is valid ~24h, and cache it (minus a safety buffer) so we only refresh
+ *      about once a day. The app must be installed on the store you own.
+ *
+ * @return string|WP_Error token, or an error explaining what to fix.
+ */
+function lmeg_shop_access_token() {
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+
+    $manual = trim($s['shopify_admin_token'] ?? '');
+    if ($manual !== '') return $manual;
+
+    $client_id     = trim($s['shopify_client_id'] ?? '');
+    $client_secret = trim($s['shopify_client_secret'] ?? '');
+    if (!$domain || !$client_id || !$client_secret) {
+        return new WP_Error('lmeg_shop_unconfigured', 'Shopify is not configured. Add a store domain plus either an Admin API access token or a Client ID + Secret.');
+    }
+
+    $cache_key = 'lmeg_shop_cc_token_' . md5($domain . '|' . $client_id);
+    $cached = get_transient($cache_key);
+    if ($cached) return $cached;
+
+    $resp = wp_remote_post('https://' . $domain . '/admin/oauth/access_token', [
+        'timeout' => 20,
+        'body'    => [
+            'grant_type'    => 'client_credentials',
+            'client_id'     => $client_id,
+            'client_secret' => $client_secret,
+        ],
+    ]);
+    if (is_wp_error($resp)) return $resp;
+
+    $code = wp_remote_retrieve_response_code($resp);
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code < 200 || $code >= 300 || empty($body['access_token'])) {
+        $detail = is_array($body) && !empty($body['error_description']) ? $body['error_description']
+                : (is_array($body) && !empty($body['error']) ? $body['error'] : 'HTTP ' . $code);
+        return new WP_Error('lmeg_shop_token', 'Could not get a Shopify token from the Client ID/Secret: ' . $detail
+            . '. Check the credentials, and make sure the app is installed on this store with the read_orders scope.');
+    }
+
+    $token = (string) $body['access_token'];
+    $ttl   = (int) ($body['expires_in'] ?? 3600);
+    set_transient($cache_key, $token, max(60, $ttl - 300));
+    return $token;
+}
+
+/** Drop any cached client-credentials token so the next call re-fetches. */
+function lmeg_shop_flush_token() {
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+    $cid    = trim($s['shopify_client_id'] ?? '');
+    if ($domain && $cid) {
+        delete_transient('lmeg_shop_cc_token_' . md5($domain . '|' . $cid));
+    }
 }
 
 function lmeg_shop_request($path, $query = []) {
     $s      = lmeg_get_settings();
     $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
-    $token  = trim($s['shopify_admin_token'] ?? '');
-    if (!$domain || !$token) {
-        return new WP_Error('lmeg_shop_unconfigured', 'Shopify is not configured.');
+    if (!$domain) {
+        return new WP_Error('lmeg_shop_unconfigured', 'Shopify store domain is not set.');
     }
+    $token = lmeg_shop_access_token();
+    if (is_wp_error($token)) return $token;
 
     $url = 'https://' . $domain . '/admin/api/' . LMEG_SHOP_API_VERSION . $path;
     if ($query) {
