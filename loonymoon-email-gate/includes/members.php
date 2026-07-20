@@ -400,6 +400,25 @@ function lmeg_stripe_handle_event($event) {
             $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
             if ($row) lmeg_apply_auto_tags($row);
         }
+    } elseif ($type === 'invoice.payment_succeeded' || $type === 'invoice.paid') {
+        // Accumulate real subscription revenue for lifetime-value. Match the
+        // fan by Stripe customer id; amount_paid is in the smallest unit.
+        $customer_id = $obj['customer'] ?? '';
+        $amount_paid = (int) ($obj['amount_paid'] ?? 0);
+        if ($customer_id && $amount_paid > 0) {
+            $sub = $wpdb->get_row($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE stripe_customer_id = %s",
+                $customer_id
+            ));
+            if ($sub) {
+                $sub_id = (int) $sub->id;
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE {$wpdb->prefix}" . LMEG_TABLE . "
+                     SET member_revenue_cents = member_revenue_cents + %d WHERE id = %d",
+                    $amount_paid, $sub_id
+                ));
+            }
+        }
     } elseif ($type === 'customer.subscription.updated' || $type === 'customer.subscription.deleted') {
         $subscription_id = $obj['id'] ?? '';
         $status          = $obj['status'] ?? 'cancelled';

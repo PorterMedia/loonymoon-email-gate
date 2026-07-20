@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.51.0
+Stable tag: 2.52.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.52.0 =
+* New: true Lifetime Value. Fan revenue now combines attributed Shopify orders with subscription payments (recorded from Stripe invoice.payment_succeeded into a new member_revenue_cents accumulator). The fan profile shows the split (shop vs membership); the Audience "Top fans" table ranks by combined LTV. Membership revenue accumulates from this update forward.
+* New: Tour routing. The Audience page now has a "Your top cities" breakdown from signup address data, ranked by fan count with superfan share per city — so you can see where to book shows.
+* New: fan profile now shows an engagement card (total opens/clicks across all broadcasts) alongside status, plan, LTV, and referrals.
+
 = 2.51.0 =
 * New: Release Drops. Build a countdown page for an upcoming release with a "Notify me" capture; when the release time passes, everyone who opted in (or all subscribers) is auto-sent an email/SMS with your streaming links. Admin at Email Gate → Release Drops; embed with [loony_drop] or [loony_drop slug="…"]. This is the owned-audience replacement for Spotify pre-saves.
 * New: Smart Bio. A link-in-bio page with a built-in signup form at the top — put [loony_bio] on a page (e.g. /links) and use it in your social bios. Every link is routed through the click tracker and attributed to known fans. Admin at Email Gate → Smart Bio.

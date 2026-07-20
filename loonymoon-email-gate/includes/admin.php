@@ -2776,7 +2776,8 @@ function lmeg_admin_fan_profile($fan_id) {
     }
 
     $tags     = lmeg_tags_for_subscriber($fan_id);
-    $revenue  = function_exists('lmeg_fan_revenue') ? lmeg_fan_revenue($fan_id) : 0;
+    $ltv      = function_exists('lmeg_fan_ltv_breakdown') ? lmeg_fan_ltv_breakdown($fan_id) : ['shop' => 0, 'membership' => 0, 'total' => 0];
+    $engage   = function_exists('lmeg_fan_engagement') ? lmeg_fan_engagement($fan_id) : ['opens' => 0, 'clicks' => 0];
     $timeline = function_exists('lmeg_fan_timeline') ? lmeg_fan_timeline($fan_id) : [];
     $tier     = ($sub->member_tier_id && function_exists('lmeg_tier')) ? lmeg_tier($sub->member_tier_id) : null;
     $code     = function_exists('lmeg_get_fan_code') ? lmeg_get_fan_code($fan_id) : '';
@@ -2798,9 +2799,12 @@ function lmeg_admin_fan_profile($fan_id) {
             <div class="lmeg-stat"><div class="lmeg-stat__label">Plan</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $tier ? esc_html($tier->name) : 'Free'; ?></div>
                 <div class="lmeg-stat__hint"><?php echo esc_html($sub->member_status); ?></div></div>
-            <div class="lmeg-stat"><div class="lmeg-stat__label">Lifetime revenue</div>
-                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo esc_html(lmeg_format_price($revenue)); ?></div>
-                <div class="lmeg-stat__hint">from synced shop orders</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Lifetime value</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo esc_html(lmeg_format_price($ltv['total'])); ?></div>
+                <div class="lmeg-stat__hint"><?php echo esc_html(lmeg_format_price($ltv['shop'])); ?> shop · <?php echo esc_html(lmeg_format_price($ltv['membership'])); ?> membership</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Engagement</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo (int) $engage['opens']; ?> <span style="font-size:12px;opacity:.6;">opens</span> · <?php echo (int) $engage['clicks']; ?> <span style="font-size:12px;opacity:.6;">clicks</span></div>
+                <div class="lmeg-stat__hint">across all broadcasts</div></div>
             <div class="lmeg-stat"><div class="lmeg-stat__label">Referrals</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $referred; ?></div>
                 <div class="lmeg-stat__hint">fans they brought in</div></div>
@@ -2898,13 +2902,44 @@ function lmeg_admin_audience() {
     $unknown = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE (country IS NULL OR country = '') AND unsubscribed_at IS NULL");
     $cmax    = $countries ? max(array_map(function ($r) { return (int) $r->n; }, $countries)) : 1;
 
-    // Top fans by lifetime revenue.
+    // Top fans by true lifetime value: attributed shop orders + subscription
+    // payments (member_revenue_cents accumulated from Stripe invoices).
     $top = $wpdb->get_results(
-        "SELECT s.id, s.email, s.phone, SUM(o.total_cents) AS cents, COUNT(o.shopify_order_id) AS orders
-         FROM {$wpdb->prefix}lmeg_shop_orders o
-         JOIN $subs s ON s.id = o.subscriber_id
-         GROUP BY s.id ORDER BY cents DESC LIMIT 15"
+        "SELECT s.id, s.email, s.phone,
+                COALESCE(o.cents, 0)                        AS shop_cents,
+                s.member_revenue_cents                      AS memb_cents,
+                (COALESCE(o.cents, 0) + s.member_revenue_cents) AS ltv,
+                COALESCE(o.orders, 0)                       AS orders
+         FROM $subs s
+         LEFT JOIN (
+             SELECT subscriber_id, SUM(total_cents) AS cents, COUNT(shopify_order_id) AS orders
+             FROM {$wpdb->prefix}lmeg_shop_orders GROUP BY subscriber_id
+         ) o ON o.subscriber_id = s.id
+         WHERE (COALESCE(o.cents, 0) + s.member_revenue_cents) > 0
+         ORDER BY ltv DESC LIMIT 15"
     );
+
+    // Tour routing — top cities (from address blocks), with superfan share.
+    $cities = $wpdb->get_results(
+        "SELECT city, region, country, COUNT(*) AS n FROM $subs
+         WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL
+         GROUP BY city, region, country ORDER BY n DESC LIMIT 25"
+    );
+    $city_max = $cities ? max(array_map(function ($r) { return (int) $r->n; }, $cities)) : 1;
+    $city_known = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL");
+    // Superfan counts keyed by city|region|country.
+    $sf_rows = $wpdb->get_results(
+        "SELECT s.city, s.region, s.country, COUNT(*) AS n
+         FROM $subs s
+         JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.subscriber_id = s.id
+         JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id AND t.slug = 'fan-type:superfan'
+         WHERE s.city IS NOT NULL AND s.city <> '' AND s.unsubscribed_at IS NULL
+         GROUP BY s.city, s.region, s.country"
+    );
+    $sf_map = [];
+    foreach ((array) $sf_rows as $r) {
+        $sf_map[$r->city . '|' . $r->region . '|' . $r->country] = (int) $r->n;
+    }
 
     // Referral leaderboard.
     $refs = $wpdb->get_results(
@@ -2962,21 +2997,44 @@ function lmeg_admin_audience() {
             </div>
         <?php endif; ?>
 
-        <h2 style="margin-top:28px;">Top fans by revenue</h2>
-        <table class="widefat striped" style="max-width:640px;">
-            <thead><tr><th>Fan</th><th>Orders</th><th>Lifetime revenue</th></tr></thead>
+        <h2 style="margin-top:28px;">Top fans by lifetime value</h2>
+        <table class="widefat striped" style="max-width:720px;">
+            <thead><tr><th>Fan</th><th>Shop</th><th>Membership</th><th>Lifetime value</th></tr></thead>
             <tbody>
             <?php if (empty($top)) : ?>
-                <tr><td colspan="3">No attributed shop orders yet.</td></tr>
+                <tr><td colspan="4">No revenue attributed yet — shop orders and paid subscriptions both count here.</td></tr>
             <?php else : foreach ($top as $f) : ?>
                 <tr>
                     <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $f->id], admin_url('admin.php'))); ?>"><?php echo esc_html($f->email ?: $f->phone); ?></a></td>
-                    <td><?php echo (int) $f->orders; ?></td>
-                    <td><strong><?php echo esc_html(lmeg_format_price((int) $f->cents)); ?></strong></td>
+                    <td><?php echo esc_html(lmeg_format_price((int) $f->shop_cents)); ?><?php if ((int) $f->orders) : ?> <span style="opacity:.5;">(<?php echo (int) $f->orders; ?>)</span><?php endif; ?></td>
+                    <td><?php echo esc_html(lmeg_format_price((int) $f->memb_cents)); ?></td>
+                    <td><strong><?php echo esc_html(lmeg_format_price((int) $f->ltv)); ?></strong></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
         </table>
+        <p class="description" style="max-width:720px;">Lifetime value = attributed Shopify orders + subscription payments. Membership revenue is recorded from Stripe invoices as they succeed (it starts accumulating from this update forward).</p>
+
+        <h2 style="margin-top:28px;">Tour routing — your top cities</h2>
+        <?php if (empty($cities)) : ?>
+            <p>No city-level data yet. Cities come from the address block on signup — turn address fields on in Settings, or ask for them on high-intent forms (presale, merch).</p>
+        <?php else : ?>
+            <div style="max-width:720px;">
+                <?php foreach ($cities as $c) :
+                    $key = $c->city . '|' . $c->region . '|' . $c->country;
+                    $sf  = $sf_map[$key] ?? 0;
+                    $place = trim($c->city . ($c->region ? ', ' . $c->region : '') . ($c->country ? ' ' . lmeg_flag_emoji($c->country) : '')); ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                        <span style="flex:0 0 190px;"><?php echo esc_html($place); ?></span>
+                        <div style="flex:1;background:rgba(0,0,0,.05);border-radius:6px;height:20px;overflow:hidden;position:relative;">
+                            <div style="width:<?php echo round(100 * (int) $c->n / $city_max); ?>%;min-width:2px;height:100%;background:#d05fa2;"></div>
+                        </div>
+                        <span style="flex:0 0 150px;text-align:right;"><strong><?php echo (int) $c->n; ?></strong> fans<?php if ($sf) : ?> · <span style="color:#d05fa2;"><?php echo (int) $sf; ?> superfan<?php echo $sf === 1 ? '' : 's'; ?></span><?php endif; ?></span>
+                    </div>
+                <?php endforeach; ?>
+                <p class="description"><?php echo (int) $city_known; ?> subscribers have a city on file. Book where the bars are tallest — and where superfans cluster.</p>
+            </div>
+        <?php endif; ?>
 
         <h2 style="margin-top:28px;">Referral leaderboard</h2>
         <table class="widefat striped" style="max-width:640px;">

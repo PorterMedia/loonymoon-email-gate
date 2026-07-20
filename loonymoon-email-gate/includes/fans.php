@@ -341,3 +341,38 @@ function lmeg_fan_revenue($subscriber_id) {
         (int) $subscriber_id
     ));
 }
+
+/** Subscription revenue accumulated from Stripe invoice.payment_succeeded. */
+function lmeg_fan_membership_revenue($subscriber_id) {
+    global $wpdb;
+    return (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COALESCE(member_revenue_cents, 0) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d",
+        (int) $subscriber_id
+    ));
+}
+
+/**
+ * True lifetime value: attributed shop orders + subscription payments.
+ * Returns cents. Use lmeg_fan_ltv_breakdown() for the split.
+ */
+function lmeg_fan_ltv($subscriber_id) {
+    $b = lmeg_fan_ltv_breakdown($subscriber_id);
+    return $b['total'];
+}
+
+function lmeg_fan_ltv_breakdown($subscriber_id) {
+    $shop = lmeg_fan_revenue($subscriber_id);
+    $memb = lmeg_fan_membership_revenue($subscriber_id);
+    return ['shop' => $shop, 'membership' => $memb, 'total' => $shop + $memb];
+}
+
+/** Opens / clicks counts for a fan (all-time), for the profile engagement card. */
+function lmeg_fan_engagement($subscriber_id) {
+    global $wpdb;
+    $row = $wpdb->get_row($wpdb->prepare(
+        "SELECT SUM(event_type = 'open') AS opens, SUM(event_type = 'click') AS clicks
+         FROM {$wpdb->prefix}lmeg_broadcast_events WHERE subscriber_id = %d",
+        (int) $subscriber_id
+    ));
+    return ['opens' => (int) ($row->opens ?? 0), 'clicks' => (int) ($row->clicks ?? 0)];
+}
