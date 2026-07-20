@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.53.0
+Stable tag: 2.54.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.54.0 =
+* New: "Connect with Shopify" (OAuth) for live/paid stores. Shopify's client-credentials grant (v2.53) only works on dev stores — a live store returns a 400. Live stores now connect via the standard authorization-code flow: set your dev-dashboard app to custom distribution, add the shown redirect URL, grant read_orders, then click Connect. You approve in Shopify and land back connected with a permanent offline token (no refresh). Settings → Shop (Shopify).
+* Improved: the Shopify token error now surfaces Shopify's actual reason (e.g. shop_not_permitted) instead of a bare HTTP 400, with a hint pointing to the right connect method.
+
 = 2.53.0 =
 * New: Shopify connection now supports dev-dashboard apps. Newer Shopify stores create apps in the dev dashboard, which give a Client ID + Secret instead of a static shpat_ token. Paste those two into Settings → Shop (Shopify) and the plugin exchanges them for a 24-hour Admin API token automatically (client credentials grant), refreshing as needed. The legacy static-token field still works and takes precedence if set. Requires the app to be installed on your store with the read_orders scope.
 

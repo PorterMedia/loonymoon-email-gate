@@ -1502,6 +1502,9 @@ function lmeg_admin_settings() {
             </table>
 
             <h2>Shop (Shopify)</h2>
+            <?php if (!empty($_GET['shop_connected'])) : ?>
+                <div class="notice notice-success"><p>Shopify connected — a store access token was saved. Use “Save &amp; test Shopify” to confirm, then Sync.</p></div>
+            <?php endif; ?>
             <table class="form-table" role="presentation">
                 <tr><th><label for="shopify_domain">Store domain</label></th>
                     <td><input type="text" name="shopify_domain" id="shopify_domain" class="regular-text" value="<?php echo esc_attr($s['shopify_domain'] ?? ''); ?>" placeholder="loonymoonchildstore.myshopify.com" />
@@ -1512,7 +1515,17 @@ function lmeg_admin_settings() {
                         <p class="description">Dev dashboard → your app → API access / Overview. The app must be <strong>installed on this store</strong> with the <code>read_orders</code> scope.</p></td></tr>
                 <tr><th><label for="shopify_client_secret">Client secret</label></th>
                     <td><input type="password" name="shopify_client_secret" id="shopify_client_secret" class="regular-text" value="<?php echo esc_attr($s['shopify_client_secret'] ?? ''); ?>" autocomplete="off" placeholder="from the dev-dashboard app" />
-                        <p class="description">The plugin exchanges these for a 24h access token automatically (client credentials grant) and refreshes it as needed — you never paste a token.</p></td></tr>
+                        <p class="description">Save your Client ID + Secret + domain, then use <strong>Connect with Shopify</strong> below (live stores) — or, on a dev store, just Save &amp; test.</p></td></tr>
+                <tr><th>Connect (live stores)</th>
+                    <td>
+                        <?php $shop_connected = !empty($s['shopify_admin_token']); ?>
+                        <?php if ($shop_connected) : ?>
+                            <p style="color:#10b981;font-weight:600;margin:0 0 8px;">✓ A store access token is saved.</p>
+                        <?php endif; ?>
+                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_shop_oauth_start'), 'lmeg_shop_oauth')); ?>" class="button button-primary"><?php echo $shop_connected ? 'Reconnect with Shopify' : 'Connect with Shopify'; ?></a>
+                        <p class="description" style="max-width:60em;margin-top:8px;">Live/paid stores must connect this way — the client-credentials grant only works on Shopify <em>dev</em> stores. In your dev-dashboard app: set <strong>Distribution → Custom distribution</strong> to this store &amp; install it, grant the <code>read_orders</code> scope, and add this <strong>redirect URL</strong>:<br>
+                        <code style="user-select:all;"><?php echo esc_html(lmeg_shop_oauth_redirect_uri()); ?></code><br>
+                        Then save your Client ID + Secret + domain above and click Connect. You&rsquo;ll approve in Shopify and land back here connected — the token is permanent (no refresh).</p></td></tr>
                 <tr><th><label for="shopify_admin_token">Admin API access token</label></th>
                     <td><input type="password" name="shopify_admin_token" id="shopify_admin_token" class="regular-text" value="<?php echo esc_attr($s['shopify_admin_token'] ?? ''); ?>" autocomplete="off" placeholder="shpat_... (only if you have a static token)" />
                         <p class="description">Optional — only for legacy custom apps that show a static <code>shpat_</code> token. If set, this takes precedence over the Client ID/Secret above.</p></td></tr>

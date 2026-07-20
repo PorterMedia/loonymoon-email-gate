@@ -76,18 +76,156 @@ function lmeg_shop_access_token() {
     if (is_wp_error($resp)) return $resp;
 
     $code = wp_remote_retrieve_response_code($resp);
-    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    $raw  = wp_remote_retrieve_body($resp);
+    $body = json_decode($raw, true);
     if ($code < 200 || $code >= 300 || empty($body['access_token'])) {
-        $detail = is_array($body) && !empty($body['error_description']) ? $body['error_description']
-                : (is_array($body) && !empty($body['error']) ? $body['error'] : 'HTTP ' . $code);
-        return new WP_Error('lmeg_shop_token', 'Could not get a Shopify token from the Client ID/Secret: ' . $detail
-            . '. Check the credentials, and make sure the app is installed on this store with the read_orders scope.');
+        // Surface Shopify's actual reason — the OAuth error shape varies.
+        $detail = '';
+        if (is_array($body)) {
+            if (!empty($body['error_description']))  $detail = $body['error_description'];
+            elseif (!empty($body['error']))          $detail = $body['error'];
+            elseif (!empty($body['errors']))         $detail = is_string($body['errors']) ? $body['errors'] : wp_json_encode($body['errors']);
+        }
+        if ($detail === '') {
+            $detail = 'HTTP ' . $code . ($raw ? ' — ' . substr(wp_strip_all_tags($raw), 0, 300) : '');
+        }
+        $hint = '';
+        if (stripos($detail, 'shop_not_permitted') !== false || stripos($detail, 'cannot be performed') !== false) {
+            $hint = ' NOTE: the client-credentials grant only works on Shopify development stores, not live/paid stores. A live store needs the OAuth connect flow instead.';
+        }
+        return new WP_Error('lmeg_shop_token', 'Could not get a Shopify token from the Client ID/Secret: ' . $detail . '.' . $hint);
     }
 
     $token = (string) $body['access_token'];
     $ttl   = (int) ($body['expires_in'] ?? 3600);
     set_transient($cache_key, $token, max(60, $ttl - 300));
     return $token;
+}
+
+/* ---------------------------------------------------------------------------
+ * OAuth connect (authorization code grant) — for LIVE/paid stores.
+ *
+ * The client-credentials grant only works on Shopify dev stores. A live store
+ * you own connects with the standard authorization-code flow, which yields a
+ * permanent OFFLINE access token (no 24h refresh). The store owner clicks
+ * "Connect", approves in Shopify, and we exchange the returned code for a
+ * token stored in shopify_admin_token (which lmeg_shop_access_token() prefers).
+ *
+ * Prereqs in the dev-dashboard app: custom distribution to this store, the
+ * redirect URL below whitelisted, and the read_orders scope.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_shop_oauth_redirect_uri() {
+    if (get_option('permalink_structure')) {
+        return home_url('/lmeg-shopify-oauth/');
+    }
+    return home_url('/?lmeg_shop_oauth=1');
+}
+
+add_filter('query_vars', function ($v) { $v[] = 'lmeg_shop_oauth'; return $v; });
+add_action('init', function () {
+    add_rewrite_rule('^lmeg-shopify-oauth/?$', 'index.php?lmeg_shop_oauth=1', 'top');
+    if (get_option('lmeg_shop_oauth_flushed') !== '1') {
+        flush_rewrite_rules(false);
+        update_option('lmeg_shop_oauth_flushed', '1', false);
+    }
+});
+
+add_action('admin_post_lmeg_shop_oauth_start', 'lmeg_shop_oauth_start');
+function lmeg_shop_oauth_start() {
+    if (!current_user_can('manage_options')) wp_die('Forbidden', 403);
+    check_admin_referer('lmeg_shop_oauth');
+
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+    $cid    = trim($s['shopify_client_id'] ?? '');
+    if (!$domain || !$cid) {
+        wp_die('Add your store domain and Client ID in Settings first, then click Connect.', 'Shopify', ['back_link' => true]);
+    }
+
+    $state = wp_generate_password(24, false);
+    set_transient('lmeg_shop_oauth_state_' . get_current_user_id(), $state, 900);
+
+    $url = 'https://' . $domain . '/admin/oauth/authorize?' . http_build_query([
+        'client_id'    => $cid,
+        'scope'        => 'read_orders,read_customers',
+        'redirect_uri' => lmeg_shop_oauth_redirect_uri(),
+        'state'        => $state,
+    ]);
+    wp_redirect($url); // external URL — wp_redirect, not wp_safe_redirect
+    exit;
+}
+
+add_action('template_redirect', 'lmeg_shop_oauth_callback', 1);
+function lmeg_shop_oauth_callback() {
+    if (!get_query_var('lmeg_shop_oauth') && empty($_GET['lmeg_shop_oauth'])) return;
+
+    $settings_url = admin_url('admin.php?page=lmeg-settings');
+    if (!current_user_can('manage_options')) {
+        wp_die('Log in as an administrator to finish connecting Shopify.', 'Shopify', ['response' => 403]);
+    }
+
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+    $cid    = trim($s['shopify_client_id'] ?? '');
+    $secret = trim($s['shopify_client_secret'] ?? '');
+
+    $shop  = isset($_GET['shop'])  ? preg_replace('#^https?://#', '', sanitize_text_field(wp_unslash($_GET['shop'])))  : '';
+    $code  = isset($_GET['code'])  ? sanitize_text_field(wp_unslash($_GET['code']))  : '';
+    $state = isset($_GET['state']) ? sanitize_text_field(wp_unslash($_GET['state'])) : '';
+
+    $key      = 'lmeg_shop_oauth_state_' . get_current_user_id();
+    $expected = get_transient($key);
+    delete_transient($key);
+
+    $fail = function ($msg) use ($settings_url) {
+        wp_die('Shopify connect failed: ' . esc_html($msg) . ' <a href="' . esc_url($settings_url) . '">Back to Settings</a>',
+            'Shopify', ['response' => 400]);
+    };
+
+    if (!$code || !$state || !$expected || !hash_equals((string) $expected, $state)) $fail('security state mismatch — start Connect again from Settings.');
+    if (!$secret || !$cid) $fail('missing Client ID/Secret — add them in Settings first.');
+    if ($shop && $domain && strtolower($shop) !== strtolower($domain)) $fail('shop mismatch (' . $shop . ' vs ' . $domain . ').');
+    if (!lmeg_shop_oauth_verify_hmac(wp_unslash($_GET), $secret)) $fail('HMAC verification failed — the callback signature did not match.');
+
+    $exchange_shop = $shop ?: $domain;
+    $resp = wp_remote_post('https://' . $exchange_shop . '/admin/oauth/access_token', [
+        'timeout' => 20,
+        'body'    => ['client_id' => $cid, 'client_secret' => $secret, 'code' => $code],
+    ]);
+    if (is_wp_error($resp)) $fail($resp->get_error_message());
+
+    $body  = json_decode(wp_remote_retrieve_body($resp), true);
+    $token = is_array($body) && !empty($body['access_token']) ? $body['access_token'] : '';
+    if (!$token) $fail('no access token returned (HTTP ' . wp_remote_retrieve_response_code($resp) . ').');
+
+    $opts = get_option(LMEG_OPTION, []);
+    if (!is_array($opts)) $opts = [];
+    $opts['shopify_admin_token'] = $token;
+    if (empty($opts['shopify_domain']) && $shop) $opts['shopify_domain'] = $shop;
+    update_option(LMEG_OPTION, $opts);
+    if (function_exists('lmeg_shop_flush_token')) lmeg_shop_flush_token();
+
+    wp_safe_redirect(add_query_arg('shop_connected', '1', $settings_url));
+    exit;
+}
+
+/**
+ * Verify Shopify's HMAC on the OAuth callback. Message = query params minus
+ * hmac (and our own routing param), sorted by key, joined key=value with &.
+ */
+function lmeg_shop_oauth_verify_hmac($params, $secret) {
+    if (empty($params['hmac']) || $secret === '') return false;
+    $provided = (string) $params['hmac'];
+    unset($params['hmac'], $params['lmeg_shop_oauth']);
+    ksort($params);
+    $pairs = [];
+    foreach ($params as $k => $v) {
+        if (is_array($v)) continue;
+        $pairs[] = $k . '=' . $v;
+    }
+    $computed = hash_hmac('sha256', implode('&', $pairs), $secret);
+    return hash_equals($computed, $provided);
 }
 
 /** Drop any cached client-credentials token so the next call re-fetches. */
