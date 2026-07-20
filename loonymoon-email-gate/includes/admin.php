@@ -15,6 +15,7 @@ add_action('admin_menu', 'lmeg_admin_menu');
 function lmeg_admin_menu() {
     $cap = 'manage_options';
     add_menu_page('Email Gate', 'Email Gate', $cap, 'lmeg',           'lmeg_admin_subscribers', 'dashicons-email-alt', 30);
+    add_submenu_page('lmeg', 'Overview',          'Overview',          $cap, 'lmeg-overview',        'lmeg_admin_overview');
     add_submenu_page('lmeg', 'Subscribers',       'Subscribers',       $cap, 'lmeg',                 'lmeg_admin_subscribers');
     add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
@@ -80,6 +81,7 @@ function lmeg_admin_app_bar() {
     if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
     $current = sanitize_text_field($_GET['page']);
     $items = [
+        'lmeg-overview'   => 'Overview',
         'lmeg'            => 'Fans',
         'lmeg-audience'   => 'Audience',
         'lmeg-compose'    => 'Compose',
@@ -92,7 +94,7 @@ function lmeg_admin_app_bar() {
     ];
     ?>
     <div class="lmeg-appbar">
-        <a class="lmeg-appbar__brand" href="<?php echo esc_url(admin_url('admin.php?page=lmeg')); ?>">
+        <a class="lmeg-appbar__brand" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-overview')); ?>">
             <span class="lmeg-appbar__dot" aria-hidden="true"></span>
             loonybin
         </a>
@@ -2869,5 +2871,204 @@ function lmeg_admin_smartlinks() {
         </table>
         <p class="description" style="margin-top:10px;">QR codes are rendered by api.qrserver.com from the short URL — download the PNG from the QR view for posters/merch.</p>
     </div>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Overview — the command-center landing page
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_overview() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+
+    // --- headline numbers ---
+    $active = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL");
+    $new30  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $unsub30= (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+
+    // MRR + paying
+    $mrr = 0; $paying = 0; $cur = 'USD';
+    if (function_exists('lmeg_all_tiers')) {
+        $by = []; foreach (lmeg_all_tiers() as $t) { $by[(int)$t->id] = $t; $cur = $t->currency; }
+        foreach ($wpdb->get_results("SELECT member_tier_id, billing_interval FROM $subs WHERE member_status='active' AND member_tier_id IS NOT NULL AND stripe_subscription_id IS NOT NULL") as $p) {
+            $paying++; $t = $by[(int)$p->member_tier_id] ?? null; if (!$t) continue;
+            if ($p->billing_interval === 'year' && $t->price_annual) $mrr += (int) round($t->price_annual/12);
+            elseif ($t->price_monthly) $mrr += (int) $t->price_monthly;
+        }
+    }
+
+    // Campaign revenue 30d
+    $camp = 0; $camp_orders = 0;
+    if (function_exists('lmeg_shop_totals')) {
+        $t30 = lmeg_shop_totals(30);
+        if ($t30) { $camp = (int) $t30->campaign_cents; $camp_orders = (int) $t30->campaign_orders; }
+    }
+
+    // Spotify
+    $sp = null; $sp_delta = null;
+    if (function_exists('lmeg_spotify_configured') && lmeg_spotify_configured()) {
+        $ov = lmeg_spotify_overview();
+        if (!is_wp_error($ov)) {
+            $sp = $ov;
+            $snaps = function_exists('lmeg_spotify_snapshots') ? lmeg_spotify_snapshots(30) : [];
+            if (count($snaps) >= 2) $sp_delta = (int) end($snaps)->followers - (int) reset($snaps)->followers;
+        }
+    }
+
+    // signup sparkline 30d
+    $daily = $wpdb->get_results("SELECT DATE(created_at) d, COUNT(*) n FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 29 DAY) GROUP BY DATE(created_at)");
+    $byday = []; for ($i=29;$i>=0;$i--) $byday[date('Y-m-d', strtotime("-$i days"))] = 0;
+    foreach ($daily as $d) $byday[$d->d] = (int) $d->n;
+    $counts = array_values($byday); $max = max($counts) ?: 1;
+    $w=280;$h=54;$step=$w/max(1,count($counts)-1);$pts=[];
+    foreach ($counts as $i=>$n){ $pts[] = round($i*$step,1).','.round($h-($n/$max)*($h-4)-2,1); }
+    $spark = implode(' ', $pts);
+
+    // fan types
+    $types = $wpdb->get_results("SELECT t.name,t.color,COUNT(st.subscriber_id) n FROM {$wpdb->prefix}lmeg_tags t JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id=t.id WHERE t.slug LIKE 'fan-type:%' GROUP BY t.id ORDER BY n DESC");
+    $tt_total = array_sum(array_map(function($r){return (int)$r->n;}, (array)$types)) ?: 1;
+
+    // countries
+    $countries = $wpdb->get_results("SELECT country,COUNT(*) n FROM $subs WHERE country<>'' AND country IS NOT NULL AND unsubscribed_at IS NULL GROUP BY country ORDER BY n DESC LIMIT 5");
+    $c_max = $countries ? max(array_map(function($r){return (int)$r->n;}, $countries)) : 1;
+
+    // last broadcast
+    $last = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lmeg_broadcasts WHERE status='completed' ORDER BY id DESC LIMIT 1");
+    $l_open=$l_click=$l_rev=0;
+    if ($last) {
+        $ev = $wpdb->prefix.'lmeg_broadcast_events';
+        $l_open = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='open'",$last->id));
+        $l_click= (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='click'",$last->id));
+        if (function_exists('lmeg_shop_revenue_by_broadcast')) { $rm=lmeg_shop_revenue_by_broadcast(); $l_rev = isset($rm[(int)$last->id])?(int)$rm[(int)$last->id]['cents']:0; }
+    }
+    $fmt = function($c) use ($cur){ return function_exists('lmeg_format_price') ? lmeg_format_price($c,$cur) : ('$'.number_format($c/100,2)); };
+    ?>
+    <div class="wrap">
+        <h1>Overview</h1>
+
+        <!-- headline KPIs -->
+        <div class="lmeg-ov-kpis">
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Active subscribers</div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($active); ?></div>
+                <div class="lmeg-stat__hint"><span style="color:#34D399;">+<?php echo $new30; ?></span> · <?php echo $unsub30; ?> lost (30d)</div>
+                <svg viewBox="0 0 <?php echo $w; ?> <?php echo $h; ?>" width="100%" height="<?php echo $h; ?>" style="margin-top:8px;"><polyline fill="none" stroke="#D05FA2" stroke-width="1.6" points="<?php echo esc_attr($spark); ?>"/></svg>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">MRR</div>
+                <div class="lmeg-stat__value"><?php echo esc_html($fmt($mrr)); ?></div>
+                <div class="lmeg-stat__hint"><?php echo $paying; ?> paying members</div>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Campaign revenue (30d)</div>
+                <div class="lmeg-stat__value"><?php echo esc_html($fmt($camp)); ?></div>
+                <div class="lmeg-stat__hint"><?php echo $camp_orders; ?> orders from broadcasts</div>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label">Spotify followers</div>
+                <?php if ($sp) : ?>
+                    <div class="lmeg-stat__value"><?php echo number_format_i18n($sp['followers']); ?></div>
+                    <div class="lmeg-stat__hint"><?php echo $sp_delta!==null ? '<span style="color:'.($sp_delta>=0?'#34D399':'#F87171').';">'.($sp_delta>=0?'+':'').number_format_i18n($sp_delta).'</span> (30d) · ' : ''; ?>pop <?php echo (int)$sp['popularity']; ?></div>
+                <?php else : ?>
+                    <div class="lmeg-stat__value" style="font-size:15px;font-weight:500;opacity:.6;">Not connected</div>
+                    <div class="lmeg-stat__hint"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect Spotify →</a></div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- panels -->
+        <div class="lmeg-ov-grid">
+            <!-- fan types -->
+            <div class="lmeg-ov-panel">
+                <div class="lmeg-ov-panel__head">Fan types <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Audience →</a></div>
+                <?php if (empty($types)) : ?>
+                    <p class="lmeg-ov-empty">Run "Recalculate" on the Audience page to score fans.</p>
+                <?php else : foreach ($types as $t) : $pct = round(100*(int)$t->n/$tt_total); ?>
+                    <div class="lmeg-ov-bar">
+                        <span class="lmeg-ov-bar__label"><?php echo esc_html(str_replace('Fan type: ','',$t->name)); ?></span>
+                        <div class="lmeg-ov-bar__track"><div style="width:<?php echo $pct; ?>%;background:<?php echo esc_attr($t->color); ?>;"></div></div>
+                        <span class="lmeg-ov-bar__val"><?php echo (int)$t->n; ?></span>
+                    </div>
+                <?php endforeach; endif; ?>
+            </div>
+
+            <!-- countries -->
+            <div class="lmeg-ov-panel">
+                <div class="lmeg-ov-panel__head">Where fans are <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Map →</a></div>
+                <?php if (empty($countries)) : ?>
+                    <p class="lmeg-ov-empty">Country fills in from phone/address signups and IP geolocation.</p>
+                <?php else : foreach ($countries as $c) : $pct=round(100*(int)$c->n/$c_max); ?>
+                    <div class="lmeg-ov-bar">
+                        <span class="lmeg-ov-bar__label"><?php echo esc_html(lmeg_flag_emoji($c->country).' '.$c->country); ?></span>
+                        <div class="lmeg-ov-bar__track"><div style="width:<?php echo $pct; ?>%;background:#3b82f6;"></div></div>
+                        <span class="lmeg-ov-bar__val"><?php echo (int)$c->n; ?></span>
+                    </div>
+                <?php endforeach; endif; ?>
+            </div>
+
+            <!-- last broadcast -->
+            <div class="lmeg-ov-panel">
+                <div class="lmeg-ov-panel__head">Last broadcast <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts')); ?>">History →</a></div>
+                <?php if (!$last) : ?>
+                    <p class="lmeg-ov-empty">No broadcasts yet. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-compose')); ?>">Compose one →</a></p>
+                <?php else :
+                    $sent = max(1,(int)$last->sent); ?>
+                    <div style="font-weight:600;margin-bottom:2px;"><?php echo esc_html($last->subject ?: mb_substr((string)($last->body ?? $last->body_sms),0,44)); ?></div>
+                    <div style="font-size:12px;opacity:.6;margin-bottom:10px;"><?php echo esc_html($last->created_at); ?></div>
+                    <div class="lmeg-ov-metrics">
+                        <div><strong><?php echo (int)$last->sent; ?></strong><span>sent</span></div>
+                        <div><strong><?php echo round(100*$l_open/$sent); ?>%</strong><span>opens</span></div>
+                        <div><strong><?php echo round(100*$l_click/$sent); ?>%</strong><span>clicks</span></div>
+                        <div><strong><?php echo esc_html($fmt($l_rev)); ?></strong><span>revenue</span></div>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- spotify -->
+            <div class="lmeg-ov-panel">
+                <div class="lmeg-ov-panel__head">Spotify <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Details →</a></div>
+                <?php if (!$sp) : ?>
+                    <p class="lmeg-ov-empty">Not connected. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Add keys →</a></p>
+                <?php else : ?>
+                    <div class="lmeg-ov-metrics">
+                        <div><strong><?php echo number_format_i18n($sp['followers']); ?></strong><span>followers</span></div>
+                        <div><strong><?php echo (int)$sp['popularity']; ?></strong><span>popularity</span></div>
+                        <?php if ($sp_delta!==null) : ?><div><strong style="color:<?php echo $sp_delta>=0?'#34D399':'#F87171'; ?>;"><?php echo ($sp_delta>=0?'+':'').number_format_i18n($sp_delta); ?></strong><span>30d</span></div><?php endif; ?>
+                    </div>
+                    <?php if (!empty($sp['top_tracks'][0])) : ?><div style="margin-top:10px;font-size:12px;opacity:.7;">Top: <?php echo esc_html($sp['top_tracks'][0]['name']); ?></div><?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- quick actions -->
+        <div class="lmeg-ov-actions">
+            <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-compose')); ?>">Compose broadcast</a>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-ai')); ?>">Ask AI about your fans</a>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg')); ?>">Subscribers</a>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-shop')); ?>">Revenue</a>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Spotify</a>
+        </div>
+    </div>
+
+    <style>
+    .lmeg-admin .lmeg-ov-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:18px 0;}
+    .lmeg-admin .lmeg-ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:8px 0 20px;}
+    .lmeg-admin .lmeg-ov-panel{background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:16px 18px;}
+    .lmeg-admin .lmeg-ov-panel__head{display:flex;justify-content:space-between;align-items:baseline;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:12px;}
+    .lmeg-admin .lmeg-ov-panel__head a{font-size:12px;font-weight:500;}
+    .lmeg-admin .lmeg-ov-empty{font-size:13px;opacity:.6;}
+    .lmeg-admin .lmeg-ov-bar{display:flex;align-items:center;gap:9px;margin:5px 0;}
+    .lmeg-admin .lmeg-ov-bar__label{flex:0 0 110px;font-size:12.5px;}
+    .lmeg-admin .lmeg-ov-bar__track{flex:1;height:9px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;}
+    .lmeg-admin .lmeg-ov-bar__track div{height:100%;}
+    .lmeg-admin .lmeg-ov-bar__val{flex:0 0 40px;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;}
+    .lmeg-admin .lmeg-ov-metrics{display:flex;gap:20px;flex-wrap:wrap;}
+    .lmeg-admin .lmeg-ov-metrics div{display:flex;flex-direction:column;}
+    .lmeg-admin .lmeg-ov-metrics strong{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;}
+    .lmeg-admin .lmeg-ov-metrics span{font-size:11px;opacity:.55;text-transform:uppercase;letter-spacing:.05em;}
+    .lmeg-admin .lmeg-ov-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+    </style>
     <?php
 }
