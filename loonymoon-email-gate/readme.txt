@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.54.1
+Stable tag: 2.55.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.0 =
+* New: Abandoned-cart recovery (automated revenue flow #1). The shop sync now pulls abandoned Shopify checkouts, matches them to subscribers, and fires an event:abandoned-cart trigger — create a Sequence on that trigger and fans who leave a checkout get nudged automatically. Use the new {cart_url} merge tag to link them straight back to their cart. The flow auto-stops (and its remaining steps cancel) the moment they complete a purchase. Shop Revenue page shows open vs recovered carts and their value.
+* Note: post-purchase (trigger: customer) and win-back (trigger: fan-type:dormant) flows already work via the Sequences engine — see the recipes list on the Sequences page.
+
 = 2.54.1 =
 * Improved: Shop Revenue page now lists ALL synced orders (not only ones matched to a subscriber), with a running order count + total revenue, whether each buyer is on your list or a guest, and any campaign attribution. So right after connecting + syncing you see every order and the revenue immediately.
 

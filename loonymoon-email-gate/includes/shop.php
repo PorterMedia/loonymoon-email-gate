@@ -381,7 +381,148 @@ function lmeg_shop_sync($force = false) {
     }
 
     update_option(LMEG_SHOP_LAST_SYNC, $now, false);
-    return ['fetched' => count($orders), 'attributed' => $attributed];
+
+    // Abandoned-cart recovery — best-effort; a failure here (e.g. protected
+    // customer data not yet approved on the app) must not break order sync.
+    $aband     = lmeg_shop_sync_abandoned();
+    $triggered = is_wp_error($aband) ? 0 : (int) ($aband['triggered'] ?? 0);
+
+    return ['fetched' => count($orders), 'attributed' => $attributed, 'cart_triggers' => $triggered];
+}
+
+/* ---------------------------------------------------------------------------
+ * Abandoned-cart recovery — pull abandoned checkouts, match to subscribers,
+ * fire the event:abandoned-cart trigger (drives a recovery sequence), and
+ * stop nudging anyone who has since converted.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_shop_abandoned_tag_id() {
+    if (!function_exists('lmeg_get_or_create_tag')) return 0;
+    $t = lmeg_get_or_create_tag('event:abandoned-cart', 'Abandoned cart', true, '#ef4444');
+    return $t ? (int) $t->id : 0;
+}
+
+/** The fan's most recent still-open abandoned-checkout recovery URL. */
+function lmeg_fan_cart_url($subscriber_id) {
+    global $wpdb;
+    $url = $wpdb->get_var($wpdb->prepare(
+        "SELECT recovery_url FROM {$wpdb->prefix}lmeg_shop_abandoned
+         WHERE subscriber_id = %d AND recovered = 0 AND recovery_url IS NOT NULL AND recovery_url <> ''
+         ORDER BY checkout_at DESC LIMIT 1",
+        (int) $subscriber_id
+    ));
+    return $url ?: home_url('/');
+}
+
+function lmeg_shop_sync_abandoned() {
+    global $wpdb;
+    if (!lmeg_shop_configured()) return new WP_Error('lmeg_shop_unconfigured', 'Shopify is not configured.');
+
+    $r = lmeg_shop_request('/checkouts.json', [
+        'limit'          => 250,
+        'created_at_min' => gmdate('c', time() - 14 * DAY_IN_SECONDS),
+    ]);
+    if (is_wp_error($r)) return $r;
+
+    $checkouts = $r['checkouts'] ?? [];
+    $tbl   = $wpdb->prefix . 'lmeg_shop_abandoned';
+    $subs  = $wpdb->prefix . LMEG_TABLE;
+    $now   = current_time('mysql');
+    $triggered = 0;
+
+    foreach ($checkouts as $c) {
+        $cid = (int) ($c['id'] ?? 0);
+        if (!$cid) continue;
+        if (!empty($c['completed_at'])) { lmeg_shop_abandoned_mark_recovered($cid); continue; }
+
+        $email = sanitize_email($c['email'] ?? '');
+        $url   = esc_url_raw($c['abandoned_checkout_url'] ?? '');
+        $total = (int) round(((float) ($c['total_price'] ?? 0)) * 100);
+        $when  = !empty($c['created_at'])
+            ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($c['created_at']))) : null;
+
+        $sub_id = $email ? $wpdb->get_var($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email)) : null;
+
+        // Already converted? A completed order for this email at/after the checkout.
+        $converted = ($email && $when) ? (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_shop_orders WHERE email = %s AND ordered_at >= %s",
+            $email, $when
+        )) : 0;
+
+        $existing  = $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE checkout_id = %d", $cid));
+        $recovered = $converted ? 1 : ($existing ? (int) $existing->recovered : 0);
+
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO $tbl (checkout_id, token, email, subscriber_id, recovery_url, total_cents, currency, checkout_at, recovered, tagged, synced_at)
+             VALUES (%d,%s,%s,%s,%s,%d,%s,%s,%d,%d,%s)
+             ON DUPLICATE KEY UPDATE
+                email=VALUES(email), subscriber_id=VALUES(subscriber_id), recovery_url=VALUES(recovery_url),
+                total_cents=VALUES(total_cents), recovered=VALUES(recovered), synced_at=VALUES(synced_at)",
+            $cid, (string) ($c['token'] ?? ''), $email ?: null, $sub_id ?: null, $url ?: null,
+            $total, strtoupper(substr((string) ($c['currency'] ?? 'USD'), 0, 3)), $when,
+            $recovered, $existing ? (int) $existing->tagged : 0, $now
+        ));
+
+        if ($converted) { lmeg_shop_abandoned_mark_recovered($cid); continue; }
+
+        // New, matched to a fan, not yet nudged → fire the recovery trigger.
+        if ($sub_id && (!$existing || !$existing->tagged)) {
+            $tag_id = lmeg_shop_abandoned_tag_id();
+            if ($tag_id) {
+                lmeg_attach_tag((int) $sub_id, $tag_id);
+                $wpdb->update($tbl, ['tagged' => 1], ['checkout_id' => $cid]);
+                $triggered++;
+            }
+        }
+    }
+
+    return ['checkouts' => count($checkouts), 'triggered' => $triggered];
+}
+
+/** Mark a cart recovered, and if the fan has no other open carts, stop the
+ *  recovery flow and free the trigger tag so a future cart can re-fire it. */
+function lmeg_shop_abandoned_mark_recovered($checkout_id) {
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_shop_abandoned';
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE checkout_id = %d", (int) $checkout_id));
+    if (!$row) return;
+    if (!$row->recovered) $wpdb->update($tbl, ['recovered' => 1], ['checkout_id' => (int) $checkout_id]);
+    if (!$row->subscriber_id) return;
+
+    $open = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $tbl WHERE subscriber_id = %d AND recovered = 0", (int) $row->subscriber_id
+    ));
+    if ($open > 0) return;
+
+    $tag_id = lmeg_shop_abandoned_tag_id();
+    if ($tag_id && function_exists('lmeg_detach_tag')) lmeg_detach_tag((int) $row->subscriber_id, $tag_id);
+    if ($tag_id) {
+        $seq_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}lmeg_sequences WHERE trigger_tag_id = %d", $tag_id
+        ));
+        if ($seq_ids) {
+            $in = implode(',', array_map('intval', $seq_ids));
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->prefix}lmeg_sequence_enrollments SET status='cancelled', next_send_at=NULL
+                 WHERE subscriber_id = %d AND status='active' AND sequence_id IN ($in)",
+                (int) $row->subscriber_id
+            ));
+        }
+    }
+}
+
+/** Abandoned-cart summary for the Shop Revenue page. */
+function lmeg_shop_abandoned_stats() {
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_shop_abandoned';
+    return $wpdb->get_row(
+        "SELECT
+            COALESCE(SUM(recovered = 0), 0) AS open_carts,
+            COALESCE(SUM(recovered = 1), 0) AS recovered_carts,
+            COALESCE(SUM(CASE WHEN recovered = 0 THEN total_cents ELSE 0 END), 0) AS open_value,
+            COALESCE(SUM(CASE WHEN recovered = 1 THEN total_cents ELSE 0 END), 0) AS recovered_value
+         FROM $tbl"
+    );
 }
 
 /**

@@ -2007,6 +2007,9 @@ function lmeg_admin_sequences() {
     $enr_tbl  = $wpdb->prefix . 'lmeg_sequence_enrollments';
     $notice = '';
 
+    // Make sure the abandoned-cart trigger tag exists so it's pickable below.
+    if (function_exists('lmeg_shop_abandoned_tag_id')) lmeg_shop_abandoned_tag_id();
+
     if (isset($_POST['lmeg_seq_nonce']) && wp_verify_nonce($_POST['lmeg_seq_nonce'], 'lmeg_seqs')) {
         $act = sanitize_text_field($_POST['lmeg_action'] ?? '');
         if ($act === 'save_seq') {
@@ -2180,6 +2183,7 @@ function lmeg_admin_sequences() {
             <strong>Recipes — trigger tag → journey:</strong><br />
             · <code>channel:email</code> → welcome series for every new email signup<br />
             · <code>customer</code> → post-purchase thank-you / upsell (applied automatically on their first shop order)<br />
+            · <code>event:abandoned-cart</code> → cart-recovery flow (fired when a fan abandons a Shopify checkout). Use the <code>{cart_url}</code> merge tag to link them straight back to their cart; the flow auto-stops if they buy.<br />
             · <code>channel:paid</code> or <code>tier:&lt;slug&gt;</code> → new paid-member onboarding<br />
             · <code>fan-type:dormant</code> → win-back campaign (fan types refresh daily)<br />
             · any manual tag → whatever you dream up — bulk-apply from the Subscribers page to enroll a batch
@@ -2655,9 +2659,15 @@ function lmeg_admin_shop() {
     if (isset($_POST['lmeg_shop_nonce']) && wp_verify_nonce($_POST['lmeg_shop_nonce'], 'lmeg_shop')
         && ($_POST['lmeg_action'] ?? '') === 'sync_now') {
         $r = lmeg_shop_sync(true);
-        $notice = is_wp_error($r)
-            ? '<div class="notice notice-error"><p>Sync failed: ' . esc_html($r->get_error_message()) . '</p></div>'
-            : '<div class="notice notice-success"><p>Synced. Fetched ' . (int) ($r['fetched'] ?? 0) . ' recent orders; ' . (int) ($r['attributed'] ?? 0) . ' attributed to a broadcast this pass.</p></div>';
+        if (is_wp_error($r)) {
+            $notice = '<div class="notice notice-error"><p>Sync failed: ' . esc_html($r->get_error_message()) . '</p></div>';
+        } else {
+            $carts = (int) ($r['cart_triggers'] ?? 0);
+            $notice = '<div class="notice notice-success"><p>Synced. Fetched ' . (int) ($r['fetched'] ?? 0)
+                . ' recent orders; ' . (int) ($r['attributed'] ?? 0) . ' attributed to a broadcast'
+                . ($carts ? '; ' . $carts . ' abandoned-cart recovery flow' . ($carts === 1 ? '' : 's') . ' triggered' : '')
+                . ' this pass.</p></div>';
+        }
     }
 
     $configured = lmeg_shop_configured();
@@ -2708,7 +2718,31 @@ function lmeg_admin_shop() {
             </div>
         </div>
 
-        <h2>Revenue by broadcast</h2>
+        <?php
+        $cart = function_exists('lmeg_shop_abandoned_stats') ? lmeg_shop_abandoned_stats() : null;
+        $has_cart_seq = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_sequences s
+             JOIN {$wpdb->prefix}lmeg_tags t ON t.id = s.trigger_tag_id
+             WHERE t.slug = %s AND s.is_active = 1", 'event:abandoned-cart'
+        ));
+        if ($cart && ((int) $cart->open_carts || (int) $cart->recovered_carts)) : ?>
+        <h2 style="margin-top:28px;">Cart recovery</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin:8px 0 4px;max-width:900px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Open carts</div>
+                <div class="lmeg-stat__value"><?php echo (int) $cart->open_carts; ?></div>
+                <div class="lmeg-stat__hint"><?php echo esc_html(lmeg_format_price((int) $cart->open_value)); ?> in limbo</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Recovered carts</div>
+                <div class="lmeg-stat__value"><?php echo (int) $cart->recovered_carts; ?></div>
+                <div class="lmeg-stat__hint"><?php echo esc_html(lmeg_format_price((int) $cart->recovered_value)); ?> came back</div></div>
+        </div>
+        <?php if (!$has_cart_seq) : ?>
+            <p class="description" style="max-width:760px;">Carts are being tracked, but no recovery flow is live yet. Create a sequence triggered by <code>event:abandoned-cart</code> (use <code>{cart_url}</code> to link them back) under <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-sequences')); ?>">Sequences</a>.</p>
+        <?php else : ?>
+            <p class="description" style="max-width:760px;">Recovery flow is live — fans who abandon a checkout get nudged automatically, and the flow stops if they buy.</p>
+        <?php endif; ?>
+        <?php endif; ?>
+
+        <h2 style="margin-top:28px;">Revenue by broadcast</h2>
         <?php
         $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
         $per = $wpdb->get_results(

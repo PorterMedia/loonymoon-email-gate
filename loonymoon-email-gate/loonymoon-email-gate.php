@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.54.1
+ * Version:     2.55.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.54.1');
-define('LMEG_DB_VERSION',  '2.54.1');
+define('LMEG_VERSION',     '2.55.0');
+define('LMEG_DB_VERSION',  '2.55.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -548,6 +548,25 @@ function lmeg_create_tables() {
         KEY idx_subscriber (subscriber_id),
         KEY idx_ordered (ordered_at)
     ) $charset;");
+
+    $aband = $wpdb->prefix . 'lmeg_shop_abandoned';
+    dbDelta("CREATE TABLE $aband (
+        checkout_id BIGINT(20) UNSIGNED NOT NULL,
+        token VARCHAR(64) DEFAULT NULL,
+        email VARCHAR(190) DEFAULT NULL,
+        subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        recovery_url TEXT,
+        total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        checkout_at DATETIME DEFAULT NULL,
+        recovered TINYINT(1) NOT NULL DEFAULT 0,
+        tagged TINYINT(1) NOT NULL DEFAULT 0,
+        synced_at DATETIME NOT NULL,
+        PRIMARY KEY  (checkout_id),
+        KEY idx_subscriber (subscriber_id),
+        KEY idx_email (email),
+        KEY idx_recovered (recovered)
+    ) $charset;");
 }
 
 /* ---------------------------------------------------------------------------
@@ -965,6 +984,10 @@ function lmeg_merge_tag_map($sub) {
             ? (string) lmeg_get_fan_code($sub->id) : '',
         '{referral_link}' => (!empty($sub->id) && function_exists('lmeg_referral_url'))
             ? (string) lmeg_referral_url($sub->id) : (string) home_url('/'),
+        // Abandoned-cart recovery link — the fan's most recent un-recovered
+        // Shopify checkout. Empty (falls back to store) if none pending.
+        '{cart_url}'      => (!empty($sub->id) && function_exists('lmeg_fan_cart_url'))
+            ? (string) lmeg_fan_cart_url($sub->id) : '',
     ];
 }
 
