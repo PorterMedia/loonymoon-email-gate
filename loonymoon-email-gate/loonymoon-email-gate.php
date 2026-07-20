@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.50.0
+ * Version:     2.51.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.50.0');
-define('LMEG_DB_VERSION',  '2.50.0');
+define('LMEG_VERSION',     '2.51.0');
+define('LMEG_DB_VERSION',  '2.51.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -78,6 +78,8 @@ require_once LMEG_PLUGIN_DIR . 'includes/shortcodes.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shop.php';
 require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
 require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
+require_once LMEG_PLUGIN_DIR . 'includes/biopage.php';
+require_once LMEG_PLUGIN_DIR . 'includes/drops.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
 require_once LMEG_PLUGIN_DIR . 'includes/spotify.php';
@@ -411,6 +413,31 @@ function lmeg_create_tables() {
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_slug (slug)
+    ) $charset;");
+
+    $drops = $wpdb->prefix . 'lmeg_drops';
+    dbDelta("CREATE TABLE $drops (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title VARCHAR(200) NOT NULL,
+        slug VARCHAR(80) NOT NULL,
+        cover_url TEXT,
+        description TEXT,
+        release_at DATETIME DEFAULT NULL,
+        links LONGTEXT,
+        notify_tag_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        audience VARCHAR(10) NOT NULL DEFAULT 'notify',
+        email_subject VARCHAR(200) DEFAULT NULL,
+        email_body LONGTEXT,
+        sms_body TEXT,
+        status VARCHAR(12) NOT NULL DEFAULT 'draft',
+        broadcast_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        broadcast_sent TINYINT(1) NOT NULL DEFAULT 0,
+        notify_count BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_slug (slug),
+        KEY idx_status (status),
+        KEY idx_release (release_at)
     ) $charset;");
 
     $sps = $wpdb->prefix . 'lmeg_spotify_snapshots';
@@ -1325,6 +1352,20 @@ function lmeg_handle_submit() {
             $val
         ));
         if ($found) lmeg_set_member_cookie($found->id, (int) $found->member_tier_id);
+    }
+
+    // Source tagging: any signup form (bio page, release-drop "Notify me",
+    // embedded forms) can pass lmeg_tags — a comma-separated list of tag slugs
+    // — to record where this opt-in came from and power targeted broadcasts.
+    if ($found && !empty($_POST['lmeg_tags']) && function_exists('lmeg_get_or_create_tag')) {
+        $slugs = array_slice(array_filter(array_map('sanitize_title',
+            explode(',', (string) wp_unslash($_POST['lmeg_tags'])))), 0, 8);
+        foreach ($slugs as $slug) {
+            $tag = lmeg_get_or_create_tag($slug, null, true);
+            if ($tag && function_exists('lmeg_attach_tag')) {
+                lmeg_attach_tag((int) $found->id, (int) $tag->id);
+            }
+        }
     }
 
     // Honor lmeg_after intent: paywall form can request Stripe checkout or a
