@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.41.0
+Stable tag: 2.42.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.42.0 =
+* Impact analysis on the Spotify page: correlates your initiatives (broadcasts + releases) with Spotify momentum — follower + popularity change in the 7 days after each, vs your baseline growth rate, alongside the clicks & revenue each broadcast drove.
+* Popularity (Spotify's 0-100 recent-stream-velocity score) used as the closest public proxy for streams; the API doesn't expose raw stream counts. Presented as directional, not causal.
+* Impact summary is fed into the AI assistant so "how do my drops impact streams?" gets a data-grounded answer. New suggestion chip added.
+* Needs ~1-2 weeks of daily follower snapshots before lift is measurable (snapshots run automatically once Spotify is connected).
+
 = 2.41.0 =
 * Shared credentials can now live in wp-config.php constants or a .env file instead of being re-entered per artist site. Config values win over the DB and lock those fields in Settings (with a 🔒 badge).
 * Reads LMEG_* constants; a .env at wp-content/.env or one level above WP root is auto-loaded (also accepts common aliases like SPOTIFY_CLIENT_ID / ANTHROPIC_API_KEY via real env vars). See .env.example in the repo root.

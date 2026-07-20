@@ -95,6 +95,11 @@ function lmeg_ai_context() {
             $ctx[] = 'Spotify: ' . number_format($ov['followers']) . ' followers, popularity ' . $ov['popularity'] . '/100'
                    . ($tt ? '. Top tracks: ' . implode(', ', $tt) . '.' : '.');
         }
+        // Initiative → Spotify impact correlation.
+        if (function_exists('lmeg_impact_ai_summary')) {
+            $imp = lmeg_impact_ai_summary();
+            if ($imp) $ctx[] = $imp;
+        }
     }
 
     return implode("\n", $ctx);
@@ -174,6 +179,7 @@ function lmeg_admin_ai() {
     $suggestions = [
         'How is my list growing and where are most of my fans?',
         'Which broadcast performed best and why?',
+        'How do my drops and broadcasts impact Spotify?',
         'Who should I target for my next presale?',
         'What should I do to re-engage dormant fans?',
         'Summarize my fanbase in 3 bullet points.',

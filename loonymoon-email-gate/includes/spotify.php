@@ -155,6 +155,129 @@ function lmeg_spotify_snapshots($days = 30) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Impact analysis — correlate plugin initiatives with Spotify momentum
+ *
+ * Public API gives followers + popularity (0-100). Popularity is Spotify's
+ * own recent-stream-velocity score, so it's the best public proxy for "did
+ * streams move." For each initiative (broadcast, release) we measure the
+ * follower + popularity change in the window AFTER it and compare to the
+ * baseline daily rate — surfacing which drops actually moved the needle,
+ * next to the clicks + revenue that broadcast drove.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Nearest snapshot on-or-before a date (falls back to nearest-after).
+ * @return array|null ['followers','popularity','snap_date']
+ */
+function lmeg_spotify_nearest($date) {
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_spotify_snapshots';
+    $d   = date('Y-m-d', strtotime($date));
+    $row = $wpdb->get_row($wpdb->prepare(
+        "SELECT snap_date, followers, popularity FROM $tbl WHERE snap_date <= %s ORDER BY snap_date DESC LIMIT 1", $d
+    ));
+    if (!$row) {
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT snap_date, followers, popularity FROM $tbl WHERE snap_date >= %s ORDER BY snap_date ASC LIMIT 1", $d
+        ));
+    }
+    return $row ? ['followers' => (int) $row->followers, 'popularity' => (int) $row->popularity, 'snap_date' => $row->snap_date] : null;
+}
+
+/**
+ * Baseline daily follower change across the whole snapshot history.
+ */
+function lmeg_spotify_baseline_daily() {
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_spotify_snapshots';
+    $rows = $wpdb->get_results("SELECT snap_date, followers FROM $tbl ORDER BY snap_date ASC");
+    if (count((array) $rows) < 2) return null;
+    $first = $rows[0]; $last = end($rows);
+    $days  = max(1, (strtotime($last->snap_date) - strtotime($first->snap_date)) / DAY_IN_SECONDS);
+    return (($last->followers - $first->followers) / $days);
+}
+
+/**
+ * Build impact rows for broadcasts + releases. Each row measures the change
+ * over `window` days after the event. Returns [] when there isn't enough
+ * snapshot history to measure anything yet.
+ */
+function lmeg_impact_rows($window = 7) {
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_spotify_snapshots';
+    $span = $wpdb->get_row("SELECT MIN(snap_date) lo, MAX(snap_date) hi FROM $tbl");
+    if (!$span || !$span->lo) return [];
+
+    $baseline = lmeg_spotify_baseline_daily();
+    $rev_map  = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
+    $events   = [];
+
+    // Broadcasts.
+    $bcasts = $wpdb->get_results(
+        "SELECT id, subject, created_at,
+                (SELECT COUNT(DISTINCT subscriber_id) FROM {$wpdb->prefix}lmeg_broadcast_events e WHERE e.broadcast_id=b.id AND e.event_type='click') clicks
+         FROM {$wpdb->prefix}lmeg_broadcasts b WHERE status='completed' ORDER BY created_at DESC LIMIT 40"
+    );
+    foreach ((array) $bcasts as $b) {
+        $events[] = [
+            'type'  => 'Broadcast',
+            'label' => $b->subject ?: 'broadcast',
+            'date'  => substr($b->created_at, 0, 10),
+            'clicks'=> (int) $b->clicks,
+            'rev'   => isset($rev_map[(int) $b->id]) ? (int) $rev_map[(int) $b->id]['cents'] : 0,
+        ];
+    }
+
+    // Releases (from cached overview).
+    $ov = lmeg_spotify_overview();
+    if (!is_wp_error($ov)) {
+        foreach ($ov['releases'] as $r) {
+            if (!empty($r['date']) && strlen($r['date']) >= 10) {
+                $events[] = ['type' => ucfirst($r['type'] ?: 'Release'), 'label' => $r['name'], 'date' => substr($r['date'], 0, 10), 'clicks' => null, 'rev' => 0];
+            }
+        }
+    }
+
+    $rows = [];
+    foreach ($events as $e) {
+        // Need snapshots covering both the event date and +window days.
+        if ($e['date'] < $span->lo || date('Y-m-d', strtotime($e['date'] . " +$window days")) > $span->hi) {
+            $rows[] = $e + ['fdelta' => null, 'pdelta' => null, 'lift' => null, 'measurable' => false];
+            continue;
+        }
+        $at    = lmeg_spotify_nearest($e['date']);
+        $after = lmeg_spotify_nearest(date('Y-m-d', strtotime($e['date'] . " +$window days")));
+        if (!$at || !$after) { $rows[] = $e + ['fdelta' => null, 'pdelta' => null, 'lift' => null, 'measurable' => false]; continue; }
+
+        $fdelta = $after['followers'] - $at['followers'];
+        $pdelta = $after['popularity'] - $at['popularity'];
+        $expected = $baseline !== null ? $baseline * $window : null;
+        $lift = ($expected !== null) ? $fdelta - $expected : null;
+        $rows[] = $e + ['fdelta' => $fdelta, 'pdelta' => $pdelta, 'lift' => $lift, 'measurable' => true];
+    }
+
+    // Sort newest first by date.
+    usort($rows, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+    return $rows;
+}
+
+/**
+ * Compact impact summary string for the AI context.
+ */
+function lmeg_impact_ai_summary() {
+    $rows = array_filter(lmeg_impact_rows(7), function ($r) { return $r['measurable']; });
+    if (!$rows) return '';
+    $lines = [];
+    foreach (array_slice($rows, 0, 6) as $r) {
+        $lines[] = $r['type'] . ' "' . $r['label'] . '" (' . $r['date'] . '): '
+                 . ($r['fdelta'] >= 0 ? '+' : '') . $r['fdelta'] . ' followers, '
+                 . ($r['pdelta'] >= 0 ? '+' : '') . $r['pdelta'] . ' popularity in the 7 days after'
+                 . ($r['lift'] !== null ? ' (' . ($r['lift'] >= 0 ? '+' : '') . round($r['lift']) . ' vs baseline)' : '');
+    }
+    return "Spotify impact of recent initiatives (7-day follower/popularity change after each):\n- " . implode("\n- ", $lines);
+}
+
+/* ---------------------------------------------------------------------------
  * Admin page
  * ------------------------------------------------------------------------- */
 
@@ -268,6 +391,43 @@ function lmeg_admin_spotify() {
             <?php endforeach; ?>
             </tbody>
         </table>
+
+        <h2>Impact of your initiatives</h2>
+        <p class="description" style="max-width:820px;">Follower + popularity change in the 7 days after each broadcast and release, next to the clicks &amp; revenue it drove. Popularity (Spotify's 0–100 recent-stream score) is the closest public proxy for streams — the API doesn't expose raw stream counts. Directional, not causal; more useful as snapshot history accumulates.</p>
+        <?php
+        $impact = lmeg_impact_rows(7);
+        $has_measurable = array_filter($impact, function ($r) { return $r['measurable']; });
+        ?>
+        <?php if (empty($impact)) : ?>
+            <p>No broadcasts or releases to analyze yet.</p>
+        <?php elseif (empty($has_measurable)) : ?>
+            <div class="notice notice-info inline"><p>Initiatives found, but the follower trend needs ~1–2 weeks of daily snapshots before/after an event to measure lift. The daily snapshot runs automatically — check back soon.</p></div>
+        <?php else : ?>
+            <table class="widefat striped" style="max-width:900px;">
+                <thead><tr><th>Initiative</th><th>Date</th><th>Type</th><th>Followers (7d)</th><th>Popularity (7d)</th><th>vs baseline</th><th>Clicks</th><th>Revenue</th></tr></thead>
+                <tbody>
+                <?php foreach ($impact as $r) : ?>
+                    <tr<?php echo $r['measurable'] ? '' : ' style="opacity:.5;"'; ?>>
+                        <td><strong><?php echo esc_html(mb_substr($r['label'], 0, 48)); ?></strong></td>
+                        <td><?php echo esc_html($r['date']); ?></td>
+                        <td><?php echo esc_html($r['type']); ?></td>
+                        <td><?php
+                            if (!$r['measurable']) { echo '—'; }
+                            else { $c = $r['fdelta'] >= 0 ? '#1DB954' : '#F87171'; echo '<span style="color:' . $c . ';font-weight:600;">' . ($r['fdelta'] >= 0 ? '+' : '') . number_format_i18n($r['fdelta']) . '</span>'; }
+                        ?></td>
+                        <td><?php
+                            if (!$r['measurable']) { echo '—'; }
+                            else { $c = $r['pdelta'] >= 0 ? '#1DB954' : '#F87171'; echo '<span style="color:' . $c . ';">' . ($r['pdelta'] >= 0 ? '+' : '') . (int) $r['pdelta'] . '</span>'; }
+                        ?></td>
+                        <td><?php echo ($r['measurable'] && $r['lift'] !== null) ? (($r['lift'] >= 0 ? '+' : '') . number_format_i18n(round($r['lift']))) : '—'; ?></td>
+                        <td><?php echo $r['clicks'] === null ? '—' : (int) $r['clicks']; ?></td>
+                        <td><?php echo $r['rev'] ? esc_html(lmeg_format_price((int) $r['rev'])) : '—'; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description"><strong>vs baseline</strong> = follower change beyond your normal daily growth rate over the same window. Positive = the initiative likely accelerated growth.</p>
+        <?php endif; ?>
     </div>
     <?php
 }
