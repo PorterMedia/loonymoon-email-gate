@@ -125,6 +125,32 @@ function lmeg_spotify_verify() {
 }
 
 /**
+ * Store one snapshot row (used by daily cron, "capture now", and CSV import).
+ */
+function lmeg_spotify_store_snapshot($date, $followers, $popularity) {
+    global $wpdb;
+    $d = date('Y-m-d', strtotime($date));
+    return $wpdb->query($wpdb->prepare(
+        "INSERT INTO {$wpdb->prefix}lmeg_spotify_snapshots (snap_date, followers, popularity, created_at)
+         VALUES (%s, %d, %d, %s)
+         ON DUPLICATE KEY UPDATE followers = VALUES(followers), popularity = VALUES(popularity)",
+        $d, (int) $followers, (int) $popularity, current_time('mysql')
+    ));
+}
+
+/**
+ * Capture today's numbers immediately (button on the History section).
+ * @return true|WP_Error
+ */
+function lmeg_spotify_capture_now() {
+    if (!lmeg_spotify_configured()) return new WP_Error('lmeg_sp_unconfigured', 'Spotify is not configured.');
+    $ov = lmeg_spotify_overview(true);
+    if (is_wp_error($ov)) return $ov;
+    lmeg_spotify_store_snapshot(current_time('Y-m-d'), $ov['followers'], $ov['popularity']);
+    return true;
+}
+
+/**
  * Daily follower/popularity snapshot for the trend line.
  */
 add_action('lmeg_broadcast_tick', 'lmeg_spotify_daily_snapshot', 70);
@@ -135,14 +161,47 @@ function lmeg_spotify_daily_snapshot() {
 
     $ov = lmeg_spotify_overview();
     if (is_wp_error($ov)) return;
+    lmeg_spotify_store_snapshot(current_time('Y-m-d'), $ov['followers'], $ov['popularity']);
+}
 
+/**
+ * All history rows, newest first, with day-over-day deltas computed.
+ */
+function lmeg_spotify_history() {
     global $wpdb;
-    $wpdb->query($wpdb->prepare(
-        "INSERT INTO {$wpdb->prefix}lmeg_spotify_snapshots (snap_date, followers, popularity, created_at)
-         VALUES (%s, %d, %d, %s)
-         ON DUPLICATE KEY UPDATE followers = VALUES(followers), popularity = VALUES(popularity)",
-        current_time('Y-m-d'), (int) $ov['followers'], (int) $ov['popularity'], current_time('mysql')
-    ));
+    $rows = $wpdb->get_results(
+        "SELECT snap_date, followers, popularity FROM {$wpdb->prefix}lmeg_spotify_snapshots ORDER BY snap_date ASC"
+    );
+    $out = [];
+    $prev = null;
+    foreach ((array) $rows as $r) {
+        $out[] = [
+            'date'       => $r->snap_date,
+            'followers'  => (int) $r->followers,
+            'popularity' => (int) $r->popularity,
+            'fdelta'     => $prev ? (int) $r->followers - $prev['followers'] : null,
+            'pdelta'     => $prev ? (int) $r->popularity - $prev['popularity'] : null,
+        ];
+        $prev = ['followers' => (int) $r->followers, 'popularity' => (int) $r->popularity];
+    }
+    return array_reverse($out); // newest first
+}
+
+/* CSV export of the full history. */
+add_action('admin_post_lmeg_spotify_export', 'lmeg_spotify_export_csv');
+function lmeg_spotify_export_csv() {
+    if (!current_user_can('manage_options')) wp_die('Forbidden', 403);
+    check_admin_referer('lmeg_spotify_export');
+    global $wpdb;
+    $rows = $wpdb->get_results("SELECT snap_date, followers, popularity FROM {$wpdb->prefix}lmeg_spotify_snapshots ORDER BY snap_date ASC", ARRAY_A);
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="loony-spotify-history-' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['date', 'followers', 'popularity']);
+    foreach ($rows as $r) fputcsv($out, $r);
+    fclose($out);
+    exit;
 }
 
 function lmeg_spotify_snapshots($days = 30) {
@@ -287,6 +346,32 @@ add_action('admin_menu', function () {
 
 function lmeg_admin_spotify() {
     if (!current_user_can('manage_options')) return;
+    $notice = '';
+
+    // Capture-now + CSV import handlers.
+    if (isset($_POST['lmeg_sp_nonce']) && wp_verify_nonce($_POST['lmeg_sp_nonce'], 'lmeg_sp_history')) {
+        $act = sanitize_text_field($_POST['lmeg_action'] ?? '');
+        if ($act === 'capture') {
+            $r = lmeg_spotify_capture_now();
+            $notice = is_wp_error($r)
+                ? '<div class="notice notice-error"><p>' . esc_html($r->get_error_message()) . '</p></div>'
+                : '<div class="notice notice-success"><p>Snapshot captured for today.</p></div>';
+        } elseif ($act === 'import' && !empty($_FILES['csv']['tmp_name']) && is_uploaded_file($_FILES['csv']['tmp_name'])) {
+            $rows = 0;
+            if (($fh = fopen($_FILES['csv']['tmp_name'], 'r')) !== false) {
+                $header = fgetcsv($fh); // skip header
+                while (($c = fgetcsv($fh)) !== false) {
+                    if (count($c) < 2) continue;
+                    $date = trim($c[0]);
+                    if (!strtotime($date)) continue;
+                    lmeg_spotify_store_snapshot($date, (int) $c[1], isset($c[2]) ? (int) $c[2] : 0);
+                    $rows++;
+                }
+                fclose($fh);
+            }
+            $notice = '<div class="notice notice-success"><p>Imported ' . $rows . ' historical row' . ($rows === 1 ? '' : 's') . '.</p></div>';
+        }
+    }
 
     if (!lmeg_spotify_configured()) {
         echo '<div class="wrap"><h1>Email Gate — Spotify</h1><div class="notice notice-info"><p>Add your Spotify client ID, secret, and artist ID under <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings')) . '">Settings → Spotify</a>. These come from a free app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> — no special access needed for artist stats.</p></div></div>';
@@ -317,6 +402,7 @@ function lmeg_admin_spotify() {
     ?>
     <div class="wrap">
         <h1>Email Gate — Spotify</h1>
+        <?php echo $notice; ?>
         <p>
             <a class="button" href="<?php echo esc_url(add_query_arg('refresh', 1)); ?>">Refresh</a>
             <?php if ($ov['url']) : ?><a class="button" href="<?php echo esc_url($ov['url']); ?>" target="_blank" rel="noopener">Open on Spotify ↗</a><?php endif; ?>
@@ -428,6 +514,58 @@ function lmeg_admin_spotify() {
             </table>
             <p class="description"><strong>vs baseline</strong> = follower change beyond your normal daily growth rate over the same window. Positive = the initiative likely accelerated growth.</p>
         <?php endif; ?>
+
+        <h2>Daily history</h2>
+        <?php
+        $history    = lmeg_spotify_history();
+        $export_url = wp_nonce_url(admin_url('admin-post.php?action=lmeg_spotify_export'), 'lmeg_spotify_export');
+        ?>
+        <p>
+            <form method="post" style="display:inline;">
+                <?php wp_nonce_field('lmeg_sp_history', 'lmeg_sp_nonce'); ?>
+                <input type="hidden" name="lmeg_action" value="capture" />
+                <button type="submit" class="button button-primary">Capture today's numbers now</button>
+            </form>
+            <?php if ($history) : ?>
+                <a class="button" href="<?php echo esc_url($export_url); ?>">Export CSV</a>
+            <?php endif; ?>
+            <span style="margin-left:10px;opacity:.65;">A snapshot is captured automatically each day. <?php echo count($history); ?> day<?php echo count($history) === 1 ? '' : 's'; ?> on record.</span>
+        </p>
+
+        <?php if ($history) : ?>
+            <table class="widefat striped" style="max-width:640px;">
+                <thead><tr><th>Date</th><th>Followers</th><th>Δ</th><th>Popularity</th><th>Δ</th></tr></thead>
+                <tbody>
+                <?php foreach (array_slice($history, 0, 120) as $h) : ?>
+                    <tr>
+                        <td><?php echo esc_html($h['date']); ?></td>
+                        <td style="font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($h['followers']); ?></td>
+                        <td><?php
+                            if ($h['fdelta'] === null) { echo '<span style="opacity:.4;">—</span>'; }
+                            else { $c = $h['fdelta'] > 0 ? '#1DB954' : ($h['fdelta'] < 0 ? '#F87171' : '#8B90A0'); echo '<span style="color:' . $c . ';">' . ($h['fdelta'] > 0 ? '+' : '') . number_format_i18n($h['fdelta']) . '</span>'; }
+                        ?></td>
+                        <td style="font-variant-numeric:tabular-nums;"><?php echo (int) $h['popularity']; ?></td>
+                        <td><?php
+                            if ($h['pdelta'] === null) { echo '<span style="opacity:.4;">—</span>'; }
+                            else { $c = $h['pdelta'] > 0 ? '#1DB954' : ($h['pdelta'] < 0 ? '#F87171' : '#8B90A0'); echo '<span style="color:' . $c . ';">' . ($h['pdelta'] > 0 ? '+' : '') . (int) $h['pdelta'] . '</span>'; }
+                        ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php if (count($history) > 120) : ?><p class="description">Showing latest 120 days — full history in the CSV export.</p><?php endif; ?>
+        <?php else : ?>
+            <p>No snapshots yet. Hit "Capture today's numbers now" to record the first data point — then it builds daily.</p>
+        <?php endif; ?>
+
+        <h3>Seed historical data</h3>
+        <p class="description" style="max-width:820px;">Spotify's API can't tell us your past follower counts, so history starts the day you connect. If you have older numbers (a spreadsheet, S4A exports, screenshots), upload a CSV to backfill the charts. Format: <code>date,followers,popularity</code> — one row per day, e.g. <code>2026-06-01,58200,36</code>. Re-importing a date overwrites it.</p>
+        <form method="post" enctype="multipart/form-data">
+            <?php wp_nonce_field('lmeg_sp_history', 'lmeg_sp_nonce'); ?>
+            <input type="hidden" name="lmeg_action" value="import" />
+            <input type="file" name="csv" accept=".csv" required />
+            <button type="submit" class="button">Import CSV</button>
+        </form>
     </div>
     <?php
 }

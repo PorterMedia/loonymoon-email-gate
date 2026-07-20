@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.42.0
+Stable tag: 2.43.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.43.0 =
+* Spotify daily history: full day-by-day table (followers, popularity, day-over-day deltas) on the Spotify page. A snapshot is captured automatically each day.
+* "Capture today's numbers now" button — record a data point on demand instead of waiting for the daily cron.
+* CSV export of the whole history.
+* CSV import to seed historical data you have from elsewhere (spreadsheets, S4A exports) — format date,followers,popularity. Spotify's API can't backfill past followers, so this is the only way to get history before the connect date.
+
 = 2.42.0 =
 * Impact analysis on the Spotify page: correlates your initiatives (broadcasts + releases) with Spotify momentum — follower + popularity change in the 7 days after each, vs your baseline growth rate, alongside the clicks & revenue each broadcast drove.
 * Popularity (Spotify's 0-100 recent-stream-velocity score) used as the closest public proxy for streams; the API doesn't expose raw stream counts. Presented as directional, not causal.
