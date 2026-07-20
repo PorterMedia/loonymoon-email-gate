@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.35.0
+ * Version:     2.36.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.35.0');
-define('LMEG_DB_VERSION',  '2.35.0');
+define('LMEG_VERSION',     '2.36.0');
+define('LMEG_DB_VERSION',  '2.36.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -32,6 +32,7 @@ if (!defined('LMEG_GITHUB_REPO'))  define('LMEG_GITHUB_REPO',  'loonymoon-email-
 // Override in wp-config.php with: define('LMEG_UPDATE_INTERVAL_MINUTES', 15);
 if (!defined('LMEG_UPDATE_INTERVAL_MINUTES')) define('LMEG_UPDATE_INTERVAL_MINUTES', 2);
 
+require_once LMEG_PLUGIN_DIR . 'includes/security.php';
 require_once LMEG_PLUGIN_DIR . 'includes/tags.php';
 require_once LMEG_PLUGIN_DIR . 'includes/sending.php';
 require_once LMEG_PLUGIN_DIR . 'includes/sequences.php';
@@ -103,7 +104,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.35.0', '<')) {
+    if (version_compare($current, '2.36.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -647,16 +648,19 @@ function lmeg_maybe_handle_unsubscribe() {
  * Open + click tracking
  * ------------------------------------------------------------------------- */
 
-function lmeg_track_token($broadcast_id, $subscriber_id, $type) {
+function lmeg_track_token($broadcast_id, $subscriber_id, $type, $url = '') {
+    // Click tokens bind the destination URL into the HMAC so the redirect
+    // endpoint can't be repurposed as an open redirect (swapping ?u= for a
+    // phishing URL invalidates the signature).
     return substr(
-        hash_hmac('sha256', $broadcast_id . '|' . $subscriber_id . '|' . $type, lmeg_get_secret()),
+        hash_hmac('sha256', $broadcast_id . '|' . $subscriber_id . '|' . $type . '|' . $url, lmeg_get_secret()),
         0,
         16
     );
 }
 
-function lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token) {
-    return hash_equals(lmeg_track_token($broadcast_id, $subscriber_id, $type), (string) $token);
+function lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $url = '') {
+    return hash_equals(lmeg_track_token($broadcast_id, $subscriber_id, $type, $url), (string) $token);
 }
 
 function lmeg_track_open_url($broadcast_id, $subscriber_id) {
@@ -673,7 +677,7 @@ function lmeg_track_click_url($broadcast_id, $subscriber_id, $target_url) {
         'lmeg_track' => 'click',
         'b' => $broadcast_id,
         's' => $subscriber_id,
-        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'click'),
+        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'click', $target_url),
         'u' => rawurlencode($target_url),
     ], home_url('/'));
 }
@@ -688,7 +692,15 @@ function lmeg_maybe_handle_track() {
 
     // Silently reject invalid, but always finish the request nicely so a
     // failed pixel doesn't leave a broken image in the email client.
-    $valid = $broadcast_id && $subscriber_id && lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token);
+    $click_url = $type === 'click' && isset($_GET['u']) ? rawurldecode((string) $_GET['u']) : '';
+    $valid = $broadcast_id && $subscriber_id
+        && lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $type === 'click' ? $click_url : '');
+
+    // Replay cap — a leaked pixel/click URL can't be hammered into
+    // millions of event rows.
+    if ($valid && !lmeg_track_event_allowed($broadcast_id, $subscriber_id, $type)) {
+        $valid = false;
+    }
 
     if ($valid) {
         global $wpdb;
@@ -712,8 +724,15 @@ function lmeg_maybe_handle_track() {
     }
 
     if ($type === 'click') {
-        $target = isset($_GET['u']) ? rawurldecode($_GET['u']) : home_url('/');
-        wp_safe_redirect(esc_url_raw($target));
+        // Only follow the destination when the token (which binds the URL)
+        // verified — otherwise this endpoint would be an open redirect.
+        // wp_redirect (not _safe_) is correct here: destinations are external
+        // (Spotify, Shopify…) and the HMAC already guarantees integrity.
+        if ($valid && $click_url) {
+            wp_redirect(esc_url_raw($click_url), 302);
+        } else {
+            wp_safe_redirect(home_url('/'));
+        }
         exit;
     }
 
@@ -1042,6 +1061,10 @@ function lmeg_handle_submit() {
         exit;
     }
 
+    // Rate limit per network — stops scripted signup floods (and the Brevo
+    // quota burn from welcome emails they'd trigger).
+    lmeg_guard_signup();
+
     // Fast path: existing member clicking a tier button. The paywall
     // doesn't render an email input for signed-in members, so there's
     // nothing to validate — go straight to Stripe.
@@ -1082,7 +1105,7 @@ function lmeg_handle_submit() {
 
     if ($type === 'email') {
         $email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
-        if (!is_email($email)) {
+        if (!is_email($email) || !lmeg_email_domain_ok($email)) {
             wp_die('Please enter a valid email address.', 'Invalid email', [
                 'response' => 400, 'back_link' => true,
             ]);

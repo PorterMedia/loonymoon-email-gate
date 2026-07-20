@@ -185,6 +185,16 @@ function lmeg_send_magic_link($email) {
     if (!is_email($email)) {
         return new WP_Error('lmeg_bad_email', 'Please enter a valid email.');
     }
+
+    // Email-bombing protection: throttle per requesting IP and per target
+    // address. Silently pretend success when throttled — same response as
+    // an unknown address, so nothing about accounts or limits leaks.
+    $ip = function_exists('lmeg_client_ip') ? lmeg_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '0');
+    if (!lmeg_rate_limit('magic_ip_' . $ip, 5, HOUR_IN_SECONDS)
+        || !lmeg_rate_limit('magic_em_' . md5(strtolower($email)), 3, HOUR_IN_SECONDS)) {
+        return true;
+    }
+
     $sub = $wpdb->get_row($wpdb->prepare(
         "SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE email = %s",
         $email
