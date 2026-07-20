@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.45.0
+ * Version:     2.46.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.45.0');
-define('LMEG_DB_VERSION',  '2.45.0');
+define('LMEG_VERSION',     '2.46.0');
+define('LMEG_DB_VERSION',  '2.46.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -144,7 +144,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.45.0', '<')) {
+    if (version_compare($current, '2.46.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -255,12 +255,15 @@ function lmeg_create_tables() {
         broadcast_id BIGINT(20) UNSIGNED NOT NULL,
         subscriber_id BIGINT(20) UNSIGNED NOT NULL,
         event_type VARCHAR(10) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'broadcast',
+        source_ref BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         url VARCHAR(500) DEFAULT NULL,
         ip VARCHAR(45) DEFAULT NULL,
         user_agent VARCHAR(255) DEFAULT NULL,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         KEY idx_bcast_type (broadcast_id, event_type),
+        KEY idx_source (source, source_ref, event_type),
         KEY idx_sub (subscriber_id)
     ) $charset;");
 
@@ -329,6 +332,7 @@ function lmeg_create_tables() {
         subject VARCHAR(255) DEFAULT NULL,
         body_email LONGTEXT DEFAULT NULL,
         body_sms LONGTEXT DEFAULT NULL,
+        sends BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         PRIMARY KEY  (id),
         KEY idx_seq_pos (sequence_id, position)
     ) $charset;");
@@ -795,36 +799,41 @@ function lmeg_maybe_handle_unsubscribe() {
  * Open + click tracking
  * ------------------------------------------------------------------------- */
 
-function lmeg_track_token($broadcast_id, $subscriber_id, $type, $url = '') {
+function lmeg_track_token($broadcast_id, $subscriber_id, $type, $url = '', $source = 'broadcast', $ref = 0) {
     // Click tokens bind the destination URL into the HMAC so the redirect
     // endpoint can't be repurposed as an open redirect (swapping ?u= for a
-    // phishing URL invalidates the signature).
+    // phishing URL invalidates the signature). Source + ref let welcome and
+    // sequence-step emails be tracked distinctly from broadcasts.
     return substr(
-        hash_hmac('sha256', $broadcast_id . '|' . $subscriber_id . '|' . $type . '|' . $url, lmeg_get_secret()),
+        hash_hmac('sha256', $broadcast_id . '|' . $subscriber_id . '|' . $type . '|' . $url . '|' . $source . '|' . $ref, lmeg_get_secret()),
         0,
         16
     );
 }
 
-function lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $url = '') {
-    return hash_equals(lmeg_track_token($broadcast_id, $subscriber_id, $type, $url), (string) $token);
+function lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $url = '', $source = 'broadcast', $ref = 0) {
+    return hash_equals(lmeg_track_token($broadcast_id, $subscriber_id, $type, $url, $source, $ref), (string) $token);
 }
 
-function lmeg_track_open_url($broadcast_id, $subscriber_id) {
+function lmeg_track_open_url($broadcast_id, $subscriber_id, $source = 'broadcast', $ref = 0) {
     return add_query_arg([
         'lmeg_track' => 'open',
         'b' => $broadcast_id,
         's' => $subscriber_id,
-        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'open'),
+        'src' => $source,
+        'ref' => (int) $ref,
+        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'open', '', $source, $ref),
     ], home_url('/'));
 }
 
-function lmeg_track_click_url($broadcast_id, $subscriber_id, $target_url) {
+function lmeg_track_click_url($broadcast_id, $subscriber_id, $target_url, $source = 'broadcast', $ref = 0) {
     return add_query_arg([
         'lmeg_track' => 'click',
         'b' => $broadcast_id,
         's' => $subscriber_id,
-        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'click', $target_url),
+        'src' => $source,
+        'ref' => (int) $ref,
+        't' => lmeg_track_token($broadcast_id, $subscriber_id, 'click', $target_url, $source, $ref),
         'u' => rawurlencode($target_url),
     ], home_url('/'));
 }
@@ -836,16 +845,18 @@ function lmeg_maybe_handle_track() {
     $broadcast_id  = absint($_GET['b'] ?? 0);
     $subscriber_id = absint($_GET['s'] ?? 0);
     $token         = sanitize_text_field($_GET['t'] ?? '');
+    $source        = in_array($_GET['src'] ?? 'broadcast', ['broadcast', 'welcome', 'sequence'], true) ? $_GET['src'] : 'broadcast';
+    $ref           = absint($_GET['ref'] ?? 0);
 
     // Silently reject invalid, but always finish the request nicely so a
     // failed pixel doesn't leave a broken image in the email client.
     $click_url = $type === 'click' && isset($_GET['u']) ? rawurldecode((string) $_GET['u']) : '';
-    $valid = $broadcast_id && $subscriber_id
-        && lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $type === 'click' ? $click_url : '');
+    // Non-broadcast sources have subscriber but broadcast_id 0.
+    $valid = $subscriber_id
+        && lmeg_verify_track_token($broadcast_id, $subscriber_id, $type, $token, $type === 'click' ? $click_url : '', $source, $ref);
 
-    // Replay cap — a leaked pixel/click URL can't be hammered into
-    // millions of event rows.
-    if ($valid && !lmeg_track_event_allowed($broadcast_id, $subscriber_id, $type)) {
+    // Replay cap — a leaked pixel/click URL can't be hammered into event bloat.
+    if ($valid && !lmeg_track_event_allowed($broadcast_id . '-' . $source . '-' . $ref, $subscriber_id, $type)) {
         $valid = false;
     }
 
@@ -855,19 +866,23 @@ function lmeg_maybe_handle_track() {
             'broadcast_id'  => $broadcast_id,
             'subscriber_id' => $subscriber_id,
             'event_type'    => $type,
+            'source'        => $source,
+            'source_ref'    => $ref,
             'url'           => $type === 'click' ? substr((string) ($_GET['u'] ?? ''), 0, 500) : null,
             'ip'            => substr($_SERVER['REMOTE_ADDR']    ?? '', 0, 45),
             'user_agent'    => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
             'created_at'    => current_time('mysql'),
         ]);
 
-        // Stamp the log row for the first open / first click on this recipient.
-        $log_tbl = $wpdb->prefix . 'lmeg_broadcast_log';
-        $col     = $type === 'click' ? 'first_clicked_at' : 'opened_at';
-        $wpdb->query($wpdb->prepare(
-            "UPDATE $log_tbl SET $col = COALESCE($col, %s) WHERE broadcast_id = %d AND subscriber_id = %d",
-            current_time('mysql'), $broadcast_id, $subscriber_id
-        ));
+        // Only broadcasts have a per-recipient log row to stamp.
+        if ($source === 'broadcast' && $broadcast_id) {
+            $log_tbl = $wpdb->prefix . 'lmeg_broadcast_log';
+            $col     = $type === 'click' ? 'first_clicked_at' : 'opened_at';
+            $wpdb->query($wpdb->prepare(
+                "UPDATE $log_tbl SET $col = COALESCE($col, %s) WHERE broadcast_id = %d AND subscriber_id = %d",
+                current_time('mysql'), $broadcast_id, $subscriber_id
+            ));
+        }
     }
 
     if ($type === 'click') {
@@ -947,6 +962,10 @@ function lmeg_maybe_send_welcome($subscriber_id) {
 
     if (function_exists('lmeg_email_send')) {
         list($text, $html) = lmeg_build_email_with_footer($body, lmeg_unsub_url($sub->id, $sub->email));
+        // Track opens/clicks for the welcome email (source='welcome').
+        if (function_exists('lmeg_apply_tracking')) {
+            $html = lmeg_apply_tracking($html, 0, (int) $sub->id, 'welcome', 0);
+        }
         $result = lmeg_email_send($sub->email, $subject, $text, $html);
         if (!is_wp_error($result)) {
             $wpdb->update($wpdb->prefix . LMEG_TABLE,

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.45.0
+Stable tag: 2.46.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.46.0 =
+* Open/click analytics for welcome emails and sequence steps (previously only broadcasts were tracked). Tracking pixel + link rewriting now carry a source (broadcast/welcome/sequence) + ref, stored on events with a new source/source_ref column.
+* Sequences page: welcome-email stats card (sent / open% / click%) + per-step Sent/Opens/Clicks columns in each sequence.
+* Sequence steps count sends; UTM campaign on tracked links reflects the source (welcome, sequence-N).
+* Tracking token now binds source+ref too (security: welcome/sequence links can't be swapped for broadcast context).
+
 = 2.45.0 =
 * Fans list polish: tag chips now show short labels ("Email" not "Channel: Email", "Superfan" not "Fan type: Superfan") with modern Lucide-style SVG icons per family; full label on hover. Country chips show the ISO short code + flag (no redundant dot).
 * Type column: icon + label now on one line instead of wrapping.

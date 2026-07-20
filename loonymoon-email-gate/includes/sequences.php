@@ -148,16 +148,29 @@ function lmeg_process_sequence_tick() {
  * failed for one recipient.
  */
 function lmeg_send_sequence_step($sub, $step) {
+    global $wpdb;
     if ($sub->contact_type === 'email' && !empty($sub->email) && !empty($step->body_email)) {
         $subject   = lmeg_render_merge_tags((string) $step->subject, $sub);
         $body      = lmeg_render_merge_tags((string) $step->body_email, $sub);
         $unsub_url = lmeg_unsub_url((int) $sub->id, $sub->email);
         list($text, $html) = lmeg_build_email_with_footer($body, $unsub_url);
+        // Track opens/clicks per step (source='sequence', ref=step id).
+        if (function_exists('lmeg_apply_tracking')) {
+            $html = lmeg_apply_tracking($html, 0, (int) $sub->id, 'sequence', (int) $step->id);
+        }
         $r = lmeg_email_send($sub->email, $subject ?: '(no subject)', $text, $html);
-        if (is_wp_error($r)) error_log('[lmeg sequence] email send failed: ' . $r->get_error_message());
+        if (is_wp_error($r)) {
+            error_log('[lmeg sequence] email send failed: ' . $r->get_error_message());
+        } else {
+            $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_sequence_steps SET sends = sends + 1 WHERE id = %d", (int) $step->id));
+        }
     } elseif ($sub->contact_type === 'phone' && !empty($sub->phone) && !empty($step->body_sms)) {
         $body = lmeg_render_merge_tags((string) $step->body_sms, $sub);
         $r    = lmeg_twilio_send($sub->phone, $body);
-        if (is_wp_error($r)) error_log('[lmeg sequence] sms send failed: ' . $r->get_error_message());
+        if (is_wp_error($r)) {
+            error_log('[lmeg sequence] sms send failed: ' . $r->get_error_message());
+        } else {
+            $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_sequence_steps SET sends = sends + 1 WHERE id = %d", (int) $step->id));
+        }
     }
 }

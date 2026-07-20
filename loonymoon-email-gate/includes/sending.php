@@ -157,38 +157,50 @@ function lmeg_branded_email_html($body, $footer_html) {
  * Wrap every http(s) link in the HTML with a click-tracker redirect and
  * append a 1x1 tracking pixel. Only touches HTML; text remains untouched.
  */
-function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id) {
+function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id, $source = 'broadcast', $ref = 0) {
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+
+    // UTM campaign label reflects the source (broadcast-N, welcome, sequence-N).
+    $campaign = $source === 'broadcast' ? 'broadcast-' . (int) $broadcast_id
+              : ($source === 'sequence' ? 'sequence-' . (int) $ref : 'welcome');
 
     if (!empty($s['tracking_clicks'])) {
         $utm_source = sanitize_title($s['utm_source'] ?? '') ?: 'loonybin';
         $html = preg_replace_callback(
             '/href\s*=\s*(["\'])(https?:\/\/[^"\']+)\1/i',
-            function ($m) use ($broadcast_id, $subscriber_id, $utm_source) {
+            function ($m) use ($broadcast_id, $subscriber_id, $utm_source, $source, $ref, $campaign) {
                 $url = $m[2];
-                // Skip already-tokenised unsubscribe / tracker links.
                 if (strpos($url, 'lmeg_unsubscribe=') !== false || strpos($url, 'lmeg_track=') !== false) {
                     return $m[0];
                 }
-                // Tag the destination with campaign UTMs so shop analytics
-                // (Shopify etc.) can attribute traffic independently of our
-                // own click-window attribution.
                 $url = add_query_arg([
                     'utm_source'   => $utm_source,
                     'utm_medium'   => 'email',
-                    'utm_campaign' => 'broadcast-' . (int) $broadcast_id,
+                    'utm_campaign' => $campaign,
                 ], html_entity_decode($url));
-                return 'href=' . $m[1] . esc_url(lmeg_track_click_url($broadcast_id, $subscriber_id, $url)) . $m[1];
+                return 'href=' . $m[1] . esc_url(lmeg_track_click_url($broadcast_id, $subscriber_id, $url, $source, $ref)) . $m[1];
             },
             $html
         );
     }
 
     if (!empty($s['tracking_opens'])) {
-        $html .= '<img src="' . esc_url(lmeg_track_open_url($broadcast_id, $subscriber_id)) . '" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />';
+        $html .= '<img src="' . esc_url(lmeg_track_open_url($broadcast_id, $subscriber_id, $source, $ref)) . '" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />';
     }
 
     return $html;
+}
+
+/**
+ * Distinct opens + clicks for a non-broadcast email source (welcome, sequence).
+ * @return array ['opens'=>int, 'clicks'=>int]
+ */
+function lmeg_email_engagement($source, $ref = 0) {
+    global $wpdb;
+    $ev = $wpdb->prefix . 'lmeg_broadcast_events';
+    $opens  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE source=%s AND source_ref=%d AND event_type='open'",  $source, (int) $ref));
+    $clicks = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE source=%s AND source_ref=%d AND event_type='click'", $source, (int) $ref));
+    return ['opens' => $opens, 'clicks' => $clicks];
 }
 
 /* ---------------------------------------------------------------------------

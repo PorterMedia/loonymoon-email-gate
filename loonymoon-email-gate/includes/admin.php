@@ -1941,17 +1941,23 @@ function lmeg_admin_sequences() {
 
             <h2>Steps</h2>
             <table class="widefat striped">
-                <thead><tr><th>#</th><th>Delay</th><th>Subject</th><th>Email body</th><th>SMS body</th><th></th></tr></thead>
+                <thead><tr><th>#</th><th>Delay</th><th>Subject</th><th>Sent</th><th>Opens</th><th>Clicks</th><th></th></tr></thead>
                 <tbody>
                 <?php if (empty($steps)) : ?>
-                    <tr><td colspan="6">No steps yet — add one below.</td></tr>
-                <?php else : foreach ($steps as $step) : ?>
+                    <tr><td colspan="7">No steps yet — add one below.</td></tr>
+                <?php else : foreach ($steps as $step) :
+                    $eng  = function_exists('lmeg_email_engagement') ? lmeg_email_engagement('sequence', (int) $step->id) : ['opens'=>0,'clicks'=>0];
+                    $sent = (int) ($step->sends ?? 0);
+                    $orate = $sent ? round(100 * $eng['opens'] / $sent) : 0;
+                    $crate = $sent ? round(100 * $eng['clicks'] / $sent) : 0;
+                ?>
                     <tr>
                         <td><?php echo (int) $step->position; ?></td>
                         <td><?php echo (int) $step->delay_days; ?>d</td>
                         <td><?php echo esc_html($step->subject ?: '—'); ?></td>
-                        <td><?php echo esc_html(mb_substr((string) $step->body_email, 0, 60)); ?></td>
-                        <td><?php echo esc_html(mb_substr((string) $step->body_sms, 0, 60)); ?></td>
+                        <td><strong><?php echo $sent; ?></strong></td>
+                        <td><?php echo $eng['opens']; ?><?php echo $sent ? ' <span style="opacity:.5;">(' . $orate . '%)</span>' : ''; ?></td>
+                        <td><?php echo $eng['clicks']; ?><?php echo $sent ? ' <span style="opacity:.5;">(' . $crate . '%)</span>' : ''; ?></td>
                         <td>
                             <form method="post" onsubmit="return confirm('Delete step?');" style="display:inline;">
                                 <?php wp_nonce_field('lmeg_seqs', 'lmeg_seq_nonce'); ?>
@@ -1990,6 +1996,29 @@ function lmeg_admin_sequences() {
         <h1>Email Gate — Sequences</h1>
         <?php echo $notice; ?>
         <p>Automated multi-step journeys. Pick a trigger tag; every subscriber who receives that tag gets enrolled and works through the steps at the pace you set.</p>
+
+        <?php
+        // Welcome email analytics card.
+        $wsent = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE welcome_sent_at IS NOT NULL");
+        $weng  = function_exists('lmeg_email_engagement') ? lmeg_email_engagement('welcome', 0) : ['opens'=>0,'clicks'=>0];
+        $s_all = lmeg_get_settings();
+        $wo = $wsent ? round(100 * $weng['opens'] / $wsent) : 0;
+        $wc = $wsent ? round(100 * $weng['clicks'] / $wsent) : 0;
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;max-width:640px;margin:14px 0 6px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Welcome email</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo empty($s_all['welcome_enabled']) ? 'Off' : 'On'; ?></div>
+                <div class="lmeg-stat__hint"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Edit in Settings</a></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Sent</div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($wsent); ?></div>
+                <div class="lmeg-stat__hint">welcome emails</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Opens</div>
+                <div class="lmeg-stat__value"><?php echo (int) $weng['opens']; ?></div>
+                <div class="lmeg-stat__hint"><?php echo $wo; ?>% open rate</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Clicks</div>
+                <div class="lmeg-stat__value"><?php echo (int) $weng['clicks']; ?></div>
+                <div class="lmeg-stat__hint"><?php echo $wc; ?>% click rate</div></div>
+        </div>
         <p class="description" style="max-width:760px;">
             <strong>Recipes — trigger tag → journey:</strong><br />
             · <code>channel:email</code> → welcome series for every new email signup<br />
