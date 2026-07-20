@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.36.0
+Stable tag: 2.37.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.37.0 =
+* wp-login brute-force protection: failed attempts counted per IP (10/15min) and per username (5/15min); once over, further attempts are refused for 15 minutes before password checking runs. Successful login clears the counters. Tunable via lmeg_login_ip_limit / lmeg_login_user_limit filters.
+
 = 2.36.0 =
 * Security hardening release.
 * Signup rate limiting: 5 per 10 min + 30/day per IP (tunable via filters) — stops scripted signup floods and welcome-email quota burn.

@@ -94,3 +94,58 @@ function lmeg_track_event_allowed($broadcast_id, $subscriber_id, $type) {
         DAY_IN_SECONDS
     );
 }
+
+/* ---------------------------------------------------------------------------
+ * wp-login brute-force protection
+ *
+ * Counts failed logins per IP and per username; once over the limit, the
+ * authenticate filter refuses further attempts for the lockout window —
+ * BEFORE password checking, so credential-stuffing runs burn out fast.
+ * Successful login clears the counters for that IP.
+ *
+ * Tunables:
+ *   lmeg_login_ip_limit    (default 10 fails / 15 min per IP)
+ *   lmeg_login_user_limit  (default 5 fails / 15 min per username)
+ * ------------------------------------------------------------------------- */
+
+const LMEG_LOGIN_WINDOW = 15 * MINUTE_IN_SECONDS;
+
+function lmeg_login_fail_key($kind, $val) {
+    return 'lmeg_lf_' . $kind . '_' . md5(strtolower((string) $val));
+}
+
+add_action('wp_login_failed', 'lmeg_note_login_failure');
+function lmeg_note_login_failure($username) {
+    foreach ([
+        lmeg_login_fail_key('ip', lmeg_client_ip()),
+        lmeg_login_fail_key('user', $username),
+    ] as $key) {
+        $n = (int) get_transient($key);
+        set_transient($key, $n + 1, LMEG_LOGIN_WINDOW);
+    }
+}
+
+add_filter('authenticate', 'lmeg_block_locked_logins', 5, 3);
+function lmeg_block_locked_logins($user, $username, $password) {
+    if (empty($username)) return $user;
+
+    $ip_limit   = (int) apply_filters('lmeg_login_ip_limit', 10);
+    $user_limit = (int) apply_filters('lmeg_login_user_limit', 5);
+
+    $ip_fails   = (int) get_transient(lmeg_login_fail_key('ip', lmeg_client_ip()));
+    $user_fails = (int) get_transient(lmeg_login_fail_key('user', $username));
+
+    if ($ip_fails >= $ip_limit || $user_fails >= $user_limit) {
+        return new WP_Error(
+            'lmeg_locked_out',
+            'Too many failed login attempts. Please wait 15 minutes and try again.'
+        );
+    }
+    return $user;
+}
+
+add_action('wp_login', 'lmeg_clear_login_failures', 10, 1);
+function lmeg_clear_login_failures($username) {
+    delete_transient(lmeg_login_fail_key('ip', lmeg_client_ip()));
+    delete_transient(lmeg_login_fail_key('user', $username));
+}
