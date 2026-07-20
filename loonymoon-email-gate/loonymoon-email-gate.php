@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.37.0
+ * Version:     2.38.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.37.0');
-define('LMEG_DB_VERSION',  '2.37.0');
+define('LMEG_VERSION',     '2.38.0');
+define('LMEG_DB_VERSION',  '2.38.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -104,7 +104,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.37.0', '<')) {
+    if (version_compare($current, '2.38.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -1125,8 +1125,11 @@ function lmeg_handle_submit() {
 
     $address_iso = strtoupper(sanitize_text_field(wp_unslash($_POST['address_country'] ?? '')));
     $address_iso = preg_match('/^[A-Z]{2}$/', $address_iso) ? $address_iso : '';
-    // Country we record on the subscriber: prefer phone-country if SMS, else address-country.
+    // Country precedence: phone-country > address-country > IP geolocation.
     $country = $phone_country ?: $address_iso;
+    if (!$country && function_exists('lmeg_geo_country_current_request')) {
+        $country = lmeg_geo_country_current_request();
+    }
 
     $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
 
@@ -1251,7 +1254,7 @@ function lmeg_store_subscriber($data) {
             'region'       => $data['region'],
             'postal_code'  => $data['postal_code'],
             'post_id'      => $data['post_id'],
-            'ip'           => substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45),
+            'ip'           => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
             'user_agent'   => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
             'referrer'     => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
             'created_at'   => current_time('mysql'),

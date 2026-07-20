@@ -10,6 +10,78 @@ if (!defined('ABSPATH')) {
 }
 
 /* ---------------------------------------------------------------------------
+ * IP → country geolocation
+ *
+ * Fills the country gap for email signups (phone + address signups already
+ * carry a country). Order of precedence stays: phone country > address
+ * country > IP geo. Uses the Cloudflare country header when present (free,
+ * instant), else api.country.is (free, HTTPS, no key). Per-IP result cached
+ * a day; lookups fail silently.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_geo_country_from_ip($ip) {
+    if (!$ip || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return '';
+    }
+    $key    = 'lmeg_geo_' . md5($ip);
+    $cached = get_transient($key);
+    if ($cached !== false) {
+        return $cached === '-' ? '' : $cached;
+    }
+
+    $cc   = '';
+    $resp = wp_remote_get('https://api.country.is/' . rawurlencode($ip), ['timeout' => 2]);
+    if (!is_wp_error($resp) && wp_remote_retrieve_response_code($resp) === 200) {
+        $d = json_decode(wp_remote_retrieve_body($resp), true);
+        if (!empty($d['country']) && preg_match('/^[A-Z]{2}$/', strtoupper($d['country']))) {
+            $cc = strtoupper($d['country']);
+        }
+    }
+    set_transient($key, $cc ?: '-', DAY_IN_SECONDS);
+    return $cc;
+}
+
+/**
+ * Country for the CURRENT request — Cloudflare header first (free), then
+ * API lookup on the resolved client IP.
+ */
+function lmeg_geo_country_current_request() {
+    $cf = strtoupper((string) ($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ''));
+    if (preg_match('/^[A-Z]{2}$/', $cf) && $cf !== 'XX' && $cf !== 'T1') {
+        return $cf;
+    }
+    $ip = function_exists('lmeg_client_ip') ? lmeg_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '');
+    return lmeg_geo_country_from_ip($ip);
+}
+
+/**
+ * Backfill: existing subscribers with a stored IP but no country get
+ * geolocated in small batches (15 every 5 minutes) until the gap is closed.
+ * Re-applies auto-tags so country:* chips appear as rows fill in.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_geo_backfill', 60);
+function lmeg_geo_backfill() {
+    if (get_site_transient('lmeg_geo_bf_lock')) return;
+    set_site_transient('lmeg_geo_bf_lock', 1, 5 * MINUTE_IN_SECONDS);
+
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results(
+        "SELECT id, ip FROM $subs
+         WHERE (country IS NULL OR country = '') AND ip IS NOT NULL AND ip <> ''
+         ORDER BY id ASC LIMIT 15"
+    );
+    foreach ((array) $rows as $r) {
+        $cc = lmeg_geo_country_from_ip($r->ip);
+        if ($cc) {
+            $wpdb->update($subs, ['country' => $cc], ['id' => (int) $r->id]);
+            $fresh = $wpdb->get_row($wpdb->prepare("SELECT * FROM $subs WHERE id = %d", (int) $r->id));
+            if ($fresh) lmeg_apply_auto_tags($fresh);
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------------
  * Unique codes + referral links
  * ------------------------------------------------------------------------- */
 
