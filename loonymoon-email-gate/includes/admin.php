@@ -716,6 +716,16 @@ function lmeg_admin_compose() {
                         </div>
                         <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send. Leave empty to skip the email channel.</p>
 
+                        <p style="margin-top:10px;">
+                            <button type="button" class="button" id="lmeg-preview-btn">👁 Preview email in new tab</button>
+                            <span class="description" style="margin-left:8px;">Opens the branded email with sample merge values.</span>
+                        </p>
+                        <form id="lmeg-preview-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" target="lmeg_email_preview" style="display:none;">
+                            <input type="hidden" name="action" value="lmeg_preview_email" />
+                            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('lmeg_preview')); ?>" />
+                            <input type="hidden" name="body" id="lmeg-preview-body" value="" />
+                        </form>
+
                         <script>
                         // builder.js is enqueued in the footer, so defer init until the
                         // DOM (and that script) are ready — otherwise LMEGBuilder is undefined.
@@ -739,6 +749,24 @@ function lmeg_admin_compose() {
                                         richWrap.style.display = builder ? 'none' : '';
                                         if (b) b.sync();
                                     });
+                                });
+
+                                // Preview in a new tab — pull the body from whichever
+                                // editor is active, then submit the hidden form.
+                                var pvBtn = document.getElementById('lmeg-preview-btn');
+                                if (pvBtn) pvBtn.addEventListener('click', function(){
+                                    var builderActive = root.style.display !== 'none';
+                                    if (builderActive && b) {
+                                        b.sync(); // builder → #body_email (mirrors tinymce)
+                                    } else if (window.tinymce && tinymce.get('body_email')) {
+                                        try { tinymce.triggerSave(); } catch(e){} // rich → #body_email
+                                    }
+                                    var ta = document.getElementById('body_email');
+                                    document.getElementById('lmeg-preview-body').value = ta ? ta.value : '';
+                                    // Name + open the target window in the click handler so
+                                    // the browser doesn't treat it as a blocked popup.
+                                    window.open('', 'lmeg_email_preview');
+                                    document.getElementById('lmeg-preview-form').submit();
                                 });
                             }
                             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
@@ -1662,6 +1690,58 @@ function lmeg_ajax_audience_count() {
         ['email'   => $has_email, 'sms' => $has_sms]
     );
     wp_send_json_success(['count' => $count]);
+}
+
+/* ---------------------------------------------------------------------------
+ * Email preview — renders the current compose body through the real branded
+ * template and returns a full HTML document, opened in a new browser tab.
+ * Posted from the Compose page; sample merge values stand in for per-recipient
+ * data so the preview reads naturally.
+ * ------------------------------------------------------------------------- */
+
+add_action('wp_ajax_lmeg_preview_email', 'lmeg_ajax_preview_email');
+function lmeg_ajax_preview_email() {
+    if (!current_user_can('manage_options')) wp_die('Forbidden', 403);
+    check_admin_referer('lmeg_preview');
+
+    $body = isset($_POST['body']) ? wp_kses_post(wp_unslash($_POST['body'])) : '';
+    if (trim($body) === '') {
+        $body = '<p>(No email content yet — add some blocks or type something, then preview again.)</p>';
+    }
+
+    // Fill merge tags with sample values so the preview reads like a real send.
+    $samples = [
+        '{name}'          => 'Alex',
+        '{email}'         => 'alex@example.com',
+        '{unique_code}'   => 'LOONY-7Q2X',
+        '{referral_link}' => home_url('/?ref=LOONY-7Q2X'),
+        '{site_name}'     => get_bloginfo('name'),
+    ];
+    $body = str_replace(array_keys($samples), array_values($samples), $body);
+
+    $s      = lmeg_get_settings();
+    $footer = 'You&rsquo;re getting this because you subscribed at ' . esc_html(get_bloginfo('name'))
+            . '. <a href="#">Unsubscribe</a>';
+
+    if (!empty($s['email_template_enabled']) && function_exists('lmeg_branded_email_html')) {
+        $inner = lmeg_branded_email_html($body, $footer);
+    } else {
+        $inner = '<div style="max-width:600px;margin:0 auto;padding:24px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">' . $body . '</div>';
+    }
+
+    nocache_headers();
+    header('Content-Type: text/html; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+       . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+       . '<title>Email preview &mdash; ' . esc_html(get_bloginfo('name')) . '</title>'
+       . '<style>body{margin:0;background:#faf6f1;}'
+       . '.lmeg-pvbar{font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;background:#12141f;color:#f4f5f7;padding:11px 16px;text-align:center;}'
+       . '.lmeg-pvbar b{color:#d05fa2;}</style></head><body>'
+       . '<div class="lmeg-pvbar">Email preview &mdash; sample merge values shown. <b>Preview only, nothing was sent.</b></div>'
+       . $inner
+       . '</body></html>';
+    exit;
 }
 
 /* ---------------------------------------------------------------------------

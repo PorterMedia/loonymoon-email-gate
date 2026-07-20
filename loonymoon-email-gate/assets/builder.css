@@ -144,6 +144,9 @@
     gap: 7px;
     margin-top: 6px;
 }
+/* field panels + text toolbar only show for the selected block */
+.lmeg-bd-block:not(.is-selected) .lmeg-bd-fields,
+.lmeg-bd-block:not(.is-selected) .lmeg-bd-tb { display: none; }
 .lmeg-bd-fields label { font-size: 11px; font-weight: 600; color: #6a5f5a; display:block; margin-bottom: 2px; }
 .lmeg-bd-fields input[type=text], .lmeg-bd-fields input[type=url], .lmeg-bd-fields input[type=number] {
     width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d8ccc0;
