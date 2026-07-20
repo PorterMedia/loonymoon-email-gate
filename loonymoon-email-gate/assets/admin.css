@@ -490,7 +490,25 @@ body.lmeg-admin .lmeg-chip__count {
     font-variant-numeric: tabular-nums;
 }
 
-body.lmeg-admin .lmeg-chip--auto { font-style: italic; }
+body.lmeg-admin .lmeg-chip--auto { font-style: normal; }
+
+/* Chips with an SVG icon hide the default dot and show the icon instead. */
+body.lmeg-admin .lmeg-chip--icon::before { display: none; }
+body.lmeg-admin .lmeg-chip__ico {
+    flex: 0 0 auto;
+    opacity: 0.9;
+    margin-right: -1px;
+}
+
+/* Type column: icon + label on one line, vertically centered. */
+body.lmeg-admin .lmeg-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    color: var(--lmegA-text);
+}
+body.lmeg-admin .lmeg-type svg { flex: 0 0 auto; opacity: 0.7; }
 
 body.lmeg-admin .lmeg-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 

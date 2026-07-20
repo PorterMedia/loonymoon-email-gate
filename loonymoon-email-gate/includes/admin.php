@@ -113,12 +113,52 @@ function lmeg_admin_app_bar() {
  * Tag chip — render helper used across admin views
  * ------------------------------------------------------------------------- */
 
+/**
+ * Small inline SVG icon (Lucide-style, 14px, currentColor) per tag family.
+ * Returns '' when no icon applies (manual tags fall back to a colored dot).
+ */
+function lmeg_tag_icon_svg($slug) {
+    $slug = (string) $slug;
+    $svg = function ($inner) {
+        return '<svg class="lmeg-chip__ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $inner . '</svg>';
+    };
+    if (strpos($slug, 'channel:email') === 0) return $svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>');
+    if (strpos($slug, 'channel:phone') === 0) return $svg('<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>');
+    if (strpos($slug, 'channel:paid')  === 0) return $svg('<path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/>'); // star
+    if (strpos($slug, 'tier:')         === 0) return $svg('<path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/>');
+    if (strpos($slug, 'fan-type:superfan') === 0) return $svg('<path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/>');
+    if (strpos($slug, 'fan-type:engaged')  === 0) return $svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>'); // heart
+    if (strpos($slug, 'fan-type:casual')   === 0) return $svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>'); // user
+    if (strpos($slug, 'fan-type:dormant')  === 0) return $svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>'); // moon
+    if (strpos($slug, 'has-address')   === 0) return $svg('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>'); // home
+    if (strpos($slug, 'customer')      === 0) return $svg('<circle cx="9" cy="21" r="1"/><circle cx="18" cy="21" r="1"/><path d="M1 1h4l2.6 13H19l2-8H6"/>'); // cart
+    return '';
+}
+
 function lmeg_render_tag_chip($tag, $opts = []) {
     $color = esc_attr($tag->color ?? '#6b7280');
-    $name  = esc_html($tag->name ?? $tag->slug);
-    $auto  = !empty($tag->is_auto) ? ' lmeg-chip--auto" title="Auto-managed tag' : '';
-    $count = isset($opts['count']) ? ' <span class="lmeg-chip__count">' . (int) $opts['count'] . '</span>' : '';
-    return '<span class="lmeg-chip' . $auto . '" style="--lmeg-chip-color:' . $color . ';">' . $name . $count . '</span>';
+    $slug  = (string) ($tag->slug ?? '');
+    $raw   = (string) ($tag->name ?? $slug);
+
+    // Short label: country → ISO code + flag; else strip the "Family: " prefix.
+    $is_country = strpos($slug, 'country:') === 0;
+    if ($is_country) {
+        $iso   = strtoupper(substr($slug, 8));
+        $label = trim(lmeg_flag_emoji($iso) . ' ' . $iso);
+        $icon  = ''; // the flag emoji is the glyph
+    } else {
+        $label = (strpos($raw, ': ') !== false) ? substr($raw, strpos($raw, ': ') + 2) : $raw;
+        $icon  = lmeg_tag_icon_svg($slug);
+    }
+
+    // Hide the default dot whenever there's a glyph (svg icon OR the flag).
+    $has_glyph = ($icon || $is_country) ? ' lmeg-chip--icon' : '';
+    $auto_cls  = !empty($tag->is_auto) ? ' lmeg-chip--auto' : '';
+    $title     = esc_attr($raw); // full label on hover
+    $count     = isset($opts['count']) ? ' <span class="lmeg-chip__count">' . (int) $opts['count'] . '</span>' : '';
+
+    return '<span class="lmeg-chip' . $auto_cls . $has_glyph . '" style="--lmeg-chip-color:' . $color . ';" title="' . $title . '">'
+         . $icon . esc_html($label) . $count . '</span>';
 }
 
 /* ---------------------------------------------------------------------------
@@ -406,7 +446,13 @@ function lmeg_admin_subscribers() {
                     <tr<?php echo $r->unsubscribed_at ? ' style="opacity:.55;"' : ''; ?>>
                         <td class="check-column"><input type="checkbox" name="sub_ids[]" value="<?php echo (int) $r->id; ?>" /></td>
                         <td><?php echo $status_dot; ?></td>
-                        <td><?php echo $r->contact_type === 'phone' ? '📱 SMS' : '✉️ Email'; ?></td>
+                        <td><?php
+                            $is_sms = $r->contact_type === 'phone';
+                            $ico = $is_sms
+                                ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>'
+                                : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
+                            echo '<span class="lmeg-type">' . $ico . '<span>' . ($is_sms ? 'SMS' : 'Email') . '</span></span>';
+                        ?></td>
                         <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $r->id], admin_url('admin.php'))); ?>"><strong><?php echo esc_html($contact ?: '—'); ?></strong></a></td>
                         <td>
                             <?php $tags = $tags_by_sub[(int) $r->id] ?? []; ?>
@@ -429,7 +475,7 @@ function lmeg_admin_subscribers() {
                                 —
                             <?php endif; ?>
                         </td>
-                        <td><?php echo esc_html($r->created_at); ?></td>
+                        <td><span title="<?php echo esc_attr($r->created_at); ?>"><?php echo esc_html(date_i18n('M j, Y', strtotime($r->created_at))); ?></span></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
