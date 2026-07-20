@@ -86,8 +86,8 @@ function lmeg_admin_app_bar() {
         'lmeg-broadcasts' => 'Broadcasts',
         'lmeg-shop'       => 'Revenue',
         'lmeg-members'    => 'Members',
-        'lmeg-smartlinks' => 'Smartlinks',
-        'lmeg-sequences'  => 'Sequences',
+        'lmeg-spotify'    => 'Spotify',
+        'lmeg-ai'         => 'Ask AI',
         'lmeg-settings'   => 'Settings',
     ];
     ?>
@@ -1096,6 +1096,13 @@ function lmeg_admin_settings() {
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
             'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
+            // Spotify analytics
+            'spotify_client_id'       => sanitize_text_field(wp_unslash($_POST['spotify_client_id'] ?? '')),
+            'spotify_client_secret'   => sanitize_text_field(wp_unslash($_POST['spotify_client_secret'] ?? '')),
+            'spotify_artist_id'       => sanitize_text_field(wp_unslash($_POST['spotify_artist_id'] ?? '')),
+            // AI assistant
+            'ai_api_key'              => sanitize_text_field(wp_unslash($_POST['ai_api_key'] ?? '')),
+            'ai_model'                => sanitize_text_field(wp_unslash($_POST['ai_model'] ?? '')) ?: 'claude-haiku-4-5-20251001',
             // Instagram DM automation
             'ig_app_secret'           => sanitize_text_field(wp_unslash($_POST['ig_app_secret'] ?? '')),
             'ig_page_token'           => sanitize_text_field(wp_unslash($_POST['ig_page_token'] ?? '')),
@@ -1143,6 +1150,16 @@ function lmeg_admin_settings() {
                 $r = lmeg_ig_verify();
                 $verify_notice = is_wp_error($r)
                     ? '<div class="notice notice-error"><p>' . esc_html($r->get_error_message()) . '</p></div>'
+                    : '<div class="notice notice-success"><p>' . esc_html($r) . '</p></div>';
+            } elseif ($_POST['lmeg_test'] === 'spotify') {
+                $r = lmeg_spotify_verify();
+                $verify_notice = is_wp_error($r)
+                    ? '<div class="notice notice-error"><p>Spotify: ' . esc_html($r->get_error_message()) . '</p></div>'
+                    : '<div class="notice notice-success"><p>Spotify: ' . esc_html($r) . '</p></div>';
+            } elseif ($_POST['lmeg_test'] === 'ai') {
+                $r = lmeg_ai_verify();
+                $verify_notice = is_wp_error($r)
+                    ? '<div class="notice notice-error"><p>AI: ' . esc_html($r->get_error_message()) . '</p></div>'
                     : '<div class="notice notice-success"><p>' . esc_html($r) . '</p></div>';
             }
         }
@@ -1284,6 +1301,32 @@ function lmeg_admin_settings() {
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="twilio" class="button">Save &amp; test Twilio</button>
                         <p class="description">Hits Twilio's account endpoint with your saved credentials and reports the result above.</p></td></tr>
+            </table>
+
+            <h2>Spotify (analytics)</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="spotify_client_id">Client ID</label></th>
+                    <td><input type="text" name="spotify_client_id" id="spotify_client_id" class="regular-text" value="<?php echo esc_attr($s['spotify_client_id'] ?? ''); ?>" autocomplete="off" />
+                        <p class="description">From a free app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a>. Artist stats need no special access.</p></td></tr>
+                <tr><th><label for="spotify_client_secret">Client secret</label></th>
+                    <td><input type="password" name="spotify_client_secret" id="spotify_client_secret" class="regular-text" value="<?php echo esc_attr($s['spotify_client_secret'] ?? ''); ?>" autocomplete="off" /></td></tr>
+                <tr><th><label for="spotify_artist_id">Artist ID</label></th>
+                    <td><input type="text" name="spotify_artist_id" id="spotify_artist_id" class="regular-text" value="<?php echo esc_attr($s['spotify_artist_id'] ?? ''); ?>" placeholder="e.g. 6M2wZ9GZgrQXHCFfjv46we" />
+                        <p class="description">The ID in your artist page URL: open.spotify.com/artist/<strong>&lt;this&gt;</strong>.</p></td></tr>
+                <tr><th>Test connection</th>
+                    <td><button type="submit" name="lmeg_test" value="spotify" class="button">Save &amp; test Spotify</button></td></tr>
+            </table>
+
+            <h2>AI assistant</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="ai_api_key">Anthropic API key</label></th>
+                    <td><input type="password" name="ai_api_key" id="ai_api_key" class="regular-text" value="<?php echo esc_attr($s['ai_api_key'] ?? ''); ?>" autocomplete="off" placeholder="sk-ant-..." />
+                        <p class="description">From <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>. Powers the "Ask AI" page — answers questions from your own plugin data.</p></td></tr>
+                <tr><th><label for="ai_model">Model</label></th>
+                    <td><input type="text" name="ai_model" id="ai_model" class="regular-text" value="<?php echo esc_attr($s['ai_model'] ?? 'claude-haiku-4-5-20251001'); ?>" />
+                        <p class="description">Default <code>claude-haiku-4-5-20251001</code> (fast + cheap). Swap for a larger model if you want deeper analysis.</p></td></tr>
+                <tr><th>Test connection</th>
+                    <td><button type="submit" name="lmeg_test" value="ai" class="button">Save &amp; test AI</button></td></tr>
             </table>
 
             <h2>Instagram (DM automation)</h2>
