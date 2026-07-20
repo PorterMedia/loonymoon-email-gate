@@ -120,11 +120,15 @@
 .lmeg-bd-ctl--drag { cursor: grab; }
 .lmeg-bd-ctl--del:hover { color: #F87171; }
 
-/* drop indicator */
-.lmeg-bd-drop {
-    height: 3px; margin: 2px 8px; border-radius: 3px; background: transparent;
+/* moving drop indicator line (inserted between blocks during a drag) */
+.lmeg-bd-indicator {
+    height: 4px;
+    margin: 2px 6px;
+    border-radius: 4px;
+    background: var(--bd-accent);
+    box-shadow: 0 0 8px rgba(208,95,162,.6);
+    pointer-events: none;
 }
-.lmeg-bd-drop.is-over { background: var(--bd-accent); }
 
 /* editable content look inside sheet */
 .lmeg-bd-block [contenteditable] { outline: none; }
@@ -149,25 +153,23 @@
 .lmeg-bd-fields .row > div { flex: 1; }
 .lmeg-bd-fields button { justify-self: start; }
 
-/* text block mini toolbar */
+/* text block mini toolbar — in-flow bar ABOVE the text (never overlaps writing) */
 .lmeg-bd-tb {
-    display: none;
+    display: flex;
     gap: 2px;
+    align-items: center;
     background: #1a1d2b;
     border: 1px solid var(--bd-border);
     border-radius: 7px;
     padding: 3px;
-    position: absolute;
-    top: -12px; left: 8px;
-    z-index: 3;
+    margin: 2px 0 6px;
 }
-.lmeg-bd-block.is-selected .lmeg-bd-tb { display: flex; }
 .lmeg-bd-tb button {
-    min-width: 26px; height: 24px; padding: 0 6px; background: transparent; border: 0;
+    min-width: 28px; height: 26px; padding: 0 7px; background: transparent; border: 0;
     color: var(--bd-muted); border-radius: 5px; cursor: pointer; font-size: 13px;
 }
 .lmeg-bd-tb button:hover { background: rgba(255,255,255,.08); color: #fff; }
-.lmeg-bd-tb select { background:#12141F; color:#F4F5F7; border:1px solid var(--bd-border); border-radius:5px; font-size:12px; }
+.lmeg-bd-tb select { background:#12141F; color:#F4F5F7; border:1px solid var(--bd-border); border-radius:5px; font-size:12px; height:26px; margin-left:4px; }
 
 /* mode switch */
 .lmeg-bd-modes { display:flex; gap:4px; margin-bottom:10px; }

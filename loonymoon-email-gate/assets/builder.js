@@ -28,7 +28,8 @@
         this.textarea = document.getElementById(textareaId);
         this.blocks = [];
         this.selected = null;
-        this.dragIndex = null;
+        this.dragId = null;      // id of block being reordered
+        this.newType = null;     // type being dragged from palette
         this.build();
         this.seedFromTextarea();
         this.render();
@@ -48,7 +49,8 @@
             b.dataset.type = type;
             b.innerHTML = svg(BLOCKS[type].icon) + '<span>' + BLOCKS[type].label + '</span>';
             b.addEventListener('click', function () { self.addBlock(type); });
-            b.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/lmeg-new', type); self.dragIndex = null; });
+            b.addEventListener('dragstart', function (e) { self.newType = type; self.dragId = null; e.dataTransfer.effectAllowed = 'copy'; try { e.dataTransfer.setData('text/plain', 'new:' + type); } catch (x) {} });
+            b.addEventListener('dragend', function () { self.newType = null; self.clearIndicator(); });
             pal.appendChild(b);
         });
         // canvas
@@ -59,9 +61,68 @@
         canvas.appendChild(sheet);
         this.sheet = sheet;
 
+        // moving placeholder line
+        this.indicator = document.createElement('div');
+        this.indicator.className = 'lmeg-bd-indicator';
+
+        // sheet-wide drag handling — forgiving: drop anywhere, we compute the gap.
+        sheet.addEventListener('dragover', function (e) {
+            if (self.dragId == null && self.newType == null) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = self.newType ? 'copy' : 'move';
+            self.positionIndicator(e.clientY);
+        });
+        sheet.addEventListener('drop', function (e) {
+            if (self.dragId == null && self.newType == null) return;
+            e.preventDefault();
+            var index = self.indicatorIndex();
+            if (self.newType) {
+                self.addBlock(self.newType, index);
+                self.newType = null;
+            } else if (self.dragId != null) {
+                self.moveTo(self.dragId, index);
+                self.dragId = null;
+            }
+            self.clearIndicator();
+        });
+
         this.root.classList.add('lmeg-builder');
         this.root.appendChild(pal);
         this.root.appendChild(canvas);
+    };
+
+    // ---- drag indicator helpers ----
+    Builder.prototype.blockEls = function () {
+        return Array.prototype.slice.call(this.sheet.querySelectorAll('.lmeg-bd-block'));
+    };
+    Builder.prototype.positionIndicator = function (clientY) {
+        var els = this.blockEls();
+        if (!els.length) { this.sheet.appendChild(this.indicator); return; }
+        var placed = false;
+        for (var i = 0; i < els.length; i++) {
+            var r = els[i].getBoundingClientRect();
+            if (clientY < r.top + r.height / 2) {
+                this.sheet.insertBefore(this.indicator, els[i]);
+                placed = true; break;
+            }
+        }
+        if (!placed) {
+            var last = els[els.length - 1];
+            if (last.nextSibling) this.sheet.insertBefore(this.indicator, last.nextSibling);
+            else this.sheet.appendChild(this.indicator);
+        }
+    };
+    Builder.prototype.indicatorIndex = function () {
+        // count block elements before the indicator
+        var idx = 0, n = this.sheet.childNodes;
+        for (var i = 0; i < n.length; i++) {
+            if (n[i] === this.indicator) break;
+            if (n[i].classList && n[i].classList.contains('lmeg-bd-block')) idx++;
+        }
+        return idx;
+    };
+    Builder.prototype.clearIndicator = function () {
+        if (this.indicator && this.indicator.parentNode) this.indicator.parentNode.removeChild(this.indicator);
     };
 
     Builder.prototype.addBlock = function (type, atIndex) {
@@ -69,28 +130,33 @@
         if (atIndex == null || atIndex < 0 || atIndex > this.blocks.length) this.blocks.push(block);
         else this.blocks.splice(atIndex, 0, block);
         this.selected = block.id;
-        this.render();
-        this.sync();
+        this.render(); this.sync();
     };
-
     Builder.prototype.remove = function (id) {
         this.blocks = this.blocks.filter(function (b) { return b.id !== id; });
         this.render(); this.sync();
     };
     Builder.prototype.duplicate = function (id) {
-        var i = this.blocks.findIndex(function (b) { return b.id === id; });
-        if (i < 0) return;
+        var i = this.indexOf(id); if (i < 0) return;
         var copy = { id: nid(), type: this.blocks[i].type, data: JSON.parse(JSON.stringify(this.blocks[i].data)) };
         this.blocks.splice(i + 1, 0, copy);
         this.render(); this.sync();
     };
     Builder.prototype.move = function (id, dir) {
-        var i = this.blocks.findIndex(function (b) { return b.id === id; });
-        var j = i + dir;
+        var i = this.indexOf(id), j = i + dir;
         if (i < 0 || j < 0 || j >= this.blocks.length) return;
         var t = this.blocks[i]; this.blocks[i] = this.blocks[j]; this.blocks[j] = t;
         this.render(); this.sync();
     };
+    Builder.prototype.moveTo = function (id, index) {
+        var from = this.indexOf(id); if (from < 0) return;
+        var b = this.blocks.splice(from, 1)[0];
+        if (from < index) index -= 1;
+        if (index < 0) index = 0; if (index > this.blocks.length) index = this.blocks.length;
+        this.blocks.splice(index, 0, b);
+        this.render(); this.sync();
+    };
+    Builder.prototype.indexOf = function (id) { return this.blocks.findIndex(function (b) { return b.id === id; }); };
 
     Builder.prototype.render = function () {
         var self = this;
@@ -98,50 +164,24 @@
         if (!this.blocks.length) {
             var e = document.createElement('div');
             e.className = 'lmeg-bd-empty';
-            e.textContent = 'Click or drag a block from the left to start building.';
+            e.textContent = 'Click a block on the left to add it — then drag blocks to reorder.';
             this.sheet.appendChild(e);
             return;
         }
-        this.blocks.forEach(function (block, idx) {
-            self.sheet.appendChild(self.dropZone(idx));
-            self.sheet.appendChild(self.renderBlock(block, idx));
-        });
-        this.sheet.appendChild(this.dropZone(this.blocks.length));
+        this.blocks.forEach(function (block) { self.sheet.appendChild(self.renderBlock(block)); });
     };
 
-    Builder.prototype.dropZone = function (index) {
-        var self = this;
-        var dz = document.createElement('div');
-        dz.className = 'lmeg-bd-drop';
-        dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('is-over'); });
-        dz.addEventListener('dragleave', function () { dz.classList.remove('is-over'); });
-        dz.addEventListener('drop', function (e) {
-            e.preventDefault(); dz.classList.remove('is-over');
-            var newType = e.dataTransfer.getData('text/lmeg-new');
-            if (newType) { self.addBlock(newType, index); return; }
-            if (self.dragIndex != null) {
-                var from = self.dragIndex, to = index;
-                var b = self.blocks.splice(from, 1)[0];
-                if (from < to) to -= 1;
-                self.blocks.splice(to, 0, b);
-                self.dragIndex = null;
-                self.render(); self.sync();
-            }
-        });
-        return dz;
-    };
-
-    Builder.prototype.renderBlock = function (block, idx) {
+    Builder.prototype.renderBlock = function (block) {
         var self = this;
         var wrap = document.createElement('div');
         wrap.className = 'lmeg-bd-block' + (this.selected === block.id ? ' is-selected' : '');
         wrap.dataset.id = block.id;
         wrap.addEventListener('click', function (e) { e.stopPropagation(); self.select(block.id); });
 
-        // drag reorder
-        wrap.setAttribute('draggable', 'true');
-        wrap.addEventListener('dragstart', function (e) { self.dragIndex = idx; wrap.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; });
-        wrap.addEventListener('dragend', function () { wrap.classList.remove('is-dragging'); });
+        // Only the handle initiates a drag — so text editing never triggers one.
+        wrap.setAttribute('draggable', 'false');
+        wrap.addEventListener('dragstart', function (e) { self.dragId = block.id; wrap.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'move:' + block.id); } catch (x) {} });
+        wrap.addEventListener('dragend', function () { wrap.classList.remove('is-dragging'); wrap.setAttribute('draggable', 'false'); self.dragId = null; self.clearIndicator(); });
 
         // control bar
         var bar = document.createElement('div');
@@ -161,6 +201,10 @@
             else if (a === 'dup') self.duplicate(block.id);
             else if (a === 'del') self.remove(block.id);
         });
+        // drag handle enables dragging only while pressed
+        var handle = bar.querySelector('.lmeg-bd-ctl--drag');
+        handle.addEventListener('mousedown', function () { wrap.setAttribute('draggable', 'true'); });
+        handle.addEventListener('mouseup', function () { setTimeout(function () { wrap.setAttribute('draggable', 'false'); }, 50); });
         wrap.appendChild(bar);
 
         var inner = document.createElement('div');
@@ -181,33 +225,37 @@
         inner.appendChild(h);
     };
 
-    Builder.prototype.render_text = function (block, inner, wrap) {
+    Builder.prototype.render_text = function (block, inner) {
         var self = this;
-        // mini toolbar
-        var tb = document.createElement('div');
-        tb.className = 'lmeg-bd-tb';
-        tb.innerHTML =
-            '<button type="button" data-c="bold"><b>B</b></button>' +
-            '<button type="button" data-c="italic"><i>I</i></button>' +
-            '<button type="button" data-c="link">🔗</button>';
-        var mt = document.createElement('select');
-        mt.innerHTML = '<option value="">merge…</option>' +
-            ['{name}','{email}','{unique_code}','{referral_link}','{site_name}'].map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
-        tb.appendChild(mt);
-        tb.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep selection
-        tb.addEventListener('click', function (e) {
-            var b = e.target.closest('button'); if (!b) return;
-            e.stopPropagation();
-            if (b.dataset.c === 'link') { var u = prompt('Link URL:', 'https://'); if (u) document.execCommand('createLink', false, u); }
-            else document.execCommand(b.dataset.c, false, null);
-            block.data.html = body.innerHTML; self.sync();
-        });
-        mt.addEventListener('change', function () {
-            if (!mt.value) return;
-            document.execCommand('insertText', false, mt.value);
-            mt.value = ''; block.data.html = body.innerHTML; self.sync();
-        });
-        wrap.appendChild(tb);
+        // in-flow toolbar ABOVE the text (only when selected) so it never overlaps writing
+        if (this.selected === block.id) {
+            var tb = document.createElement('div');
+            tb.className = 'lmeg-bd-tb';
+            tb.innerHTML =
+                '<button type="button" data-c="bold" title="Bold"><b>B</b></button>' +
+                '<button type="button" data-c="italic" title="Italic"><i>I</i></button>' +
+                '<button type="button" data-c="link" title="Insert link">🔗</button>';
+            var mt = document.createElement('select');
+            mt.title = 'Insert merge tag';
+            mt.innerHTML = '<option value="">Insert merge tag…</option>' +
+                ['{name}','{email}','{unique_code}','{referral_link}','{site_name}'].map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+            tb.appendChild(mt);
+            tb.addEventListener('mousedown', function (e) { if (e.target.tagName !== 'SELECT') e.preventDefault(); });
+            tb.addEventListener('click', function (e) {
+                var b = e.target.closest('button'); if (!b) return;
+                e.stopPropagation();
+                if (b.dataset.c === 'link') { var u = prompt('Link URL:', 'https://'); if (u) document.execCommand('createLink', false, u); }
+                else document.execCommand(b.dataset.c, false, null);
+                block.data.html = body.innerHTML; self.sync();
+            });
+            mt.addEventListener('change', function () {
+                if (!mt.value) return;
+                body.focus();
+                document.execCommand('insertText', false, mt.value);
+                mt.value = ''; block.data.html = body.innerHTML; self.sync();
+            });
+            inner.appendChild(tb);
+        }
 
         var body = document.createElement('div');
         body.style.cssText = 'margin:6px 0;font-size:16px;line-height:1.65;color:#2f2a2c;min-height:1.4em;';
@@ -231,9 +279,9 @@
             f.addEventListener('click', function (e) { e.stopPropagation(); });
             f.innerHTML =
                 '<div><button type="button" class="button lmeg-bd-pick">Choose from Media Library</button></div>' +
-                '<div><label>Image URL</label><input type="url" data-k="src" value="' + esc(block.data.src) + '"></div>' +
-                '<div class="row"><div><label>Alt text</label><input type="text" data-k="alt" value="' + esc(block.data.alt) + '"></div>' +
-                '<div><label>Link (optional)</label><input type="url" data-k="href" value="' + esc(block.data.href) + '"></div></div>';
+                '<div><label>Image URL</label><input type="url" data-k="src" placeholder="https://…/image.jpg" value="' + esc(block.data.src) + '"></div>' +
+                '<div><label>Alt text (shown if image can\'t load)</label><input type="text" data-k="alt" placeholder="Describe the image" value="' + esc(block.data.alt) + '"></div>' +
+                '<div><label>Link when clicked (optional)</label><input type="url" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>';
             f.querySelectorAll('input').forEach(function (inp) {
                 inp.addEventListener('input', function () { block.data[inp.dataset.k] = inp.value; if (inp.dataset.k === 'src') img.src = inp.value; self.sync(); });
             });
@@ -268,9 +316,9 @@
             f.className = 'lmeg-bd-fields';
             f.addEventListener('click', function (e) { e.stopPropagation(); });
             f.innerHTML =
-                '<div class="row"><div><label>Label</label><input type="text" data-k="label" value="' + esc(block.data.label) + '"></div>' +
-                '<div><label>Color</label><input type="text" data-k="color" value="' + esc(block.data.color || accent) + '"></div></div>' +
-                '<div><label>Link URL</label><input type="url" data-k="href" value="' + esc(block.data.href) + '"></div>';
+                '<div><label>Button label</label><input type="text" data-k="label" value="' + esc(block.data.label) + '"></div>' +
+                '<div><label>Link URL</label><input type="url" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>' +
+                '<div><label>Button color (hex)</label><input type="text" data-k="color" placeholder="' + accent + '" value="' + esc(block.data.color || accent) + '"></div>';
             f.querySelectorAll('input').forEach(function (inp) {
                 inp.addEventListener('input', function () {
                     block.data[inp.dataset.k] = inp.value;
@@ -305,9 +353,7 @@
         }
     };
 
-    Builder.prototype.select = function (id) {
-        this.selected = id; this.render();
-    };
+    Builder.prototype.select = function (id) { this.selected = id; this.render(); };
 
     // ---- serialize to email-safe HTML ----
     Builder.prototype.toHtml = function () {
@@ -337,15 +383,13 @@
     Builder.prototype.sync = function () {
         var html = this.toHtml();
         if (this.textarea) this.textarea.value = html;
-        if (window.tinymce && tinymce.get(this.textarea && this.textarea.id)) {
+        if (window.tinymce && this.textarea && tinymce.get(this.textarea.id)) {
             try { tinymce.get(this.textarea.id).setContent(html); } catch (e) {}
         }
-        // stash blocks JSON on a sibling hidden input if present
-        var store = document.getElementById(this.textarea.id + '_blocks');
+        var store = this.textarea ? document.getElementById(this.textarea.id + '_blocks') : null;
         if (store) store.value = JSON.stringify(this.blocks);
     };
 
-    // Hydrate from a previously-saved blocks JSON if present; else start empty.
     Builder.prototype.seedFromTextarea = function () {
         var store = this.textarea ? document.getElementById(this.textarea.id + '_blocks') : null;
         if (store && store.value) {
@@ -361,7 +405,6 @@
     window.LMEGBuilder = {
         init: function (root, textareaId) {
             if (!root) return null;
-            // deselect on canvas background click
             var b = new Builder(root, textareaId);
             root.addEventListener('click', function () { b.selected = null; b.render(); });
             return b;
