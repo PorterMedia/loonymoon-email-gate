@@ -1125,6 +1125,19 @@ function lmeg_admin_settings() {
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
             'magic_link_body'         => sanitize_textarea_field(wp_unslash($_POST['magic_link_body'] ?? '')),
         ];
+        // Don't persist config-managed credentials (the locked fields submit a
+        // masked placeholder) — keep whatever the DB had; the config overlay
+        // supplies the real value on read regardless.
+        if (function_exists('lmeg_env_managed_keys')) {
+            $existing = get_option(LMEG_OPTION, []);
+            foreach (lmeg_env_managed_keys() as $k) {
+                if (is_array($existing) && array_key_exists($k, $existing)) {
+                    $new[$k] = $existing[$k];
+                } else {
+                    unset($new[$k]);
+                }
+            }
+        }
         update_option(LMEG_OPTION, $new);
         echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
 
@@ -1171,6 +1184,15 @@ function lmeg_admin_settings() {
     ?>
     <div class="wrap">
         <h1>Email Gate — Settings</h1>
+
+        <?php
+        $env_keys = function_exists('lmeg_env_managed_keys') ? lmeg_env_managed_keys() : [];
+        if ($env_keys) : ?>
+            <div class="notice notice-info" style="max-width:820px;">
+                <p><strong><?php echo count($env_keys); ?> credential<?php echo count($env_keys) === 1 ? '' : 's'; ?> loaded from wp-config/.env</strong> — those fields are locked here and managed in config, so you never re-enter them per site. Per-artist values (Spotify artist ID, Shopify store, from-addresses) stay editable below.</p>
+            </div>
+        <?php endif; ?>
+
         <form method="post">
             <?php wp_nonce_field('lmeg_settings', 'lmeg_settings_nonce'); ?>
 
@@ -1474,6 +1496,41 @@ function lmeg_admin_settings() {
         </form>
         <hr />
         <p><em>Logged-in editors and admins always see the full post content (handy for previewing without unlocking).</em></p>
+
+        <?php
+        // Map setting keys → the input name(s) in this form so JS can lock them.
+        $env_field_names = [
+            'spotify_client_id' => 'spotify_client_id', 'spotify_client_secret' => 'spotify_client_secret',
+            'ai_api_key' => 'ai_api_key', 'ai_model' => 'ai_model',
+            'brevo_api_key' => 'brevo_api_key',
+            'twilio_account_sid' => 'twilio_account_sid', 'twilio_auth_token' => 'twilio_auth_token', 'twilio_from_number' => 'twilio_from_number',
+            'stripe_test_sk' => 'stripe_test_sk', 'stripe_test_pk' => 'stripe_test_pk', 'stripe_test_webhook_sec' => 'stripe_test_webhook_sec',
+            'stripe_live_sk' => 'stripe_live_sk', 'stripe_live_pk' => 'stripe_live_pk', 'stripe_live_webhook_sec' => 'stripe_live_webhook_sec',
+            'ig_app_secret' => 'ig_app_secret', 'ig_page_token' => 'ig_page_token',
+            'shopify_admin_token' => 'shopify_admin_token',
+        ];
+        $locked = [];
+        foreach ($env_keys as $k) {
+            if (isset($env_field_names[$k])) $locked[] = $env_field_names[$k];
+        }
+        if ($locked) : ?>
+            <script>
+            (function(){
+                var locked = <?php echo wp_json_encode($locked); ?>;
+                locked.forEach(function(name){
+                    var el = document.querySelector('[name="'+name+'"]');
+                    if(!el) return;
+                    el.readOnly = true;
+                    el.style.opacity = '.6';
+                    el.value = el.value || '••••••••';
+                    var badge = document.createElement('span');
+                    badge.textContent = ' 🔒 from wp-config/.env';
+                    badge.style.cssText = 'margin-left:8px;font-size:12px;color:#8B90A0;';
+                    if(el.parentNode) el.parentNode.insertBefore(badge, el.nextSibling);
+                });
+            })();
+            </script>
+        <?php endif; ?>
     </div>
     <?php
 }

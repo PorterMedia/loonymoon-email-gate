@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.40.0
+ * Version:     2.41.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.40.0');
-define('LMEG_DB_VERSION',  '2.40.0');
+define('LMEG_VERSION',     '2.41.0');
+define('LMEG_DB_VERSION',  '2.41.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -31,6 +31,43 @@ if (!defined('LMEG_GITHUB_REPO'))  define('LMEG_GITHUB_REPO',  'loonymoon-email-
 // How often WP re-checks GitHub for a new release, in minutes.
 // Override in wp-config.php with: define('LMEG_UPDATE_INTERVAL_MINUTES', 15);
 if (!defined('LMEG_UPDATE_INTERVAL_MINUTES')) define('LMEG_UPDATE_INTERVAL_MINUTES', 2);
+
+/**
+ * Optionally load shared credentials from a .env file so they don't have to
+ * be re-entered in each artist site's admin. Looked up in order:
+ *   1. path in the LMEG_ENV_FILE constant (wp-config.php)
+ *   2. wp-content/.env
+ *   3. one level above the WordPress root (a common, web-inaccessible spot)
+ * Only LMEG_-prefixed KEY=VALUE lines are turned into constants — safe, and
+ * it won't clobber anything already defined in wp-config.php.
+ */
+function lmeg_load_env_file() {
+    $candidates = [];
+    if (defined('LMEG_ENV_FILE')) $candidates[] = LMEG_ENV_FILE;
+    if (defined('WP_CONTENT_DIR')) $candidates[] = WP_CONTENT_DIR . '/.env';
+    if (defined('ABSPATH')) $candidates[] = dirname(ABSPATH) . '/.env';
+
+    foreach ($candidates as $file) {
+        if (!$file || !is_readable($file)) continue;
+        foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            $pos = strpos($line, '=');
+            if ($pos === false) continue;
+            $k = trim(substr($line, 0, $pos));
+            $v = trim(substr($line, $pos + 1));
+            // strip surrounding quotes
+            if (strlen($v) >= 2 && ($v[0] === '"' || $v[0] === "'") && substr($v, -1) === $v[0]) {
+                $v = substr($v, 1, -1);
+            }
+            if (preg_match('/^LMEG_[A-Z0-9_]+$/', $k) && !defined($k)) {
+                define($k, $v);
+            }
+        }
+        break; // first readable file wins
+    }
+}
+lmeg_load_env_file();
 
 require_once LMEG_PLUGIN_DIR . 'includes/security.php';
 require_once LMEG_PLUGIN_DIR . 'includes/tags.php';
@@ -107,7 +144,7 @@ function lmeg_maybe_migrate() {
 
     // v2.28: Mailgun removed entirely — Brevo is the only email provider.
     // Scrub the dead settings keys so nothing can route to Mailgun again.
-    if (version_compare($current, '2.40.0', '<')) {
+    if (version_compare($current, '2.41.0', '<')) {
         $opts = get_option(LMEG_OPTION, []);
         if (is_array($opts)) {
             unset($opts['email_provider'], $opts['mailgun_api_key'], $opts['mailgun_domain'],
@@ -575,8 +612,70 @@ function lmeg_default_settings() {
     ];
 }
 
+/**
+ * Setting key → candidate config names. Shared, cross-site credentials can
+ * be defined once in wp-config.php (as constants) or a .env file (see
+ * lmeg_load_env_file) instead of being re-entered in each site's admin.
+ * Config values always WIN over the stored DB option. Per-artist values
+ * (spotify_artist_id, shopify_domain, from-addresses…) are deliberately
+ * NOT here — those stay in the admin.
+ */
+function lmeg_env_map() {
+    return [
+        'spotify_client_id'       => ['LMEG_SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_ID'],
+        'spotify_client_secret'   => ['LMEG_SPOTIFY_CLIENT_SECRET', 'SPOTIFY_CLIENT_SECRET'],
+        'ai_api_key'              => ['LMEG_AI_API_KEY', 'ANTHROPIC_API_KEY'],
+        'ai_model'                => ['LMEG_AI_MODEL'],
+        'brevo_api_key'           => ['LMEG_BREVO_API_KEY', 'BREVO_API_KEY'],
+        'twilio_account_sid'      => ['LMEG_TWILIO_ACCOUNT_SID', 'TWILIO_ACCOUNT_SID'],
+        'twilio_auth_token'       => ['LMEG_TWILIO_AUTH_TOKEN', 'TWILIO_AUTH_TOKEN'],
+        'twilio_from_number'      => ['LMEG_TWILIO_FROM_NUMBER'],
+        'stripe_test_sk'          => ['LMEG_STRIPE_TEST_SK'],
+        'stripe_test_pk'          => ['LMEG_STRIPE_TEST_PK'],
+        'stripe_test_webhook_sec' => ['LMEG_STRIPE_TEST_WEBHOOK_SEC'],
+        'stripe_live_sk'          => ['LMEG_STRIPE_LIVE_SK'],
+        'stripe_live_pk'          => ['LMEG_STRIPE_LIVE_PK'],
+        'stripe_live_webhook_sec' => ['LMEG_STRIPE_LIVE_WEBHOOK_SEC'],
+        'ig_app_secret'           => ['LMEG_IG_APP_SECRET'],
+        'ig_page_token'           => ['LMEG_IG_PAGE_TOKEN'],
+        'shopify_admin_token'     => ['LMEG_SHOPIFY_ADMIN_TOKEN'],
+    ];
+}
+
+/**
+ * Resolve one config-backed value from constants or environment.
+ * Returns null when nothing is set in config (so the DB value stands).
+ */
+function lmeg_env_value($setting_key) {
+    $names = lmeg_env_map()[$setting_key] ?? [];
+    foreach ($names as $name) {
+        if (defined($name) && constant($name) !== '') return constant($name);
+        $env = getenv($name);
+        if ($env !== false && $env !== '') return $env;
+    }
+    return null;
+}
+
+/**
+ * Which setting keys are currently being supplied by config (for the admin
+ * UI to lock those fields).
+ */
+function lmeg_env_managed_keys() {
+    $keys = [];
+    foreach (array_keys(lmeg_env_map()) as $k) {
+        if (lmeg_env_value($k) !== null) $keys[] = $k;
+    }
+    return $keys;
+}
+
 function lmeg_get_settings() {
-    return wp_parse_args(get_option(LMEG_OPTION, []), lmeg_default_settings());
+    $opts = wp_parse_args(get_option(LMEG_OPTION, []), lmeg_default_settings());
+    // Overlay config-backed credentials — constants/.env win over the DB.
+    foreach (array_keys(lmeg_env_map()) as $key) {
+        $v = lmeg_env_value($key);
+        if ($v !== null) $opts[$key] = $v;
+    }
+    return $opts;
 }
 
 /* ---------------------------------------------------------------------------
