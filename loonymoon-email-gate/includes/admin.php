@@ -717,21 +717,32 @@ function lmeg_admin_compose() {
                         <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send. Leave empty to skip the email channel.</p>
 
                         <script>
+                        // builder.js is enqueued in the footer, so defer init until the
+                        // DOM (and that script) are ready — otherwise LMEGBuilder is undefined.
                         (function(){
-                            var root = document.getElementById('lmeg-builder-root');
-                            var richWrap = document.getElementById('lmeg-rich-wrap');
-                            var b = window.LMEGBuilder ? window.LMEGBuilder.init(root, 'body_email') : null;
-                            document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
-                                btn.addEventListener('click', function(){
-                                    document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){x.classList.remove('is-active');});
-                                    btn.classList.add('is-active');
-                                    var builder = btn.dataset.mode === 'builder';
-                                    root.style.display = builder ? '' : 'none';
-                                    richWrap.style.display = builder ? 'none' : '';
-                                    // leaving builder → push its HTML into the editor; entering → keep builder as source
-                                    if (b) b.sync();
+                            function start(){
+                                var root = document.getElementById('lmeg-builder-root');
+                                var richWrap = document.getElementById('lmeg-rich-wrap');
+                                if (!root) return;
+                                if (!window.LMEGBuilder) {
+                                    // Script still not loaded — try again shortly (up to ~3s).
+                                    if ((start._tries = (start._tries || 0) + 1) < 30) { setTimeout(start, 100); }
+                                    return;
+                                }
+                                var b = window.LMEGBuilder.init(root, 'body_email');
+                                document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
+                                    btn.addEventListener('click', function(){
+                                        document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){x.classList.remove('is-active');});
+                                        btn.classList.add('is-active');
+                                        var builder = btn.dataset.mode === 'builder';
+                                        root.style.display = builder ? '' : 'none';
+                                        richWrap.style.display = builder ? 'none' : '';
+                                        if (b) b.sync();
+                                    });
                                 });
-                            });
+                            }
+                            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+                            else start();
                         })();
                         </script>
                     </td>
