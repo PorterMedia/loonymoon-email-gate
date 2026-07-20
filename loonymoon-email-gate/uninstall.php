@@ -22,6 +22,8 @@ $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_soft_grants");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_shop_orders");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_smartlinks");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_tour_dates");
+$wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_ig_rules");
+$wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_ig_messages");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_surveys");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_survey_votes");
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}lmeg_contests");

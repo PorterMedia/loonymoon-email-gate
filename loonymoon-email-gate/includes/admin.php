@@ -1096,6 +1096,11 @@ function lmeg_admin_settings() {
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
             'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
+            // Instagram DM automation
+            'ig_app_secret'           => sanitize_text_field(wp_unslash($_POST['ig_app_secret'] ?? '')),
+            'ig_page_token'           => sanitize_text_field(wp_unslash($_POST['ig_page_token'] ?? '')),
+            'ig_account_id'           => sanitize_text_field(wp_unslash($_POST['ig_account_id'] ?? '')),
+            'ig_verify_token'         => sanitize_text_field(wp_unslash($_POST['ig_verify_token'] ?? '')),
             // Shopify shop connection
             'shopify_domain'          => sanitize_text_field(wp_unslash($_POST['shopify_domain'] ?? '')),
             'shopify_admin_token'     => sanitize_text_field(wp_unslash($_POST['shopify_admin_token'] ?? '')),
@@ -1134,6 +1139,11 @@ function lmeg_admin_settings() {
                 $verify_notice = is_wp_error($r)
                     ? '<div class="notice notice-error"><p>Shopify: ' . esc_html($r->get_error_message()) . '</p></div>'
                     : '<div class="notice notice-success"><p>Shopify: ' . esc_html($r) . '</p></div>';
+            } elseif ($_POST['lmeg_test'] === 'instagram') {
+                $r = lmeg_ig_verify();
+                $verify_notice = is_wp_error($r)
+                    ? '<div class="notice notice-error"><p>' . esc_html($r->get_error_message()) . '</p></div>'
+                    : '<div class="notice notice-success"><p>' . esc_html($r) . '</p></div>';
             }
         }
     }
@@ -1274,6 +1284,23 @@ function lmeg_admin_settings() {
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="twilio" class="button">Save &amp; test Twilio</button>
                         <p class="description">Hits Twilio's account endpoint with your saved credentials and reports the result above.</p></td></tr>
+            </table>
+
+            <h2>Instagram (DM automation)</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="ig_account_id">IG account ID</label></th>
+                    <td><input type="text" name="ig_account_id" id="ig_account_id" class="regular-text" value="<?php echo esc_attr($s['ig_account_id'] ?? ''); ?>" placeholder="1784XXXXXXXXXXXXX" />
+                        <p class="description">The Instagram Business account ID from your Meta app's Instagram settings (not your @handle).</p></td></tr>
+                <tr><th><label for="ig_page_token">Page access token</label></th>
+                    <td><input type="password" name="ig_page_token" id="ig_page_token" class="regular-text" value="<?php echo esc_attr($s['ig_page_token'] ?? ''); ?>" autocomplete="off" /></td></tr>
+                <tr><th><label for="ig_app_secret">App secret</label></th>
+                    <td><input type="password" name="ig_app_secret" id="ig_app_secret" class="regular-text" value="<?php echo esc_attr($s['ig_app_secret'] ?? ''); ?>" autocomplete="off" />
+                        <p class="description">Meta app → Settings → Basic → App Secret. Used to verify webhook signatures.</p></td></tr>
+                <tr><th><label for="ig_verify_token">Webhook verify token</label></th>
+                    <td><input type="text" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
+                        <p class="description">Webhook callback URL: <code><?php echo esc_html(add_query_arg('lmeg_ig', 'webhook', home_url('/'))); ?></code> — full setup steps on the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-instagram')); ?>">Instagram page</a>.</p></td></tr>
+                <tr><th>Test connection</th>
+                    <td><button type="submit" name="lmeg_test" value="instagram" class="button">Save &amp; test Instagram</button></td></tr>
             </table>
 
             <h2>Shop (Shopify)</h2>
