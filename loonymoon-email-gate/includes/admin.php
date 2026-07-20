@@ -2668,8 +2668,9 @@ function lmeg_admin_shop() {
         <?php echo $notice; ?>
 
         <?php if (!$configured) : ?>
-            <div class="notice notice-info"><p>Shopify isn't connected yet. Add your store domain + Admin API token under
-                <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Shop (Shopify)</a>.</p></div>
+            <div class="notice notice-info"><p>Shopify isn't connected yet. Under
+                <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Shop (Shopify)</a>,
+                add your store domain + Client ID/Secret and click “Connect with Shopify” (or paste a legacy static token).</p></div>
         </div>
         <?php return; endif; ?>
 
@@ -2736,19 +2737,24 @@ function lmeg_admin_shop() {
             </tbody>
         </table>
 
-        <h2>Recent attributed orders</h2>
+        <h2>Recent orders</h2>
         <?php
+        $order_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_shop_orders");
+        $order_total = (int) $wpdb->get_var("SELECT COALESCE(SUM(total_cents), 0) FROM {$wpdb->prefix}lmeg_shop_orders");
         $recent = $wpdb->get_results(
-            "SELECT * FROM {$wpdb->prefix}lmeg_shop_orders
-             WHERE subscriber_id IS NOT NULL
-             ORDER BY ordered_at DESC LIMIT 50"
+            "SELECT * FROM {$wpdb->prefix}lmeg_shop_orders ORDER BY ordered_at DESC LIMIT 100"
         );
         ?>
+        <p style="opacity:.75;max-width:760px;margin:2px 0 12px;">
+            <strong><?php echo number_format_i18n($order_count); ?></strong> orders synced ·
+            <strong><?php echo esc_html(lmeg_format_price($order_total)); ?></strong> total revenue.
+            Shopify's <code>read_orders</code> scope returns roughly the last 60 days.
+        </p>
         <table class="widefat striped" style="max-width:900px;">
-            <thead><tr><th>Order</th><th>Email</th><th>Total</th><th>Attribution</th><th>Broadcast</th><th>Ordered</th></tr></thead>
+            <thead><tr><th>Order</th><th>Email</th><th>Total</th><th>Customer</th><th>Attribution</th><th>Ordered</th></tr></thead>
             <tbody>
             <?php if (empty($recent)) : ?>
-                <tr><td colspan="6">No orders from subscribers yet.</td></tr>
+                <tr><td colspan="6">No orders synced yet. Click “Sync orders now” above. If it stays empty, either there were no orders in the last ~60 days, or the connection needs a check — run “Save &amp; test Shopify” in Settings.</td></tr>
             <?php else : foreach ($recent as $o) :
                 $att_label = [
                     'click'      => '🖱 clicked broadcast',
@@ -2756,15 +2762,22 @@ function lmeg_admin_shop() {
                     'subscriber' => 'on the list',
                     'none'       => '—',
                 ][$o->attribution] ?? $o->attribution;
+                $is_sub = !empty($o->subscriber_id);
             ?>
                 <tr>
                     <td>#<?php echo esc_html($o->order_number); ?></td>
-                    <td><?php echo esc_html($o->email); ?></td>
-                    <td><?php echo esc_html(lmeg_format_price((int) $o->total_cents, $o->currency)); ?></td>
-                    <td><?php echo esc_html($att_label); ?></td>
-                    <td><?php echo $o->broadcast_id
-                        ? '<a href="' . esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . (int) $o->broadcast_id)) . '">#' . (int) $o->broadcast_id . '</a>'
-                        : '—'; ?></td>
+                    <td><?php echo esc_html($o->email ?: '—'); ?></td>
+                    <td><strong><?php echo esc_html(lmeg_format_price((int) $o->total_cents, $o->currency)); ?></strong></td>
+                    <td><?php echo $is_sub
+                        ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $o->subscriber_id], admin_url('admin.php'))) . '">on the list</a>'
+                        : '<span style="opacity:.55;">guest</span>'; ?></td>
+                    <td><?php
+                        if ($o->broadcast_id) {
+                            echo esc_html($att_label) . ' <a href="' . esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . (int) $o->broadcast_id)) . '">#' . (int) $o->broadcast_id . '</a>';
+                        } else {
+                            echo esc_html($is_sub ? $att_label : '—');
+                        }
+                    ?></td>
                     <td><?php echo esc_html($o->ordered_at ?: '—'); ?></td>
                 </tr>
             <?php endforeach; endif; ?>
