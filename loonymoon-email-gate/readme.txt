@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.2
+Stable tag: 2.55.3
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.3 =
+* New: "Save & test Shopify" now reports the token's granted scopes and warns clearly if read_orders is missing — the definitive diagnosis for the 403 "requires merchant approval for read_orders" order-sync error (it means the token simply doesn't carry that scope; declare it on the app and reconnect to mint a fresh one).
+
 = 2.55.2 =
 * Fix: the Rich text / Builder toggle could stop working entirely. The mode buttons were wired up inside the builder's init code, so if builder.js was slow to load, blocked, or altered by a caching/optimization plugin, the toggle (and typing) died with it. The toggle, submit, and preview handlers now bind immediately and independently of the builder — you can always switch to Rich text and keep composing even if the builder itself doesn't load.
 * Fix: builder assets are now cache-busted by file modification time, so an updated builder.js can't be served stale against a newer page (a mismatch between the two was a likely cause of the toggle breaking).

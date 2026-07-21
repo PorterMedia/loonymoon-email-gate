@@ -269,14 +269,59 @@ function lmeg_shop_request($path, $query = []) {
 }
 
 /**
+ * What scopes the current token actually holds. This is the definitive check:
+ * a 403 "requires merchant approval for read_orders" means the token simply
+ * doesn't carry read_orders, regardless of what the app appears to request.
+ *
+ * @return array|WP_Error list of granted scope handles.
+ */
+function lmeg_shop_granted_scopes() {
+    $s      = lmeg_get_settings();
+    $domain = preg_replace('#^https?://#', '', trim($s['shopify_domain'] ?? ''));
+    if (!$domain) return new WP_Error('lmeg_shop_unconfigured', 'No store domain.');
+    $token = lmeg_shop_access_token();
+    if (is_wp_error($token)) return $token;
+
+    // Note: the access-scopes endpoint lives under /admin/oauth/, not the
+    // versioned Admin API path, so we call it directly.
+    $resp = wp_remote_get('https://' . $domain . '/admin/oauth/access_scopes.json', [
+        'timeout' => 20,
+        'headers' => ['X-Shopify-Access-Token' => $token, 'Accept' => 'application/json'],
+    ]);
+    if (is_wp_error($resp)) return $resp;
+    $code = wp_remote_retrieve_response_code($resp);
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code < 200 || $code >= 300) {
+        return new WP_Error('lmeg_scopes_http_' . $code, 'HTTP ' . $code);
+    }
+    $handles = [];
+    foreach ((array) ($body['access_scopes'] ?? []) as $sc) {
+        if (!empty($sc['handle'])) $handles[] = $sc['handle'];
+    }
+    return $handles;
+}
+
+/**
  * Verify credentials — GET /shop.json, returns friendly string or WP_Error.
+ * Also reports the token's granted scopes so a missing read_orders (the usual
+ * cause of the 403 order-sync error) is obvious.
  */
 function lmeg_shop_verify() {
     $r = lmeg_shop_request('/shop.json');
     if (is_wp_error($r)) return $r;
     $name = $r['shop']['name']   ?? '(unknown)';
     $dom  = $r['shop']['domain'] ?? '';
-    return 'Connected to "' . $name . '"' . ($dom ? ' (' . $dom . ')' : '') . '.';
+    $msg  = 'Connected to "' . $name . '"' . ($dom ? ' (' . $dom . ')' : '') . '.';
+
+    $scopes = lmeg_shop_granted_scopes();
+    if (!is_wp_error($scopes)) {
+        $msg .= ' Token scopes: ' . (empty($scopes) ? '(none)' : implode(', ', $scopes)) . '.';
+        if (!in_array('read_orders', (array) $scopes, true)) {
+            $msg .= ' ⚠ read_orders is NOT in this token — that is exactly why order sync returns 403. '
+                  . 'The scope must be declared on the Shopify app AND a fresh token minted (reconnect) after that.';
+        }
+    }
+    return $msg;
 }
 
 /* ---------------------------------------------------------------------------
