@@ -516,6 +516,7 @@ function lmeg_admin_compose() {
         'subject'          => '',
         'body_email'       => '',
         'body_email_blocks'=> '',
+        'body_email_mode'  => 'builder',
         'body_sms'         => '',
         'tag_ids'          => [],
         'tag_match'        => 'any',
@@ -528,6 +529,7 @@ function lmeg_admin_compose() {
         $blocks_raw = wp_unslash($_POST['body_email_blocks'] ?? '');
         $decoded    = json_decode($blocks_raw, true);
         $vals['body_email_blocks'] = is_array($decoded) ? wp_json_encode($decoded) : '';
+        $vals['body_email_mode'] = (($_POST['body_email_mode'] ?? '') === 'rich') ? 'rich' : 'builder';
         $vals['body_sms']   = sanitize_textarea_field(wp_unslash($_POST['body_sms'] ?? ''));
         $vals['tag_ids']    = array_filter(array_map('intval', (array) ($_POST['tag_ids'] ?? [])));
         $vals['tag_match']  = ($_POST['tag_match'] ?? 'any') === 'all' ? 'all' : 'any';
@@ -696,6 +698,7 @@ function lmeg_admin_compose() {
 
                         <div id="lmeg-builder-root" data-accent="<?php echo esc_attr(lmeg_get_settings()['color_primary'] ?? '#d05fa2'); ?>"></div>
                         <input type="hidden" id="body_email_blocks" name="body_email_blocks" value="<?php echo esc_attr($vals['body_email_blocks'] ?? ''); ?>" />
+                        <input type="hidden" id="body_email_mode" name="body_email_mode" value="<?php echo esc_attr($vals['body_email_mode'] ?? 'builder'); ?>" />
 
                         <div id="lmeg-rich-wrap" style="display:none;">
                         <?php
@@ -742,26 +745,55 @@ function lmeg_admin_compose() {
                                     return;
                                 }
                                 var b = window.LMEGBuilder.init(root, 'body_email');
+                                var modeField = document.getElementById('body_email_mode');
+
+                                function setMode(mode){
+                                    var builder = mode !== 'rich';
+                                    document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){
+                                        x.classList.toggle('is-active', x.dataset.mode === (builder ? 'builder' : 'rich'));
+                                    });
+                                    root.style.display = builder ? '' : 'none';
+                                    richWrap.style.display = builder ? 'none' : '';
+                                    if (modeField) modeField.value = builder ? 'builder' : 'rich';
+                                }
+
                                 document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
                                     btn.addEventListener('click', function(){
-                                        document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){x.classList.remove('is-active');});
-                                        btn.classList.add('is-active');
-                                        var builder = btn.dataset.mode === 'builder';
-                                        root.style.display = builder ? '' : 'none';
-                                        richWrap.style.display = builder ? 'none' : '';
-                                        if (b) b.sync();
+                                        var toRich = btn.dataset.mode === 'rich';
+                                        // Leaving the builder for rich: hand the built HTML to
+                                        // the editor so you can tweak it. (Rich→builder can't
+                                        // rebuild blocks, so the builder just keeps what it has.)
+                                        if (toRich && b) b.pushToEditor();
+                                        setMode(toRich ? 'rich' : 'builder');
                                     });
+                                });
+
+                                // Restore the persisted mode (e.g. after a send-test reload)
+                                // so rich-text content isn't hidden behind the builder.
+                                setMode(modeField && modeField.value === 'rich' ? 'rich' : 'builder');
+
+                                // At submit, make the ACTIVE editor authoritative for
+                                // #body_email so nothing clobbers it (WordPress auto-saves
+                                // TinyMCE on submit; in builder mode we override that).
+                                var composeForm = root.closest('form');
+                                if (composeForm) composeForm.addEventListener('submit', function(){
+                                    var mode = modeField ? modeField.value : 'builder';
+                                    if (mode === 'rich') {
+                                        if (window.tinymce) { try { tinymce.triggerSave(); } catch(e){} }
+                                    } else if (b) {
+                                        b.pushToEditor();
+                                    }
                                 });
 
                                 // Preview in a new tab — pull the body from whichever
                                 // editor is active, then submit the hidden form.
                                 var pvBtn = document.getElementById('lmeg-preview-btn');
                                 if (pvBtn) pvBtn.addEventListener('click', function(){
-                                    var builderActive = root.style.display !== 'none';
-                                    if (builderActive && b) {
-                                        b.sync(); // builder → #body_email (mirrors tinymce)
+                                    var mode = modeField ? modeField.value : 'builder';
+                                    if (mode !== 'rich' && b) {
+                                        b.pushToEditor();
                                     } else if (window.tinymce && tinymce.get('body_email')) {
-                                        try { tinymce.triggerSave(); } catch(e){} // rich → #body_email
+                                        try { tinymce.triggerSave(); } catch(e){}
                                     }
                                     var ta = document.getElementById('body_email');
                                     document.getElementById('lmeg-preview-body').value = ta ? ta.value : '';

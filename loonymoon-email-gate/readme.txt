@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.0
+Stable tag: 2.55.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.1 =
+* Fix: you still couldn't type in the drag & drop builder on the live composer. The real cause was TinyMCE — the builder pushed content into the rich editor on every keystroke, and TinyMCE's setContent() steals focus, so your cursor jumped out of the block after the first character. (It worked in isolated testing because no TinyMCE was present there.) The builder now updates TinyMCE only when you switch to Rich text or send/save — never mid-typing. Verified with a TinyMCE-present harness.
+* Fix: sending a test (or any submit) while in Rich text mode reloaded the page back into the builder showing the default "Your heading / Write something" blocks, hiding your rich-text content. The composer now remembers which mode you were in across reloads, and the active editor's content is authoritative on submit — so nothing gets clobbered by the other mode.
+
 = 2.55.0 =
 * New: Abandoned-cart recovery (automated revenue flow #1). The shop sync now pulls abandoned Shopify checkouts, matches them to subscribers, and fires an event:abandoned-cart trigger — create a Sequence on that trigger and fans who leave a checkout get nudged automatically. Use the new {cart_url} merge tag to link them straight back to their cart. The flow auto-stops (and its remaining steps cancel) the moment they complete a purchase. Shop Revenue page shows open vs recovered carts and their value.
 * Note: post-purchase (trigger: customer) and win-back (trigger: fan-type:dormant) flows already work via the Sequences engine — see the recipes list on the Sequences page.

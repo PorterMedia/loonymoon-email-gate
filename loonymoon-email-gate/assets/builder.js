@@ -381,7 +381,20 @@
         }).join('\n');
     };
 
+    // Per-keystroke sync: cheap, and it must NOT touch TinyMCE — calling
+    // tinymce.setContent() on every input steals focus into the hidden rich
+    // editor, which stops you typing in the block. TinyMCE is refreshed once,
+    // on demand, via pushToEditor() (mode switch to rich / form submit).
     Builder.prototype.sync = function () {
+        var html = this.toHtml();
+        if (this.textarea) this.textarea.value = html;
+        var store = this.textarea ? document.getElementById(this.textarea.id + '_blocks') : null;
+        if (store) store.value = JSON.stringify(this.blocks);
+    };
+
+    // Push the built HTML into the target textarea AND TinyMCE. Call this only
+    // at deliberate hand-off points, never on every keystroke.
+    Builder.prototype.pushToEditor = function () {
         var html = this.toHtml();
         if (this.textarea) this.textarea.value = html;
         if (window.tinymce && this.textarea && tinymce.get(this.textarea.id)) {
