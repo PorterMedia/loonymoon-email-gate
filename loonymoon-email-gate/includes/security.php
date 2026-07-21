@@ -28,14 +28,23 @@ function lmeg_client_ip() {
  * allowed (and consumes one slot), false when the bucket is exhausted.
  */
 function lmeg_rate_limit($bucket, $max, $window_seconds) {
-    $key = 'lmeg_rl_' . md5($bucket);
-    $n   = (int) get_transient($key);
-    if ($n >= $max) {
+    $key  = 'lmeg_rl_' . md5($bucket);
+    $now  = time();
+    $data = get_transient($key);
+
+    // Fixed window. The old version reset the TTL on every hit, so a busy
+    // (or shared/CGNAT) IP that ever reached the cap stayed blocked forever
+    // as long as traffic kept coming — silently dropping real signups.
+    if (!is_array($data) || ($data['exp'] ?? 0) <= $now) {
+        set_transient($key, ['n' => 1, 'exp' => $now + $window_seconds], $window_seconds);
+        return true;
+    }
+    if ((int) $data['n'] >= $max) {
         return false;
     }
-    // Note: resets the window on each hit for simplicity; strict-enough
-    // semantics for abuse control, zero schema cost.
-    set_transient($key, $n + 1, $window_seconds);
+    $data['n'] = (int) $data['n'] + 1;
+    // Keep the SAME expiry — do not extend the window on each hit.
+    set_transient($key, $data, max(1, $data['exp'] - $now));
     return true;
 }
 
@@ -49,31 +58,68 @@ function lmeg_email_domain_ok($email) {
     $at = strrpos((string) $email, '@');
     if ($at === false) return false;
     $domain = strtolower(substr($email, $at + 1));
-    if (!$domain) return false;
+    if (!$domain || strpos($domain, '.') === false) return false;
+
+    // The big mailbox providers are never DNS-gated — a flaky host resolver
+    // (checkdnsrr can misfire on managed hosting) must never block gmail etc.
+    static $known = [
+        'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.ca', 'ymail.com',
+        'outlook.com', 'hotmail.com', 'hotmail.ca', 'live.com', 'live.ca', 'msn.com',
+        'icloud.com', 'me.com', 'mac.com', 'aol.com',
+        'proton.me', 'protonmail.com', 'gmx.com', 'gmx.net', 'mail.com', 'zoho.com',
+    ];
+    if (in_array($domain, $known, true)) return true;
+
+    // Can't check → allow (fail OPEN, as intended). Never let DNS gate signups.
+    if (!function_exists('checkdnsrr')) return true;
 
     $cache_key = 'lmeg_mx_' . md5($domain);
     $cached = get_transient($cache_key);
     if ($cached !== false) return $cached === 'ok';
 
-    $ok = true;
-    if (function_exists('checkdnsrr')) {
-        $ok = checkdnsrr($domain, 'MX') || checkdnsrr($domain, 'A') || checkdnsrr($domain, 'AAAA');
-    }
-    set_transient($cache_key, $ok ? 'ok' : 'bad', DAY_IN_SECONDS);
+    $ok = checkdnsrr($domain, 'MX') || checkdnsrr($domain, 'A') || checkdnsrr($domain, 'AAAA');
+    // Cache a positive for a day; cache a negative only briefly so a transient
+    // resolver hiccup can't lock a real domain out for 24h.
+    set_transient($cache_key, $ok ? 'ok' : 'bad', $ok ? DAY_IN_SECONDS : 20 * MINUTE_IN_SECONDS);
     return $ok;
+}
+
+/**
+ * Record a rejected signup so the admin can see WHY captures fail (honeypot,
+ * rate limit, bad nonce, invalid email). Keeps the last 100 in an option.
+ */
+function lmeg_log_signup_reject($reason, $email = '') {
+    $log = get_option('lmeg_signup_rejects', []);
+    if (!is_array($log)) $log = [];
+    array_unshift($log, [
+        't'      => current_time('mysql'),
+        'reason' => (string) $reason,
+        'email'  => substr((string) $email, 0, 190),
+        'ip'     => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : '', 0, 45),
+    ]);
+    update_option('lmeg_signup_rejects', array_slice($log, 0, 100), false);
+}
+
+function lmeg_recent_signup_rejects($limit = 30) {
+    $log = get_option('lmeg_signup_rejects', []);
+    return is_array($log) ? array_slice($log, 0, (int) $limit) : [];
 }
 
 /**
  * Signup throttle — call from the submit handler. Dies with 429 when the
  * network is hammering the endpoint.
  */
-function lmeg_guard_signup() {
+function lmeg_guard_signup($email = '') {
     $ip = lmeg_client_ip();
-    $burst = (int) apply_filters('lmeg_signup_burst_limit', 5);    // per 10 min
-    $daily = (int) apply_filters('lmeg_signup_daily_limit', 30);   // per day
+    // Higher than before: the old 5/10min + 30/day per IP silently blocked
+    // legit fans sharing an IP (mobile carrier CGNAT, offices, venue wifi) and
+    // any burst of real signups after a post/drop. Still enough to stop floods.
+    $burst = (int) apply_filters('lmeg_signup_burst_limit', 15);    // per 10 min
+    $daily = (int) apply_filters('lmeg_signup_daily_limit', 300);   // per day
 
     if (!lmeg_rate_limit('signup10_' . $ip, $burst, 10 * MINUTE_IN_SECONDS)
         || !lmeg_rate_limit('signupday_' . $ip, $daily, DAY_IN_SECONDS)) {
+        lmeg_log_signup_reject('rate_limit', $email);
         wp_die(
             'Too many signups from your network — please try again a little later.',
             'Slow down',

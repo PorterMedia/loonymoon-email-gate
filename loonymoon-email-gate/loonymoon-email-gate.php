@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.55.4
+ * Version:     2.55.5
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.55.4');
-define('LMEG_DB_VERSION',  '2.55.4');
+define('LMEG_VERSION',     '2.55.5');
+define('LMEG_DB_VERSION',  '2.55.5');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -1269,15 +1269,26 @@ function lmeg_render_form() {
 add_action('admin_post_nopriv_lmeg_submit', 'lmeg_handle_submit');
 add_action('admin_post_lmeg_submit',         'lmeg_handle_submit');
 function lmeg_handle_submit() {
+    $posted_email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
+
+    // Nonce: normally required, BUT full-page caching (very common on WP hosts)
+    // serves a single cached nonce to every visitor, and nonces expire in ~24h.
+    // Once stale, every genuine signup would 403 here and vanish with no record
+    // — a prime cause of "certain emails never got added". A public opt-in is
+    // not a CSRF-sensitive action, so on a bad/missing nonce we log it and keep
+    // going; the honeypot + per-IP rate limit remain the spam guards. Watch the
+    // reject log (Subscribers page) for 'bad_nonce' to confirm caching is at play.
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'lmeg_submit')) {
-        wp_die('Security check failed.', 'Error', ['response' => 403]);
+        if (function_exists('lmeg_log_signup_reject')) lmeg_log_signup_reject('bad_nonce', $posted_email);
     }
 
     $redirect = isset($_POST['redirect']) ? esc_url_raw(wp_unslash($_POST['redirect'])) : home_url('/');
     $after    = isset($_POST['lmeg_after']) ? sanitize_text_field(wp_unslash($_POST['lmeg_after'])) : '';
 
-    // Honeypot — silently accept and redirect.
+    // Honeypot — silently accept and redirect. (Logged so we can tell a real
+    // bot from a browser/password-manager autofilling the hidden field.)
     if (!empty($_POST['lmeg_hp'])) {
+        if (function_exists('lmeg_log_signup_reject')) lmeg_log_signup_reject('honeypot', $posted_email);
         lmeg_set_cookie();
         wp_safe_redirect($redirect);
         exit;
@@ -1285,7 +1296,7 @@ function lmeg_handle_submit() {
 
     // Rate limit per network — stops scripted signup floods (and the Brevo
     // quota burn from welcome emails they'd trigger).
-    lmeg_guard_signup();
+    lmeg_guard_signup($posted_email);
 
     // Fast path: existing member clicking a tier button. The paywall
     // doesn't render an email input for signed-in members, so there's
@@ -1327,7 +1338,14 @@ function lmeg_handle_submit() {
 
     if ($type === 'email') {
         $email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
-        if (!is_email($email) || !lmeg_email_domain_ok($email)) {
+        if (!is_email($email)) {
+            if (function_exists('lmeg_log_signup_reject')) lmeg_log_signup_reject('invalid_email', $email);
+            wp_die('Please enter a valid email address.', 'Invalid email', [
+                'response' => 400, 'back_link' => true,
+            ]);
+        }
+        if (!lmeg_email_domain_ok($email)) {
+            if (function_exists('lmeg_log_signup_reject')) lmeg_log_signup_reject('domain_rejected', $email);
             wp_die('Please enter a valid email address.', 'Invalid email', [
                 'response' => 400, 'back_link' => true,
             ]);

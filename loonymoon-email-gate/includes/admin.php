@@ -411,6 +411,35 @@ function lmeg_admin_subscribers() {
             <a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a>
         </p>
 
+        <?php $rejects = function_exists('lmeg_recent_signup_rejects') ? lmeg_recent_signup_rejects(30) : []; ?>
+        <?php if ($rejects) : ?>
+        <details style="margin:2px 0 16px;max-width:820px;">
+            <summary style="cursor:pointer;color:#a05a00;font-weight:600;">⚠ <?php echo count($rejects); ?> recent signup<?php echo count($rejects) === 1 ? '' : 's'; ?> did not get added — see why</summary>
+            <table class="widefat striped" style="margin-top:8px;">
+                <thead><tr><th>When</th><th>Email</th><th>Reason it was dropped</th><th>IP</th></tr></thead>
+                <tbody>
+                <?php foreach ($rejects as $rj) :
+                    $reason_label = [
+                        'bad_nonce'       => '🔑 Expired security token — page cache served a stale form (now let through)',
+                        'rate_limit'      => '🚦 Rate-limited — too many from that IP/network',
+                        'honeypot'        => '🍯 Honeypot filled — a bot, or a browser/password-manager autofilled the hidden field',
+                        'invalid_email'   => '✋ Not a valid email format',
+                        'domain_rejected' => '🌐 Email domain failed the DNS check',
+                    ][$rj['reason']] ?? esc_html($rj['reason']);
+                ?>
+                    <tr>
+                        <td style="white-space:nowrap;"><?php echo esc_html($rj['t']); ?></td>
+                        <td><?php echo esc_html($rj['email'] ?: '—'); ?></td>
+                        <td><?php echo esc_html($reason_label); ?></td>
+                        <td><?php echo esc_html($rj['ip']); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description">Most recent first (last 100 kept). Lots of <code>bad_nonce</code> means a caching plugin is serving stale signup forms — this update now lets those signups through instead of dropping them.</p>
+        </details>
+        <?php endif; ?>
+
         <?php
         $all_tiers_admin = function_exists('lmeg_all_tiers') ? lmeg_all_tiers() : [];
         $base_url = admin_url('admin.php?page=lmeg');
