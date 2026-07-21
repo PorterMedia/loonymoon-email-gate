@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.1
+Stable tag: 2.55.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.2 =
+* Fix: the Rich text / Builder toggle could stop working entirely. The mode buttons were wired up inside the builder's init code, so if builder.js was slow to load, blocked, or altered by a caching/optimization plugin, the toggle (and typing) died with it. The toggle, submit, and preview handlers now bind immediately and independently of the builder — you can always switch to Rich text and keep composing even if the builder itself doesn't load.
+* Fix: builder assets are now cache-busted by file modification time, so an updated builder.js can't be served stale against a newer page (a mismatch between the two was a likely cause of the toggle breaking).
+* If the builder truly can't load, its area now shows a short "use Rich text / hard-refresh" message instead of a blank box.
+
 = 2.55.1 =
 * Fix: you still couldn't type in the drag & drop builder on the live composer. The real cause was TinyMCE — the builder pushed content into the rich editor on every keystroke, and TinyMCE's setContent() steals focus, so your cursor jumped out of the block after the first character. (It worked in isolated testing because no TinyMCE was present there.) The builder now updates TinyMCE only when you switch to Rich text or send/save — never mid-typing. Verified with a TinyMCE-present harness.
 * Fix: sending a test (or any submit) while in Rich text mode reloaded the page back into the builder showing the default "Your heading / Write something" blocks, hiding your rich-text content. The composer now remembers which mode you were in across reloads, and the active editor's content is authoritative on submit — so nothing gets clobbered by the other mode.

@@ -39,10 +39,15 @@ function lmeg_admin_assets($hook) {
     wp_enqueue_style('lmeg-admin-font', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap', [], null);
     wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', ['lmeg-admin-font'], LMEG_VERSION);
 
-    // Drag-and-drop email builder — only on the Compose page.
+    // Drag-and-drop email builder — only on the Compose page. Version the
+    // assets by file mtime so a changed builder.js/css always busts browser +
+    // CDN caches (a stale builder.js vs the fresh inline init script is what
+    // breaks the composer — they must move together).
     if (strpos((string) $hook, 'lmeg-compose') !== false) {
-        wp_enqueue_style('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.css', ['lmeg-admin'], LMEG_VERSION);
-        wp_enqueue_script('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.js', [], LMEG_VERSION, true);
+        $bd_cssv = @filemtime(LMEG_PLUGIN_DIR . 'assets/builder.css') ?: LMEG_VERSION;
+        $bd_jsv  = @filemtime(LMEG_PLUGIN_DIR . 'assets/builder.js')  ?: LMEG_VERSION;
+        wp_enqueue_style('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.css', ['lmeg-admin'], $bd_cssv);
+        wp_enqueue_script('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.js', [], $bd_jsv, true);
     }
 
     // Belt-and-suspenders: some plugins clobber the admin_body_class filter
@@ -732,20 +737,13 @@ function lmeg_admin_compose() {
                         </form>
 
                         <script>
-                        // builder.js is enqueued in the footer, so defer init until the
-                        // DOM (and that script) are ready — otherwise LMEGBuilder is undefined.
                         (function(){
-                            function start(){
+                            function boot(){
                                 var root = document.getElementById('lmeg-builder-root');
                                 var richWrap = document.getElementById('lmeg-rich-wrap');
-                                if (!root) return;
-                                if (!window.LMEGBuilder) {
-                                    // Script still not loaded — try again shortly (up to ~3s).
-                                    if ((start._tries = (start._tries || 0) + 1) < 30) { setTimeout(start, 100); }
-                                    return;
-                                }
-                                var b = window.LMEGBuilder.init(root, 'body_email');
                                 var modeField = document.getElementById('body_email_mode');
+                                if (!root) return;
+                                var b = null; // set once the builder script loads
 
                                 function setMode(mode){
                                     var builder = mode !== 'rich';
@@ -753,58 +751,65 @@ function lmeg_admin_compose() {
                                         x.classList.toggle('is-active', x.dataset.mode === (builder ? 'builder' : 'rich'));
                                     });
                                     root.style.display = builder ? '' : 'none';
-                                    richWrap.style.display = builder ? 'none' : '';
+                                    if (richWrap) richWrap.style.display = builder ? 'none' : '';
                                     if (modeField) modeField.value = builder ? 'builder' : 'rich';
                                 }
+                                // Hand the built HTML to the textarea/TinyMCE. Tolerates an
+                                // older builder.js that predates pushToEditor().
+                                function pushBuilder(){
+                                    if (!b) return;
+                                    try { (b.pushToEditor || b.sync || function(){}).call(b); } catch(e){}
+                                }
 
+                                // IMPORTANT: bind the mode toggle + submit + preview NOW,
+                                // independent of the builder. If builder.js is slow, blocked,
+                                // or errors, you can still switch to Rich text and keep working.
                                 document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
                                     btn.addEventListener('click', function(){
                                         var toRich = btn.dataset.mode === 'rich';
-                                        // Leaving the builder for rich: hand the built HTML to
-                                        // the editor so you can tweak it. (Rich→builder can't
-                                        // rebuild blocks, so the builder just keeps what it has.)
-                                        if (toRich && b) b.pushToEditor();
+                                        if (toRich) pushBuilder(); // builder→editor when leaving builder
                                         setMode(toRich ? 'rich' : 'builder');
                                     });
                                 });
 
-                                // Restore the persisted mode (e.g. after a send-test reload)
-                                // so rich-text content isn't hidden behind the builder.
-                                setMode(modeField && modeField.value === 'rich' ? 'rich' : 'builder');
-
-                                // At submit, make the ACTIVE editor authoritative for
-                                // #body_email so nothing clobbers it (WordPress auto-saves
-                                // TinyMCE on submit; in builder mode we override that).
                                 var composeForm = root.closest('form');
                                 if (composeForm) composeForm.addEventListener('submit', function(){
                                     var mode = modeField ? modeField.value : 'builder';
-                                    if (mode === 'rich') {
-                                        if (window.tinymce) { try { tinymce.triggerSave(); } catch(e){} }
-                                    } else if (b) {
-                                        b.pushToEditor();
-                                    }
+                                    if (mode === 'rich') { if (window.tinymce) { try { tinymce.triggerSave(); } catch(e){} } }
+                                    else pushBuilder();
                                 });
 
-                                // Preview in a new tab — pull the body from whichever
-                                // editor is active, then submit the hidden form.
                                 var pvBtn = document.getElementById('lmeg-preview-btn');
                                 if (pvBtn) pvBtn.addEventListener('click', function(){
                                     var mode = modeField ? modeField.value : 'builder';
-                                    if (mode !== 'rich' && b) {
-                                        b.pushToEditor();
-                                    } else if (window.tinymce && tinymce.get('body_email')) {
-                                        try { tinymce.triggerSave(); } catch(e){}
-                                    }
+                                    if (mode !== 'rich') pushBuilder();
+                                    else if (window.tinymce && tinymce.get('body_email')) { try { tinymce.triggerSave(); } catch(e){} }
                                     var ta = document.getElementById('body_email');
-                                    document.getElementById('lmeg-preview-body').value = ta ? ta.value : '';
-                                    // Name + open the target window in the click handler so
-                                    // the browser doesn't treat it as a blocked popup.
+                                    var pb = document.getElementById('lmeg-preview-body'); if (pb) pb.value = ta ? ta.value : '';
                                     window.open('', 'lmeg_email_preview');
-                                    document.getElementById('lmeg-preview-form').submit();
+                                    var pf = document.getElementById('lmeg-preview-form'); if (pf) pf.submit();
                                 });
+
+                                // Restore the persisted mode (e.g. after a send-test reload).
+                                setMode(modeField && modeField.value === 'rich' ? 'rich' : 'builder');
+
+                                // Bring up the builder when its script is ready. A failure here
+                                // no longer takes the toggle down with it.
+                                var tries = 0;
+                                (function initBuilder(){
+                                    if (!window.LMEGBuilder) {
+                                        if (tries++ < 40) { setTimeout(initBuilder, 100); return; }
+                                        // Gave up — tell the user how to keep going instead of
+                                        // leaving a blank box that reads as "broken".
+                                        root.innerHTML = '<div style="padding:16px;border:1px dashed #d8ccc0;border-radius:10px;color:#6a5f5a;font-size:13px;">The drag &amp; drop builder didn’t load (it may be blocked by a caching or optimization plugin). Click <strong>Rich text / HTML</strong> above to compose — or hard-refresh this page.</div>';
+                                        return;
+                                    }
+                                    try { b = window.LMEGBuilder.init(root, 'body_email'); }
+                                    catch(e){ if (window.console && console.error) console.error('Loonybin builder failed to initialize:', e); }
+                                })();
                             }
-                            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-                            else start();
+                            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+                            else boot();
                         })();
                         </script>
                     </td>
