@@ -350,8 +350,37 @@ function lmeg_admin_subscribers() {
         $where .= " AND unsubscribed_at IS NOT NULL";
     }
 
-    $rows       = $wpdb->get_results("SELECT * FROM $table WHERE $where ORDER BY created_at DESC LIMIT 500");
+    // Pagination — this list used to hard-cap at 500 rows with no way to reach
+    // the rest. Now it pages through the full (optionally filtered) list.
+    $per_page  = 100;
+    $matching  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE $where");
+    $num_pages = max(1, (int) ceil($matching / $per_page));
+    $paged     = min($num_pages, max(1, (int) ($_GET['paged'] ?? 1)));
+    $offset    = ($paged - 1) * $per_page;
+
+    $rows       = $wpdb->get_results("SELECT * FROM $table WHERE $where ORDER BY created_at DESC LIMIT " . (int) $per_page . " OFFSET " . (int) $offset);
     $total      = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table");
+
+    // Reusable pager markup (rendered above and below the table), preserving
+    // the active status/tag filters.
+    $pg_first = $matching ? ($offset + 1) : 0;
+    $pg_last  = (int) min($offset + $per_page, $matching);
+    $pg_args  = array_filter(['status' => $filter_status, 'tag' => $filter_tag_slug], 'strlen');
+    $pg_link  = function ($p) use ($pg_args) {
+        return esc_url(add_query_arg(array_merge($pg_args, ['paged' => (int) $p]), admin_url('admin.php?page=lmeg')));
+    };
+    ob_start(); ?>
+        <div class="tablenav-pages">
+            <span class="displaying-num"><?php echo number_format_i18n($matching); ?> item<?php echo $matching === 1 ? '' : 's'; ?><?php echo $matching ? ' · showing ' . number_format_i18n($pg_first) . '&ndash;' . number_format_i18n($pg_last) : ''; ?></span>
+            <?php if ($num_pages > 1) : ?>
+                <span class="pagination-links" style="margin-left:8px;">
+                    <?php if ($paged > 1) : ?><a class="button" href="<?php echo $pg_link(1); ?>" title="First page">&laquo;</a> <a class="button" href="<?php echo $pg_link($paged - 1); ?>" title="Previous page">&lsaquo;</a><?php else : ?><span class="button disabled">&laquo;</span> <span class="button disabled">&lsaquo;</span><?php endif; ?>
+                    <span class="paging-input" style="margin:0 6px;">Page <?php echo (int) $paged; ?> of <?php echo (int) $num_pages; ?></span>
+                    <?php if ($paged < $num_pages) : ?><a class="button" href="<?php echo $pg_link($paged + 1); ?>" title="Next page">&rsaquo;</a> <a class="button" href="<?php echo $pg_link($num_pages); ?>" title="Last page">&raquo;</a><?php else : ?><span class="button disabled">&rsaquo;</span> <span class="button disabled">&raquo;</span><?php endif; ?>
+                </span>
+            <?php endif; ?>
+        </div>
+    <?php $pager = ob_get_clean();
     $active_em  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE email IS NOT NULL AND email <> '' AND unsubscribed_at IS NULL");
     $active_ph  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE phone IS NOT NULL AND phone <> '' AND unsubscribed_at IS NULL");
     $unsub_n    = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE unsubscribed_at IS NOT NULL");
@@ -432,6 +461,7 @@ function lmeg_admin_subscribers() {
                     <?php endif; ?>
                     <button type="submit" class="button">Apply</button>
                 </div>
+                <?php echo $pager; ?>
             </div>
             <table class="widefat striped">
                 <thead>
@@ -493,6 +523,7 @@ function lmeg_admin_subscribers() {
                 <?php endforeach; endif; ?>
                 </tbody>
             </table>
+            <div class="tablenav bottom"><?php echo $pager; ?></div>
         </form>
         <script>
         (function(){

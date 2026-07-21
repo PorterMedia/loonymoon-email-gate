@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.3
+Stable tag: 2.55.4
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.4 =
+* Fix: the Subscribers/Fans list was hard-capped at 500 rows with no way to see the rest. It now paginates (100 per page) with page controls above and below the table and a "showing X–Y of N" count, and the pager keeps your active Free/Paid/Unsubscribed/tag filter. (The "Export all as CSV" button always included everyone regardless.)
+
 = 2.55.3 =
 * New: "Save & test Shopify" now reports the token's granted scopes and warns clearly if read_orders is missing — the definitive diagnosis for the 403 "requires merchant approval for read_orders" order-sync error (it means the token simply doesn't carry that scope; declare it on the app and reconnect to mint a fresh one).
 
