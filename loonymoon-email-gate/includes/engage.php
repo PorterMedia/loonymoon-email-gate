@@ -243,6 +243,38 @@ function lmeg_contest_forward_page($dest, $contest = null, $entered = true) {
     exit;
 }
 
+/**
+ * STEP 1 landing for a one-tap contest click — a deliberately inert 200 page.
+ *
+ * This is the URL placed in the email, so it's the one Brevo (and Gmail /
+ * Outlook Safe Links) fetch to validate + wrap for click tracking. It sets no
+ * cookie, writes nothing, and does not server-redirect — so no scanner can flag
+ * it (which is what was 404'ing the tracking wrapper). Real browsers run the JS
+ * and advance to ?…&lmeg_go=1 (STEP 2), where the actual entry + sign-in happen;
+ * JS-less humans get a visible "confirm" link; bots simply stop here.
+ */
+function lmeg_contest_render_confirm_landing($cid, $sub_id, $exp, $tok, $contest = null) {
+    if (!headers_sent()) { status_header(200); nocache_headers(); }
+    $payload = (int) $cid . '-' . (int) $sub_id . '-' . (int) $exp . '-' . $tok;
+    $go      = add_query_arg(['lmeg_ce' => $payload, 'lmeg_go' => 1], home_url('/'));
+    $u       = esc_url($go);
+    $title   = ($contest && !empty($contest->title)) ? $contest->title : get_bloginfo('name');
+    echo '<!doctype html><html><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>' . esc_html($title) . '</title>'
+        . '<style>body{margin:0;font-family:-apple-system,\'Segoe UI\',Roboto,sans-serif;'
+        . 'display:flex;min-height:100vh;align-items:center;justify-content:center;'
+        . 'text-align:center;color:#2a2a2a;background:#faf7f4}a{color:#7a5cff;font-weight:600;text-decoration:none}'
+        . '.d{opacity:.65;margin:0 0 22px}</style>'
+        . '</head><body><div><p style="font-size:22px;margin:0 0 8px">Entering you&hellip;</p>'
+        . '<p class="d">One moment.</p>'
+        . '<p><a id="go" href="' . $u . '">Confirm your entry &rarr;</a></p></div>'
+        // Advance in-browser (never a server redirect, so scanners don't see it).
+        . '<script>location.replace(' . wp_json_encode($go) . ')</script>'
+        . '</body></html>';
+    exit;
+}
+
 add_action('init', 'lmeg_maybe_handle_contest_enter');
 function lmeg_maybe_handle_contest_enter() {
     global $wpdb;
@@ -277,6 +309,21 @@ function lmeg_maybe_handle_contest_enter() {
     $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
     if (!$sub) { lmeg_contest_forward_page($land, $contest, false); }
 
+    // STEP 1 — this is the URL that goes in the email, and the ONLY URL Brevo's
+    // click-tracker validates when it builds the send. Email link-scanners
+    // (Brevo, Gmail, Outlook Safe Links) reject/flag destinations that set
+    // cookies, redirect, or otherwise "do something", and Brevo then 404s its
+    // tracking wrapper. So this URL returns a squeaky-clean 200 page with NO
+    // Set-Cookie, NO redirect and NO database write — nothing to object to. A
+    // real browser runs the page's JS and advances to the confirm step below;
+    // scanners/bots (no JS) stop here, so they never enter anyone either.
+    if (empty($_GET['lmeg_go'])) {
+        lmeg_contest_render_confirm_landing($cid, $sub_id, $exp, $tok, $contest);
+    }
+
+    // STEP 2 — reached only via the client-side hop (…&lmeg_go=1), which Brevo
+    // never sees. Safe to sign the fan in, set cookies, write the entry, and
+    // land them wherever we like.
     // Recognize the fan everywhere (so the contest page + any form show who
     // they are), and unlock the gate for this visit.
     if (function_exists('lmeg_set_member_cookie')) lmeg_set_member_cookie($sub->id, (int) $sub->member_tier_id);
