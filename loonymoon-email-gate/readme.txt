@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.21
+Stable tag: 2.55.22
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.22 =
+* Cleanup: the contest confirm-hop parameter added in 2.55.21 was named lmeg_go, which is also the smart-links query var — a latent naming conflict. Renamed it to lmeg_ce_go so the two features can never collide. (Contest flow still won on hook order, and smart URLs were unaffected, so this is hardening, not a behavior change.)
+
 = 2.55.21 =
 * Fix (contest link 404 — the definitive fix): the one-tap link is now a two-step hop. The URL placed in the email (the only one Brevo/Gmail/Outlook fetch to validate + wrap for click tracking) is a completely inert 200 page — it sets no cookie, writes nothing, and never redirects, so no link-scanner can flag it (which is what was 404'ing the tracking wrapper). A real browser runs that page's JavaScript and advances to a second URL (…&lmeg_go=1) that scanners never see, where the fan is actually signed in and entered. Bonus: because entry now only happens on the second (JS-driven) hop, link-scanners pre-fetching the email no longer enter people who never clicked. Resend to get the new link.
 

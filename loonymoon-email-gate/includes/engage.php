@@ -250,13 +250,15 @@ function lmeg_contest_forward_page($dest, $contest = null, $entered = true) {
  * Outlook Safe Links) fetch to validate + wrap for click tracking. It sets no
  * cookie, writes nothing, and does not server-redirect — so no scanner can flag
  * it (which is what was 404'ing the tracking wrapper). Real browsers run the JS
- * and advance to ?…&lmeg_go=1 (STEP 2), where the actual entry + sign-in happen;
+ * and advance to ?…&lmeg_ce_go=1 (STEP 2), where the actual entry + sign-in happen;
  * JS-less humans get a visible "confirm" link; bots simply stop here.
  */
 function lmeg_contest_render_confirm_landing($cid, $sub_id, $exp, $tok, $contest = null) {
     if (!headers_sent()) { status_header(200); nocache_headers(); }
     $payload = (int) $cid . '-' . (int) $sub_id . '-' . (int) $exp . '-' . $tok;
-    $go      = add_query_arg(['lmeg_ce' => $payload, 'lmeg_go' => 1], home_url('/'));
+    // NB: the confirm flag is lmeg_ce_go (NOT lmeg_go — that belongs to the
+    // smart-links feature; sharing the name would be a latent conflict).
+    $go      = add_query_arg(['lmeg_ce' => $payload, 'lmeg_ce_go' => 1], home_url('/'));
     $u       = esc_url($go);
     $title   = ($contest && !empty($contest->title)) ? $contest->title : get_bloginfo('name');
     echo '<!doctype html><html><head><meta charset="utf-8">'
@@ -317,11 +319,11 @@ function lmeg_maybe_handle_contest_enter() {
     // Set-Cookie, NO redirect and NO database write — nothing to object to. A
     // real browser runs the page's JS and advances to the confirm step below;
     // scanners/bots (no JS) stop here, so they never enter anyone either.
-    if (empty($_GET['lmeg_go'])) {
+    if (empty($_GET['lmeg_ce_go'])) {
         lmeg_contest_render_confirm_landing($cid, $sub_id, $exp, $tok, $contest);
     }
 
-    // STEP 2 — reached only via the client-side hop (…&lmeg_go=1), which Brevo
+    // STEP 2 — reached only via the client-side hop (…&lmeg_ce_go=1), which Brevo
     // never sees. Safe to sign the fan in, set cookies, write the entry, and
     // land them wherever we like.
     // Recognize the fan everywhere (so the contest page + any form show who
