@@ -91,11 +91,30 @@ function lmeg_email_domain_ok($email) {
 function lmeg_log_signup_reject($reason, $email = '') {
     $log = get_option('lmeg_signup_rejects', []);
     if (!is_array($log)) $log = [];
+    // Snapshot the signup's whole context — location fields, source tags,
+    // contest intent — so "Add anyway" can restore the person exactly as the
+    // original form submission would have. (Runs inside the submit handler,
+    // so $_POST is the signup form.)
+    $iso     = strtoupper(sanitize_text_field(wp_unslash($_POST['address_country'] ?? '')));
+    $country = preg_match('/^[A-Z]{2}$/', $iso) ? $iso : '';
+    if (!$country && function_exists('lmeg_geo_country_current_request')) {
+        $country = (string) lmeg_geo_country_current_request();
+    }
+    $slugs = array_slice(array_filter(array_map('sanitize_title',
+        explode(',', (string) wp_unslash($_POST['lmeg_tags'] ?? '')))), 0, 8);
     array_unshift($log, [
-        't'      => current_time('mysql'),
-        'reason' => (string) $reason,
-        'email'  => substr((string) $email, 0, 190),
-        'ip'     => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : '', 0, 45),
+        't'       => current_time('mysql'),
+        'reason'  => (string) $reason,
+        'email'   => substr((string) $email, 0, 190),
+        'ip'      => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : '', 0, 45),
+        'country' => $country,
+        'street'  => substr(sanitize_text_field(wp_unslash($_POST['street'] ?? '')), 0, 190),
+        'city'    => substr(sanitize_text_field(wp_unslash($_POST['city'] ?? '')), 0, 100),
+        'region'  => substr(sanitize_text_field(wp_unslash($_POST['region'] ?? '')), 0, 100),
+        'postal'  => substr(sanitize_text_field(wp_unslash($_POST['postal_code'] ?? '')), 0, 20),
+        'tags'    => implode(',', $slugs),
+        'contest' => (int) ($_POST['lmeg_contest_join'] ?? 0),
+        'post_id' => (int) ($_POST['post_id'] ?? 0),
     ]);
     update_option('lmeg_signup_rejects', array_slice($log, 0, 100), false);
 }
@@ -103,6 +122,34 @@ function lmeg_log_signup_reject($reason, $email = '') {
 function lmeg_recent_signup_rejects($limit = 30) {
     $log = get_option('lmeg_signup_rejects', []);
     return is_array($log) ? array_slice($log, 0, (int) $limit) : [];
+}
+
+/**
+ * Stable identity for a reject-log row (content hash, so it also works for
+ * rows logged before the richer format and survives the list shifting as new
+ * rejects arrive).
+ */
+function lmeg_signup_reject_key($rj) {
+    return md5(($rj['t'] ?? '') . '|' . ($rj['email'] ?? '') . '|' . ($rj['reason'] ?? '') . '|' . ($rj['ip'] ?? ''));
+}
+
+/**
+ * Stamp a reject-log row as manually added: when, the new subscriber id, and
+ * whether the welcome email actually went out — the panel shows this instead
+ * of the "Add anyway" button.
+ */
+function lmeg_mark_signup_reject_added($key, $sub_id, $welcome_sent) {
+    $log = get_option('lmeg_signup_rejects', []);
+    if (!is_array($log)) return;
+    foreach ($log as $i => $rj) {
+        if (lmeg_signup_reject_key($rj) === $key) {
+            $log[$i]['added_at'] = current_time('mysql');
+            $log[$i]['added_id'] = (int) $sub_id;
+            $log[$i]['welcome']  = $welcome_sent ? 1 : 0;
+            break;
+        }
+    }
+    update_option('lmeg_signup_rejects', $log, false);
 }
 
 /**

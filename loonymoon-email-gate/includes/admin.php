@@ -346,6 +346,62 @@ function lmeg_admin_subscribers() {
             $notice = '<div class="notice notice-success"><p>Added ' . (int) $added . ' subscriber' . ($added === 1 ? '' : 's')
                     . ($bad ? ', skipped ' . (int) $bad . ' invalid address' . ($bad === 1 ? '' : 'es') : '')
                     . '. (Re-adding an existing email just reactivates it. Welcome email + sequences fire if enabled.)</p></div>';
+        } elseif (($_POST['lmeg_action'] ?? '') === 'add_reject') {
+            // One-click add from the rejected-signups panel — restores everything
+            // the original submission carried: location, source tags, contest
+            // intent. Legacy rows (before the richer log) only stored an IP, so
+            // the country is geolocated from that.
+            $key = sanitize_text_field(wp_unslash($_POST['reject_key'] ?? ''));
+            $hit = null;
+            foreach (function_exists('lmeg_recent_signup_rejects') ? lmeg_recent_signup_rejects(100) : [] as $rj) {
+                if (function_exists('lmeg_signup_reject_key') && lmeg_signup_reject_key($rj) === $key) { $hit = $rj; break; }
+            }
+            if ($hit && !empty($hit['email']) && is_email($hit['email'])) {
+                $em      = sanitize_email($hit['email']);
+                $country = (string) ($hit['country'] ?? '');
+                if (!$country && !empty($hit['ip']) && function_exists('lmeg_geo_country_from_ip')) {
+                    $country = (string) lmeg_geo_country_from_ip($hit['ip']);
+                }
+                lmeg_store_subscriber([
+                    'contact_type' => 'email', 'email' => $em, 'phone' => null,
+                    'country'      => $country ?: null,
+                    'street'       => (string) ($hit['street'] ?? '') !== '' ? $hit['street'] : null,
+                    'city'         => (string) ($hit['city'] ?? '') !== '' ? $hit['city'] : null,
+                    'region'       => (string) ($hit['region'] ?? '') !== '' ? $hit['region'] : null,
+                    'postal_code'  => (string) ($hit['postal'] ?? '') !== '' ? $hit['postal'] : null,
+                    'post_id'      => (int) ($hit['post_id'] ?? 0) ?: null,
+                ]);
+                $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE email = %s", $em));
+                if ($sub) {
+                    // Source tags the form carried (auto-tags — channel/country —
+                    // were already refreshed inside lmeg_store_subscriber).
+                    if (!empty($hit['tags']) && function_exists('lmeg_get_or_create_tag') && function_exists('lmeg_attach_tag')) {
+                        foreach (array_filter(explode(',', (string) $hit['tags'])) as $slug) {
+                            $tag = lmeg_get_or_create_tag($slug, null, true);
+                            if ($tag) lmeg_attach_tag((int) $sub->id, (int) $tag->id);
+                        }
+                    }
+                    // The contest they were trying to enter when the signup dropped.
+                    if (!empty($hit['contest']) && function_exists('lmeg_contest_enter_subscriber')) {
+                        lmeg_contest_enter_subscriber((int) $sub->id, (int) $hit['contest']);
+                    }
+                    // welcome_sent_at is stamped only on a successful Brevo send
+                    // (fires synchronously inside lmeg_store_subscriber for new rows).
+                    $welcome = !empty($sub->welcome_sent_at);
+                    if (function_exists('lmeg_mark_signup_reject_added')) {
+                        lmeg_mark_signup_reject_added($key, (int) $sub->id, $welcome);
+                    }
+                    $notice = '<div class="notice notice-success"><p>Added <strong>' . esc_html($em) . '</strong>'
+                            . ($country ? ' (' . esc_html($country) . ')' : '')
+                            . (!empty($hit['tags']) ? ' with tags <em>' . esc_html($hit['tags']) . '</em>' : '')
+                            . ($welcome ? ' — welcome email sent. ✉️' : ' — welcome email not sent (already welcomed earlier, or the welcome email is disabled).')
+                            . '</p></div>';
+                } else {
+                    $notice = '<div class="notice notice-error"><p>Could not add ' . esc_html($em) . ' — the insert failed.</p></div>';
+                }
+            } else {
+                $notice = '<div class="notice notice-error"><p>Could not find that rejected signup in the log (it may have rotated out).</p></div>';
+            }
         } elseif (($_POST['lmeg_action'] ?? '') === 'clear_rejects') {
             delete_option('lmeg_signup_rejects');
             $notice = '<div class="notice notice-success"><p>Rejected-signups log cleared.</p></div>';
@@ -449,7 +505,7 @@ function lmeg_admin_subscribers() {
         <details style="margin:2px 0 16px;max-width:820px;">
             <summary style="cursor:pointer;color:#a05a00;font-weight:600;">⚠ <?php echo count($rejects); ?> recent signup<?php echo count($rejects) === 1 ? '' : 's'; ?> did not get added — see why</summary>
             <table class="widefat striped" style="margin-top:8px;">
-                <thead><tr><th>When</th><th>Email</th><th>Reason it was dropped</th><th>IP</th><th></th></tr></thead>
+                <thead><tr><th>When</th><th>Email</th><th>Location</th><th>Tags</th><th>Reason it was dropped</th><th>IP</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($rejects as $rj) :
                     $reason_label = [
@@ -460,17 +516,26 @@ function lmeg_admin_subscribers() {
                         'domain_rejected' => '🌐 Email domain failed the DNS check',
                     ][$rj['reason']] ?? esc_html($rj['reason']);
                     $can_add = !empty($rj['email']) && is_email($rj['email']);
+                    $loc     = implode(', ', array_filter([(string) ($rj['city'] ?? ''), (string) ($rj['region'] ?? ''), (string) ($rj['country'] ?? '')]));
+                    $rtags   = (string) ($rj['tags'] ?? '');
+                    $added   = !empty($rj['added_at']);
                 ?>
                     <tr>
                         <td style="white-space:nowrap;"><?php echo esc_html($rj['t']); ?></td>
                         <td><?php echo esc_html($rj['email'] ?: '—'); ?></td>
+                        <td><?php echo $loc !== '' ? esc_html($loc) : '<span style="color:#999;">— <abbr title="Older log rows only captured the IP; the country is looked up from it when you add them.">from IP on add</abbr></span>'; ?></td>
+                        <td><?php echo $rtags !== '' ? esc_html($rtags) : '<span style="color:#999;">—</span>'; ?></td>
                         <td><?php echo esc_html($reason_label); ?></td>
                         <td><?php echo esc_html($rj['ip']); ?></td>
-                        <td><?php if ($can_add) : ?>
+                        <td style="white-space:nowrap;"><?php if ($added) : ?>
+                            <span style="color:#1a6f1a;font-weight:600;">✓ Added</span>
+                            <span style="color:#1a6f1a;"><?php echo !empty($rj['welcome']) ? '· welcome email sent ✉️' : '· no welcome (already had one, or disabled)'; ?></span>
+                            <br><span class="description"><?php echo esc_html($rj['added_at']); ?></span>
+                        <?php elseif ($can_add) : ?>
                             <form method="post" style="margin:0;">
                                 <?php wp_nonce_field('lmeg_subs', 'lmeg_subs_nonce'); ?>
-                                <input type="hidden" name="lmeg_action" value="add_manual" />
-                                <input type="hidden" name="manual_emails" value="<?php echo esc_attr($rj['email']); ?>" />
+                                <input type="hidden" name="lmeg_action" value="add_reject" />
+                                <input type="hidden" name="reject_key" value="<?php echo esc_attr(function_exists('lmeg_signup_reject_key') ? lmeg_signup_reject_key($rj) : ''); ?>" />
                                 <button type="submit" class="button button-small">Add anyway</button>
                             </form>
                         <?php endif; ?></td>
