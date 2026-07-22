@@ -134,6 +134,10 @@ function lmeg_shortcode_signup($atts = []) {
                     <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
                 </p>
                 <?php if ($member->email) : ?><input type="hidden" name="email" value="<?php echo esc_attr($member->email); ?>" /><?php endif; ?>
+                <?php if ($contest_join) : ?>
+                    <input type="hidden" name="lmeg_contest_join" value="<?php echo (int) $contest_join; ?>" />
+                    <button type="submit" name="lmeg_after" value="free" class="lmeg-button lmeg-embed__button"><?php echo esc_html($atts['button']); ?></button>
+                <?php endif; ?>
             <?php else : ?>
                 <?php if ($show_phone) : ?>
                     <div class="lmeg-tabs" role="tablist" aria-label="Contact method">

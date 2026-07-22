@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.13
+Stable tag: 2.55.14
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.14 =
+* New: contest description now supports formatting — bold, italics, links, and line breaks (rich editor in the admin; existing plain descriptions keep their line breaks too).
+* New: custom "Success message" per contest that REPLACES the contest on the page once someone enters (with formatting). Leave blank for a default "You're entered! 🎉".
+* Changed: no sign-in needed to enter. Everyone enters with just their email — people not on the loonybin are added to the list AND entered; people already on the list just get entered (no duplicate). Recognized fans get a one-click enter; the old "sign in to enter" prompt is gone.
+
 = 2.55.13 =
 * New: the contest shortcode now shows a real join-and-enter form to visitors who aren't signed in (instead of just "Join the list to enter — sign in"). They enter their email, and they're both subscribed and entered into the contest in one step.
 * New: signup forms can be prefilled from the URL — ?lmeg_email=you@example.com (or ?lmeg_phone=) fills the field in. Also added a "contest" attribute to [lmeg_signup] so any embedded form can auto-enter a contest on submit.

@@ -164,6 +164,18 @@ function lmeg_contest_bonus_entries($contest, $subscriber_id) {
     return 1 + 3 * $n;
 }
 
+/** Enter a subscriber into a contest if it's still open. Returns true if entered. */
+function lmeg_contest_enter_subscriber($sub_id, $contest_id) {
+    global $wpdb;
+    $contest = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", (int) $contest_id));
+    if (!$contest || !$contest->is_open || ($contest->ends_at && $contest->ends_at <= current_time('mysql'))) return false;
+    $wpdb->query($wpdb->prepare(
+        "INSERT IGNORE INTO {$wpdb->prefix}lmeg_contest_entries (contest_id, subscriber_id, entries, entered_at) VALUES (%d, %d, 1, %s)",
+        (int) $contest_id, (int) $sub_id, current_time('mysql')
+    ));
+    return true;
+}
+
 /* ---------------------------------------------------------------------------
  * One-tap contest entry links — personalized + HMAC-signed. Put {contest_link}
  * in an email/SMS broadcast; each recipient gets a link that signs them in AND
@@ -296,11 +308,27 @@ function lmeg_shortcode_contest($atts = []) {
         ));
     }
 
+    $entered = ($member && $mine);
+
     ob_start(); ?>
     <div class="lmeg-contest">
+    <?php if ($entered && !$winner) :
+        // Once someone's entered, the success message REPLACES the contest.
+        $success = trim((string) ($contest->success_message ?? '')); ?>
+        <?php if ($success !== '') : ?>
+            <div class="lmeg-contest__success"><?php echo wpautop($success); ?></div>
+        <?php else :
+            $total_entries = lmeg_contest_bonus_entries($contest, $member->id); ?>
+            <p class="lmeg-contest__entered">🎉 You&rsquo;re entered<?php echo $total_entries > 1 ? ' with <strong>' . (int) $total_entries . '</strong> entries' : ''; ?>!</p>
+        <?php endif; ?>
+        <?php if ((!isset($contest->referral_bonus) || $contest->referral_bonus) && function_exists('lmeg_referral_url')) : ?>
+            <p class="lmeg-contest__note">Want more chances? Every friend who joins through your link is <strong>+3 entries</strong>:<br />
+                <code class="lmeg-contest__reflink"><?php echo esc_html(lmeg_referral_url($member->id)); ?></code></p>
+        <?php endif; ?>
+    <?php else : ?>
         <div class="lmeg-contest__title"><?php echo esc_html($contest->title); ?></div>
         <?php if ($contest->description) : ?>
-            <p class="lmeg-contest__desc"><?php echo esc_html($contest->description); ?></p>
+            <div class="lmeg-contest__desc"><?php echo wpautop($contest->description); ?></div>
         <?php endif; ?>
 
         <?php if ($winner) :
@@ -309,29 +337,21 @@ function lmeg_shortcode_contest($atts = []) {
             <p class="lmeg-contest__winner">🎉 Winner: <strong><?php echo esc_html($w); ?></strong></p>
         <?php elseif ($ended) : ?>
             <p class="lmeg-contest__note">Entries are closed — winner announced soon.</p>
-        <?php elseif (!$member) : ?>
-            <p class="lmeg-contest__note">Enter your email to join &amp; get your entry:</p>
-            <?php echo function_exists('lmeg_shortcode_signup') ? lmeg_shortcode_signup(['contest' => $cid, 'button' => 'Join &amp; enter', 'style' => 'inline', 'success' => 'You&rsquo;re entered! 🎉']) : ''; ?>
-            <p class="lmeg-contest__note" style="margin-top:8px;font-size:12px;opacity:.75;">Already on the list? <a href="?lmeg_member=signin">Sign in</a> to enter with one tap.</p>
-        <?php elseif ($mine) :
-            $total_entries = lmeg_contest_bonus_entries($contest, $member->id);
-            $ref_url = function_exists('lmeg_referral_url') ? lmeg_referral_url($member->id) : home_url('/');
-        ?>
-            <p class="lmeg-contest__entered">✓ You're in with <strong><?php echo (int) $total_entries; ?></strong> entr<?php echo $total_entries === 1 ? 'y' : 'ies'; ?>.</p>
-            <?php if (!isset($contest->referral_bonus) || $contest->referral_bonus) : ?>
-            <p class="lmeg-contest__note">Want more chances? Every friend who joins through your link is <strong>+3 entries</strong>:<br />
-                <code class="lmeg-contest__reflink"><?php echo esc_html($ref_url); ?></code></p>
-            <?php endif; ?>
         <?php else : ?>
-            <form method="post">
-                <input type="hidden" name="lmeg_contest_id" value="<?php echo $cid; ?>" />
-                <?php wp_nonce_field('lmeg_contest_' . $cid, '_lmeg_contest_nonce'); ?>
-                <button type="submit" class="lmeg-button lmeg-contest__btn">Enter the contest</button>
-            </form>
+            <?php
+            // Everyone enters with just an email — new fans are added to the
+            // loonybin AND entered; existing fans just get entered. No sign-in.
+            echo function_exists('lmeg_shortcode_signup') ? lmeg_shortcode_signup([
+                'contest' => $cid,
+                'button'  => 'Enter the contest',
+                'style'   => 'inline',
+                'success' => 'You&rsquo;re entered! 🎉',
+            ]) : ''; ?>
             <?php if ($contest->ends_at) : ?>
-                <p class="lmeg-contest__note">Closes <?php echo esc_html(date_i18n('M j, Y g:ia', strtotime($contest->ends_at))); ?></p>
+                <p class="lmeg-contest__note" style="margin-top:8px;">Closes <?php echo esc_html(date_i18n('M j, Y g:ia', strtotime($contest->ends_at))); ?></p>
             <?php endif; ?>
         <?php endif; ?>
+    <?php endif; ?>
     </div>
     <?php return ob_get_clean();
 }
@@ -565,12 +585,13 @@ function lmeg_admin_contests() {
             if ($title) {
                 $ends = sanitize_text_field($_POST['ends_at'] ?? '');
                 $wpdb->insert($tbl, [
-                    'title'          => $title,
-                    'description'    => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
-                    'ends_at'        => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
-                    'page_url'       => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
-                    'referral_bonus' => !empty($_POST['referral_bonus']) ? 1 : 0,
-                    'created_at'     => current_time('mysql'),
+                    'title'           => $title,
+                    'description'     => wp_kses_post(wp_unslash($_POST['description'] ?? '')),
+                    'ends_at'         => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
+                    'page_url'        => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
+                    'referral_bonus'  => !empty($_POST['referral_bonus']) ? 1 : 0,
+                    'success_message' => wp_kses_post(wp_unslash($_POST['success_message'] ?? '')) ?: null,
+                    'created_at'      => current_time('mysql'),
                 ]);
                 $notice = '<div class="notice notice-success"><p>Contest created — embed with <code>[lmeg_contest id=' . (int) $wpdb->insert_id . ']</code></p></div>';
             }
@@ -580,12 +601,13 @@ function lmeg_admin_contests() {
             if ($id && $title) {
                 $ends = sanitize_text_field($_POST['ends_at'] ?? '');
                 $wpdb->update($tbl, [
-                    'title'          => $title,
-                    'description'    => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
-                    'ends_at'        => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
-                    'page_url'       => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
-                    'is_open'        => !empty($_POST['is_open']) ? 1 : 0,
-                    'referral_bonus' => !empty($_POST['referral_bonus']) ? 1 : 0,
+                    'title'           => $title,
+                    'description'     => wp_kses_post(wp_unslash($_POST['description'] ?? '')),
+                    'ends_at'         => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
+                    'page_url'        => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
+                    'is_open'         => !empty($_POST['is_open']) ? 1 : 0,
+                    'referral_bonus'  => !empty($_POST['referral_bonus']) ? 1 : 0,
+                    'success_message' => wp_kses_post(wp_unslash($_POST['success_message'] ?? '')) ?: null,
                 ], ['id' => $id]);
                 $notice = '<div class="notice notice-success"><p>Contest updated.</p></div>';
             }
@@ -623,10 +645,27 @@ function lmeg_admin_contests() {
             <?php if ($editing) : ?><input type="hidden" name="contest_id" value="<?php echo (int) $editing->id; ?>" /><?php endif; ?>
             <table class="form-table" role="presentation">
                 <tr><th>Title</th><td><input type="text" name="title" class="regular-text" required value="<?php echo esc_attr($editing->title ?? ''); ?>" placeholder="Win signed vinyl" /></td></tr>
-                <tr><th>Description</th><td><textarea name="description" rows="3" class="large-text"><?php echo esc_textarea($editing->description ?? ''); ?></textarea></td></tr>
+                <tr><th>Description</th><td>
+                    <?php wp_editor($editing->description ?? '', 'lmeg_contest_desc', [
+                        'textarea_name' => 'description',
+                        'textarea_rows' => 5,
+                        'media_buttons' => false,
+                        'teeny'         => true,
+                    ]); ?>
+                    <p class="description">Bold, italics, links, and line breaks are supported.</p>
+                </td></tr>
                 <tr><th>Ends</th><td><input type="datetime-local" name="ends_at" value="<?php echo ($editing && $editing->ends_at) ? esc_attr(date('Y-m-d\TH:i', strtotime($editing->ends_at))) : ''; ?>" /> <span class="description">optional</span></td></tr>
                 <tr><th>Contest page URL</th><td><input type="url" name="page_url" class="regular-text" value="<?php echo esc_attr($editing->page_url ?? ''); ?>" placeholder="https://loonymoonchild.com/contest/" /> <span class="description">optional — where you embedded <code>[lmeg_contest]</code>; one-tap links land here</span></td></tr>
                 <tr><th>Referral bonus</th><td><label><input type="checkbox" name="referral_bonus" value="1" <?php checked((int) ($editing->referral_bonus ?? 1), 1); ?> /> Give <strong>+3 entries</strong> per friend referred, and show the &ldquo;want more chances&rdquo; prompt</label> <span class="description">uncheck for a straight one-entry-per-fan contest</span></td></tr>
+                <tr><th>Success message</th><td>
+                    <?php wp_editor($editing->success_message ?? '', 'lmeg_contest_success', [
+                        'textarea_name' => 'success_message',
+                        'textarea_rows' => 3,
+                        'media_buttons' => false,
+                        'teeny'         => true,
+                    ]); ?>
+                    <p class="description">Shown after someone enters — it <strong>replaces the contest</strong> on the page. Leave blank for a default &ldquo;You&rsquo;re entered! 🎉&rdquo;.</p>
+                </td></tr>
                 <?php if ($editing) : ?>
                 <tr><th>Status</th><td><label><input type="checkbox" name="is_open" value="1" <?php checked((int) $editing->is_open, 1); ?> /> Open for entries</label> <span class="description">uncheck to close entries without drawing a winner</span></td></tr>
                 <?php endif; ?>

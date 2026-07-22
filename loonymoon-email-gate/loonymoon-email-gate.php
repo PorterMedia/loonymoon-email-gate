@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.55.13
+ * Version:     2.55.14
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.55.13');
-define('LMEG_DB_VERSION',  '2.55.13');
+define('LMEG_VERSION',     '2.55.14');
+define('LMEG_DB_VERSION',  '2.55.14');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -521,6 +521,7 @@ function lmeg_create_tables() {
         is_open TINYINT(1) NOT NULL DEFAULT 1,
         referral_bonus TINYINT(1) NOT NULL DEFAULT 1,
         page_url TEXT,
+        success_message TEXT,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id)
     ) $charset;");
@@ -1336,8 +1337,12 @@ function lmeg_handle_submit() {
     }
 
     // Fast path: existing member submitting the plain "free" button (or
-    // anything else) — just bounce them back, they already have access.
+    // anything else) — just bounce them back, they already have access. But if
+    // the form was a contest entry, enter them first (no re-signup needed).
     if ($existing_member && $after === 'free') {
+        if (!empty($_POST['lmeg_contest_join']) && function_exists('lmeg_contest_enter_subscriber')) {
+            lmeg_contest_enter_subscriber((int) $existing_member->id, (int) $_POST['lmeg_contest_join']);
+        }
         wp_safe_redirect($redirect);
         exit;
     }
@@ -1430,16 +1435,8 @@ function lmeg_handle_submit() {
 
     // Contest join — a signup form embedded in a contest (or a link carrying
     // lmeg_contest_join) enters the fan into that contest right after they join.
-    if ($found && !empty($_POST['lmeg_contest_join'])) {
-        global $wpdb;
-        $join_cid = (int) $_POST['lmeg_contest_join'];
-        $contest  = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", $join_cid));
-        if ($contest && $contest->is_open && (!$contest->ends_at || $contest->ends_at > current_time('mysql'))) {
-            $wpdb->query($wpdb->prepare(
-                "INSERT IGNORE INTO {$wpdb->prefix}lmeg_contest_entries (contest_id, subscriber_id, entries, entered_at) VALUES (%d, %d, 1, %s)",
-                $join_cid, (int) $found->id, current_time('mysql')
-            ));
-        }
+    if ($found && !empty($_POST['lmeg_contest_join']) && function_exists('lmeg_contest_enter_subscriber')) {
+        lmeg_contest_enter_subscriber((int) $found->id, (int) $_POST['lmeg_contest_join']);
     }
 
     // Honor lmeg_after intent: paywall form can request Stripe checkout or a
