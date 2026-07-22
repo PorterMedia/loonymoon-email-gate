@@ -454,6 +454,12 @@ function lmeg_admin_contests() {
     $tbl = $wpdb->prefix . 'lmeg_contests';
     $notice = '';
 
+    // Entrants detail view — the full list of who entered a contest.
+    if (!empty($_GET['contest'])) {
+        lmeg_admin_contest_entrants((int) $_GET['contest']);
+        return;
+    }
+
     if (isset($_POST['lmeg_ct_nonce']) && wp_verify_nonce($_POST['lmeg_ct_nonce'], 'lmeg_ct')) {
         $act = sanitize_text_field($_POST['lmeg_action'] ?? '');
         if ($act === 'create') {
@@ -516,7 +522,7 @@ function lmeg_admin_contests() {
                 <tr>
                     <td><strong><?php echo esc_html($c->title); ?></strong></td>
                     <td><code>[lmeg_contest id=<?php echo (int) $c->id; ?>]</code></td>
-                    <td><?php echo $n; ?></td>
+                    <td><?php if ($n) : ?><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'contest' => (int) $c->id], admin_url('admin.php'))); ?>"><?php echo $n; ?> &rsaquo; view</a><?php else : ?>0<?php endif; ?></td>
                     <td><?php echo esc_html($c->ends_at ?: '—'); ?></td>
                     <td><?php echo $winner
                         ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $winner->id], admin_url('admin.php'))) . '">' . esc_html($winner->email ?: $winner->phone) . '</a>'
@@ -537,4 +543,97 @@ function lmeg_admin_contests() {
         </table>
     </div>
     <?php
+}
+
+/**
+ * Full list of who entered a contest, ranked by total (weighted) entries —
+ * base entry + referral bonuses. Each entrant links to their fan profile.
+ */
+function lmeg_admin_contest_entrants($contest_id) {
+    global $wpdb;
+    $contest = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", (int) $contest_id));
+    if (!$contest) { echo '<div class="wrap"><h1>Contest not found.</h1></div>'; return; }
+
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT e.subscriber_id, e.entries AS base_entries, e.entered_at,
+                s.email, s.phone, s.first_name, s.country
+         FROM {$wpdb->prefix}lmeg_contest_entries e
+         JOIN {$wpdb->prefix}" . LMEG_TABLE . " s ON s.id = e.subscriber_id
+         WHERE e.contest_id = %d
+         ORDER BY e.entered_at ASC", (int) $contest_id
+    ));
+
+    $list = []; $total_weight = 0;
+    foreach ($rows as $r) {
+        $total = function_exists('lmeg_contest_bonus_entries')
+            ? (int) lmeg_contest_bonus_entries($contest, $r->subscriber_id)
+            : (int) $r->base_entries;
+        $total_weight += $total;
+        $list[] = ['r' => $r, 'total' => $total];
+    }
+    usort($list, function ($a, $b) { return $b['total'] - $a['total']; });
+
+    $back   = admin_url('admin.php?page=lmeg-contests');
+    $export = wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_contest&contest=' . (int) $contest_id), 'lmeg_export_contest');
+    ?>
+    <div class="wrap">
+        <p><a href="<?php echo esc_url($back); ?>">&larr; All contests</a></p>
+        <h1>Entrants &mdash; <?php echo esc_html($contest->title); ?></h1>
+        <p>
+            <strong><?php echo number_format_i18n(count($list)); ?></strong> entrant<?php echo count($list) === 1 ? '' : 's'; ?> &middot;
+            <strong><?php echo number_format_i18n($total_weight); ?></strong> total entries (base + referral bonuses)
+            <?php if ($list) : ?><a href="<?php echo esc_url($export); ?>" class="button" style="margin-left:8px;">Export entrants CSV</a><?php endif; ?>
+        </p>
+        <table class="widefat striped" style="max-width:840px;">
+            <thead><tr><th>#</th><th>Fan</th><th>Country</th><th>Entries</th><th>Entered</th></tr></thead>
+            <tbody>
+            <?php if (empty($list)) : ?>
+                <tr><td colspan="5">No entrants yet. They enter from the <code>[lmeg_contest id=<?php echo (int) $contest_id; ?>]</code> shortcode (must be a signed-in subscriber).</td></tr>
+            <?php else : $i = 0; foreach ($list as $item) : $r = $item['r']; $i++;
+                $name      = $r->first_name ?: ($r->email ?: $r->phone);
+                $is_winner = ((int) $contest->winner_subscriber_id === (int) $r->subscriber_id);
+            ?>
+                <tr>
+                    <td><?php echo (int) $i; ?></td>
+                    <td><?php echo $is_winner ? '🎉 ' : ''; ?><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $r->subscriber_id], admin_url('admin.php'))); ?>"><?php echo esc_html($name); ?></a></td>
+                    <td><?php echo $r->country ? esc_html((function_exists('lmeg_flag_emoji') ? lmeg_flag_emoji($r->country) . ' ' : '') . $r->country) : '—'; ?></td>
+                    <td><strong><?php echo (int) $item['total']; ?></strong></td>
+                    <td style="white-space:nowrap;"><?php echo esc_html($r->entered_at); ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+        <p class="description">Ranked by total entries (base + <strong>+3 per fan they referred</strong> during the contest) — the same weighting the winner draw uses.</p>
+    </div>
+    <?php
+}
+
+add_action('admin_post_lmeg_export_contest', 'lmeg_export_contest_csv');
+function lmeg_export_contest_csv() {
+    if (!current_user_can('manage_options')) wp_die('Forbidden', 403);
+    check_admin_referer('lmeg_export_contest');
+    global $wpdb;
+    $cid = (int) ($_GET['contest'] ?? 0);
+    $contest = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", $cid));
+    if (!$contest) wp_die('Contest not found.');
+
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT e.subscriber_id, e.entries, e.entered_at, s.email, s.phone, s.first_name, s.country
+         FROM {$wpdb->prefix}lmeg_contest_entries e
+         JOIN {$wpdb->prefix}" . LMEG_TABLE . " s ON s.id = e.subscriber_id
+         WHERE e.contest_id = %d ORDER BY e.entered_at ASC", $cid
+    ));
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="contest-' . $cid . '-entrants.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['email', 'phone', 'first_name', 'country', 'total_entries', 'entered_at']);
+    foreach ($rows as $r) {
+        $total = function_exists('lmeg_contest_bonus_entries')
+            ? lmeg_contest_bonus_entries($contest, $r->subscriber_id) : $r->entries;
+        fputcsv($out, [$r->email, $r->phone, $r->first_name, $r->country, $total, $r->entered_at]);
+    }
+    fclose($out);
+    exit;
 }
