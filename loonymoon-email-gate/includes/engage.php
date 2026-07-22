@@ -213,6 +213,36 @@ function lmeg_contest_link_for($sub_id) {
     return $c ? lmeg_contest_enter_url($c->id, $sub_id) : home_url('/');
 }
 
+/**
+ * Land a one-tap contest click on a 200 page — NEVER a 301/302 redirect.
+ *
+ * WHY: Brevo's transactional click-tracker validates each link's destination
+ * when it builds the send. If that destination answers with a redirect, Brevo
+ * marks the wrapped tracking link dead and it 404s at click time (a plain 200
+ * destination tracks fine — verified: /?ref=<same-token> works, /?lmeg_ce= which
+ * used to 302 did not). So we return 200 and forward the fan client-side
+ * (instant JS + <meta refresh> fallback + a manual link) instead.
+ */
+function lmeg_contest_forward_page($dest, $contest = null, $entered = true) {
+    if (!headers_sent()) { status_header(200); nocache_headers(); }
+    $title = ($contest && !empty($contest->title)) ? $contest->title : get_bloginfo('name');
+    $u     = esc_url($dest);
+    $head  = $entered ? '&#10003; You&rsquo;re in!' : 'One moment&hellip;';
+    echo '<!doctype html><html><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<meta http-equiv="refresh" content="0;url=' . $u . '">'
+        . '<title>' . esc_html($title) . '</title>'
+        . '<style>body{margin:0;font-family:-apple-system,\'Segoe UI\',Roboto,sans-serif;'
+        . 'display:flex;min-height:100vh;align-items:center;justify-content:center;'
+        . 'text-align:center;color:#2a2a2a;background:#faf7f4}a{color:#7a5cff;font-weight:600;text-decoration:none}</style>'
+        . '</head><body><div><p style="font-size:22px;margin:0 0 8px">' . $head . '</p>'
+        . '<p style="opacity:.65;margin:0 0 22px">Taking you there&hellip;</p>'
+        . '<p><a href="' . $u . '">Continue &rarr;</a></p></div>'
+        . '<script>location.replace(' . wp_json_encode($dest) . ')</script>'
+        . '</body></html>';
+    exit;
+}
+
 add_action('init', 'lmeg_maybe_handle_contest_enter');
 function lmeg_maybe_handle_contest_enter() {
     global $wpdb;
@@ -239,12 +269,13 @@ function lmeg_maybe_handle_contest_enter() {
     $land    = ($contest && !empty($contest->page_url)) ? $contest->page_url : home_url('/');
 
     // Validate expiry + HMAC before trusting the identity in the link.
+    // (Forward with a 200 page, never a 302 — see lmeg_contest_forward_page.)
     if (!$contest || !$sub_id || $exp < time()
         || !hash_equals(lmeg_contest_enter_token($cid, $sub_id, $exp), $tok)) {
-        wp_safe_redirect($land); exit;
+        lmeg_contest_forward_page($land, $contest, false);
     }
     $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
-    if (!$sub) { wp_safe_redirect($land); exit; }
+    if (!$sub) { lmeg_contest_forward_page($land, $contest, false); }
 
     // Recognize the fan everywhere (so the contest page + any form show who
     // they are), and unlock the gate for this visit.
@@ -261,8 +292,10 @@ function lmeg_maybe_handle_contest_enter() {
 
     // Land them on the contest page (they'll see "you're in") if we know it,
     // otherwise show a built-in confirmation with their entry count + ref link.
+    // 200 forward, NOT a 302 — a redirect here is exactly what makes Brevo's
+    // click-tracker 404 the wrapped link.
     if (!empty($contest->page_url)) {
-        wp_safe_redirect(add_query_arg('lmeg_entered', 1, $contest->page_url)); exit;
+        lmeg_contest_forward_page(add_query_arg('lmeg_entered', 1, $contest->page_url), $contest, true);
     }
     $total   = function_exists('lmeg_contest_bonus_entries') ? (int) lmeg_contest_bonus_entries($contest, $sub->id) : 1;
     $ref     = function_exists('lmeg_referral_url') ? lmeg_referral_url($sub->id) : home_url('/');

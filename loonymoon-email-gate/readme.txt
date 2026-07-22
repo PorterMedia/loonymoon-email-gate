@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.19
+Stable tag: 2.55.20
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.20 =
+* Fix (the real one): one-tap contest links no longer 404 through Brevo. Root cause found — Brevo's transactional click-tracker validates each link's destination when it builds the send, and it kills the tracking wrapper (→ 404) for any link that answers with a redirect. The contest link, after signing the fan in and entering them, did a 302 redirect to the contest page. Confirmed by testing: /?ref=<same-token> (a plain 200 page) tracked fine, while /?lmeg_ce= (which 302-redirected) 404'd. The entry handler now always responds with a 200 page and forwards the fan client-side (instant JS + <meta refresh> fallback + a manual "Continue" link) instead of server-redirecting — so Brevo tracks it like any normal link. Resend to get a link that works.
+
 = 2.55.19 =
 * Fix: one-tap contest links now use a single query parameter (?lmeg_ce=…) with no "&". Brevo's transactional click tracking (which can't be disabled) was splitting the old multi-parameter link (?lmeg_enter=…&u=…&e=…&t=…) and producing a broken 404 tracking link. The single-param form can't be split, so the link survives Brevo's wrapper. Old-format links still work (handler accepts both). Resend broadcasts/tests to get the new-format link.
 
