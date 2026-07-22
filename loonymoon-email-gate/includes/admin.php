@@ -174,6 +174,124 @@ function lmeg_render_tag_chip($tag, $opts = []) {
          . $icon . esc_html($label) . $count . '</span>';
 }
 
+/**
+ * Grouped, searchable tag picker — shared by Compose + Segments. The flat
+ * chip wall stopped scaling once auto-tags (country, city, fan-type…)
+ * multiplied, so tags render as titled families: your own tags and fan intel
+ * up top, the big geographic families folded until needed, everything
+ * filterable by typing. Checkbox stays native (hidden, still keyboard-
+ * focusable) with the chip itself as the visible control.
+ */
+function lmeg_render_tag_picker($all_tags, $selected_ids = [], $input_name = 'tag_ids[]') {
+    static $inst = 0;
+    $inst++;
+    $selected_ids = array_map('intval', (array) $selected_ids);
+
+    $groups = [
+        'yours'   => ['label' => 'Your tags',        'fold' => false, 'tags' => []],
+        'fantype' => ['label' => 'Fan type',         'fold' => false, 'tags' => []],
+        'channel' => ['label' => 'Channel & plan',   'fold' => false, 'tags' => []],
+        'source'  => ['label' => 'Sources & events', 'fold' => false, 'tags' => []],
+        'country' => ['label' => 'Country',          'fold' => true,  'tags' => []],
+        'city'    => ['label' => 'City',             'fold' => true,  'tags' => []],
+    ];
+    foreach ((array) $all_tags as $t) {
+        $slug = (string) $t->slug;
+        if (empty($t->is_auto))                                                  $g = 'yours';
+        elseif (strpos($slug, 'fan-type:') === 0)                                $g = 'fantype';
+        elseif (strpos($slug, 'channel:') === 0 || strpos($slug, 'tier:') === 0) $g = 'channel';
+        elseif (strpos($slug, 'country:') === 0)                                 $g = 'country';
+        elseif (strpos($slug, 'city:') === 0)                                    $g = 'city';
+        else                                                                     $g = 'source';
+        $groups[$g]['tags'][] = $t;
+    }
+    // Biggest audiences first inside each family; ties alphabetical.
+    foreach ($groups as &$grp) {
+        usort($grp['tags'], function ($a, $b) {
+            $d = (int) $b->member_count <=> (int) $a->member_count;
+            return $d !== 0 ? $d : strcasecmp((string) $a->name, (string) $b->name);
+        });
+    }
+    unset($grp);
+
+    $id = 'lmeg-tagpicker-' . $inst;
+    ob_start();
+    ?>
+    <div class="lmeg-tagpicker" id="<?php echo esc_attr($id); ?>">
+        <input type="search" class="lmeg-tagpicker__search" placeholder="Type to filter tags&hellip;" autocomplete="off" />
+        <?php foreach ($groups as $grp) :
+            if (empty($grp['tags'])) continue;
+            $has_sel = false;
+            foreach ($grp['tags'] as $t) { if (in_array((int) $t->id, $selected_ids, true)) { $has_sel = true; break; } }
+            $chips = '';
+            foreach ($grp['tags'] as $t) {
+                $checked = in_array((int) $t->id, $selected_ids, true) ? ' checked' : '';
+                $dim     = (int) $t->member_count === 0 ? ' lmeg-chip-label--empty' : '';
+                $chips  .= '<label class="lmeg-chip-label' . $dim . '">'
+                         . '<input type="checkbox" name="' . esc_attr($input_name) . '" value="' . (int) $t->id . '"' . $checked . ' />'
+                         . lmeg_render_tag_chip($t, ['count' => $t->member_count])
+                         . '</label>';
+            }
+            if ($grp['fold']) : ?>
+                <details class="lmeg-tagpicker__group is-fold"<?php echo $has_sel ? ' open' : ''; ?>>
+                    <summary><span class="lmeg-tagpicker__title"><?php echo esc_html($grp['label']); ?></span>
+                        <span class="lmeg-tagpicker__n"><?php echo count($grp['tags']); ?></span>
+                        <span class="lmeg-tagpicker__picked"></span></summary>
+                    <div class="lmeg-tagpicker__chips"><?php echo $chips; ?></div>
+                </details>
+            <?php else : ?>
+                <div class="lmeg-tagpicker__group">
+                    <div class="lmeg-tagpicker__head"><span class="lmeg-tagpicker__title"><?php echo esc_html($grp['label']); ?></span>
+                        <span class="lmeg-tagpicker__picked"></span></div>
+                    <div class="lmeg-tagpicker__chips"><?php echo $chips; ?></div>
+                </div>
+            <?php endif;
+        endforeach; ?>
+    </div>
+    <script>
+    (function () {
+        var root = document.getElementById(<?php echo wp_json_encode($id); ?>);
+        if (!root) return;
+        var search = root.querySelector('.lmeg-tagpicker__search');
+        var labels = root.querySelectorAll('.lmeg-chip-label');
+        var groups = root.querySelectorAll('.lmeg-tagpicker__group');
+
+        // "N picked" badge per family, so folded groups reveal their state.
+        function badges() {
+            groups.forEach(function (g) {
+                var n  = g.querySelectorAll('input:checked').length;
+                var el = g.querySelector('.lmeg-tagpicker__picked');
+                if (el) el.textContent = n ? n + ' picked' : '';
+                g.classList.toggle('has-picked', n > 0);
+            });
+        }
+        root.addEventListener('change', badges);
+        badges();
+
+        // Live filter: match on visible label + full name; hide emptied groups;
+        // folded groups pop open while a query is active, then restore.
+        search.addEventListener('input', function () {
+            var q = search.value.trim().toLowerCase();
+            labels.forEach(function (l) {
+                var chip = l.querySelector('.lmeg-chip');
+                var hay  = (l.textContent + ' ' + (chip ? (chip.getAttribute('title') || '') : '')).toLowerCase();
+                l.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+            });
+            groups.forEach(function (g) {
+                var any = Array.prototype.some.call(g.querySelectorAll('.lmeg-chip-label'), function (l) { return l.style.display !== 'none'; });
+                g.style.display = any ? '' : 'none';
+                if (g.tagName === 'DETAILS') {
+                    if (q) { if (!('wasOpen' in g.dataset)) g.dataset.wasOpen = g.open ? '1' : '0'; g.open = true; }
+                    else if ('wasOpen' in g.dataset) { g.open = g.dataset.wasOpen === '1'; delete g.dataset.wasOpen; }
+                }
+            });
+        });
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
 /* ---------------------------------------------------------------------------
  * Tags admin page
  * ------------------------------------------------------------------------- */
@@ -880,18 +998,11 @@ function lmeg_admin_compose() {
                     <th><label>Filter by tags</label></th>
                     <td>
                         <div class="lmeg-audience">
-                            <div class="lmeg-audience-tags">
-                                <?php if (empty($all_tags)) : ?>
-                                    <em>No tags yet. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-tags')); ?>">Create one →</a></em>
-                                <?php else : foreach ($all_tags as $t) :
-                                    $checked = in_array((int) $t->id, $vals['tag_ids'], true) ? ' checked' : '';
-                                ?>
-                                    <label class="lmeg-chip-label">
-                                        <input type="checkbox" name="tag_ids[]" value="<?php echo (int) $t->id; ?>"<?php echo $checked; ?> />
-                                        <?php echo lmeg_render_tag_chip($t, ['count' => $t->member_count]); ?>
-                                    </label>
-                                <?php endforeach; endif; ?>
-                            </div>
+                            <?php if (empty($all_tags)) : ?>
+                                <em>No tags yet. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-tags')); ?>">Create one →</a></em>
+                            <?php else : ?>
+                                <?php echo lmeg_render_tag_picker($all_tags, $vals['tag_ids']); ?>
+                            <?php endif; ?>
                             <div class="lmeg-audience-controls">
                                 <label><input type="radio" name="tag_match" value="any" <?php checked($vals['tag_match'], 'any'); ?> /> Match <strong>any</strong> selected tag</label>
                                 <label><input type="radio" name="tag_match" value="all" <?php checked($vals['tag_match'], 'all'); ?> /> Match <strong>all</strong> selected tags</label>
@@ -2162,11 +2273,7 @@ function lmeg_admin_segments() {
             <table class="form-table" role="presentation">
                 <tr><th>Name</th><td><input type="text" name="name" class="regular-text" required placeholder="e.g. Canadian email subscribers" /></td></tr>
                 <tr><th>Tags</th><td>
-                    <div class="lmeg-audience-tags" style="max-width:720px;">
-                        <?php foreach ($all_tags as $t) : ?>
-                            <label class="lmeg-chip-label"><input type="checkbox" name="tag_ids[]" value="<?php echo (int) $t->id; ?>" /><?php echo lmeg_render_tag_chip($t, ['count' => $t->member_count]); ?></label>
-                        <?php endforeach; ?>
-                    </div>
+                    <?php echo lmeg_render_tag_picker($all_tags); ?>
                 </td></tr>
                 <tr><th>Match</th><td>
                     <label><input type="radio" name="match_mode" value="any" checked /> Any of the selected tags</label>

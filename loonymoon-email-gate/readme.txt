@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.29
+Stable tag: 2.55.30
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.30 =
+* Redesign: the tag pickers on Compose and Segments. The flat wall of checkbox chips is now a grouped, searchable picker — Your tags first, then Fan type, Channel & plan, Sources & events, with the big geographic families (Country, City) folded behind a count until you need them (auto-open when one is selected). Type-to-filter across everything, biggest audiences sort first, "N picked" badges on every family so folded selections stay visible, empty tags dimmed, native checkboxes hidden (the chip is the control — still keyboard-accessible).
+
 = 2.55.29 =
 * Fix: the Compose live audience count froze at 0 and ignored tag picks until you'd typed an email/SMS body — because "no body yet" counted as "nobody would receive it". People pick their audience first, so with both bodies empty the count now shows the reachable audience across both channels and updates live as you check tags. (Verified the tag-click → recount → render path end-to-end in a browser harness.)
 * Improved: if the count request ever fails, the widget now shows WHY (server error text or network) instead of silently sitting on the old number.
