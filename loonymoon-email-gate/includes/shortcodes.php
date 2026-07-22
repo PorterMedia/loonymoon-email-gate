@@ -33,7 +33,14 @@ function lmeg_shortcode_signup($atts = []) {
         'success'  => '',           // blank = use the Settings message; set to override per-embed
         'tiers'    => '',           // ''=free only; 'all'=every active tier; '1,2'=specific IDs
         'divider'  => 'or',         // text shown between free button and tier cards
+        'contest'  => '',           // contest ID to auto-enter after signup
     ], $atts, 'lmeg_signup');
+
+    // Prefill from the URL (?lmeg_email= / ?lmeg_phone=) so a link can arrive
+    // with the address already filled in.
+    $prefill_email = isset($_GET['lmeg_email']) ? sanitize_email(wp_unslash($_GET['lmeg_email'])) : '';
+    $prefill_phone = isset($_GET['lmeg_phone']) ? preg_replace('/[^\d+]/', '', (string) wp_unslash($_GET['lmeg_phone'])) : '';
+    $contest_join  = (int) $atts['contest'];
 
     // Success copy: per-embed attr wins; otherwise the site-wide setting.
     if ($atts['success'] === '') {
@@ -135,11 +142,12 @@ function lmeg_shortcode_signup($atts = []) {
                     </div>
                 <?php endif; ?>
 
+                <?php if ($contest_join) : ?><input type="hidden" name="lmeg_contest_join" value="<?php echo (int) $contest_join; ?>" /><?php endif; ?>
                 <div class="lmeg-embed__row">
                     <div class="lmeg-field lmeg-field-email">
                         <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Email</label>
                         <input type="email" id="<?php echo esc_attr($id); ?>-email" name="email" required autocomplete="email"
-                               placeholder="you@example.com" class="lmeg-input" />
+                               placeholder="you@example.com" class="lmeg-input" value="<?php echo esc_attr($prefill_email); ?>" />
                     </div>
 
                     <?php if ($show_phone) : ?>
@@ -157,7 +165,7 @@ function lmeg_shortcode_signup($atts = []) {
                                 </select>
                                 <span class="lmeg-dial" aria-hidden="true">+1</span>
                                 <input type="tel" id="<?php echo esc_attr($id); ?>-phone" name="phone" inputmode="tel"
-                                       placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" />
+                                       placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" value="<?php echo esc_attr($prefill_phone); ?>" />
                             </div>
                         </div>
                     <?php endif; ?>

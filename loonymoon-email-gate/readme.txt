@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.12
+Stable tag: 2.55.13
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.13 =
+* New: the contest shortcode now shows a real join-and-enter form to visitors who aren't signed in (instead of just "Join the list to enter — sign in"). They enter their email, and they're both subscribed and entered into the contest in one step.
+* New: signup forms can be prefilled from the URL — ?lmeg_email=you@example.com (or ?lmeg_phone=) fills the field in. Also added a "contest" attribute to [lmeg_signup] so any embedded form can auto-enter a contest on submit.
+* Note on {contest_link}: recipients of a personalized {contest_link} in a broadcast are auto-entered on tap and never see a form — so there's nothing to prefill for them. The new form + prefill are for people arriving without a personalized link.
+
 = 2.55.12 =
 * Fix: the "Send test" buttons (email + SMS) didn't render merge tags, so a test with {contest_link}, {name}, {referral_link}, etc. sent the raw text instead of the real value. Tests now render merge tags — and if the test recipient is a known subscriber, tags like {contest_link} produce a real, working link (so test your own subscribed number/email to see it work). Real broadcasts already rendered merge tags; this only affected the test button.
 

@@ -310,7 +310,9 @@ function lmeg_shortcode_contest($atts = []) {
         <?php elseif ($ended) : ?>
             <p class="lmeg-contest__note">Entries are closed — winner announced soon.</p>
         <?php elseif (!$member) : ?>
-            <p class="lmeg-contest__note">Join the list to enter — <a href="?lmeg_member=signin">sign in</a> if you're already in.</p>
+            <p class="lmeg-contest__note">Enter your email to join &amp; get your entry:</p>
+            <?php echo function_exists('lmeg_shortcode_signup') ? lmeg_shortcode_signup(['contest' => $cid, 'button' => 'Join &amp; enter', 'style' => 'inline', 'success' => 'You&rsquo;re entered! 🎉']) : ''; ?>
+            <p class="lmeg-contest__note" style="margin-top:8px;font-size:12px;opacity:.75;">Already on the list? <a href="?lmeg_member=signin">Sign in</a> to enter with one tap.</p>
         <?php elseif ($mine) :
             $total_entries = lmeg_contest_bonus_entries($contest, $member->id);
             $ref_url = function_exists('lmeg_referral_url') ? lmeg_referral_url($member->id) : home_url('/');
