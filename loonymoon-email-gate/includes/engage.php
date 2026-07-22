@@ -199,12 +199,12 @@ function lmeg_contest_enter_token($contest_id, $sub_id, $exp) {
 
 function lmeg_contest_enter_url($contest_id, $sub_id) {
     $exp = time() + 60 * DAY_IN_SECONDS;
-    return add_query_arg([
-        'lmeg_enter' => (int) $contest_id,
-        'u'          => (int) $sub_id,
-        'e'          => $exp,
-        't'          => lmeg_contest_enter_token($contest_id, $sub_id, $exp),
-    ], home_url('/'));
+    // ONE parameter, no "&": email click-trackers (e.g. Brevo, which can't be
+    // disabled on transactional sends) split multi-param URLs and produce a
+    // broken/404 tracking link. A single dash-joined token can't be split.
+    // Parts are all "-"-free (ints + hex hmac), so explode('-') round-trips.
+    $payload = (int) $contest_id . '-' . (int) $sub_id . '-' . (int) $exp . '-' . lmeg_contest_enter_token($contest_id, $sub_id, $exp);
+    return add_query_arg('lmeg_ce', $payload, home_url('/'));
 }
 
 /** {contest_link} target for a fan: newest open contest, or home if none. */
@@ -215,13 +215,25 @@ function lmeg_contest_link_for($sub_id) {
 
 add_action('init', 'lmeg_maybe_handle_contest_enter');
 function lmeg_maybe_handle_contest_enter() {
-    if (empty($_GET['lmeg_enter'])) return;
     global $wpdb;
 
-    $cid    = (int) $_GET['lmeg_enter'];
-    $sub_id = (int) ($_GET['u'] ?? 0);
-    $exp    = (int) ($_GET['e'] ?? 0);
-    $tok    = isset($_GET['t']) ? sanitize_text_field(wp_unslash($_GET['t'])) : '';
+    // Preferred single-param format ?lmeg_ce=cid-sub-exp-token …
+    if (!empty($_GET['lmeg_ce'])) {
+        $parts = explode('-', sanitize_text_field(wp_unslash($_GET['lmeg_ce'])));
+        if (count($parts) !== 4) return;
+        $cid    = (int) $parts[0];
+        $sub_id = (int) $parts[1];
+        $exp    = (int) $parts[2];
+        $tok    = $parts[3];
+    // … and the legacy multi-param format ?lmeg_enter=&u=&e=&t= (already-sent links).
+    } elseif (!empty($_GET['lmeg_enter'])) {
+        $cid    = (int) $_GET['lmeg_enter'];
+        $sub_id = (int) ($_GET['u'] ?? 0);
+        $exp    = (int) ($_GET['e'] ?? 0);
+        $tok    = isset($_GET['t']) ? sanitize_text_field(wp_unslash($_GET['t'])) : '';
+    } else {
+        return;
+    }
 
     $contest = $cid ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", $cid)) : null;
     $land    = ($contest && !empty($contest->page_url)) ? $contest->page_url : home_url('/');

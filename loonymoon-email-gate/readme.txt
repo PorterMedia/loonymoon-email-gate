@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.18
+Stable tag: 2.55.19
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.19 =
+* Fix: one-tap contest links now use a single query parameter (?lmeg_ce=…) with no "&". Brevo's transactional click tracking (which can't be disabled) was splitting the old multi-parameter link (?lmeg_enter=…&u=…&e=…&t=…) and producing a broken 404 tracking link. The single-param form can't be split, so the link survives Brevo's wrapper. Old-format links still work (handler accepts both). Resend broadcasts/tests to get the new-format link.
+
 = 2.55.18 =
 * Fix: the plugin's own click tracker no longer wraps one-tap contest entry links (lmeg_enter=…). Those carry a signed token that must arrive intact; adding a tracking redirect/UTMs to them invites breakage. (If clicks still 404, it's your Brevo account's own click tracking wrapping the link — turn off "Track clicks" in Brevo's transactional email settings; the plugin already tracks clicks.)
 
