@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.56.1
+Stable tag: 2.56.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.56.2 =
+* Fix: contest entries and survey votes now count in fan-type scoring (as "actions", equivalent to email clicks). Previously the scorer only saw opens/clicks/site-visits, so a fan who entered a contest but never opened an email could score "dormant" — nonsensical. 2+ actions = engaged, 1 = at least casual. Types refresh on the next daily recalc, or immediately via Audience → Recalculate.
+
 = 2.56.1 =
 * New: "Resend to non-openers" on any completed broadcast — same body, fresh subject, only to fans who received it but never opened (typically +20-30% extra opens). Suppression/confirmation guards apply.
 * New: Smart send times — a Compose checkbox that delivers to each fan at their historically most-active hour (modal open hour; spreads over up to 24h; fans with no history send immediately). Broadcasts wait for every window before completing.

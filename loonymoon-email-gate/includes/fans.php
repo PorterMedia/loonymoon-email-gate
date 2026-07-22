@@ -407,10 +407,13 @@ function lmeg_apply_referral($subscriber_id) {
 
 /**
  * Classify every subscriber and refresh their fan-type auto-tag.
- * Criteria (rolling 90 days):
+ * Criteria (rolling 90 days). Contest entries and survey votes count as
+ * "actions" alongside clicks — entering a contest is at least as deliberate
+ * as clicking an email, so an entrant can never score dormant.
  *   superfan — any shop order OR active paid tier
- *   engaged  — 2+ clicks, or 5+ opens, or visited the site on 2+ separate days
- *   casual   — at least 1 open, click, or site visit
+ *   engaged  — 2+ actions (clicks + contest entries + survey votes), or
+ *              5+ opens, or visited the site on 2+ separate days
+ *   casual   — at least 1 action, open, or site visit
  *   dormant  — nothing
  * Site visits count DISTINCT DAYS (not raw pageviews) so one deep browsing
  * session doesn't score as ongoing engagement — coming BACK is the signal.
@@ -428,7 +431,9 @@ function lmeg_recalculate_fan_types() {
                 COALESCE(e.clicks, 0) AS clicks,
                 COALESCE(e.opens, 0)  AS opens,
                 COALESCE(e.visit_days, 0) AS visit_days,
-                COALESCE(o.orders, 0) AS orders
+                COALESCE(o.orders, 0) AS orders,
+                COALESCE(ce.entries, 0) AS centries,
+                COALESCE(sv.votes, 0) AS votes
          FROM $subs s
          LEFT JOIN (
              SELECT subscriber_id,
@@ -441,18 +446,27 @@ function lmeg_recalculate_fan_types() {
              SELECT subscriber_id, COUNT(*) AS orders
              FROM $orders WHERE ordered_at >= %s GROUP BY subscriber_id
          ) o ON o.subscriber_id = s.id
+         LEFT JOIN (
+             SELECT subscriber_id, COUNT(*) AS entries
+             FROM {$wpdb->prefix}lmeg_contest_entries WHERE entered_at >= %s GROUP BY subscriber_id
+         ) ce ON ce.subscriber_id = s.id
+         LEFT JOIN (
+             SELECT subscriber_id, COUNT(*) AS votes
+             FROM {$wpdb->prefix}lmeg_survey_votes WHERE created_at >= %s GROUP BY subscriber_id
+         ) sv ON sv.subscriber_id = s.id
          WHERE s.unsubscribed_at IS NULL",
-        $since, $since
+        $since, $since, $since, $since
     ));
 
     $counts = ['superfan' => 0, 'engaged' => 0, 'casual' => 0, 'dormant' => 0];
     foreach ((array) $rows as $r) {
         $is_paying = ($r->member_status === 'active' && $r->member_tier_id);
+        $actions   = (int) $r->clicks + (int) $r->centries + (int) $r->votes;
         if ($r->orders > 0 || $is_paying) {
             $type = 'superfan';
-        } elseif ($r->clicks >= 2 || $r->opens >= 5 || $r->visit_days >= 2) {
+        } elseif ($actions >= 2 || $r->opens >= 5 || $r->visit_days >= 2) {
             $type = 'engaged';
-        } elseif ($r->clicks >= 1 || $r->opens >= 1 || $r->visit_days >= 1) {
+        } elseif ($actions >= 1 || $r->opens >= 1 || $r->visit_days >= 1) {
             $type = 'casual';
         } else {
             $type = 'dormant';
