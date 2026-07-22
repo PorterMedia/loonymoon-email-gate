@@ -170,7 +170,12 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id, $source = 'br
             '/href\s*=\s*(["\'])(https?:\/\/[^"\']+)\1/i',
             function ($m) use ($broadcast_id, $subscriber_id, $utm_source, $source, $ref, $campaign) {
                 $url = $m[2];
-                if (strpos($url, 'lmeg_unsubscribe=') !== false || strpos($url, 'lmeg_track=') !== false) {
+                // Never wrap/alter functional, signed links — unsubscribe, our
+                // own tracker, or a one-tap contest entry (its HMAC token must
+                // arrive intact; extra redirects/params invite breakage).
+                if (strpos($url, 'lmeg_unsubscribe=') !== false
+                    || strpos($url, 'lmeg_track=') !== false
+                    || strpos($url, 'lmeg_enter=') !== false) {
                     return $m[0];
                 }
                 $url = add_query_arg([
