@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.11
+Stable tag: 2.55.12
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.12 =
+* Fix: the "Send test" buttons (email + SMS) didn't render merge tags, so a test with {contest_link}, {name}, {referral_link}, etc. sent the raw text instead of the real value. Tests now render merge tags — and if the test recipient is a known subscriber, tags like {contest_link} produce a real, working link (so test your own subscribed number/email to see it work). Real broadcasts already rendered merge tags; this only affected the test button.
+
 = 2.55.11 =
 * New: per-contest "Referral bonus" toggle. On by default (current behavior: +3 entries per friend referred, plus the "want more chances to win" prompt on the contest + confirmation). Uncheck it for a straight one-entry-per-fan contest — the prompt is hidden and referral bonuses don't count toward the winner draw, so what fans see matches how entries are weighted.
 

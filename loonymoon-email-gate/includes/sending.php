@@ -482,6 +482,31 @@ function lmeg_queue_broadcast($args) {
  * @return true|WP_Error
  */
 function lmeg_send_test($channel, $to, $subject, $body) {
+    global $wpdb;
+
+    // Render merge tags so a TEST reflects the real send (previously it sent
+    // the raw {contest_link}/{name}/… text). If the test recipient is a known
+    // subscriber, use their record so {contest_link} etc. produce real, working
+    // values; otherwise use a stand-in (personal tags fall back gracefully).
+    $sub = null;
+    if ($channel === 'email' && is_email($to)) {
+        $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE email = %s", $to));
+    } elseif ($channel === 'sms') {
+        $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE phone = %s", $to));
+    }
+    if (!$sub) {
+        $sub = (object) [
+            'id' => 0,
+            'email' => $channel === 'email' ? $to : '',
+            'phone' => $channel === 'sms' ? $to : '',
+            'first_name' => '',
+        ];
+    }
+    if (function_exists('lmeg_render_merge_tags')) {
+        $body    = lmeg_render_merge_tags((string) $body, $sub);
+        $subject = lmeg_render_merge_tags((string) $subject, $sub);
+    }
+
     if ($channel === 'email') {
         if (!is_email($to)) {
             return new WP_Error('lmeg_bad_email', 'Invalid test email address.');
