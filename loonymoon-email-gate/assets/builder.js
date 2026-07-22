@@ -277,9 +277,9 @@
         f.addEventListener('click', function (e) { e.stopPropagation(); });
         f.innerHTML =
             '<div><button type="button" class="button lmeg-bd-pick">Choose from Media Library</button></div>' +
-            '<div><label>Image URL</label><input type="url" data-k="src" placeholder="https://…/image.jpg" value="' + esc(block.data.src) + '"></div>' +
+            '<div><label>Image URL</label><input type="text" data-k="src" placeholder="https://…/image.jpg" value="' + esc(block.data.src) + '"></div>' +
             '<div><label>Alt text (shown if image can\'t load)</label><input type="text" data-k="alt" placeholder="Describe the image" value="' + esc(block.data.alt) + '"></div>' +
-            '<div><label>Link when clicked (optional)</label><input type="url" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>';
+            '<div><label>Link when clicked (optional)</label><input type="text" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>';
         f.querySelectorAll('input').forEach(function (inp) {
             inp.addEventListener('input', function () { block.data[inp.dataset.k] = inp.value; if (inp.dataset.k === 'src') img.src = inp.value; self.sync(); });
         });
@@ -313,7 +313,7 @@
         f.addEventListener('click', function (e) { e.stopPropagation(); });
         f.innerHTML =
             '<div><label>Button label</label><input type="text" data-k="label" value="' + esc(block.data.label) + '"></div>' +
-            '<div><label>Link URL</label><input type="url" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>' +
+            '<div><label>Link URL</label><input type="text" data-k="href" placeholder="https://…" value="' + esc(block.data.href) + '"></div>' +
             '<div><label>Button color (hex)</label><input type="text" data-k="color" placeholder="' + accent + '" value="' + esc(block.data.color || accent) + '"></div>';
         f.querySelectorAll('input').forEach(function (inp) {
             inp.addEventListener('input', function () {

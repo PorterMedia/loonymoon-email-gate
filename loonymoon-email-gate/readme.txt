@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.15
+Stable tag: 2.55.16
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.16 =
+* Fix: sending an email test (or any Compose submit) silently failed when a builder Image/Button block's link field held a merge tag like {contest_link:2}. Those fields were type="url", so the browser rejected the merge tag as an invalid URL and blocked the whole form — and since the field sits in a hidden block with no name, it couldn't show the error ("An invalid form control … is not focusable"). The builder's block fields are now plain text inputs, so merge tags work in block links.
+
 = 2.55.15 =
 * Fix: the contest entry form now offers Email OR Phone (like the main subscribe form) and uses the standard card styling, instead of an email-only inline form.
 * Fix: the one-tap auto-entry link (?lmeg_enter=…) now shows the contest's own formatted Success message on the confirmation, so the styling/details are kept (previously a bare "You're entered!"). Tip: set the contest's "Contest page URL" so taps land on the actual contest page, where the success message replaces the shortcode in full context.
