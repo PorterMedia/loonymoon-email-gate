@@ -153,6 +153,17 @@ function lmeg_apply_auto_tags($sub) {
         if ($t) lmeg_attach_tag($sub->id, $t->id);
     }
 
+    // city:<slug> — powers city targeting and radius sends. Only when we
+    // actually know the city (address form field / Shopify order / manual).
+    lmeg_detach_auto_tags($sub->id, 'city:');
+    if (!empty($sub->city)) {
+        $city_slug = sanitize_title($sub->city);
+        if ($city_slug) {
+            $t = lmeg_get_or_create_tag('city:' . $city_slug, 'City: ' . ucwords(strtolower(trim((string) $sub->city))), true);
+            if ($t) lmeg_attach_tag($sub->id, $t->id);
+        }
+    }
+
     // has-address — set if any address field is filled.
     $has_addr = !empty($sub->street) || !empty($sub->city) || !empty($sub->region) || !empty($sub->postal_code);
     lmeg_detach_auto_tags($sub->id, 'has-address');

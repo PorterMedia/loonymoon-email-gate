@@ -81,6 +81,94 @@ function lmeg_geo_backfill() {
     }
 }
 
+/**
+ * Backfill: existing subscribers who already have a city but no city:* tag
+ * (rows created before city auto-tags existed) get their auto-tags refreshed
+ * in small batches. Self-terminating — once every city'd row is tagged the
+ * query comes back empty.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_city_tag_backfill', 61);
+function lmeg_city_tag_backfill() {
+    if (get_site_transient('lmeg_citytag_bf_lock')) return;
+    set_site_transient('lmeg_citytag_bf_lock', 1, 5 * MINUTE_IN_SECONDS);
+
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results(
+        "SELECT s.* FROM $subs s
+          WHERE s.city IS NOT NULL AND s.city <> ''
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->prefix}lmeg_subscriber_tags st
+                  JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id
+                 WHERE st.subscriber_id = s.id AND t.slug LIKE 'city:%'
+            )
+          ORDER BY s.id ASC LIMIT 25"
+    );
+    foreach ((array) $rows as $r) {
+        if (function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($r);
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * City geocoding + distance — powers "within X km of <city>" radius sends.
+ * Open-Meteo's geocoder is free, keyless, HTTPS. Successful lookups are
+ * cached permanently in one option (cities don't move); failures retry after
+ * a day via a transient so an API blip can't poison the cache.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_geo_city_coords($city, $region = '', $country = '') {
+    $city = trim((string) $city);
+    if ($city === '') return null;
+
+    $ckey  = md5(strtolower($city) . '|' . strtolower(trim((string) $region)) . '|' . strtoupper(trim((string) $country)));
+    $cache = get_option('lmeg_city_geo', []);
+    if (!is_array($cache)) $cache = [];
+    if (isset($cache[$ckey])) return $cache[$ckey];
+    if (get_transient('lmeg_city_geo_miss_' . $ckey)) return null;
+
+    $coords = null;
+    $resp   = wp_remote_get(
+        'https://geocoding-api.open-meteo.com/v1/search?name=' . rawurlencode($city) . '&count=5&language=en&format=json',
+        ['timeout' => 4]
+    );
+    if (!is_wp_error($resp) && wp_remote_retrieve_response_code($resp) === 200) {
+        $d       = json_decode(wp_remote_retrieve_body($resp), true);
+        $results = is_array($d) && !empty($d['results']) ? $d['results'] : [];
+        // Prefer a result in the fan's country (there is a Toronto, Ohio…),
+        // then one whose admin1 matches their region, else the top hit
+        // (Open-Meteo ranks by population, which is usually right).
+        $pick = null;
+        foreach ($results as $r) {
+            if ($country && strtoupper((string) ($r['country_code'] ?? '')) === strtoupper(trim($country))) { $pick = $r; break; }
+        }
+        if (!$pick && $region !== '') {
+            foreach ($results as $r) {
+                if (stripos((string) ($r['admin1'] ?? ''), trim($region)) !== false) { $pick = $r; break; }
+            }
+        }
+        if (!$pick && $results) $pick = $results[0];
+        if ($pick && isset($pick['latitude'], $pick['longitude'])) {
+            $coords = ['lat' => (float) $pick['latitude'], 'lng' => (float) $pick['longitude']];
+        }
+    }
+
+    if ($coords) {
+        $cache[$ckey] = $coords;
+        update_option('lmeg_city_geo', $cache, false);
+    } else {
+        set_transient('lmeg_city_geo_miss_' . $ckey, 1, DAY_IN_SECONDS);
+    }
+    return $coords;
+}
+
+/** Great-circle distance in km (haversine). */
+function lmeg_geo_distance_km($lat1, $lng1, $lat2, $lng2) {
+    $rad = M_PI / 180;
+    $a   = sin((($lat2 - $lat1) * $rad) / 2) ** 2
+         + cos($lat1 * $rad) * cos($lat2 * $rad) * sin((($lng2 - $lng1) * $rad) / 2) ** 2;
+    return 6371.0 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+}
+
 /* ---------------------------------------------------------------------------
  * Unique codes + referral links
  * ------------------------------------------------------------------------- */

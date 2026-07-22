@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.23
+Stable tag: 2.55.24
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.24 =
+* New: city auto-tags — every fan with a city on file gets a city:<name> tag (existing fans backfilled automatically in the background), so you can target a city from the normal tag filter.
+* New: radius targeting in Compose — "Only fans within X km of <city>" (e.g. 150 km of Toronto reaches Mississauga, Hamilton, Oshawa…). Each fan's city is geocoded once via Open-Meteo (free, keyless) and cached permanently; distance is great-circle. Combines with the tag filter; fans with no city on file are excluded while a radius is set. The radius is applied when the send is queued.
+
 = 2.55.23 =
 * New: the rejected-signups panel now captures and shows each dropped signup's Location and source Tags, and "Add anyway" restores everything the original submission carried — location fields, source tags, and the contest they were entering. Rows logged before this update only stored an IP, so their country is geolocated from it when you add them.
 * New: after "Add anyway", the row shows a green "✓ Added" with whether the welcome email actually went out (stamped only on a confirmed Brevo send) and when — instead of the button.

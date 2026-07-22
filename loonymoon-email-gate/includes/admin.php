@@ -723,6 +723,8 @@ function lmeg_admin_compose() {
         'body_sms'         => '',
         'tag_ids'          => [],
         'tag_match'        => 'any',
+        'radius_km'        => '',
+        'radius_city'      => '',
     ];
 
     if (isset($_POST['lmeg_action']) && check_admin_referer('lmeg_compose', 'lmeg_compose_nonce')) {
@@ -736,6 +738,8 @@ function lmeg_admin_compose() {
         $vals['body_sms']   = sanitize_textarea_field(wp_unslash($_POST['body_sms'] ?? ''));
         $vals['tag_ids']    = array_filter(array_map('intval', (array) ($_POST['tag_ids'] ?? [])));
         $vals['tag_match']  = ($_POST['tag_match'] ?? 'any') === 'all' ? 'all' : 'any';
+        $vals['radius_km']   = ($_POST['radius_km'] ?? '') !== '' ? max(0, (float) $_POST['radius_km']) : '';
+        $vals['radius_city'] = sanitize_text_field(wp_unslash($_POST['radius_city'] ?? ''));
 
         switch ($_POST['lmeg_action']) {
             case 'send_test_email':
@@ -777,6 +781,9 @@ function lmeg_admin_compose() {
                         'tag_ids' => $vals['tag_ids'],
                         'match'   => $vals['tag_match'],
                     ],
+                    'radius_filter'  => ($vals['radius_km'] !== '' && (float) $vals['radius_km'] > 0 && $vals['radius_city'] !== '')
+                        ? ['km' => (float) $vals['radius_km'], 'city' => $vals['radius_city']]
+                        : null,
                     'scheduled_for'  => $scheduled,
                 ]);
                 if (is_wp_error($bid)) {
@@ -881,6 +888,20 @@ function lmeg_admin_compose() {
                             </div>
                             <p class="description">Pick zero tags to send to everyone (still excluding unsubscribed). The count updates as you check tags.</p>
                         </div>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="radius_km">Radius (optional)</label></th>
+                    <td>
+                        Only fans within
+                        <input type="number" name="radius_km" id="radius_km" min="1" step="1" style="width:80px;" value="<?php echo esc_attr($vals['radius_km']); ?>" />
+                        km of
+                        <input type="text" name="radius_city" id="radius_city" placeholder="Toronto" value="<?php echo esc_attr($vals['radius_city']); ?>" />
+                        <p class="description">
+                            Great for show announcements — e.g. <em>150&nbsp;km of Toronto</em> reaches Mississauga, Hamilton, Oshawa&hellip;
+                            Uses each fan's city on file (geocoded once, then cached). Fans with no city are excluded while a radius is set.
+                            Combines with the tag filter above. Applied when the send is queued — the live count above doesn't reflect it.
+                        </p>
                     </td>
                 </tr>
             </table>

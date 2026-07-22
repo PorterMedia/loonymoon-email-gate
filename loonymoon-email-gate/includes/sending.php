@@ -400,6 +400,7 @@ function lmeg_queue_broadcast($args) {
         'body_email'     => '',
         'body_sms'       => '',
         'tag_filter'     => null,   // ['tag_ids' => int[], 'match' => 'any'|'all']
+        'radius_filter'  => null,   // ['km' => float, 'city' => string] — only fans within km of city
         'scheduled_for'  => null,   // MySQL datetime in site timezone, or null = send immediately
     ];
     $args = wp_parse_args($args, $defaults);
@@ -432,13 +433,36 @@ function lmeg_queue_broadcast($args) {
         }
     }
 
-    $sql  = "SELECT id, contact_type, email, phone FROM $subs_tbl WHERE " . implode(' AND ', $where_parts);
+    $sql  = "SELECT id, contact_type, email, phone, city, region, country FROM $subs_tbl WHERE " . implode(' AND ', $where_parts);
     $rows = $params
         ? $wpdb->get_results($wpdb->prepare($sql, $params))
         : $wpdb->get_results($sql);
 
     if (!$rows) {
         return new WP_Error('lmeg_no_recipients', 'No matching subscribers (after excluding unsubscribed).');
+    }
+
+    // Radius filter — "only fans within X km of <city>". Applied in PHP after
+    // the SQL narrowing: each fan's city (not the center) is geocoded once and
+    // cached permanently, so repeat sends cost no lookups. Fans with no city
+    // on file can't be placed and are excluded when a radius is set.
+    if (!empty($args['radius_filter']['km']) && !empty($args['radius_filter']['city'])
+        && function_exists('lmeg_geo_city_coords')) {
+        $r_city = trim((string) $args['radius_filter']['city']);
+        $r_km   = (float) $args['radius_filter']['km'];
+        $center = lmeg_geo_city_coords($r_city, '', (string) ($args['radius_filter']['country'] ?? ''));
+        if (!$center) {
+            return new WP_Error('lmeg_geo_center', 'Could not locate "' . $r_city . '" on the map — check the spelling (add the country in Compose if it\'s ambiguous).');
+        }
+        $rows = array_values(array_filter($rows, function ($r) use ($center, $r_km) {
+            if (empty($r->city)) return false;
+            $c = lmeg_geo_city_coords($r->city, (string) ($r->region ?? ''), (string) ($r->country ?? ''));
+            if (!$c) return false;
+            return lmeg_geo_distance_km($center['lat'], $center['lng'], $c['lat'], $c['lng']) <= $r_km;
+        }));
+        if (!$rows) {
+            return new WP_Error('lmeg_no_recipients', 'No subscribers with a city on file within ' . $r_km . ' km of ' . $r_city . '.');
+        }
     }
 
     $stored_filter = !empty($args['tag_filter']['tag_ids'])
