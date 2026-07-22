@@ -567,6 +567,20 @@ function lmeg_admin_contests() {
                 ]);
                 $notice = '<div class="notice notice-success"><p>Contest created — embed with <code>[lmeg_contest id=' . (int) $wpdb->insert_id . ']</code></p></div>';
             }
+        } elseif ($act === 'update') {
+            $id    = (int) ($_POST['contest_id'] ?? 0);
+            $title = sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
+            if ($id && $title) {
+                $ends = sanitize_text_field($_POST['ends_at'] ?? '');
+                $wpdb->update($tbl, [
+                    'title'       => $title,
+                    'description' => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
+                    'ends_at'     => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
+                    'page_url'    => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
+                    'is_open'     => !empty($_POST['is_open']) ? 1 : 0,
+                ], ['id' => $id]);
+                $notice = '<div class="notice notice-success"><p>Contest updated.</p></div>';
+            }
         } elseif ($act === 'pick_winner') {
             $winner = lmeg_contest_pick_winner((int) ($_POST['contest_id'] ?? 0));
             $notice = $winner
@@ -580,8 +594,9 @@ function lmeg_admin_contests() {
         }
     }
 
-    $rows   = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
-    $active = function_exists('lmeg_current_open_contest') ? lmeg_current_open_contest() : null;
+    $rows    = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
+    $active  = function_exists('lmeg_current_open_contest') ? lmeg_current_open_contest() : null;
+    $editing = !empty($_GET['edit']) ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE id = %d", (int) $_GET['edit'])) : null;
     ?>
     <div class="wrap">
         <h1>Email Gate — Contests</h1>
@@ -593,17 +608,24 @@ function lmeg_admin_contests() {
             &bull; <code>{contest_link:ID}</code> &mdash; a <strong>specific</strong> contest, using its ID from the table below (so you always know which one it is).
         </p>
 
-        <h2>Create a contest</h2>
+        <h2 id="lmeg-ct-form"><?php echo $editing ? 'Edit contest' : 'Create a contest'; ?></h2>
         <form method="post" style="margin-bottom:22px;">
             <?php wp_nonce_field('lmeg_ct', 'lmeg_ct_nonce'); ?>
-            <input type="hidden" name="lmeg_action" value="create" />
+            <input type="hidden" name="lmeg_action" value="<?php echo $editing ? 'update' : 'create'; ?>" />
+            <?php if ($editing) : ?><input type="hidden" name="contest_id" value="<?php echo (int) $editing->id; ?>" /><?php endif; ?>
             <table class="form-table" role="presentation">
-                <tr><th>Title</th><td><input type="text" name="title" class="regular-text" required placeholder="Win signed vinyl" /></td></tr>
-                <tr><th>Description</th><td><textarea name="description" rows="3" class="large-text"></textarea></td></tr>
-                <tr><th>Ends</th><td><input type="datetime-local" name="ends_at" /> <span class="description">optional</span></td></tr>
-                <tr><th>Contest page URL</th><td><input type="url" name="page_url" class="regular-text" placeholder="https://loonymoonchild.com/contest/" /> <span class="description">optional — where you embedded <code>[lmeg_contest]</code>; one-tap links land here</span></td></tr>
+                <tr><th>Title</th><td><input type="text" name="title" class="regular-text" required value="<?php echo esc_attr($editing->title ?? ''); ?>" placeholder="Win signed vinyl" /></td></tr>
+                <tr><th>Description</th><td><textarea name="description" rows="3" class="large-text"><?php echo esc_textarea($editing->description ?? ''); ?></textarea></td></tr>
+                <tr><th>Ends</th><td><input type="datetime-local" name="ends_at" value="<?php echo ($editing && $editing->ends_at) ? esc_attr(date('Y-m-d\TH:i', strtotime($editing->ends_at))) : ''; ?>" /> <span class="description">optional</span></td></tr>
+                <tr><th>Contest page URL</th><td><input type="url" name="page_url" class="regular-text" value="<?php echo esc_attr($editing->page_url ?? ''); ?>" placeholder="https://loonymoonchild.com/contest/" /> <span class="description">optional — where you embedded <code>[lmeg_contest]</code>; one-tap links land here</span></td></tr>
+                <?php if ($editing) : ?>
+                <tr><th>Status</th><td><label><input type="checkbox" name="is_open" value="1" <?php checked((int) $editing->is_open, 1); ?> /> Open for entries</label> <span class="description">uncheck to close entries without drawing a winner</span></td></tr>
+                <?php endif; ?>
             </table>
-            <p><button type="submit" class="button button-primary">Create contest</button></p>
+            <p>
+                <button type="submit" class="button button-primary"><?php echo $editing ? 'Save changes' : 'Create contest'; ?></button>
+                <?php if ($editing) : ?><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-contests')); ?>" style="margin-left:8px;">Cancel</a><?php endif; ?>
+            </p>
         </form>
 
         <table class="widefat striped">
@@ -632,6 +654,7 @@ function lmeg_admin_contests() {
                         ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $winner->id], admin_url('admin.php'))) . '">' . esc_html($winner->email ?: $winner->phone) . '</a>'
                         : '—'; ?></td>
                     <td>
+                        <a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'edit' => (int) $c->id], admin_url('admin.php'))); ?>#lmeg-ct-form" class="button">Edit</a>
                         <form method="post" style="display:inline;">
                             <?php wp_nonce_field('lmeg_ct', 'lmeg_ct_nonce'); ?>
                             <input type="hidden" name="contest_id" value="<?php echo (int) $c->id; ?>" />
