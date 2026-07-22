@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.31
+Stable tag: 2.56.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.56.0 =
+* New: deliverability & list health. Paste the plugin's webhook URL (Settings → Brevo) into Brevo and hard bounces/blocked/invalid addresses auto-suppress (skipped on every future send), spam complaints suppress AND unsubscribe, and bounces/complaints land on the fan's timeline. "List health" panel on Broadcast History: 30-day sends, bounce rate (flagged over 2%), complaints, suppressed count.
+* New: optional double opt-in (Settings → Brevo) — new email signups confirm via a one-tap email before receiving broadcasts/sequences/welcome; the gate still unlocks instantly. Everyone already on the list is grandfathered. CASL-friendly.
+* Improved: Contests page — the create/edit form now folds behind a "＋ New contest" toggle instead of dominating the page, and the table is cleaner: Status column (Open / Closed / 🏆 winner), compact dates, copyable merge-tag + shortcode per contest.
+
 = 2.55.31 =
 * Improved: big tag families (City, and eventually Country) cap at the top 20 by audience size with a "Show all N" expander, so the picker stays compact as your cities multiply. A selected tag always stays visible even when it ranks below the cap, and search always sees through the fold.
 

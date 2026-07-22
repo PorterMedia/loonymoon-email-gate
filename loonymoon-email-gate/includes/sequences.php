@@ -149,6 +149,10 @@ function lmeg_process_sequence_tick() {
  */
 function lmeg_send_sequence_step($sub, $step) {
     global $wpdb;
+    // Suppressed (bounced/spam) or not-yet-confirmed addresses never get steps.
+    if (($sub->email_status ?? 'ok') !== 'ok' || empty($sub->confirmed_at)) {
+        if ($sub->contact_type === 'email') return;
+    }
     if ($sub->contact_type === 'email' && !empty($sub->email) && !empty($step->body_email)) {
         $subject   = lmeg_render_merge_tags((string) $step->subject, $sub);
         $body      = lmeg_render_merge_tags((string) $step->body_email, $sub);

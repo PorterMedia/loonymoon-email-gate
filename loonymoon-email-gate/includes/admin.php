@@ -1552,6 +1552,28 @@ function lmeg_admin_broadcasts() {
     ?>
     <div class="wrap">
         <h1>Email Gate — Broadcast History</h1>
+        <?php
+        // List health — 30d deliverability at a glance.
+        $ev_t   = $wpdb->prefix . 'lmeg_broadcast_events';
+        $subs_t = $wpdb->prefix . LMEG_TABLE;
+        $since  = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
+        $sent30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log_tbl WHERE status = 'sent' AND channel = 'email' AND sent_at >= %s", $since));
+        $bnc30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'bounce' AND created_at >= %s", $since));
+        $spam30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'spam' AND created_at >= %s", $since));
+        $suppr  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs_t WHERE email_status <> 'ok'");
+        $pendc  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs_t WHERE confirmed_at IS NULL AND email IS NOT NULL AND email <> '' AND unsubscribed_at IS NULL");
+        $brate  = $sent30 ? round($bnc30 / $sent30 * 100, 1) : 0;
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 20px;max-width:860px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Emails sent · 30d</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo number_format_i18n($sent30); ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Bounces · 30d</div><div class="lmeg-stat__value" style="font-size:18px;<?php echo $brate > 2 ? 'color:#f87171;' : ''; ?>"><?php echo $bnc30; ?> <span style="font-size:12px;opacity:.6;">(<?php echo $brate; ?>%)</span></div><div class="lmeg-stat__hint"><?php echo $brate > 2 ? 'high — clean the list' : 'healthy is under 2%'; ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Spam complaints · 30d</div><div class="lmeg-stat__value" style="font-size:18px;<?php echo $spam30 ? 'color:#f87171;' : ''; ?>"><?php echo $spam30; ?></div><div class="lmeg-stat__hint">auto-suppressed + unsubscribed</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Suppressed</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo $suppr; ?></div><div class="lmeg-stat__hint">dead addresses skipped on sends</div></div>
+            <?php if ($pendc) : ?><div class="lmeg-stat"><div class="lmeg-stat__label">Awaiting confirm</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo $pendc; ?></div><div class="lmeg-stat__hint">double opt-in pending</div></div><?php endif; ?>
+        </div>
+        <?php if (!$bnc30 && !$spam30 && !$suppr) : ?>
+            <p class="description" style="margin:-8px 0 16px;">No bounce/spam data yet — paste the Deliverability webhook URL (Settings &rarr; Brevo) into Brevo so dead addresses start reporting in.</p>
+        <?php endif; ?>
         <table class="widefat striped">
             <thead><tr><th>#</th><th>Channel</th><th>Subject / Body</th><th>Status</th><th>Sent / Total</th><th>Failed</th><th>Revenue</th><th>Created</th><th>Send time</th><th></th></tr></thead>
             <tbody>
@@ -1624,6 +1646,7 @@ function lmeg_admin_settings() {
             'address_message'     => sanitize_textarea_field(wp_unslash($_POST['address_message'] ?? '')),
             // Brevo (the email provider)
             'brevo_api_key'       => sanitize_text_field(wp_unslash($_POST['brevo_api_key'] ?? '')),
+            'double_optin'        => !empty($_POST['double_optin']) ? 1 : 0,
             'brevo_from_email'    => sanitize_email(wp_unslash($_POST['brevo_from_email'] ?? '')),
             'brevo_from_name'     => sanitize_text_field(wp_unslash($_POST['brevo_from_name'] ?? '')),
             // Twilio
@@ -1861,6 +1884,12 @@ function lmeg_admin_settings() {
 
             <h2>Brevo (email)</h2>
             <table class="form-table" role="presentation">
+                <tr><th>Deliverability webhook</th>
+                    <td><code style="user-select:all;word-break:break-all;"><?php echo esc_html(function_exists('lmeg_brevo_wh_url') ? lmeg_brevo_wh_url() : ''); ?></code>
+                        <p class="description">Paste this URL in Brevo &rarr; Transactional &rarr; Settings &rarr; <strong>Webhook</strong> and tick <em>hard bounce, soft bounce, blocked, invalid, spam, unsubscribed</em>. Dead addresses then auto-suppress (they stop receiving and stop hurting your sender reputation), and bounces/complaints appear on fan timelines + the List health panel.</p></td></tr>
+                <tr><th>Double opt-in</th>
+                    <td><label><input type="checkbox" name="double_optin" value="1" <?php checked(!empty($s['double_optin'])); ?> /> New email signups must confirm via a one-tap email before receiving broadcasts</label>
+                        <p class="description">CASL-friendly express consent. The gate still unlocks instantly — only list sends wait for the confirm. Everyone already on the list is grandfathered in.</p></td></tr>
                 <tr><th><label for="brevo_api_key">API key</label></th>
                     <td><input type="text" name="brevo_api_key" id="brevo_api_key" value="<?php echo esc_attr($s['brevo_api_key']); ?>" class="regular-text" autocomplete="off" placeholder="xkeysib-..." />
                         <p class="description">Brevo → SMTP &amp; API → API Keys → your v3 key. Starts with <code>xkeysib-</code>.</p></td></tr>

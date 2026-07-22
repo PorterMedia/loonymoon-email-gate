@@ -570,6 +570,10 @@ function lmeg_fan_timeline($subscriber_id, $limit = 100) {
             $items[] = ['at' => $r->created_at, 'icon' => '🎟', 'label' => 'Clicked a presale link — ' . esc_url(rawurldecode(preg_replace('/^smartlink:[^ ]+ → /', '', $url)))];
         } elseif ($r->event_type === 'click' && strpos($url, 'smartlink:tour-tickets-') === 0) {
             $items[] = ['at' => $r->created_at, 'icon' => '🎟', 'label' => 'Clicked a ticket link — ' . esc_url(rawurldecode(preg_replace('/^smartlink:[^ ]+ → /', '', $url)))];
+        } elseif ($r->event_type === 'bounce') {
+            $items[] = ['at' => $r->created_at, 'icon' => '📛', 'label' => 'Email bounced (' . ($url ?: 'hard') . ')'];
+        } elseif ($r->event_type === 'spam') {
+            $items[] = ['at' => $r->created_at, 'icon' => '🚫', 'label' => 'Marked the email as spam — suppressed + unsubscribed'];
         } elseif ($r->event_type === 'click' && strpos($url, 'smartlink:') === 0) {
             $items[] = ['at' => $r->created_at, 'icon' => '🔗', 'label' => 'Clicked link ' . esc_html(rawurldecode(substr($url, strlen('smartlink:'))))];
         } else {

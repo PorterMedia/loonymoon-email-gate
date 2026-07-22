@@ -419,7 +419,7 @@ function lmeg_queue_broadcast($args) {
     // unsubscribed. We only include rows whose contact_type matches a body
     // the sender provided AND whose corresponding contact column is populated.
     $clauses = [];
-    if ($has_email) $clauses[] = "(contact_type = 'email' AND email IS NOT NULL AND email <> '')";
+    if ($has_email) $clauses[] = "(contact_type = 'email' AND email IS NOT NULL AND email <> '' AND email_status = 'ok' AND confirmed_at IS NOT NULL)";
     if ($has_sms)   $clauses[] = "(contact_type = 'phone' AND phone IS NOT NULL AND phone <> '')";
     $where_parts = ['(' . implode(' OR ', $clauses) . ')', 'unsubscribed_at IS NULL'];
     $params = [];
@@ -696,4 +696,106 @@ function lmeg_process_broadcast_tick() {
             'completed_at' => current_time('mysql'),
         ], ['id' => $bcast->id]);
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * Deliverability — Brevo webhook (bounces / spam / blocks), suppression,
+ * and double opt-in confirmation.
+ * ------------------------------------------------------------------------- */
+
+/** Secret-derived token that authenticates Brevo's webhook calls. */
+function lmeg_brevo_wh_token() {
+    return substr(hash_hmac('sha256', 'brevo-webhook', lmeg_get_secret()), 0, 20);
+}
+
+/** The URL to paste into Brevo → Transactional → Settings → Webhook. */
+function lmeg_brevo_wh_url() {
+    return add_query_arg('lmeg_brevo_wh', lmeg_brevo_wh_token(), home_url('/'));
+}
+
+add_action('init', 'lmeg_maybe_handle_brevo_webhook');
+function lmeg_maybe_handle_brevo_webhook() {
+    if (empty($_GET['lmeg_brevo_wh'])) return;
+    if (!hash_equals(lmeg_brevo_wh_token(), (string) $_GET['lmeg_brevo_wh'])) { status_header(403); exit; }
+
+    $d      = json_decode((string) file_get_contents('php://input'), true);
+    $events = isset($d['event']) ? [$d] : (is_array($d) ? $d : []);
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+
+    foreach ($events as $ev) {
+        if (!is_array($ev)) continue;
+        $type  = (string) ($ev['event'] ?? '');
+        $email = sanitize_email((string) ($ev['email'] ?? ''));
+        if (!$email || !$type) continue;
+        $sub = $wpdb->get_row($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email));
+        if (!$sub) continue;
+
+        $log = function ($kind, $detail) use ($wpdb, $sub) {
+            $wpdb->insert($wpdb->prefix . 'lmeg_broadcast_events', [
+                'broadcast_id' => 0, 'subscriber_id' => (int) $sub->id,
+                'event_type'   => $kind, 'source' => 'brevo', 'source_ref' => 0,
+                'url'          => substr($detail, 0, 500), 'ip' => null,
+                'user_agent'   => 'brevo-webhook', 'created_at' => current_time('mysql'),
+            ]);
+        };
+
+        if (in_array($type, ['hard_bounce', 'blocked', 'invalid_email', 'error'], true)) {
+            // Dead address — suppress so it never burns sender reputation again.
+            $wpdb->update($subs, ['email_status' => 'bounced', 'email_status_at' => current_time('mysql')], ['id' => (int) $sub->id]);
+            $log('bounce', $type);
+        } elseif (in_array($type, ['soft_bounce', 'deferred'], true)) {
+            $log('bounce', 'soft:' . $type); // counted, not suppressed
+        } elseif (in_array($type, ['spam', 'complaint'], true)) {
+            // A complaint is a hard "never again": suppress AND unsubscribe.
+            $wpdb->update($subs, [
+                'email_status'    => 'spam',
+                'email_status_at' => current_time('mysql'),
+                'unsubscribed_at' => current_time('mysql'),
+            ], ['id' => (int) $sub->id]);
+            $log('spam', $type);
+        } elseif ($type === 'unsubscribed') {
+            $wpdb->update($subs, ['unsubscribed_at' => current_time('mysql')], ['id' => (int) $sub->id]);
+        }
+    }
+    status_header(200);
+    echo 'ok';
+    exit;
+}
+
+/** Double opt-in confirmation email + signed one-tap confirm link. */
+function lmeg_confirm_token($sub_id) {
+    return substr(hash_hmac('sha256', 'confirm|' . (int) $sub_id, lmeg_get_secret()), 0, 24);
+}
+
+function lmeg_send_confirm_email($sub) {
+    if (empty($sub->email)) return;
+    $url  = add_query_arg('lmeg_confirm', (int) $sub->id . '-' . lmeg_confirm_token($sub->id), home_url('/'));
+    $body = '<p style="font-size:16px;">One tap and you\'re in:</p>'
+          . '<p style="margin:22px 0;"><a href="' . esc_url($url) . '" style="display:inline-block;padding:13px 30px;border-radius:8px;font-weight:600;text-decoration:none;color:#ffffff;background:#d05fa2;">Confirm my signup</a></p>'
+          . '<p style="opacity:.7;">If you didn\'t sign up, just ignore this email.</p>';
+    list($text, $html) = lmeg_build_email_with_footer($body, lmeg_unsub_url((int) $sub->id, $sub->email));
+    lmeg_email_send($sub->email, 'Confirm your signup', $text, $html);
+}
+
+add_action('init', 'lmeg_maybe_handle_confirm');
+function lmeg_maybe_handle_confirm() {
+    if (empty($_GET['lmeg_confirm'])) return;
+    $parts = explode('-', sanitize_text_field(wp_unslash($_GET['lmeg_confirm'])));
+    if (count($parts) !== 2) return;
+    $sid = (int) $parts[0];
+    if (!$sid || !hash_equals(lmeg_confirm_token($sid), (string) $parts[1])) return;
+
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $sub  = $wpdb->get_row($wpdb->prepare("SELECT * FROM $subs WHERE id = %d", $sid));
+    if ($sub && empty($sub->confirmed_at)) {
+        $wpdb->update($subs, ['confirmed_at' => current_time('mysql')], ['id' => $sid]);
+        if (function_exists('lmeg_maybe_send_welcome')) lmeg_maybe_send_welcome($sid);
+    }
+    if (function_exists('lmeg_set_cookie')) lmeg_set_cookie();
+    // 200 + client-side forward (never a 302 — mail scanners flag those).
+    if (function_exists('lmeg_contest_forward_page')) lmeg_contest_forward_page(home_url('/'), null, false);
+    wp_safe_redirect(home_url('/'));
+    exit;
 }

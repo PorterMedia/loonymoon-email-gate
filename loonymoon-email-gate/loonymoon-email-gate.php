@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.55.31
+ * Version:     2.56.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.55.31');
-define('LMEG_DB_VERSION',  '2.55.19');
+define('LMEG_VERSION',     '2.56.0');
+define('LMEG_DB_VERSION',  '2.56.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -166,6 +166,12 @@ function lmeg_maybe_migrate() {
         }
     }
 
+    // Deliverability (2.56): every pre-existing subscriber counts as
+    // confirmed — double opt-in only ever gates signups made AFTER it's on.
+    if (version_compare($current, '2.56.0', '<')) {
+        $wpdb->query("UPDATE {$wpdb->prefix}" . LMEG_TABLE . " SET confirmed_at = created_at WHERE confirmed_at IS NULL");
+    }
+
     update_option('lmeg_db_version', LMEG_DB_VERSION);
 }
 
@@ -194,6 +200,9 @@ function lmeg_create_tables() {
         referrer VARCHAR(255) DEFAULT NULL,
         unsubscribed_at DATETIME DEFAULT NULL,
         welcome_sent_at DATETIME DEFAULT NULL,
+        email_status VARCHAR(12) NOT NULL DEFAULT 'ok',
+        email_status_at DATETIME DEFAULT NULL,
+        confirmed_at DATETIME DEFAULT NULL,
         member_tier_id BIGINT(20) UNSIGNED DEFAULT NULL,
         member_status VARCHAR(20) NOT NULL DEFAULT 'free',
         stripe_customer_id VARCHAR(64) DEFAULT NULL,
@@ -594,6 +603,7 @@ function lmeg_default_settings() {
         'address_message'     => 'Optional: where should we send mail?',
         // Brevo — the email provider
         'brevo_api_key'       => '',
+        'double_optin'        => 0,
         'brevo_from_email'    => '',
         'brevo_from_name'     => '',
         // Twilio
@@ -1030,6 +1040,9 @@ function lmeg_maybe_send_welcome($subscriber_id) {
         $subscriber_id
     ));
     if (!$sub || !$sub->email || $sub->welcome_sent_at) return;
+    // Double opt-in: hold the welcome until they confirm (the confirm handler
+    // re-invokes this).
+    if (!empty($s['double_optin']) && empty($sub->confirmed_at)) return;
 
     $subject = lmeg_render_merge_tags($s['welcome_subject'] ?: 'Welcome', $sub);
     $body    = lmeg_render_merge_tags($s['welcome_body']    ?: '', $sub);
@@ -1421,6 +1434,19 @@ function lmeg_handle_submit() {
             $val
         ));
         if ($found) lmeg_set_member_cookie($found->id, (int) $found->member_tier_id);
+    }
+
+    // Confirmation state: with double opt-in ON, a fresh email signup stays
+    // unconfirmed (excluded from broadcasts/sequences) until they tap the
+    // confirm link; otherwise they're confirmed on the spot.
+    if ($found && empty($found->confirmed_at)) {
+        global $wpdb;
+        $s_conf = lmeg_get_settings();
+        if (!empty($s_conf['double_optin']) && !empty($found->email) && function_exists('lmeg_send_confirm_email')) {
+            lmeg_send_confirm_email($found);
+        } else {
+            $wpdb->update($wpdb->prefix . LMEG_TABLE, ['confirmed_at' => current_time('mysql')], ['id' => (int) $found->id]);
+        }
     }
 
     // Source tagging: any signup form (bio page, release-drop "Notify me",

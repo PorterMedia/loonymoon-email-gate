@@ -762,8 +762,11 @@ function lmeg_admin_contests() {
             &bull; <code>{contest_link:ID}</code> &mdash; a <strong>specific</strong> contest, using its ID from the table below (so you always know which one it is).
         </p>
 
-        <h2 id="lmeg-ct-form"><?php echo $editing ? 'Edit contest' : 'Create a contest'; ?></h2>
-        <form method="post" style="margin-bottom:22px;">
+        <details id="lmeg-ct-form"<?php echo $editing ? ' open' : ''; ?> style="margin:6px 0 24px;">
+        <summary style="cursor:pointer;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px dashed rgba(255,255,255,.25);border-radius:8px;">
+            <?php echo $editing ? '✏️ Edit contest — ' . esc_html($editing->title) : '＋ New contest'; ?>
+        </summary>
+        <form method="post" style="margin:14px 0 8px;">
             <?php wp_nonce_field('lmeg_ct', 'lmeg_ct_nonce'); ?>
             <input type="hidden" name="lmeg_action" value="<?php echo $editing ? 'update' : 'create'; ?>" />
             <?php if ($editing) : ?><input type="hidden" name="contest_id" value="<?php echo (int) $editing->id; ?>" /><?php endif; ?>
@@ -799,9 +802,16 @@ function lmeg_admin_contests() {
                 <?php if ($editing) : ?><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-contests')); ?>" style="margin-left:8px;">Cancel</a><?php endif; ?>
             </p>
         </form>
+        </details>
+        <script>
+        // TinyMCE sizes its toolbar wrong when initialized inside a closed
+        // <details>; a resize on open snaps it back.
+        (function () { var d = document.getElementById('lmeg-ct-form');
+            if (d) d.addEventListener('toggle', function () { window.dispatchEvent(new Event('resize')); }); })();
+        </script>
 
         <table class="widefat striped">
-            <thead><tr><th>Contest</th><th>Shortcode</th><th>Entrants</th><th>Ends</th><th>Winner</th><th></th></tr></thead>
+            <thead><tr><th>Contest</th><th>Status</th><th>Entrants</th><th>Ends</th><th>Use it</th><th></th></tr></thead>
             <tbody>
             <?php if (empty($rows)) : ?>
                 <tr><td colspan="6">No contests yet.</td></tr>
@@ -812,19 +822,25 @@ function lmeg_admin_contests() {
                 $winner = $c->winner_subscriber_id
                     ? $wpdb->get_row($wpdb->prepare("SELECT id, email, phone FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $c->winner_subscriber_id))
                     : null;
+                $ended  = !$c->is_open || ($c->ends_at && $c->ends_at < current_time('mysql'));
             ?>
                 <tr>
-                    <td><strong><?php echo esc_html($c->title); ?></strong><br><span class="description">ID <?php echo (int) $c->id; ?></span></td>
-                    <td>
-                        <code>[lmeg_contest id=<?php echo (int) $c->id; ?>]</code><br>
-                        <code style="user-select:all;">{contest_link:<?php echo (int) $c->id; ?>}</code>
-                        <?php if ($active && (int) $active->id === (int) $c->id) : ?><br><span class="description" style="color:#1a6f1a;">&larr; also what plain <code>{contest_link}</code> points to now</span><?php endif; ?>
+                    <td><strong><?php echo esc_html($c->title); ?></strong> <span class="description">· ID <?php echo (int) $c->id; ?></span>
+                        <?php if ($active && (int) $active->id === (int) $c->id) : ?><br><span class="description" style="color:#1a6f1a;">plain <code>{contest_link}</code> points here</span><?php endif; ?></td>
+                    <td><?php
+                        if ($winner) {
+                            echo '🏆 <a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $winner->id], admin_url('admin.php'))) . '">' . esc_html($winner->email ?: $winner->phone) . '</a>';
+                        } elseif ($ended) {
+                            echo '<span style="opacity:.6;">Closed</span>';
+                        } else {
+                            echo '<span style="color:#34d399;font-weight:600;">● Open</span>';
+                        } ?></td>
+                    <td><?php if ($n) : ?><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'contest' => (int) $c->id], admin_url('admin.php'))); ?>"><strong><?php echo $n; ?></strong> &rsaquo; view</a><?php else : ?><span style="opacity:.5;">0</span><?php endif; ?></td>
+                    <td><?php echo $c->ends_at ? esc_html(date_i18n('M j, Y', strtotime($c->ends_at))) : '<span style="opacity:.5;">—</span>'; ?></td>
+                    <td style="font-size:11px;line-height:1.9;">
+                        <code style="user-select:all;">{contest_link:<?php echo (int) $c->id; ?>}</code> <span class="description">in a broadcast</span><br>
+                        <code style="user-select:all;">[lmeg_contest id=<?php echo (int) $c->id; ?>]</code> <span class="description">on a page</span>
                     </td>
-                    <td><?php if ($n) : ?><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'contest' => (int) $c->id], admin_url('admin.php'))); ?>"><?php echo $n; ?> &rsaquo; view</a><?php else : ?>0<?php endif; ?></td>
-                    <td><?php echo esc_html($c->ends_at ?: '—'); ?></td>
-                    <td><?php echo $winner
-                        ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $winner->id], admin_url('admin.php'))) . '">' . esc_html($winner->email ?: $winner->phone) . '</a>'
-                        : '—'; ?></td>
                     <td>
                         <a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'edit' => (int) $c->id], admin_url('admin.php'))); ?>#lmeg-ct-form" class="button">Edit</a>
                         <form method="post" style="display:inline;">
