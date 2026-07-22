@@ -164,8 +164,11 @@ function lmeg_apply_auto_tags($sub) {
         }
     }
 
-    // has-address — set if any address field is filled.
-    $has_addr = !empty($sub->street) || !empty($sub->city) || !empty($sub->region) || !empty($sub->postal_code);
+    // has-address — a REAL, mailable address: street or postal code, the
+    // fields only a human form / Shopify order provides. City/region alone
+    // no longer qualify — since v2.55.25 those can be IP-derived
+    // (approximate), and you can't mail merch to "approximately Toronto".
+    $has_addr = !empty($sub->street) || !empty($sub->postal_code);
     lmeg_detach_auto_tags($sub->id, 'has-address');
     if ($has_addr) {
         $t = lmeg_get_or_create_tag('has-address', 'Has mailing address', true);

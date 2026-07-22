@@ -252,6 +252,30 @@ function lmeg_geo_distance_km($lat1, $lng1, $lat2, $lng2) {
     return 6371.0 * 2 * atan2(sqrt($a), sqrt(1 - $a));
 }
 
+/**
+ * One-shot cleanup: fans who were tagged has-address off a city/region alone
+ * (possible between v2.55.25's IP-city backfill and the stricter street-or-
+ * postal rule) get their auto-tags recomputed, which detaches the tag.
+ * Batches of 50 per tick until none remain, then flags done.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_addr_tag_cleanup', 63);
+function lmeg_addr_tag_cleanup() {
+    if (get_option('lmeg_addr_tag_fix_done')) return;
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results(
+        "SELECT s.* FROM $subs s
+          JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.subscriber_id = s.id
+          JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id AND t.slug = 'has-address'
+         WHERE (s.street IS NULL OR s.street = '') AND (s.postal_code IS NULL OR s.postal_code = '')
+         LIMIT 50"
+    );
+    if (!$rows) { update_option('lmeg_addr_tag_fix_done', 1, false); return; }
+    foreach ($rows as $r) {
+        if (function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($r);
+    }
+}
+
 /* ---------------------------------------------------------------------------
  * On-site page views for IDENTIFIED fans — identity-linked analytics no
  * generic analytics plugin can give you. Any visitor carrying the signed
