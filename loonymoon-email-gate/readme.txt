@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.5
+Stable tag: 2.55.6
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,11 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.6 =
+* New: search box on the Subscribers page — find fans by email, phone, name, or notes. Works alongside the Free/Paid/Unsubscribed/tag filters and paginates.
+* New: "Add subscribers manually" box — paste one or more emails to add them directly (re-adding an existing email just reactivates it; welcome email + sequences fire if enabled).
+* New: each row in the "recent signups that didn't get added" panel now has an "Add anyway" button to subscribe that person in one click, plus a "Clear log" button.
+
 = 2.55.5 =
 * Fix: some signups silently never got added. Four causes, all fixed: (1) a stale nonce from full-page caching made every submit fail "Security check failed" — a public opt-in now logs a bad nonce and still saves instead of dropping it; (2) the per-IP rate limiter reset its window on every hit, so a busy/shared IP (mobile CGNAT, offices, venue wifi) could get permanently blocked — it's now a true fixed window with much higher limits (15/10min, 300/day); (3) the email-domain DNS check could reject valid addresses (incl. gmail) when the host's resolver misfired — the major mailbox providers are now always allowed and DNS failures fail open; (4) all four rejection paths (bad nonce, rate limit, honeypot, invalid/blocked email) now write to a rejection log.
 * New: the Subscribers page shows a "recent signups that didn't get added — see why" panel so you can diagnose captures at a glance.

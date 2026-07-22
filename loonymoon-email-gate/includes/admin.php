@@ -324,7 +324,36 @@ function lmeg_admin_subscribers() {
             }
             $notice = '<div class="notice notice-warning"><p>Revoked tier from ' . count($ids) . ' subscriber' . (count($ids) === 1 ? '' : 's') . '. Stripe subscriptions are NOT cancelled — do that in the Stripe dashboard if needed.</p></div>';
         }
+
+        // Manually add subscribers (paste one or more emails) — also powers the
+        // one-click "Add anyway" button on the rejected-signups panel.
+        if (($_POST['lmeg_action'] ?? '') === 'add_manual') {
+            $raw   = (string) wp_unslash($_POST['manual_emails'] ?? '');
+            $parts = array_filter(array_map('trim', preg_split('/[\s,;]+/', $raw)));
+            $added = 0; $bad = 0;
+            foreach ($parts as $p) {
+                $em = sanitize_email($p);
+                if (!$em || !is_email($em)) { $bad++; continue; }
+                if (function_exists('lmeg_store_subscriber')) {
+                    lmeg_store_subscriber([
+                        'contact_type' => 'email', 'email' => $em, 'phone' => null,
+                        'country' => null, 'street' => null, 'city' => null,
+                        'region' => null, 'postal_code' => null, 'post_id' => null,
+                    ]);
+                    $added++;
+                }
+            }
+            $notice = '<div class="notice notice-success"><p>Added ' . (int) $added . ' subscriber' . ($added === 1 ? '' : 's')
+                    . ($bad ? ', skipped ' . (int) $bad . ' invalid address' . ($bad === 1 ? '' : 'es') : '')
+                    . '. (Re-adding an existing email just reactivates it. Welcome email + sequences fire if enabled.)</p></div>';
+        } elseif (($_POST['lmeg_action'] ?? '') === 'clear_rejects') {
+            delete_option('lmeg_signup_rejects');
+            $notice = '<div class="notice notice-success"><p>Rejected-signups log cleared.</p></div>';
+        }
     }
+
+    // Optional search: ?s=<term> (email / phone / first name / notes)
+    $search = isset($_GET['s']) ? trim(sanitize_text_field(wp_unslash($_GET['s']))) : '';
 
     // Optional filter: ?tag=<slug>
     $filter_tag_slug = isset($_GET['tag']) ? sanitize_text_field($_GET['tag']) : '';
@@ -349,6 +378,10 @@ function lmeg_admin_subscribers() {
     } elseif ($filter_status === 'unsubscribed') {
         $where .= " AND unsubscribed_at IS NOT NULL";
     }
+    if ($search !== '') {
+        $like = '%' . $wpdb->esc_like($search) . '%';
+        $where .= $wpdb->prepare(" AND (email LIKE %s OR phone LIKE %s OR first_name LIKE %s OR notes LIKE %s)", $like, $like, $like, $like);
+    }
 
     // Pagination — this list used to hard-cap at 500 rows with no way to reach
     // the rest. Now it pages through the full (optionally filtered) list.
@@ -365,7 +398,7 @@ function lmeg_admin_subscribers() {
     // the active status/tag filters.
     $pg_first = $matching ? ($offset + 1) : 0;
     $pg_last  = (int) min($offset + $per_page, $matching);
-    $pg_args  = array_filter(['status' => $filter_status, 'tag' => $filter_tag_slug], 'strlen');
+    $pg_args  = array_filter(['status' => $filter_status, 'tag' => $filter_tag_slug, 's' => $search], 'strlen');
     $pg_link  = function ($p) use ($pg_args) {
         return esc_url(add_query_arg(array_merge($pg_args, ['paged' => (int) $p]), admin_url('admin.php?page=lmeg')));
     };
@@ -416,7 +449,7 @@ function lmeg_admin_subscribers() {
         <details style="margin:2px 0 16px;max-width:820px;">
             <summary style="cursor:pointer;color:#a05a00;font-weight:600;">⚠ <?php echo count($rejects); ?> recent signup<?php echo count($rejects) === 1 ? '' : 's'; ?> did not get added — see why</summary>
             <table class="widefat striped" style="margin-top:8px;">
-                <thead><tr><th>When</th><th>Email</th><th>Reason it was dropped</th><th>IP</th></tr></thead>
+                <thead><tr><th>When</th><th>Email</th><th>Reason it was dropped</th><th>IP</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($rejects as $rj) :
                     $reason_label = [
@@ -426,17 +459,33 @@ function lmeg_admin_subscribers() {
                         'invalid_email'   => '✋ Not a valid email format',
                         'domain_rejected' => '🌐 Email domain failed the DNS check',
                     ][$rj['reason']] ?? esc_html($rj['reason']);
+                    $can_add = !empty($rj['email']) && is_email($rj['email']);
                 ?>
                     <tr>
                         <td style="white-space:nowrap;"><?php echo esc_html($rj['t']); ?></td>
                         <td><?php echo esc_html($rj['email'] ?: '—'); ?></td>
                         <td><?php echo esc_html($reason_label); ?></td>
                         <td><?php echo esc_html($rj['ip']); ?></td>
+                        <td><?php if ($can_add) : ?>
+                            <form method="post" style="margin:0;">
+                                <?php wp_nonce_field('lmeg_subs', 'lmeg_subs_nonce'); ?>
+                                <input type="hidden" name="lmeg_action" value="add_manual" />
+                                <input type="hidden" name="manual_emails" value="<?php echo esc_attr($rj['email']); ?>" />
+                                <button type="submit" class="button button-small">Add anyway</button>
+                            </form>
+                        <?php endif; ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <p class="description">Most recent first (last 100 kept). Lots of <code>bad_nonce</code> means a caching plugin is serving stale signup forms — this update now lets those signups through instead of dropping them.</p>
+            <p class="description" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <span>Most recent first (last 100 kept). Lots of <code>bad_nonce</code> means a caching plugin is serving stale signup forms — this update now lets those signups through instead of dropping them.</span>
+                <form method="post" style="margin:0;" onsubmit="return confirm('Clear the rejected-signups log?');">
+                    <?php wp_nonce_field('lmeg_subs', 'lmeg_subs_nonce'); ?>
+                    <input type="hidden" name="lmeg_action" value="clear_rejects" />
+                    <button type="submit" class="button button-small">Clear log</button>
+                </form>
+            </p>
         </details>
         <?php endif; ?>
 
@@ -456,6 +505,30 @@ function lmeg_admin_subscribers() {
             <p>Filtered by tag: <?php echo lmeg_render_tag_chip($filter_tag); ?>
                <a href="<?php echo esc_url($base_url); ?>">Clear filter</a></p>
         <?php endif; ?>
+
+        <form method="get" class="search-box" style="float:right;margin:0 0 8px;">
+            <input type="hidden" name="page" value="lmeg" />
+            <?php if ($filter_status) : ?><input type="hidden" name="status" value="<?php echo esc_attr($filter_status); ?>" /><?php endif; ?>
+            <?php if ($filter_tag_slug) : ?><input type="hidden" name="tag" value="<?php echo esc_attr($filter_tag_slug); ?>" /><?php endif; ?>
+            <input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Search email, phone, name…" style="width:240px;" />
+            <button type="submit" class="button">Search fans</button>
+            <?php if ($search !== '') : ?><a href="<?php echo esc_url(add_query_arg(array_filter(['status' => $filter_status, 'tag' => $filter_tag_slug], 'strlen'), $base_url)); ?>" style="margin-left:6px;">clear</a><?php endif; ?>
+        </form>
+        <div style="clear:both;"></div>
+        <?php if ($search !== '') : ?>
+            <p><em>Showing results for &ldquo;<?php echo esc_html($search); ?>&rdquo; — <?php echo number_format_i18n($matching); ?> match<?php echo $matching === 1 ? '' : 'es'; ?>.</em></p>
+        <?php endif; ?>
+
+        <details style="margin:0 0 14px;max-width:640px;">
+            <summary style="cursor:pointer;font-weight:600;">➕ Add subscribers manually</summary>
+            <form method="post" style="margin-top:8px;">
+                <?php wp_nonce_field('lmeg_subs', 'lmeg_subs_nonce'); ?>
+                <input type="hidden" name="lmeg_action" value="add_manual" />
+                <textarea name="manual_emails" rows="3" class="large-text" placeholder="Paste emails — one per line, or comma/space separated"></textarea>
+                <p><button type="submit" class="button button-primary">Add subscribers</button>
+                <span class="description" style="margin-left:8px;">Re-adding an existing email just reactivates it. Welcome email + sequences fire if enabled.</span></p>
+            </form>
+        </details>
 
         <form method="post">
             <?php wp_nonce_field('lmeg_subs', 'lmeg_subs_nonce'); ?>
