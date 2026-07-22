@@ -1183,18 +1183,26 @@ function lmeg_admin_compose() {
             inflight = new AbortController();
             countEl.innerHTML = 'Counting…';
             fetch(ajax_url, { method: 'POST', body: fd, signal: inflight.signal })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    // Parse manually so a PHP notice/fatal in the response shows
+                    // itself instead of silently leaving the count stuck.
+                    var d = null;
+                    try { d = JSON.parse(t); } catch (e) {}
                     if (d && d.success) {
                         var html = 'Sending to <strong>' + d.data.count + '</strong> subscriber' + (d.data.count === 1 ? '' : 's');
                         if (d.data.radius) html += ' <span style="opacity:.7;">within ' + d.data.radius + '</span>';
                         if (d.data.radius_error) html += ' <em style="color:#a05a00;">— ' + d.data.radius_error + '</em>';
                         countEl.innerHTML = html;
                     } else {
-                        countEl.innerHTML = '<em>count failed</em>';
+                        var why = (t || '').substring(0, 140).replace(/</g, '&lt;');
+                        countEl.innerHTML = '<em>count failed' + (why ? ' — server said: ' + why : ' — empty response') + '</em>';
                     }
                 })
-                .catch(function () {});
+                .catch(function (err) {
+                    if (err && err.name === 'AbortError') return; // superseded request
+                    countEl.innerHTML = '<em>count failed — network error</em>';
+                });
         }
 
         tagBoxes.forEach(function (b) { b.addEventListener('change', refresh); });
@@ -1984,10 +1992,13 @@ function lmeg_ajax_audience_count() {
     $has_email = !empty($_POST['has_email']);
     $has_sms   = !empty($_POST['has_sms']);
 
-    // If neither body channel claims to want recipients, count nothing — the
-    // queue_broadcast guard rejects empty broadcasts anyway.
+    // Nothing typed in either body yet (people pick their audience FIRST) —
+    // count the reachable audience across BOTH channels instead of freezing
+    // at 0 and ignoring tag picks. queue_broadcast still rejects an actually
+    // empty broadcast at send time.
     if (!$has_email && !$has_sms) {
-        wp_send_json_success(['count' => 0]);
+        $has_email = true;
+        $has_sms   = true;
     }
 
     // Radius-aware count — when a "within X km of <city>" filter is set, count
