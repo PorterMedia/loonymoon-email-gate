@@ -385,9 +385,11 @@ function lmeg_apply_referral($subscriber_id) {
  * Classify every subscriber and refresh their fan-type auto-tag.
  * Criteria (rolling 90 days):
  *   superfan — any shop order OR active paid tier
- *   engaged  — 2+ clicks or 5+ opens
- *   casual   — at least 1 open or click
+ *   engaged  — 2+ clicks, or 5+ opens, or visited the site on 2+ separate days
+ *   casual   — at least 1 open, click, or site visit
  *   dormant  — nothing
+ * Site visits count DISTINCT DAYS (not raw pageviews) so one deep browsing
+ * session doesn't score as ongoing engagement — coming BACK is the signal.
  */
 function lmeg_recalculate_fan_types() {
     global $wpdb;
@@ -401,12 +403,14 @@ function lmeg_recalculate_fan_types() {
                 s.member_status, s.member_tier_id,
                 COALESCE(e.clicks, 0) AS clicks,
                 COALESCE(e.opens, 0)  AS opens,
+                COALESCE(e.visit_days, 0) AS visit_days,
                 COALESCE(o.orders, 0) AS orders
          FROM $subs s
          LEFT JOIN (
              SELECT subscriber_id,
                     SUM(event_type = 'click') AS clicks,
-                    SUM(event_type = 'open')  AS opens
+                    SUM(event_type = 'open')  AS opens,
+                    COUNT(DISTINCT CASE WHEN event_type = 'pageview' THEN DATE(created_at) END) AS visit_days
              FROM $events WHERE created_at >= %s GROUP BY subscriber_id
          ) e ON e.subscriber_id = s.id
          LEFT JOIN (
@@ -422,9 +426,9 @@ function lmeg_recalculate_fan_types() {
         $is_paying = ($r->member_status === 'active' && $r->member_tier_id);
         if ($r->orders > 0 || $is_paying) {
             $type = 'superfan';
-        } elseif ($r->clicks >= 2 || $r->opens >= 5) {
+        } elseif ($r->clicks >= 2 || $r->opens >= 5 || $r->visit_days >= 2) {
             $type = 'engaged';
-        } elseif ($r->clicks >= 1 || $r->opens >= 1) {
+        } elseif ($r->clicks >= 1 || $r->opens >= 1 || $r->visit_days >= 1) {
             $type = 'casual';
         } else {
             $type = 'dormant';
