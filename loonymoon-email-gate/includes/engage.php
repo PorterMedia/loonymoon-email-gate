@@ -580,14 +580,17 @@ function lmeg_admin_contests() {
         }
     }
 
-    $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
+    $rows   = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
+    $active = function_exists('lmeg_current_open_contest') ? lmeg_current_open_contest() : null;
     ?>
     <div class="wrap">
         <h1>Email Gate — Contests</h1>
         <?php echo $notice; ?>
         <p>Members enter with one click; every friend they refer during the contest is <strong>+3 entries</strong>. Embed with <code>[lmeg_contest id=N]</code>. Winner is drawn weighted by entries.</p>
-        <p style="background:#f6f1ea;border:1px solid #e6ddd2;border-radius:8px;padding:10px 14px;max-width:760px;">
-            <strong>One-tap entry for your list:</strong> put <code>{contest_link}</code> in an email or SMS broadcast. Each recipient gets a personalized link that signs them in and <em>enters them into the newest open contest with a single tap</em> — no typing, no login. (Set a &ldquo;Contest page URL&rdquo; below to land them back on the contest; otherwise they see a built-in &ldquo;You&rsquo;re entered!&rdquo; confirmation.)
+        <p style="background:#f6f1ea;border:1px solid #e6ddd2;border-radius:8px;padding:10px 14px;max-width:820px;">
+            <strong>One-tap entry for your list:</strong> put a contest tag in an email or SMS broadcast and each recipient gets a personalized link that signs them in and enters them with a single tap — no typing, no login.<br>
+            &bull; <code>{contest_link}</code> &mdash; always the <strong>newest open</strong> contest<?php echo $active ? ' (right now: <strong>' . esc_html($active->title) . '</strong>)' : ' (none open right now)'; ?>.<br>
+            &bull; <code>{contest_link:ID}</code> &mdash; a <strong>specific</strong> contest, using its ID from the table below (so you always know which one it is).
         </p>
 
         <h2>Create a contest</h2>
@@ -617,8 +620,12 @@ function lmeg_admin_contests() {
                     : null;
             ?>
                 <tr>
-                    <td><strong><?php echo esc_html($c->title); ?></strong></td>
-                    <td><code>[lmeg_contest id=<?php echo (int) $c->id; ?>]</code></td>
+                    <td><strong><?php echo esc_html($c->title); ?></strong><br><span class="description">ID <?php echo (int) $c->id; ?></span></td>
+                    <td>
+                        <code>[lmeg_contest id=<?php echo (int) $c->id; ?>]</code><br>
+                        <code style="user-select:all;">{contest_link:<?php echo (int) $c->id; ?>}</code>
+                        <?php if ($active && (int) $active->id === (int) $c->id) : ?><br><span class="description" style="color:#1a6f1a;">&larr; also what plain <code>{contest_link}</code> points to now</span><?php endif; ?>
+                    </td>
                     <td><?php if ($n) : ?><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-contests', 'contest' => (int) $c->id], admin_url('admin.php'))); ?>"><?php echo $n; ?> &rsaquo; view</a><?php else : ?>0<?php endif; ?></td>
                     <td><?php echo esc_html($c->ends_at ?: '—'); ?></td>
                     <td><?php echo $winner

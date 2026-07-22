@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.8
+Stable tag: 2.55.9
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.9 =
+* New: target a specific contest with {contest_link:ID} (bare {contest_link} still means "the newest open contest"). The Contests page now shows each contest's ID and its exact {contest_link:ID} tag to copy, and flags which one plain {contest_link} currently points to — so you always know which contest a link goes to.
+
 = 2.55.8 =
 * New: one-tap contest entry links. Put the {contest_link} merge tag in an email or SMS broadcast — each recipient gets a personalized, signed link that recognizes them, signs them in, and enters them into the newest open contest with a single tap (no typing, no login). Links are HMAC-signed and expire in 60 days. Set an optional "Contest page URL" so taps land back on the contest; otherwise they see a built-in "You're entered!" confirmation with their entry count + referral link.
 * New: the signup form shortcode now shows who it recognizes — "✓ You're on the list as name@email" — when a fan arrives already identified (e.g. via a one-tap link), and uses that email on submit.

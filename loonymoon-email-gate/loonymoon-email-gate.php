@@ -3,7 +3,7 @@
  * Plugin Name: Loonymoon Email Gate
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.55.8
+ * Version:     2.55.9
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.55.8');
-define('LMEG_DB_VERSION',  '2.55.8');
+define('LMEG_VERSION',     '2.55.9');
+define('LMEG_DB_VERSION',  '2.55.9');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -998,6 +998,13 @@ function lmeg_merge_tag_map($sub) {
 
 function lmeg_render_merge_tags($text, $sub) {
     if ($text === null || $text === '') return $text;
+    // Parameterized {contest_link:ID} — target a SPECIFIC contest (bare
+    // {contest_link} still resolves to the newest open one).
+    if (strpos($text, '{contest_link:') !== false && function_exists('lmeg_contest_enter_url') && !empty($sub->id)) {
+        $text = preg_replace_callback('/\{contest_link:(\d+)\}/', function ($m) use ($sub) {
+            return lmeg_contest_enter_url((int) $m[1], (int) $sub->id);
+        }, (string) $text);
+    }
     $map = lmeg_merge_tag_map($sub);
     return str_replace(array_keys($map), array_values($map), (string) $text);
 }
