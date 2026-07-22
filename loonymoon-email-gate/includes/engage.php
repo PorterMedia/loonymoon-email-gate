@@ -252,17 +252,21 @@ function lmeg_maybe_handle_contest_enter() {
     if (!empty($contest->page_url)) {
         wp_safe_redirect(add_query_arg('lmeg_entered', 1, $contest->page_url)); exit;
     }
-    $total = function_exists('lmeg_contest_bonus_entries') ? (int) lmeg_contest_bonus_entries($contest, $sub->id) : 1;
-    $ref   = function_exists('lmeg_referral_url') ? lmeg_referral_url($sub->id) : home_url('/');
-    $who   = $sub->email ?: $sub->phone;
-    $html  = '<div style="max-width:460px;margin:48px auto;text-align:center;font-family:-apple-system,\'Segoe UI\',Roboto,sans-serif;">'
-           . '<h1 style="font-size:26px;">🎉 You&rsquo;re entered!</h1>'
-           . '<p style="font-size:16px;"><strong>' . esc_html($contest->title) . '</strong></p>'
-           . ($open ? '<p>You&rsquo;re in with <strong>' . $total . '</strong> entr' . ($total === 1 ? 'y' : 'ies') . '.</p>'
-                    : '<p>This contest has closed — the winner will be announced soon.</p>')
-           . ($who ? '<p style="color:#6a5f5a;font-size:13px;">Entered as ' . esc_html($who) . '</p>' : '')
-           . (($open && (!isset($contest->referral_bonus) || $contest->referral_bonus)) ? '<p style="margin-top:18px;">Want more chances? Every friend who joins through your link is <strong>+3 entries</strong>:<br><code style="user-select:all;">' . esc_html($ref) . '</code></p>' : '')
-           . '</div>';
+    $total   = function_exists('lmeg_contest_bonus_entries') ? (int) lmeg_contest_bonus_entries($contest, $sub->id) : 1;
+    $ref     = function_exists('lmeg_referral_url') ? lmeg_referral_url($sub->id) : home_url('/');
+    $success = trim((string) ($contest->success_message ?? ''));
+    // Use the contest's own (formatted) success message so the styling is kept;
+    // fall back to a built-in confirmation if none is set.
+    $inner = $success !== '' ? wpautop($success) : (
+        '<h1 style="font-size:26px;">🎉 You&rsquo;re entered!</h1>'
+        . '<p style="font-size:16px;"><strong>' . esc_html($contest->title) . '</strong></p>'
+        . ($open ? '<p>You&rsquo;re in with <strong>' . $total . '</strong> entr' . ($total === 1 ? 'y' : 'ies') . '.</p>'
+                 : '<p>This contest has closed — the winner will be announced soon.</p>')
+    );
+    if ($open && (!isset($contest->referral_bonus) || $contest->referral_bonus)) {
+        $inner .= '<p style="margin-top:18px;">Want more chances? Every friend who joins through your link is <strong>+3 entries</strong>:<br><code style="user-select:all;">' . esc_html($ref) . '</code></p>';
+    }
+    $html = '<div style="max-width:480px;margin:48px auto;text-align:center;font-family:-apple-system,\'Segoe UI\',Roboto,sans-serif;">' . $inner . '</div>';
     if (function_exists('lmeg_render_full_page')) { lmeg_render_full_page($html); }
     else { wp_die($html, 'Entered', ['response' => 200]); }
     exit;
@@ -343,8 +347,8 @@ function lmeg_shortcode_contest($atts = []) {
             // loonybin AND entered; existing fans just get entered. No sign-in.
             echo function_exists('lmeg_shortcode_signup') ? lmeg_shortcode_signup([
                 'contest' => $cid,
+                'phone'   => 'yes',
                 'button'  => 'Enter the contest',
-                'style'   => 'inline',
                 'success' => 'You&rsquo;re entered! 🎉',
             ]) : ''; ?>
             <?php if ($contest->ends_at) : ?>
