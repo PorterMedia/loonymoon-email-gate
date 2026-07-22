@@ -243,7 +243,7 @@
         var mt = document.createElement('select');
         mt.title = 'Insert merge tag';
         mt.innerHTML = '<option value="">Insert merge tag…</option>' +
-            ['{name}','{email}','{unique_code}','{referral_link}','{site_name}'].map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+            ['{name}','{email}','{unique_code}','{referral_link}','{contest_link}','{cart_url}','{site_name}'].map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
         tb.appendChild(mt);
         tb.addEventListener('mousedown', function (e) { if (e.target.tagName !== 'SELECT') e.preventDefault(); });
         tb.addEventListener('click', function (e) {

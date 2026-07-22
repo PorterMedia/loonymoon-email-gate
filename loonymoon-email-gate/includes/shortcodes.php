@@ -58,7 +58,9 @@ function lmeg_shortcode_signup($atts = []) {
         }
     }
     $show_tiers = !empty($tier_list);
-    $member     = ($show_tiers && function_exists('lmeg_current_member')) ? lmeg_current_member() : null;
+    // Always resolve the current member so the form can show WHO it recognizes
+    // (e.g. after a one-tap {contest_link} sign-in) — not only on tier forms.
+    $member     = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
 
     // Per-render instance id so multiple embeds on one page each get a
     // scroll anchor and unique field ids.
@@ -121,9 +123,10 @@ function lmeg_shortcode_signup($atts = []) {
 
             <?php if ($member) : ?>
                 <p class="lmeg-embed__member">
-                    Signed in as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
+                    ✓ You&rsquo;re on the list as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
                     <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
                 </p>
+                <?php if ($member->email) : ?><input type="hidden" name="email" value="<?php echo esc_attr($member->email); ?>" /><?php endif; ?>
             <?php else : ?>
                 <?php if ($show_phone) : ?>
                     <div class="lmeg-tabs" role="tablist" aria-label="Contact method">

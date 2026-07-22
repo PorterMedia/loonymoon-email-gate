@@ -162,6 +162,98 @@ function lmeg_contest_bonus_entries($contest, $subscriber_id) {
     return 1 + 3 * $n;
 }
 
+/* ---------------------------------------------------------------------------
+ * One-tap contest entry links — personalized + HMAC-signed. Put {contest_link}
+ * in an email/SMS broadcast; each recipient gets a link that signs them in AND
+ * enters them into the newest open contest with a single tap.
+ * ------------------------------------------------------------------------- */
+
+/** Newest still-running contest (open + not past its end). */
+function lmeg_current_open_contest() {
+    global $wpdb;
+    return $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}lmeg_contests
+          WHERE is_open = 1 AND (ends_at IS NULL OR ends_at > %s)
+          ORDER BY id DESC LIMIT 1",
+        current_time('mysql')
+    ));
+}
+
+function lmeg_contest_enter_token($contest_id, $sub_id, $exp) {
+    return substr(hash_hmac('sha256', 'enter|' . (int) $contest_id . '|' . (int) $sub_id . '|' . (int) $exp, lmeg_get_secret()), 0, 32);
+}
+
+function lmeg_contest_enter_url($contest_id, $sub_id) {
+    $exp = time() + 60 * DAY_IN_SECONDS;
+    return add_query_arg([
+        'lmeg_enter' => (int) $contest_id,
+        'u'          => (int) $sub_id,
+        'e'          => $exp,
+        't'          => lmeg_contest_enter_token($contest_id, $sub_id, $exp),
+    ], home_url('/'));
+}
+
+/** {contest_link} target for a fan: newest open contest, or home if none. */
+function lmeg_contest_link_for($sub_id) {
+    $c = lmeg_current_open_contest();
+    return $c ? lmeg_contest_enter_url($c->id, $sub_id) : home_url('/');
+}
+
+add_action('init', 'lmeg_maybe_handle_contest_enter');
+function lmeg_maybe_handle_contest_enter() {
+    if (empty($_GET['lmeg_enter'])) return;
+    global $wpdb;
+
+    $cid    = (int) $_GET['lmeg_enter'];
+    $sub_id = (int) ($_GET['u'] ?? 0);
+    $exp    = (int) ($_GET['e'] ?? 0);
+    $tok    = isset($_GET['t']) ? sanitize_text_field(wp_unslash($_GET['t'])) : '';
+
+    $contest = $cid ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_contests WHERE id = %d", $cid)) : null;
+    $land    = ($contest && !empty($contest->page_url)) ? $contest->page_url : home_url('/');
+
+    // Validate expiry + HMAC before trusting the identity in the link.
+    if (!$contest || !$sub_id || $exp < time()
+        || !hash_equals(lmeg_contest_enter_token($cid, $sub_id, $exp), $tok)) {
+        wp_safe_redirect($land); exit;
+    }
+    $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
+    if (!$sub) { wp_safe_redirect($land); exit; }
+
+    // Recognize the fan everywhere (so the contest page + any form show who
+    // they are), and unlock the gate for this visit.
+    if (function_exists('lmeg_set_member_cookie')) lmeg_set_member_cookie($sub->id, (int) $sub->member_tier_id);
+    if (function_exists('lmeg_set_cookie')) lmeg_set_cookie();
+
+    $open = $contest->is_open && (!$contest->ends_at || $contest->ends_at > current_time('mysql'));
+    if ($open) {
+        $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->prefix}lmeg_contest_entries (contest_id, subscriber_id, entries, entered_at) VALUES (%d, %d, 1, %s)",
+            $cid, $sub->id, current_time('mysql')
+        ));
+    }
+
+    // Land them on the contest page (they'll see "you're in") if we know it,
+    // otherwise show a built-in confirmation with their entry count + ref link.
+    if (!empty($contest->page_url)) {
+        wp_safe_redirect(add_query_arg('lmeg_entered', 1, $contest->page_url)); exit;
+    }
+    $total = function_exists('lmeg_contest_bonus_entries') ? (int) lmeg_contest_bonus_entries($contest, $sub->id) : 1;
+    $ref   = function_exists('lmeg_referral_url') ? lmeg_referral_url($sub->id) : home_url('/');
+    $who   = $sub->email ?: $sub->phone;
+    $html  = '<div style="max-width:460px;margin:48px auto;text-align:center;font-family:-apple-system,\'Segoe UI\',Roboto,sans-serif;">'
+           . '<h1 style="font-size:26px;">🎉 You&rsquo;re entered!</h1>'
+           . '<p style="font-size:16px;"><strong>' . esc_html($contest->title) . '</strong></p>'
+           . ($open ? '<p>You&rsquo;re in with <strong>' . $total . '</strong> entr' . ($total === 1 ? 'y' : 'ies') . '.</p>'
+                    : '<p>This contest has closed — the winner will be announced soon.</p>')
+           . ($who ? '<p style="color:#6a5f5a;font-size:13px;">Entered as ' . esc_html($who) . '</p>' : '')
+           . ($open ? '<p style="margin-top:18px;">Want more chances? Every friend who joins through your link is <strong>+3 entries</strong>:<br><code style="user-select:all;">' . esc_html($ref) . '</code></p>' : '')
+           . '</div>';
+    if (function_exists('lmeg_render_full_page')) { lmeg_render_full_page($html); }
+    else { wp_die($html, 'Entered', ['response' => 200]); }
+    exit;
+}
+
 add_shortcode('lmeg_contest', 'lmeg_shortcode_contest');
 function lmeg_shortcode_contest($atts = []) {
     $atts = shortcode_atts(['id' => 0], $atts, 'lmeg_contest');
@@ -470,6 +562,7 @@ function lmeg_admin_contests() {
                     'title'       => $title,
                     'description' => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
                     'ends_at'     => $ends ? date('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $ends))) : null,
+                    'page_url'    => esc_url_raw(wp_unslash($_POST['page_url'] ?? '')) ?: null,
                     'created_at'  => current_time('mysql'),
                 ]);
                 $notice = '<div class="notice notice-success"><p>Contest created — embed with <code>[lmeg_contest id=' . (int) $wpdb->insert_id . ']</code></p></div>';
@@ -493,6 +586,9 @@ function lmeg_admin_contests() {
         <h1>Email Gate — Contests</h1>
         <?php echo $notice; ?>
         <p>Members enter with one click; every friend they refer during the contest is <strong>+3 entries</strong>. Embed with <code>[lmeg_contest id=N]</code>. Winner is drawn weighted by entries.</p>
+        <p style="background:#f6f1ea;border:1px solid #e6ddd2;border-radius:8px;padding:10px 14px;max-width:760px;">
+            <strong>One-tap entry for your list:</strong> put <code>{contest_link}</code> in an email or SMS broadcast. Each recipient gets a personalized link that signs them in and <em>enters them into the newest open contest with a single tap</em> — no typing, no login. (Set a &ldquo;Contest page URL&rdquo; below to land them back on the contest; otherwise they see a built-in &ldquo;You&rsquo;re entered!&rdquo; confirmation.)
+        </p>
 
         <h2>Create a contest</h2>
         <form method="post" style="margin-bottom:22px;">
@@ -502,6 +598,7 @@ function lmeg_admin_contests() {
                 <tr><th>Title</th><td><input type="text" name="title" class="regular-text" required placeholder="Win signed vinyl" /></td></tr>
                 <tr><th>Description</th><td><textarea name="description" rows="3" class="large-text"></textarea></td></tr>
                 <tr><th>Ends</th><td><input type="datetime-local" name="ends_at" /> <span class="description">optional</span></td></tr>
+                <tr><th>Contest page URL</th><td><input type="url" name="page_url" class="regular-text" placeholder="https://loonymoonchild.com/contest/" /> <span class="description">optional — where you embedded <code>[lmeg_contest]</code>; one-tap links land here</span></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Create contest</button></p>
         </form>
