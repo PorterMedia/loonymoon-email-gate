@@ -82,6 +82,89 @@ function lmeg_geo_backfill() {
 }
 
 /**
+ * IP → approximate city/region/country in one call (ipwho.is — free, HTTPS,
+ * keyless). Approximate by nature (often the ISP hub), so it only ever FILLS
+ * EMPTY city fields — a real city from a form or Shopify order always wins.
+ *
+ * @return array|null|false  ['city','region','country'] on a hit; null when
+ *                           the IP genuinely has no city data (cached 30 days);
+ *                           false on a transport error (NOT cached — retryable).
+ */
+function lmeg_geo_city_from_ip($ip) {
+    if (!$ip || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return null;
+    }
+    $key    = 'lmeg_geocity_' . md5($ip);
+    $cached = get_transient($key);
+    if ($cached !== false) {
+        return $cached === '-' ? null : $cached;
+    }
+
+    $resp = wp_remote_get('https://ipwho.is/' . rawurlencode($ip), ['timeout' => 4]);
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) {
+        return false; // API down / network blip — try again later, don't cache
+    }
+    $d = json_decode(wp_remote_retrieve_body($resp), true);
+    if (!is_array($d) || empty($d['success']) || empty($d['city'])) {
+        set_transient($key, '-', 30 * DAY_IN_SECONDS);
+        return null;
+    }
+    $hit = [
+        'city'    => substr(sanitize_text_field((string) $d['city']), 0, 100),
+        'region'  => substr(sanitize_text_field((string) ($d['region'] ?? '')), 0, 100),
+        'country' => preg_match('/^[A-Z]{2}$/', strtoupper((string) ($d['country_code'] ?? ''))) ? strtoupper($d['country_code']) : '',
+    ];
+    set_transient($key, $hit, 30 * DAY_IN_SECONDS);
+    return $hit;
+}
+
+/**
+ * Backfill: subscribers with a stored IP but NO city get an approximate city
+ * (+ region, + country if missing) from IP geolocation, then fresh auto-tags
+ * so city:* chips appear. Cursor-based so IPs with no city data aren't
+ * retried forever; when a pass completes the cursor resets, and cached
+ * misses make re-walks nearly free (no HTTP). New signups have higher ids,
+ * so they're picked up within a pass automatically.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_geo_city_backfill', 62);
+function lmeg_geo_city_backfill() {
+    if (get_site_transient('lmeg_geocity_bf_lock')) return;
+    set_site_transient('lmeg_geocity_bf_lock', 1, 5 * MINUTE_IN_SECONDS);
+
+    global $wpdb;
+    $subs   = $wpdb->prefix . LMEG_TABLE;
+    $cursor = (int) get_option('lmeg_geo_city_cursor', 0);
+    $rows   = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, ip FROM $subs
+          WHERE id > %d AND ip IS NOT NULL AND ip <> ''
+            AND (city IS NULL OR city = '')
+          ORDER BY id ASC LIMIT 10",
+        $cursor
+    ));
+    if (!$rows) {
+        // Pass complete — rewind so brand-new signups (and, after the 30-day
+        // miss cache expires, previously unmapped IPs) get another look.
+        if ($cursor > 0) update_option('lmeg_geo_city_cursor', 0, false);
+        return;
+    }
+    foreach ($rows as $r) {
+        $g = lmeg_geo_city_from_ip($r->ip);
+        if ($g === false) return; // API down — resume from the same cursor next tick
+        if (is_array($g)) {
+            $upd = ['city' => $g['city']];
+            if (!empty($g['region']))  $upd['region'] = $g['region'];
+            // Never overwrite an existing country — only fill a gap.
+            $has_cc = $wpdb->get_var($wpdb->prepare("SELECT country FROM $subs WHERE id = %d", (int) $r->id));
+            if (!$has_cc && !empty($g['country'])) $upd['country'] = $g['country'];
+            $wpdb->update($subs, $upd, ['id' => (int) $r->id]);
+            $fresh = $wpdb->get_row($wpdb->prepare("SELECT * FROM $subs WHERE id = %d", (int) $r->id));
+            if ($fresh && function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($fresh);
+        }
+        update_option('lmeg_geo_city_cursor', (int) $r->id, false);
+    }
+}
+
+/**
  * Backfill: existing subscribers who already have a city but no city:* tag
  * (rows created before city auto-tags existed) get their auto-tags refreshed
  * in small batches. Self-terminating — once every city'd row is tagged the

@@ -359,6 +359,18 @@ function lmeg_admin_subscribers() {
             if ($hit && !empty($hit['email']) && is_email($hit['email'])) {
                 $em      = sanitize_email($hit['email']);
                 $country = (string) ($hit['country'] ?? '');
+                $city    = (string) ($hit['city'] ?? '');
+                $region  = (string) ($hit['region'] ?? '');
+                // Fill location gaps from the logged IP: approximate city/region
+                // (ipwho.is) first, plain country lookup as the last resort.
+                if ($city === '' && !empty($hit['ip']) && function_exists('lmeg_geo_city_from_ip')) {
+                    $g = lmeg_geo_city_from_ip($hit['ip']);
+                    if (is_array($g)) {
+                        $city = $g['city'];
+                        if ($region === '')  $region  = $g['region'];
+                        if ($country === '') $country = $g['country'];
+                    }
+                }
                 if (!$country && !empty($hit['ip']) && function_exists('lmeg_geo_country_from_ip')) {
                     $country = (string) lmeg_geo_country_from_ip($hit['ip']);
                 }
@@ -366,8 +378,8 @@ function lmeg_admin_subscribers() {
                     'contact_type' => 'email', 'email' => $em, 'phone' => null,
                     'country'      => $country ?: null,
                     'street'       => (string) ($hit['street'] ?? '') !== '' ? $hit['street'] : null,
-                    'city'         => (string) ($hit['city'] ?? '') !== '' ? $hit['city'] : null,
-                    'region'       => (string) ($hit['region'] ?? '') !== '' ? $hit['region'] : null,
+                    'city'         => $city !== '' ? $city : null,
+                    'region'       => $region !== '' ? $region : null,
                     'postal_code'  => (string) ($hit['postal'] ?? '') !== '' ? $hit['postal'] : null,
                     'post_id'      => (int) ($hit['post_id'] ?? 0) ?: null,
                 ]);
@@ -391,8 +403,9 @@ function lmeg_admin_subscribers() {
                     if (function_exists('lmeg_mark_signup_reject_added')) {
                         lmeg_mark_signup_reject_added($key, (int) $sub->id, $welcome);
                     }
+                    $loc_bits = implode(', ', array_filter([$city, $region, $country]));
                     $notice = '<div class="notice notice-success"><p>Added <strong>' . esc_html($em) . '</strong>'
-                            . ($country ? ' (' . esc_html($country) . ')' : '')
+                            . ($loc_bits ? ' (' . esc_html($loc_bits) . ')' : '')
                             . (!empty($hit['tags']) ? ' with tags <em>' . esc_html($hit['tags']) . '</em>' : '')
                             . ($welcome ? ' — welcome email sent. ✉️' : ' — welcome email not sent (already welcomed earlier, or the welcome email is disabled).')
                             . '</p></div>';
@@ -899,8 +912,8 @@ function lmeg_admin_compose() {
                         <input type="text" name="radius_city" id="radius_city" placeholder="Toronto" value="<?php echo esc_attr($vals['radius_city']); ?>" />
                         <p class="description">
                             Great for show announcements — e.g. <em>150&nbsp;km of Toronto</em> reaches Mississauga, Hamilton, Oshawa&hellip;
-                            Uses each fan's city on file (geocoded once, then cached). Fans with no city are excluded while a radius is set.
-                            Combines with the tag filter above. Applied when the send is queued — the live count above doesn't reflect it.
+                            Uses each fan's city on file (form/Shopify city first; approximate IP city fills the gaps automatically). Fans with no city are excluded while a radius is set.
+                            Combines with the tag filter above — the live count updates as you type.
                         </p>
                     </td>
                 </tr>
@@ -1149,6 +1162,8 @@ function lmeg_admin_compose() {
         var taSms    = document.getElementById('body_sms');
         var matchRadios = document.querySelectorAll('input[name="tag_match"]');
         var tagBoxes    = document.querySelectorAll('input[name="tag_ids[]"]');
+        var radiusKm    = document.getElementById('radius_km');
+        var radiusCity  = document.getElementById('radius_city');
 
         var inflight = null;
         function refresh() {
@@ -1161,6 +1176,8 @@ function lmeg_admin_compose() {
             fd.append('match', match);
             fd.append('has_email', taEmail && taEmail.value.trim() ? '1' : '0');
             fd.append('has_sms',   taSms   && taSms.value.trim()   ? '1' : '0');
+            fd.append('radius_km',   radiusKm   ? radiusKm.value.trim()   : '');
+            fd.append('radius_city', radiusCity ? radiusCity.value.trim() : '');
 
             if (inflight) inflight.abort();
             inflight = new AbortController();
@@ -1169,7 +1186,10 @@ function lmeg_admin_compose() {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d && d.success) {
-                        countEl.innerHTML = 'Sending to <strong>' + d.data.count + '</strong> subscriber' + (d.data.count === 1 ? '' : 's');
+                        var html = 'Sending to <strong>' + d.data.count + '</strong> subscriber' + (d.data.count === 1 ? '' : 's');
+                        if (d.data.radius) html += ' <span style="opacity:.7;">within ' + d.data.radius + '</span>';
+                        if (d.data.radius_error) html += ' <em style="color:#a05a00;">— ' + d.data.radius_error + '</em>';
+                        countEl.innerHTML = html;
                     } else {
                         countEl.innerHTML = '<em>count failed</em>';
                     }
@@ -1181,6 +1201,10 @@ function lmeg_admin_compose() {
         matchRadios.forEach(function (r) { r.addEventListener('change', refresh); });
         if (taEmail) taEmail.addEventListener('input', debounce(refresh, 350));
         if (taSms)   taSms.addEventListener('input',   debounce(refresh, 350));
+        // Longer debounce for the radius fields — a half-typed city name
+        // shouldn't fire a geocode per keystroke.
+        if (radiusKm)   radiusKm.addEventListener('input',   debounce(refresh, 700));
+        if (radiusCity) radiusCity.addEventListener('input', debounce(refresh, 700));
         refresh();
 
         function debounce(fn, ms) {
@@ -1964,6 +1988,24 @@ function lmeg_ajax_audience_count() {
     // queue_broadcast guard rejects empty broadcasts anyway.
     if (!$has_email && !$has_sms) {
         wp_send_json_success(['count' => 0]);
+    }
+
+    // Radius-aware count — when a "within X km of <city>" filter is set, count
+    // the same way the queued send will filter (tag/channel SQL + distance).
+    $radius_km   = isset($_POST['radius_km']) ? (float) $_POST['radius_km'] : 0;
+    $radius_city = sanitize_text_field(wp_unslash($_POST['radius_city'] ?? ''));
+    if ($radius_km > 0 && $radius_city !== '' && function_exists('lmeg_audience_radius_count')) {
+        $center = function_exists('lmeg_geo_city_coords') ? lmeg_geo_city_coords($radius_city) : null;
+        if (!$center) {
+            wp_send_json_success(['count' => 0, 'radius_error' => 'couldn\'t place "' . $radius_city . '" on the map']);
+        }
+        $count = lmeg_audience_radius_count(
+            ['tag_ids' => $tag_ids, 'match' => $match],
+            ['email'   => $has_email, 'sms' => $has_sms],
+            $center,
+            $radius_km
+        );
+        wp_send_json_success(['count' => $count, 'radius' => round($radius_km) . ' km of ' . $radius_city]);
     }
 
     $count = lmeg_audience_count(

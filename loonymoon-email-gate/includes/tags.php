@@ -257,3 +257,45 @@ function lmeg_audience_count($filter, $require = []) {
         ? $wpdb->get_var($wpdb->prepare($sql, $params))
         : $wpdb->get_var($sql));
 }
+
+/**
+ * lmeg_audience_count, but constrained to fans within $km of $center
+ * (['lat','lng']). Same tag/channel narrowing in SQL, then distance in PHP —
+ * each distinct city geocodes once (permanently cached), so after the first
+ * count this is all cache hits. Fans with no city can't be placed → excluded.
+ */
+function lmeg_audience_radius_count($filter, $require, $center, $km) {
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    if (empty($center['lat']) || !function_exists('lmeg_geo_city_coords')) return 0;
+
+    list($audience_sql, $audience_params) = lmeg_audience_where($filter);
+
+    $where  = ['unsubscribed_at IS NULL', "city IS NOT NULL AND city <> ''"];
+    $params = [];
+    if ($audience_sql) {
+        $where[]  = $audience_sql;
+        $params   = array_merge($params, $audience_params);
+    }
+    $channel_clauses = [];
+    if (!empty($require['email'])) $channel_clauses[] = "(contact_type = 'email' AND email IS NOT NULL AND email <> '')";
+    if (!empty($require['sms']))   $channel_clauses[] = "(contact_type = 'phone' AND phone IS NOT NULL AND phone <> '')";
+    if ($channel_clauses) {
+        $where[] = '(' . implode(' OR ', $channel_clauses) . ')';
+    }
+
+    $sql  = "SELECT city, region, country FROM $subs WHERE " . implode(' AND ', $where);
+    $rows = $params
+        ? $wpdb->get_results($wpdb->prepare($sql, $params))
+        : $wpdb->get_results($sql);
+
+    $km = (float) $km;
+    $n  = 0;
+    foreach ((array) $rows as $r) {
+        $c = lmeg_geo_city_coords($r->city, (string) ($r->region ?? ''), (string) ($r->country ?? ''));
+        if ($c && lmeg_geo_distance_km($center['lat'], $center['lng'], $c['lat'], $c['lng']) <= $km) {
+            $n++;
+        }
+    }
+    return $n;
+}
