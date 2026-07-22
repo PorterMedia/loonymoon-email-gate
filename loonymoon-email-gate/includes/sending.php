@@ -401,6 +401,8 @@ function lmeg_queue_broadcast($args) {
         'body_sms'       => '',
         'tag_filter'     => null,   // ['tag_ids' => int[], 'match' => 'any'|'all']
         'radius_filter'  => null,   // ['km' => float, 'city' => string] — only fans within km of city
+        'recipient_ids'  => null,   // explicit subscriber ids (resend flows) — skips the tag/radius filters
+        'smart_timing'   => false,  // per-fan send_after at their most-active hour
         'scheduled_for'  => null,   // MySQL datetime in site timezone, or null = send immediately
     ];
     $args = wp_parse_args($args, $defaults);
@@ -433,10 +435,20 @@ function lmeg_queue_broadcast($args) {
         }
     }
 
-    $sql  = "SELECT id, contact_type, email, phone, city, region, country FROM $subs_tbl WHERE " . implode(' AND ', $where_parts);
-    $rows = $params
-        ? $wpdb->get_results($wpdb->prepare($sql, $params))
-        : $wpdb->get_results($sql);
+    if (!empty($args['recipient_ids'])) {
+        // Explicit audience (e.g. "resend to non-openers") — same channel +
+        // unsubscribed + suppression guards, no tag/radius narrowing.
+        $ids = array_filter(array_map('intval', (array) $args['recipient_ids']));
+        $rows = $ids ? $wpdb->get_results(
+            "SELECT id, contact_type, email, phone, city, region, country FROM $subs_tbl
+              WHERE id IN (" . implode(',', $ids) . ") AND " . implode(' AND ', $where_parts)
+        ) : [];
+    } else {
+        $sql  = "SELECT id, contact_type, email, phone, city, region, country FROM $subs_tbl WHERE " . implode(' AND ', $where_parts);
+        $rows = $params
+            ? $wpdb->get_results($wpdb->prepare($sql, $params))
+            : $wpdb->get_results($sql);
+    }
 
     if (!$rows) {
         return new WP_Error('lmeg_no_recipients', 'No matching subscribers (after excluding unsubscribed).');
@@ -486,6 +498,31 @@ function lmeg_queue_broadcast($args) {
     ]);
     $bcast_id = (int) $wpdb->insert_id;
 
+    // Smart send times: each fan's modal open HOUR (all-time) becomes their
+    // send window — the send spreads over up to 24h. Fans with no open
+    // history go out immediately.
+    $send_after_by_sub = [];
+    if (!empty($args['smart_timing'])) {
+        $rid = array_map(function ($r) { return (int) $r->id; }, $rows);
+        $ev  = $wpdb->prefix . 'lmeg_broadcast_events';
+        $hrs = $rid ? $wpdb->get_results(
+            "SELECT subscriber_id, HOUR(created_at) AS h, COUNT(*) AS n FROM $ev
+              WHERE subscriber_id IN (" . implode(',', $rid) . ") AND event_type = 'open'
+              GROUP BY subscriber_id, HOUR(created_at)"
+        ) : [];
+        $best = [];
+        foreach ($hrs as $hr) {
+            $sid = (int) $hr->subscriber_id;
+            if (!isset($best[$sid]) || (int) $hr->n > $best[$sid][1]) $best[$sid] = [(int) $hr->h, (int) $hr->n];
+        }
+        $base_ts = $args['scheduled_for'] ? strtotime($args['scheduled_for']) : current_time('timestamp');
+        foreach ($best as $sid => $bh) {
+            $t = strtotime(date('Y-m-d', $base_ts) . ' ' . sprintf('%02d:00:00', $bh[0]));
+            if ($t < $base_ts) $t += DAY_IN_SECONDS;
+            $send_after_by_sub[$sid] = date('Y-m-d H:i:s', $t);
+        }
+    }
+
     foreach ($rows as $r) {
         $channel   = $r->contact_type === 'phone' ? 'sms' : 'email';
         $recipient = $channel === 'sms' ? $r->phone : $r->email;
@@ -495,6 +532,7 @@ function lmeg_queue_broadcast($args) {
             'channel'       => $channel,
             'recipient'     => $recipient,
             'status'        => 'pending',
+            'send_after'    => $send_after_by_sub[(int) $r->id] ?? null,
         ]);
     }
 
@@ -614,9 +652,19 @@ function lmeg_process_broadcast_tick() {
     }
 
     $batch = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $log_tbl WHERE broadcast_id = %d AND status = 'pending' ORDER BY id ASC LIMIT %d",
-        $bcast->id, lmeg_batch_size()
+        "SELECT * FROM $log_tbl WHERE broadcast_id = %d AND status = 'pending'
+           AND (send_after IS NULL OR send_after <= %s)
+         ORDER BY id ASC LIMIT %d",
+        $bcast->id, current_time('mysql'), lmeg_batch_size()
     ));
+
+    if (!$batch) {
+        // Rows may still be waiting on their smart-timing window — not done yet.
+        $waiting = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $log_tbl WHERE broadcast_id = %d AND status = 'pending'", $bcast->id
+        ));
+        if ($waiting > 0) return;
+    }
 
     if (!$batch) {
         // No pending — broadcast is done.
@@ -798,4 +846,77 @@ function lmeg_maybe_handle_confirm() {
     if (function_exists('lmeg_contest_forward_page')) lmeg_contest_forward_page(home_url('/'), null, false);
     wp_safe_redirect(home_url('/'));
     exit;
+}
+
+/* ---------------------------------------------------------------------------
+ * Monday digest — the owner's weekly one-email overview. No dashboard visit
+ * needed: growth, revenue, best send, top cities, plus an AI read when the
+ * Anthropic key is configured.
+ * ------------------------------------------------------------------------- */
+
+add_action('lmeg_broadcast_tick', 'lmeg_weekly_digest_tick', 70);
+function lmeg_weekly_digest_tick() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (isset($s['digest_enabled']) && empty($s['digest_enabled'])) return;
+    $now = current_time('timestamp');
+    if ((int) date('N', $now) !== 1 || (int) date('G', $now) < 8) return; // Mondays from 8am site time
+    $wk = date('o-W', $now);
+    if (get_option('lmeg_digest_last') === $wk) return;
+    update_option('lmeg_digest_last', $wk, false);
+    lmeg_send_owner_digest();
+}
+
+function lmeg_send_owner_digest() {
+    global $wpdb;
+    $s     = lmeg_get_settings();
+    $subs  = $wpdb->prefix . LMEG_TABLE;
+    $since = date('Y-m-d H:i:s', current_time('timestamp') - 7 * DAY_IN_SECONDS);
+
+    $new    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $subs WHERE created_at >= %s", $since));
+    $unsub  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at >= %s", $since));
+    $active = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL");
+    $rev    = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM {$wpdb->prefix}lmeg_shop_orders WHERE ordered_at >= %s", $since));
+    $reva   = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM {$wpdb->prefix}lmeg_shop_orders WHERE ordered_at >= %s AND broadcast_id IS NOT NULL", $since));
+
+    $best = $wpdb->get_row($wpdb->prepare(
+        "SELECT b.id, b.subject, b.sent,
+                (SELECT COUNT(DISTINCT subscriber_id) FROM {$wpdb->prefix}lmeg_broadcast_events e WHERE e.broadcast_id = b.id AND e.event_type = 'open') AS opens
+         FROM {$wpdb->prefix}lmeg_broadcasts b
+         WHERE b.completed_at >= %s AND b.sent > 0 ORDER BY (SELECT COUNT(DISTINCT subscriber_id) FROM {$wpdb->prefix}lmeg_broadcast_events e2 WHERE e2.broadcast_id = b.id AND e2.event_type='open') / b.sent DESC LIMIT 1",
+        $since
+    ));
+    $cities = $wpdb->get_results($wpdb->prepare(
+        "SELECT city, COUNT(*) n FROM $subs WHERE created_at >= %s AND city IS NOT NULL AND city <> '' GROUP BY city ORDER BY n DESC LIMIT 3", $since
+    ));
+
+    $fmt = function_exists('lmeg_format_price') ? 'lmeg_format_price' : function ($c) { return '$' . number_format($c / 100, 2); };
+    $rows = [
+        ['🌱', 'New fans', number_format_i18n($new) . ($unsub ? ' <span style="opacity:.6;">(−' . $unsub . ' unsubscribed)</span>' : '')],
+        ['👥', 'Active list', number_format_i18n($active)],
+        ['💸', 'Shop revenue (7d)', $fmt($rev) . ($reva ? ' <span style="opacity:.6;">(' . $fmt($reva) . ' email-attributed)</span>' : '')],
+    ];
+    if ($best) $rows[] = ['🏅', 'Best send', esc_html($best->subject ?: ('#' . $best->id)) . ' — ' . round(($best->opens / max(1, $best->sent)) * 100) . '% opens'];
+    if ($cities) $rows[] = ['📍', 'New fans from', esc_html(implode(', ', array_map(function ($c) { return $c->city . ' (' . $c->n . ')'; }, $cities)))];
+
+    $body = '<h2 style="margin:0 0 14px;">Your week</h2><table style="border-collapse:collapse;">';
+    foreach ($rows as $r) {
+        $body .= '<tr><td style="padding:6px 10px 6px 0;font-size:18px;">' . $r[0] . '</td>'
+               . '<td style="padding:6px 18px 6px 0;color:#777;white-space:nowrap;">' . $r[1] . '</td>'
+               . '<td style="padding:6px 0;font-weight:600;">' . $r[2] . '</td></tr>';
+    }
+    $body .= '</table>';
+
+    // AI read — best-effort, never blocks the digest.
+    if (function_exists('lmeg_ai_ask')) {
+        $ai = lmeg_ai_ask('Write a 2-3 sentence Monday morning read on how the last 7 days went and the single most useful action to take this week. Plain text, no greeting.');
+        if (!is_wp_error($ai) && is_string($ai) && trim($ai) !== '') {
+            $body .= '<p style="margin:18px 0 0;padding:12px 16px;background:#faf3f8;border-left:3px solid #d05fa2;font-style:italic;">' . esc_html(trim($ai)) . '</p>';
+        }
+    }
+    $body .= '<p style="margin:16px 0 0;"><a href="' . esc_url(admin_url('admin.php?page=lmeg-overview')) . '">Open the dashboard →</a></p>';
+
+    $to  = !empty($s['digest_email']) && is_email($s['digest_email']) ? $s['digest_email'] : get_option('admin_email');
+    $ph  = add_query_arg(['lmeg_unsubscribe' => 1, 'u' => 0, 't' => 'digest'], home_url('/'));
+    list($text, $html) = lmeg_build_email_with_footer($body, $ph);
+    lmeg_email_send($to, sprintf('Your week: +%d fans, %s revenue', $new, $fmt($rev)), $text, $html);
 }

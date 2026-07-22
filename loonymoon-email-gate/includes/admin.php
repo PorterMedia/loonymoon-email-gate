@@ -956,6 +956,7 @@ function lmeg_admin_compose() {
                         ? ['km' => (float) $vals['radius_km'], 'city' => $vals['radius_city']]
                         : null,
                     'scheduled_for'  => $scheduled,
+                    'smart_timing'   => !empty($_POST['smart_timing']),
                 ]);
                 if (is_wp_error($bid)) {
                     $notice = '<div class="notice notice-error"><p>' . esc_html($bid->get_error_message()) . '</p></div>';
@@ -1240,6 +1241,8 @@ function lmeg_admin_compose() {
                     <th><label for="scheduled_for">Send at</label></th>
                     <td>
                         <input type="datetime-local" name="scheduled_for" id="scheduled_for" />
+                    <label style="margin-left:14px;"><input type="checkbox" name="smart_timing" value="1" /> <strong>Smart send times</strong></label>
+                    <span class="description">deliver at each fan's most-active hour (based on their past opens; spreads over up to 24h — fans with no history send immediately)</span>
                         <p class="description">Leave blank to send immediately. Otherwise the broadcast sits in queue and starts at the chosen moment (site timezone). Recipients are locked in at queue time, not at send time.</p>
                     </td>
                 </tr>
@@ -1480,6 +1483,38 @@ function lmeg_admin_broadcasts() {
     $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
     $log_tbl   = $wpdb->prefix . 'lmeg_broadcast_log';
 
+    // Resend to non-openers: same email body, fresh subject, only to fans
+    // who received it but never opened. Typically +20-30% extra opens.
+    $notice = '';
+    if (($_POST['lmeg_action'] ?? '') === 'resend_nonopen' && check_admin_referer('lmeg_resend', 'lmeg_resend_nonce')) {
+        $bid = (int) ($_POST['broadcast_id'] ?? 0);
+        $b   = $bid ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $bcast_tbl WHERE id = %d", $bid)) : null;
+        if ($b && $b->body) {
+            $ids = $wpdb->get_col($wpdb->prepare(
+                "SELECT DISTINCT l.subscriber_id FROM $log_tbl l
+                  WHERE l.broadcast_id = %d AND l.channel = 'email' AND l.status = 'sent'
+                    AND l.subscriber_id NOT IN (
+                        SELECT subscriber_id FROM {$wpdb->prefix}lmeg_broadcast_events
+                         WHERE broadcast_id = %d AND event_type = 'open')",
+                $bid, $bid
+            ));
+            if (!$ids) {
+                $notice = '<div class="notice notice-success"><p>Everyone opened this one — nobody to resend to. 🎉</p></div>';
+            } else {
+                $subj = sanitize_text_field(wp_unslash($_POST['resend_subject'] ?? ''));
+                $r = lmeg_queue_broadcast([
+                    'subject'       => $subj ?: ('ICYMI: ' . $b->subject),
+                    'body_email'    => $b->body,
+                    'body_sms'      => '',
+                    'recipient_ids' => $ids,
+                ]);
+                $notice = is_wp_error($r)
+                    ? '<div class="notice notice-error"><p>' . esc_html($r->get_error_message()) . '</p></div>'
+                    : '<div class="notice notice-success"><p>Queued a resend to <strong>' . count($ids) . '</strong> non-opener' . (count($ids) === 1 ? '' : 's') . '.</p></div>';
+            }
+        }
+    }
+
     // Detail view?
     $view = isset($_GET['view']) ? (int) $_GET['view'] : 0;
     if ($view) {
@@ -1500,6 +1535,17 @@ function lmeg_admin_broadcasts() {
             $orate   = round(($opens  / $sent_n) * 100, 1);
             $crate   = round(($clicks / $sent_n) * 100, 1);
             ?>
+            <?php echo $notice; ?>
+            <?php if ($b->body && $b->status === 'completed') : ?>
+            <form method="post" style="margin:10px 0 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <?php wp_nonce_field('lmeg_resend', 'lmeg_resend_nonce'); ?>
+                <input type="hidden" name="lmeg_action" value="resend_nonopen" />
+                <input type="hidden" name="broadcast_id" value="<?php echo (int) $b->id; ?>" />
+                <input type="text" name="resend_subject" class="regular-text" placeholder="Fresh subject — e.g. ICYMI: <?php echo esc_attr($b->subject); ?>" style="min-width:320px;" />
+                <button type="submit" class="button" onclick="return confirm('Resend this email (same body, new subject) to everyone who did not open it?');">Resend to non-openers</button>
+                <span class="description">same body, only to fans who never opened — wait ~48h after the original for best results</span>
+            </form>
+            <?php endif; ?>
             <p>
                 <strong>Channel:</strong> <?php echo esc_html(strtoupper($b->channel)); ?> &nbsp;|&nbsp;
                 <strong>Status:</strong> <?php echo esc_html($b->status); ?> &nbsp;|&nbsp;
@@ -1647,6 +1693,8 @@ function lmeg_admin_settings() {
             // Brevo (the email provider)
             'brevo_api_key'       => sanitize_text_field(wp_unslash($_POST['brevo_api_key'] ?? '')),
             'double_optin'        => !empty($_POST['double_optin']) ? 1 : 0,
+            'digest_enabled'      => !empty($_POST['digest_enabled']) ? 1 : 0,
+            'digest_email'        => sanitize_email(wp_unslash($_POST['digest_email'] ?? '')),
             'brevo_from_email'    => sanitize_email(wp_unslash($_POST['brevo_from_email'] ?? '')),
             'brevo_from_name'     => sanitize_text_field(wp_unslash($_POST['brevo_from_name'] ?? '')),
             // Twilio
@@ -1887,6 +1935,10 @@ function lmeg_admin_settings() {
                 <tr><th>Deliverability webhook</th>
                     <td><code style="user-select:all;word-break:break-all;"><?php echo esc_html(function_exists('lmeg_brevo_wh_url') ? lmeg_brevo_wh_url() : ''); ?></code>
                         <p class="description">Paste this URL in Brevo &rarr; Transactional &rarr; Settings &rarr; <strong>Webhook</strong> and tick <em>hard bounce, soft bounce, blocked, invalid, spam, unsubscribed</em>. Dead addresses then auto-suppress (they stop receiving and stop hurting your sender reputation), and bounces/complaints appear on fan timelines + the List health panel.</p></td></tr>
+                <tr><th>Monday digest</th>
+                    <td><label><input type="checkbox" name="digest_enabled" value="1" <?php checked(!empty($s['digest_enabled'])); ?> /> Email me a weekly Monday-morning summary</label>
+                        <input type="email" name="digest_email" value="<?php echo esc_attr($s['digest_email'] ?? ''); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>" style="margin-left:10px;" />
+                        <p class="description">New fans, revenue, best send, top cities + a short AI read. Blank = site admin email.</p></td></tr>
                 <tr><th>Double opt-in</th>
                     <td><label><input type="checkbox" name="double_optin" value="1" <?php checked(!empty($s['double_optin'])); ?> /> New email signups must confirm via a one-tap email before receiving broadcasts</label>
                         <p class="description">CASL-friendly express consent. The gate still unlocks instantly — only list sends wait for the confirm. Everyone already on the list is grandfathered in.</p></td></tr>
@@ -3574,6 +3626,67 @@ function lmeg_admin_audience() {
             </tbody>
         </table>
         <p class="description" style="max-width:720px;">Lifetime value = attributed Shopify orders + subscription payments. Membership revenue is recorded from Stripe invoices as they succeed (it starts accumulating from this update forward).</p>
+
+        <h2 style="margin-top:28px;">Fan map</h2>
+        <?php
+        // Aggregate fans by city, geocode via the permanent city-coords cache.
+        // Cap NEW geocode lookups per page load so the first render stays fast;
+        // uncached cities appear on later visits as the cache fills.
+        $map_rows = $wpdb->get_results(
+            "SELECT city, region, country, COUNT(*) AS n,
+                    SUM(EXISTS(SELECT 1 FROM {$wpdb->prefix}lmeg_subscriber_tags st
+                               JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id AND t.slug = 'fan-type:superfan'
+                               WHERE st.subscriber_id = s.id)) AS superfans
+             FROM $subs s
+             WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL
+             GROUP BY city, region, country ORDER BY n DESC LIMIT 200"
+        );
+        $map_pts = []; $geo_budget = 25; $skipped = 0;
+        $geo_cache = get_option('lmeg_city_geo', []);
+        foreach ((array) $map_rows as $mr) {
+            $ck     = md5(strtolower($mr->city) . '|' . strtolower(trim((string) $mr->region)) . '|' . strtoupper(trim((string) $mr->country)));
+            $cached = isset($geo_cache[$ck]);
+            if (!$cached && $geo_budget <= 0) { $skipped++; continue; }
+            $c = function_exists('lmeg_geo_city_coords') ? lmeg_geo_city_coords($mr->city, (string) $mr->region, (string) $mr->country) : null;
+            if (!$cached) $geo_budget--;
+            if (!$c) { $skipped++; continue; }
+            $map_pts[] = [
+                'city' => $mr->city, 'region' => (string) $mr->region, 'lat' => $c['lat'], 'lng' => $c['lng'],
+                'n' => (int) $mr->n, 'sf' => (int) $mr->superfans,
+                'url' => add_query_arg(['page' => 'lmeg', 'tag' => 'city:' . sanitize_title($mr->city)], admin_url('admin.php')),
+            ];
+        }
+        ?>
+        <?php if ($map_pts) : ?>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <div id="lmeg-fanmap" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
+        <p class="description" style="max-width:960px;">Dot size = fans in that city (exact form/Shopify cities plus approximate IP cities). Click a dot for the breakdown and a link to those fans.<?php echo $skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : ''; ?></p>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+        (function () {
+            var pts = <?php echo wp_json_encode($map_pts); ?>;
+            if (!pts.length || typeof L === 'undefined') return;
+            var map = L.map('lmeg-fanmap', { scrollWheelZoom: false });
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12
+            }).addTo(map);
+            var group = [];
+            pts.forEach(function (p) {
+                var r = Math.max(6, Math.min(26, 4 + Math.sqrt(p.n) * 3));
+                var m = L.circleMarker([p.lat, p.lng], {
+                    radius: r, color: '#d05fa2', weight: 1.5, fillColor: '#d05fa2', fillOpacity: 0.35
+                }).addTo(map);
+                m.bindPopup('<strong>' + p.city + (p.region ? ', ' + p.region : '') + '</strong><br>' +
+                    p.n + ' fan' + (p.n === 1 ? '' : 's') + (p.sf ? ' · ' + p.sf + ' superfan' + (p.sf === 1 ? '' : 's') : '') +
+                    '<br><a href="' + p.url + '">View these fans →</a>');
+                group.push(m);
+            });
+            map.fitBounds(L.featureGroup(group).getBounds().pad(0.25));
+        })();
+        </script>
+        <?php else : ?>
+        <p class="description">The map appears once fans have cities on file (the IP-city backfill is filling these in automatically).</p>
+        <?php endif; ?>
 
         <h2 style="margin-top:28px;">Tour routing — your top cities</h2>
         <?php if (empty($cities)) : ?>

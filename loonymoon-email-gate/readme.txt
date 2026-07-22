@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.56.0
+Stable tag: 2.56.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.56.1 =
+* New: "Resend to non-openers" on any completed broadcast — same body, fresh subject, only to fans who received it but never opened (typically +20-30% extra opens). Suppression/confirmation guards apply.
+* New: Smart send times — a Compose checkbox that delivers to each fan at their historically most-active hour (modal open hour; spreads over up to 24h; fans with no history send immediately). Broadcasts wait for every window before completing.
+* New: Monday digest — a weekly 8am email to you: new fans, revenue (with email-attributed split), best send by open rate, top new-fan cities, plus a short AI read when the Anthropic key is set. Toggle + recipient in Settings → Brevo.
+* New: Fan map on the Audience page — every city with fans as a sized dot on a dark world map (Leaflet), popup with fan/superfan counts and a link to those fans. Feeds off the same geocode cache as radius targeting.
+
 = 2.56.0 =
 * New: deliverability & list health. Paste the plugin's webhook URL (Settings → Brevo) into Brevo and hard bounces/blocked/invalid addresses auto-suppress (skipped on every future send), spam complaints suppress AND unsubscribe, and bounces/complaints land on the fan's timeline. "List health" panel on Broadcast History: 30-day sends, bounce rate (flagged over 2%), complaints, suppressed count.
 * New: optional double opt-in (Settings → Brevo) — new email signups confirm via a one-tap email before receiving broadcasts/sequences/welcome; the gate still unlocks instantly. Everyone already on the list is grandfathered. CASL-friendly.
