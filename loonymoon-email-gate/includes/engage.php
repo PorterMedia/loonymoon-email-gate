@@ -43,13 +43,13 @@ function lmeg_shortcode_tour($atts = []) {
                     <?php else : ?>
                         <?php if ($d->presale_url) : ?>
                             <?php if (!$d->presale_members_only || $member) : ?>
-                                <a class="lmeg-button lmeg-tour__btn" href="<?php echo esc_url($d->presale_url); ?>" target="_blank" rel="noopener">Presale</a>
+                                <a class="lmeg-button lmeg-tour__btn" href="<?php echo esc_url(lmeg_tour_tracked_url('presale', $d)); ?>" target="_blank" rel="noopener">Presale</a>
                             <?php else : ?>
                                 <span class="lmeg-tour__locked" title="Join the list to unlock presale">🔒 Presale for members</span>
                             <?php endif; ?>
                         <?php endif; ?>
                         <?php if ($d->ticket_url) : ?>
-                            <a class="lmeg-button lmeg-button--outline lmeg-tour__btn" href="<?php echo esc_url($d->ticket_url); ?>" target="_blank" rel="noopener">Tickets</a>
+                            <a class="lmeg-button lmeg-button--outline lmeg-tour__btn" href="<?php echo esc_url(lmeg_tour_tracked_url('tickets', $d)); ?>" target="_blank" rel="noopener">Tickets</a>
                         <?php endif; ?>
                     <?php endif; ?>
                 </div>
@@ -57,6 +57,32 @@ function lmeg_shortcode_tour($atts = []) {
         <?php endforeach; endif; ?>
     </div>
     <?php return ob_get_clean();
+}
+
+/**
+ * Presale/ticket buttons route through a smartlink (slug tour-presale-<id> /
+ * tour-tickets-<id>) so every click is counted AND — for a fan carrying the
+ * member cookie — lands on their timeline as a "clicked presale" interaction.
+ * Falls back to the raw URL if smartlinks are unavailable.
+ */
+function lmeg_tour_tracked_url($kind, $d) {
+    $target = $kind === 'tickets' ? $d->ticket_url : $d->presale_url;
+    if (!$target || !function_exists('lmeg_smartlink_url')) return (string) $target;
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_smartlinks';
+    $slug = 'tour-' . ($kind === 'tickets' ? 'tickets' : 'presale') . '-' . (int) $d->id;
+    $id   = $wpdb->get_var($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug));
+    if ($id) {
+        $wpdb->update($tbl, ['target_url' => $target], ['id' => $id]);
+    } else {
+        $wpdb->insert($tbl, [
+            'slug'       => $slug,
+            'target_url' => $target,
+            'clicks'     => 0,
+            'created_at' => current_time('mysql'),
+        ]);
+    }
+    return lmeg_smartlink_url($slug);
 }
 
 /* ===========================================================================

@@ -3173,6 +3173,11 @@ function lmeg_admin_fan_profile($fan_id) {
             <div class="lmeg-stat"><div class="lmeg-stat__label">Engagement</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo (int) $engage['opens']; ?> <span style="font-size:12px;opacity:.6;">opens</span> · <?php echo (int) $engage['clicks']; ?> <span style="font-size:12px;opacity:.6;">clicks</span></div>
                 <div class="lmeg-stat__hint">across all broadcasts</div></div>
+            <?php $ix = function_exists('lmeg_fan_interactions') ? lmeg_fan_interactions($fan_id) : null; if ($ix) : ?>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Site interactions</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo (int) $ix['pageviews_30d']; ?> <span style="font-size:12px;opacity:.6;">visits 30d</span> · <?php echo (int) $ix['presale']; ?> <span style="font-size:12px;opacity:.6;">presale</span></div>
+                <div class="lmeg-stat__hint"><?php echo (int) $ix['contests']; ?> contest<?php echo $ix['contests'] === 1 ? '' : 's'; ?> · <?php echo (int) $ix['surveys']; ?> survey vote<?php echo $ix['surveys'] === 1 ? '' : 's'; ?> · <?php echo (int) $ix['pageviews']; ?> visits total</div></div>
+            <?php endif; ?>
             <div class="lmeg-stat"><div class="lmeg-stat__label">Referrals</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo $referred; ?></div>
                 <div class="lmeg-stat__hint">fans they brought in</div></div>

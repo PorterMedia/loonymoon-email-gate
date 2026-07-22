@@ -253,6 +253,51 @@ function lmeg_geo_distance_km($lat1, $lng1, $lat2, $lng2) {
 }
 
 /* ---------------------------------------------------------------------------
+ * On-site page views for IDENTIFIED fans — identity-linked analytics no
+ * generic analytics plugin can give you. Any visitor carrying the signed
+ * member cookie (set on signup, magic-link sign-in, or a one-tap link) gets
+ * their front-end page views logged to lmeg_broadcast_events as
+ * event_type='pageview' / source='site', feeding the fan timeline +
+ * interaction counts. Anonymous visitors are never tracked here — that's
+ * what a regular analytics plugin is for.
+ * ------------------------------------------------------------------------- */
+
+add_action('wp', 'lmeg_track_member_pageview');
+function lmeg_track_member_pageview() {
+    if (is_admin() || wp_doing_ajax() || wp_doing_cron() || is_feed() || is_404() || is_preview()) return;
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') return;
+    if (!function_exists('lmeg_current_member')) return;
+    // Don't log the band/staff browsing their own site.
+    if (is_user_logged_in() && current_user_can('edit_posts')) return;
+
+    $member = lmeg_current_member();
+    if (!$member) return;
+
+    $post_id = is_singular() ? (int) get_the_ID() : 0;
+    $url     = $post_id ? get_permalink($post_id) : home_url(($_SERVER['REQUEST_URI'] ?? '/'));
+    // Strip query noise (utm, lmeg params) so the same page dedupes cleanly.
+    $url     = strtok((string) $url, '?');
+
+    // One view per fan+page per 30 minutes — a refresh spree isn't 10 visits.
+    $tkey = 'lmeg_pv_' . (int) $member->id . '_' . substr(md5($url), 0, 12);
+    if (get_transient($tkey)) return;
+    set_transient($tkey, 1, 30 * MINUTE_IN_SECONDS);
+
+    global $wpdb;
+    $wpdb->insert($wpdb->prefix . 'lmeg_broadcast_events', [
+        'broadcast_id'  => 0,
+        'subscriber_id' => (int) $member->id,
+        'event_type'    => 'pageview',
+        'source'        => 'site',
+        'source_ref'    => $post_id,
+        'url'           => substr($url, 0, 500),
+        'ip'            => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : '', 0, 45),
+        'user_agent'    => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
+        'created_at'    => current_time('mysql'),
+    ]);
+}
+
+/* ---------------------------------------------------------------------------
  * Unique codes + referral links
  * ------------------------------------------------------------------------- */
 
@@ -421,6 +466,30 @@ function lmeg_fan_types_cron() {
 /**
  * @return array of ['at' => datetime, 'icon', 'label'] newest first
  */
+/**
+ * Interaction counts for the fan-profile summary card: on-site page views,
+ * presale/ticket clicks, contests entered, surveys voted.
+ */
+function lmeg_fan_interactions($subscriber_id) {
+    global $wpdb;
+    $sid    = (int) $subscriber_id;
+    $events = $wpdb->prefix . 'lmeg_broadcast_events';
+    return [
+        'pageviews_30d' => (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $events WHERE subscriber_id = %d AND event_type = 'pageview'
+              AND created_at >= %s", $sid, date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS))),
+        'pageviews'     => (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $events WHERE subscriber_id = %d AND event_type = 'pageview'", $sid)),
+        'presale'       => (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $events WHERE subscriber_id = %d AND event_type = 'click'
+              AND url LIKE 'smartlink:tour-%%'", $sid)),
+        'contests'      => (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_contest_entries WHERE subscriber_id = %d", $sid)),
+        'surveys'       => (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_survey_votes WHERE subscriber_id = %d", $sid)),
+    ];
+}
+
 function lmeg_fan_timeline($subscriber_id, $limit = 100) {
     global $wpdb;
     $sid    = (int) $subscriber_id;
@@ -458,18 +527,74 @@ function lmeg_fan_timeline($subscriber_id, $limit = 100) {
         ];
     }
 
-    // Opens + clicks.
+    // Opens + clicks + on-site interactions (pageviews, smartlink/presale clicks).
     $evs = $wpdb->get_results($wpdb->prepare(
         "SELECT e.created_at, e.event_type, e.url, b.subject FROM $events e
          LEFT JOIN $bcast b ON b.id = e.broadcast_id
-         WHERE e.subscriber_id = %d ORDER BY e.created_at DESC LIMIT 60", $sid
+         WHERE e.subscriber_id = %d ORDER BY e.created_at DESC LIMIT 80", $sid
     ));
     foreach ((array) $evs as $r) {
+        $url = (string) $r->url;
+        if ($r->event_type === 'pageview') {
+            $path    = wp_parse_url($url, PHP_URL_PATH) ?: '/';
+            $items[] = ['at' => $r->created_at, 'icon' => '📄', 'label' => 'Visited ' . $path];
+        } elseif ($r->event_type === 'click' && strpos($url, 'smartlink:tour-presale-') === 0) {
+            $items[] = ['at' => $r->created_at, 'icon' => '🎟', 'label' => 'Clicked a presale link — ' . esc_url(rawurldecode(preg_replace('/^smartlink:[^ ]+ → /', '', $url)))];
+        } elseif ($r->event_type === 'click' && strpos($url, 'smartlink:tour-tickets-') === 0) {
+            $items[] = ['at' => $r->created_at, 'icon' => '🎟', 'label' => 'Clicked a ticket link — ' . esc_url(rawurldecode(preg_replace('/^smartlink:[^ ]+ → /', '', $url)))];
+        } elseif ($r->event_type === 'click' && strpos($url, 'smartlink:') === 0) {
+            $items[] = ['at' => $r->created_at, 'icon' => '🔗', 'label' => 'Clicked link ' . esc_html(rawurldecode(substr($url, strlen('smartlink:'))))];
+        } else {
+            $items[] = [
+                'at'    => $r->created_at,
+                'icon'  => $r->event_type === 'click' ? '🖱' : '👀',
+                'label' => ($r->event_type === 'click' ? 'Clicked' : 'Opened') . ' "' . ($r->subject ?: 'broadcast') . '"'
+                         . ($r->event_type === 'click' && $url ? ' → ' . esc_url(rawurldecode($url)) : ''),
+            ];
+        }
+    }
+
+    // Contest entries.
+    $cents = $wpdb->get_results($wpdb->prepare(
+        "SELECT ce.entered_at, ce.entries, c.title FROM {$wpdb->prefix}lmeg_contest_entries ce
+         LEFT JOIN {$wpdb->prefix}lmeg_contests c ON c.id = ce.contest_id
+         WHERE ce.subscriber_id = %d ORDER BY ce.entered_at DESC LIMIT 20", $sid
+    ));
+    foreach ((array) $cents as $r) {
+        $items[] = [
+            'at'    => $r->entered_at,
+            'icon'  => '🏆',
+            'label' => 'Entered contest "' . ($r->title ?: 'contest') . '"' . ((int) $r->entries > 1 ? ' (' . (int) $r->entries . ' entries)' : ''),
+        ];
+    }
+
+    // Survey votes (with the option they picked).
+    $votes = $wpdb->get_results($wpdb->prepare(
+        "SELECT v.created_at, v.option_idx, s.question, s.options_json FROM {$wpdb->prefix}lmeg_survey_votes v
+         LEFT JOIN {$wpdb->prefix}lmeg_surveys s ON s.id = v.survey_id
+         WHERE v.subscriber_id = %d ORDER BY v.created_at DESC LIMIT 20", $sid
+    ));
+    foreach ((array) $votes as $r) {
+        $opts   = json_decode((string) $r->options_json, true) ?: [];
+        $choice = isset($opts[(int) $r->option_idx]) ? (string) $opts[(int) $r->option_idx] : '';
         $items[] = [
             'at'    => $r->created_at,
-            'icon'  => $r->event_type === 'click' ? '🖱' : '👀',
-            'label' => ($r->event_type === 'click' ? 'Clicked' : 'Opened') . ' "' . ($r->subject ?: 'broadcast') . '"'
-                     . ($r->event_type === 'click' && $r->url ? ' → ' . esc_url(rawurldecode($r->url)) : ''),
+            'icon'  => '🗳',
+            'label' => 'Voted in "' . ($r->question ?: 'survey') . '"' . ($choice !== '' ? ' — chose "' . $choice . '"' : ''),
+        ];
+    }
+
+    // Abandoned carts (and recoveries).
+    $carts = $wpdb->get_results($wpdb->prepare(
+        "SELECT checkout_at, synced_at, total_cents, currency, recovered FROM {$wpdb->prefix}lmeg_shop_abandoned
+         WHERE subscriber_id = %d ORDER BY synced_at DESC LIMIT 10", $sid
+    ));
+    foreach ((array) $carts as $r) {
+        $items[] = [
+            'at'    => $r->checkout_at ?: $r->synced_at,
+            'icon'  => $r->recovered ? '💰' : '🛒',
+            'label' => ($r->recovered ? 'Recovered an abandoned cart — ' : 'Left a cart behind — ')
+                     . lmeg_format_price((int) $r->total_cents, $r->currency),
         ];
     }
 

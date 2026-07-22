@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.55.25
+Stable tag: 2.55.26
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.55.26 =
+* New: identity-linked site analytics on the fan profile. Fans carrying the member cookie (signup, magic link, one-tap link) now get their on-site page views logged (deduped per page per 30 min; band/staff excluded), presale + ticket buttons on the tour listing route through tracked links, and contest entries, survey votes (with the option they chose) and abandoned/recovered carts all appear on the fan timeline alongside emails, clicks and orders.
+* New: "Site interactions" card on the fan profile — visits (30d + total), presale clicks, contests entered, survey votes — next to the existing LTV (shop + membership revenue) card. Anonymous visitors are never tracked; that stays your analytics plugin's job.
+
 = 2.55.25 =
 * New: approximate city from IP — fans with an IP but no city get city/region (+ country if missing) filled automatically in the background (ipwho.is, free/keyless, cached 30 days per IP), then tagged city:<name>. A real city from a form or Shopify order always wins — IP city only ever fills empty fields. "Add anyway" on the rejected-signups panel now recovers an approximate city from the logged IP too.
 * New: the Compose live audience count now honors the radius filter — type 150 km of Toronto and the count updates to exactly who the send would reach (with a note like "within 150 km of Toronto"), including a warning when the city can't be placed.
