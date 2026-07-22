@@ -223,14 +223,34 @@ function lmeg_render_tag_picker($all_tags, $selected_ids = [], $input_name = 'ta
             if (empty($grp['tags'])) continue;
             $has_sel = false;
             foreach ($grp['tags'] as $t) { if (in_array((int) $t->id, $selected_ids, true)) { $has_sel = true; break; } }
-            $chips = '';
-            foreach ($grp['tags'] as $t) {
+            $chip_html = function ($t) use ($selected_ids, $input_name) {
                 $checked = in_array((int) $t->id, $selected_ids, true) ? ' checked' : '';
                 $dim     = (int) $t->member_count === 0 ? ' lmeg-chip-label--empty' : '';
-                $chips  .= '<label class="lmeg-chip-label' . $dim . '">'
-                         . '<input type="checkbox" name="' . esc_attr($input_name) . '" value="' . (int) $t->id . '"' . $checked . ' />'
-                         . lmeg_render_tag_chip($t, ['count' => $t->member_count])
-                         . '</label>';
+                return '<label class="lmeg-chip-label' . $dim . '">'
+                     . '<input type="checkbox" name="' . esc_attr($input_name) . '" value="' . (int) $t->id . '"' . $checked . ' />'
+                     . lmeg_render_tag_chip($t, ['count' => $t->member_count])
+                     . '</label>';
+            };
+            // Big families cap at the top 20 (by audience size) behind a
+            // "Show all" expander. A SELECTED tag is always kept visible even
+            // if it ranks below the cap, and search sees through the fold.
+            $cap = 20;
+            $chips = '';
+            if (count($grp['tags']) > $cap + 4) {
+                $vis = []; $ovf = [];
+                foreach ($grp['tags'] as $t) {
+                    if (in_array((int) $t->id, $selected_ids, true) || count($vis) < $cap) $vis[] = $t;
+                    else $ovf[] = $t;
+                }
+                foreach ($vis as $t) $chips .= $chip_html($t);
+                if ($ovf) {
+                    $chips .= '<button type="button" class="lmeg-tagpicker__morebtn">Show all ' . count($grp['tags']) . '</button>';
+                    $chips .= '<span class="lmeg-tagpicker__more">';
+                    foreach ($ovf as $t) $chips .= $chip_html($t);
+                    $chips .= '</span>';
+                }
+            } else {
+                foreach ($grp['tags'] as $t) $chips .= $chip_html($t);
             }
             if ($grp['fold']) : ?>
                 <details class="lmeg-tagpicker__group is-fold"<?php echo $has_sel ? ' open' : ''; ?>>
@@ -268,14 +288,34 @@ function lmeg_render_tag_picker($all_tags, $selected_ids = [], $input_name = 'ta
         root.addEventListener('change', badges);
         badges();
 
+        // "Show all N" expander on capped families (one-way reveal).
+        root.querySelectorAll('.lmeg-tagpicker__morebtn').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var m = b.nextElementSibling;
+                if (m && m.classList.contains('lmeg-tagpicker__more')) {
+                    m.classList.add('is-open');
+                    m.dataset.expanded = '1';
+                }
+                b.remove();
+            });
+        });
+
         // Live filter: match on visible label + full name; hide emptied groups;
-        // folded groups pop open while a query is active, then restore.
+        // folded groups pop open while a query is active, then restore. Capped
+        // overflows unfold during a query too so search sees every tag.
         search.addEventListener('input', function () {
             var q = search.value.trim().toLowerCase();
             labels.forEach(function (l) {
                 var chip = l.querySelector('.lmeg-chip');
                 var hay  = (l.textContent + ' ' + (chip ? (chip.getAttribute('title') || '') : '')).toLowerCase();
                 l.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+            });
+            root.querySelectorAll('.lmeg-tagpicker__more').forEach(function (m) {
+                if (q) m.classList.add('is-open');
+                else if (!m.dataset.expanded) m.classList.remove('is-open');
+            });
+            root.querySelectorAll('.lmeg-tagpicker__morebtn').forEach(function (b) {
+                b.style.display = q ? 'none' : '';
             });
             groups.forEach(function (g) {
                 var any = Array.prototype.some.call(g.querySelectorAll('.lmeg-chip-label'), function (l) { return l.style.display !== 'none'; });

@@ -622,6 +622,24 @@ body.lmeg-admin .lmeg-tagpicker__chips {
 
 body.lmeg-admin .lmeg-chip-label--empty { opacity: 0.45; }
 
+/* capped-family overflow: hidden until "Show all" (or an active search) */
+body.lmeg-admin .lmeg-tagpicker__more { display: none; }
+body.lmeg-admin .lmeg-tagpicker__more.is-open { display: contents; }
+
+body.lmeg-admin .lmeg-tagpicker__morebtn {
+    background: none;
+    border: 1px dashed var(--lmegA-border2);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 11px;
+    color: var(--lmegA-muted);
+    cursor: pointer;
+}
+body.lmeg-admin .lmeg-tagpicker__morebtn:hover {
+    color: var(--lmegA-text);
+    border-color: var(--lmegA-muted);
+}
+
 body.lmeg-admin .lmeg-audience-count {
     background: linear-gradient(135deg, rgba(208, 95, 162, 0.14), rgba(124, 108, 246, 0.14));
     border: 1px solid rgba(208, 95, 162, 0.35);
