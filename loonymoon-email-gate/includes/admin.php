@@ -1564,11 +1564,11 @@ function lmeg_admin_broadcasts() {
             <?php if ($b->subject) : ?><p><strong>Subject:</strong> <?php echo esc_html($b->subject); ?></p><?php endif; ?>
             <?php if (!empty($b->body)) : ?>
                 <h2>Email body</h2>
-                <pre style="background:#f6f7f7;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body); ?></pre>
+                <pre style="background:#f6f7f7;color:#2a2a2a;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body); ?></pre>
             <?php endif; ?>
             <?php if (!empty($b->body_sms)) : ?>
                 <h2>SMS body</h2>
-                <pre style="background:#f6f7f7;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
+                <pre style="background:#f6f7f7;color:#2a2a2a;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
             <?php endif; ?>
             <h2>Recipient log (latest 1000)</h2>
             <table class="widefat striped">

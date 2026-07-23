@@ -756,7 +756,7 @@ function lmeg_admin_contests() {
         <h1>Email Gate — Contests</h1>
         <?php echo $notice; ?>
         <p>Members enter with one click; every friend they refer during the contest is <strong>+3 entries</strong>. Embed with <code>[lmeg_contest id=N]</code>. Winner is drawn weighted by entries.</p>
-        <p style="background:#f6f1ea;border:1px solid #e6ddd2;border-radius:8px;padding:10px 14px;max-width:820px;">
+        <p style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:10px 14px;max-width:820px;">
             <strong>One-tap entry for your list:</strong> put a contest tag in an email or SMS broadcast and each recipient gets a personalized link that signs them in and enters them with a single tap — no typing, no login.<br>
             &bull; <code>{contest_link}</code> &mdash; always the <strong>newest open</strong> contest<?php echo $active ? ' (right now: <strong>' . esc_html($active->title) . '</strong>)' : ' (none open right now)'; ?>.<br>
             &bull; <code>{contest_link:ID}</code> &mdash; a <strong>specific</strong> contest, using its ID from the table below (so you always know which one it is).
