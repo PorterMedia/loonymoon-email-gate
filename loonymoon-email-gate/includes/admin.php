@@ -663,13 +663,28 @@ function lmeg_admin_subscribers() {
     ?>
     <div class="wrap">
         <h1>Email Gate — Subscribers</h1>
-        <p>
-            <strong><?php echo number_format_i18n($total); ?></strong> total —
-            <?php echo number_format_i18n($active_em); ?> active email,
-            <?php echo number_format_i18n($active_ph); ?> active SMS,
-            <?php echo number_format_i18n($unsub_n); ?> unsubscribed.
-            <a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a>
-        </p>
+        <?php
+        // Growth at a glance — day boundaries in SITE time, not UTC.
+        $today_start = current_time('Y-m-d') . ' 00:00:00';
+        $yday_start  = date('Y-m-d', current_time('timestamp') - DAY_IN_SECONDS) . ' 00:00:00';
+        $new_today   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE created_at >= %s", $today_start));
+        $new_yday    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE created_at >= %s AND created_at < %s", $yday_start, $today_start));
+        $new_7d      = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE created_at >= %s", date('Y-m-d H:i:s', current_time('timestamp') - 7 * DAY_IN_SECONDS)));
+        $delta       = $new_today - $new_yday;
+        ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0 10px;max-width:860px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">New fans today</div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($new_today); ?>
+                    <?php if ($new_today || $new_yday) : ?><span style="font-size:12px;font-weight:600;color:<?php echo $delta >= 0 ? '#34d399' : '#f87171'; ?>;"><?php echo $delta >= 0 ? '▲' : '▼'; ?> <?php echo number_format_i18n(abs($delta)); ?></span><?php endif; ?></div>
+                <div class="lmeg-stat__hint">vs yesterday</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">New fans yesterday</div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($new_yday); ?></div>
+                <div class="lmeg-stat__hint"><?php echo number_format_i18n($new_7d); ?> in the last 7 days</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Total fans</div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($total - $unsub_n); ?></div>
+                <div class="lmeg-stat__hint"><?php echo number_format_i18n($active_em); ?> email · <?php echo number_format_i18n($active_ph); ?> SMS · <?php echo number_format_i18n($unsub_n); ?> unsubscribed</div></div>
+        </div>
+        <p><a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a></p>
 
         <?php $rejects = function_exists('lmeg_recent_signup_rejects') ? lmeg_recent_signup_rejects(30) : []; ?>
         <?php if ($rejects) : ?>
