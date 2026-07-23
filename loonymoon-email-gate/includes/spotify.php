@@ -83,8 +83,13 @@ function lmeg_spotify_overview($force = false) {
     $artist = lmeg_spotify_get('/artists/' . rawurlencode($aid));
     if (is_wp_error($artist)) return $artist;
 
+    // Secondary calls degrade gracefully: a rate-limit/blip on tracks or
+    // albums yields a partial snapshot, never a fatal ($err['items'] on a
+    // WP_Error object is an E_ERROR — it took down the whole Overview page).
     $top    = lmeg_spotify_get('/artists/' . rawurlencode($aid) . '/top-tracks', ['market' => 'US']);
+    if (is_wp_error($top)) $top = [];
     $albums = lmeg_spotify_get('/artists/' . rawurlencode($aid) . '/albums', ['include_groups' => 'album,single', 'limit' => 8, 'market' => 'US']);
+    if (is_wp_error($albums)) $albums = [];
 
     $out = [
         'name'       => $artist['name'] ?? '',
