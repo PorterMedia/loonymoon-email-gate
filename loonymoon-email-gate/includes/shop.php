@@ -479,6 +479,16 @@ function lmeg_maybe_handle_shopify_webhook() {
         if (function_exists('lmeg_shop_record_order')) lmeg_shop_record_order($o);
         // Remember we're receiving live orders (drives the Settings status).
         update_option('lmeg_shop_wh_last', current_time('mysql'), false);
+        // Diagnostic: record the payload's STRUCTURE only (no customer data) so
+        // we can tell "no customer on the order" from "Shopify redacted the PII".
+        update_option('lmeg_shop_wh_debug', wp_json_encode([
+            'at'                   => current_time('mysql'),
+            'has_email_key'        => array_key_exists('email', $o),
+            'email_empty'          => empty($o['email']),
+            'has_customer_key'     => array_key_exists('customer', $o),
+            'customer_email_empty' => empty($o['customer']['email'] ?? null),
+            'top_keys'             => implode(', ', array_slice(array_keys($o), 0, 40)),
+        ]), false);
     }
     status_header(200);
     echo 'ok';

@@ -2403,6 +2403,9 @@ function lmeg_admin_settings() {
                     <?php if ($wh_last) : ?><strong style="color:#34d399;">✓ Receiving orders</strong> — last one <?php echo esc_html($wh_last); ?>.
                     <?php else : ?>Once added, every new order flows in here automatically and gets attributed to the broadcast the buyer clicked. (Forward-only — orders from the moment you add it.)<?php endif; ?>
                 </p>
+                <?php $wh_dbg = get_option('lmeg_shop_wh_debug', ''); if ($wh_dbg) : ?>
+                    <p class="description" style="margin:8px 0 0;font-family:monospace;font-size:11px;word-break:break-all;">Last payload (structure only): <?php echo esc_html($wh_dbg); ?></p>
+                <?php endif; ?>
             </div>
 
             <table class="form-table" role="presentation">
