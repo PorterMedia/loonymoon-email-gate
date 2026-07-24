@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.58.7
+ * Version:     2.59.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.58.7');
-define('LMEG_DB_VERSION',  '2.58.5');
+define('LMEG_VERSION',     '2.59.0');
+define('LMEG_DB_VERSION',  '2.59.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -482,6 +482,11 @@ function lmeg_create_tables() {
         id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         keyword VARCHAR(80) NOT NULL,
         reply_text TEXT NOT NULL,
+        collect_email TINYINT(1) NOT NULL DEFAULT 0,
+        add_tag VARCHAR(60) DEFAULT NULL,
+        on_comment TINYINT(1) NOT NULL DEFAULT 0,
+        public_reply VARCHAR(300) DEFAULT NULL,
+        buttons VARCHAR(300) DEFAULT NULL,
         hits BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         is_active TINYINT(1) NOT NULL DEFAULT 1,
         created_at DATETIME NOT NULL,
@@ -492,12 +497,15 @@ function lmeg_create_tables() {
         ig_user_id VARCHAR(64) NOT NULL,
         username VARCHAR(120) DEFAULT NULL,
         direction VARCHAR(4) NOT NULL DEFAULT 'in',
+        source VARCHAR(12) NOT NULL DEFAULT 'dm',
         text TEXT,
         rule_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         KEY idx_user (ig_user_id),
-        KEY idx_created (created_at)
+        KEY idx_created (created_at),
+        KEY idx_sub (subscriber_id)
     ) $charset;");
 
     $tour = $wpdb->prefix . 'lmeg_tour_dates';
@@ -1671,6 +1679,7 @@ function lmeg_store_subscriber($data) {
             do_action('lmeg_subscriber_created', $row_id);
         }
     }
+    return $row_id ? (int) $row_id : 0;
 }
 
 function lmeg_set_cookie() {

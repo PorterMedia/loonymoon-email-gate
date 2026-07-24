@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.58.7
+Stable tag: 2.59.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,12 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.59.0 =
+* New: Instagram comment-to-DM — when someone comments your keyword on a post or reel, Fanloop auto-DMs them the link (Meta's private-reply), with an optional public reply on the comment. Turn it on per rule with "Also trigger on comments."
+* New: Instagram DMs capture fans — a rule can "Ask for their email," and when the fan sends it they're created as a real subscriber (welcome email + sequences fire), tagged "Instagram" (plus any custom tag you set), and their whole DM/comment thread is linked to their fan profile and timeline.
+* New: richer auto-replies — merge tags ({subscribe_url}, {community}, {artist}, {home_url}) and optional tap-buttons (quick replies) in DM rules.
+* Note: comment-to-DM needs the instagram_manage_comments permission and the "comments" webhook field subscribed (see the setup guide on the Instagram page).
+
 = 2.58.7 =
 * Fix: Shop Revenue no longer says "Shopify isn't connected" when you're using the order-webhook path. The page now opens whenever orders are arriving (webhook or API), shows a "Receiving orders via webhook" status, and only shows the API "Sync now" button when API credentials are set.
 

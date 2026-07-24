@@ -694,6 +694,23 @@ function lmeg_fan_timeline($subscriber_id, $limit = 100) {
         ];
     }
 
+    // Instagram DMs + comments (captured/linked conversations).
+    $igs = $wpdb->get_results($wpdb->prepare(
+        "SELECT direction, source, text, created_at FROM {$wpdb->prefix}lmeg_ig_messages
+         WHERE subscriber_id = %d ORDER BY created_at DESC LIMIT 30", $sid
+    ));
+    foreach ((array) $igs as $r) {
+        $verb    = $r->direction === 'in'
+            ? ($r->source === 'comment' ? 'Commented on Instagram' : 'DM\'d on Instagram')
+            : 'Auto-replied on Instagram';
+        $snippet = mb_substr((string) $r->text, 0, 120);
+        $items[] = [
+            'at'    => $r->created_at,
+            'icon'  => $r->direction === 'in' ? '📸' : '↩️',
+            'label' => $verb . ($snippet !== '' ? ': "' . $snippet . '"' : ''),
+        ];
+    }
+
     usort($items, function ($a, $b) { return strcmp($b['at'] ?? '', $a['at'] ?? ''); });
     return array_slice($items, 0, $limit);
 }
