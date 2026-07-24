@@ -1977,6 +1977,7 @@ function lmeg_admin_settings() {
             'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
             'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: ('Thank you for joining ' . lmeg_community()),
             'default_test_email'      => sanitize_email(wp_unslash($_POST['default_test_email'] ?? '')),
+            'default_country'         => preg_match('/^[A-Za-z]{2}$/', $_POST['default_country'] ?? '') ? strtoupper(sanitize_text_field(wp_unslash($_POST['default_country']))) : 'US',
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
             'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
@@ -2115,6 +2116,15 @@ function lmeg_admin_settings() {
                 <tr><th><label for="default_test_email">Default test recipient</label></th>
                     <td><input type="email" name="default_test_email" id="default_test_email" class="regular-text" value="<?php echo esc_attr($s['default_test_email'] ?? ''); ?>" placeholder="ian@portermedia.ca" />
                         <p class="description">Pre-fills the "Test email to" field on Compose Broadcast so you don't have to retype it.</p></td></tr>
+                <tr><th><label for="default_country">Default country</label></th>
+                    <td>
+                        <select name="default_country" id="default_country">
+                            <?php foreach (lmeg_countries() as $c) : ?>
+                                <option value="<?php echo esc_attr($c[0]); ?>" <?php selected(lmeg_default_country(), $c[0]); ?>><?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Which country is selected first in the phone &amp; address pickers on your signup form.</p>
+                    </td></tr>
             </table>
 
             <h2>Colors</h2>

@@ -107,7 +107,7 @@ function lmeg_shortcode_signup($atts = []) {
 
     $nonce     = wp_create_nonce('lmeg_submit');
     $action    = esc_url(admin_url('admin-post.php'));
-    $countries = function_exists('lmeg_countries') ? lmeg_countries() : [];
+    $countries = function_exists('lmeg_countries_ordered') ? lmeg_countries_ordered(lmeg_default_country()) : (function_exists('lmeg_countries') ? lmeg_countries() : []);
 
     ob_start();
     ?>
@@ -124,7 +124,7 @@ function lmeg_shortcode_signup($atts = []) {
             <input type="hidden" name="_wpnonce"          value="<?php echo esc_attr($nonce); ?>" />
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
-            <input type="hidden" name="phone_country_iso" value="US" />
+            <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
@@ -162,7 +162,7 @@ function lmeg_shortcode_signup($atts = []) {
                             <div class="lmeg-phone-row">
                                 <select name="phone_country" class="lmeg-select" aria-label="Country">
                                     <?php foreach ($countries as $c) :
-                                        $sel = ($c[0] === 'US') ? ' selected' : '';
+                                        $sel = ($c[0] === lmeg_default_country()) ? ' selected' : '';
                                     ?>
                                         <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $sel; ?>>
                                             <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
@@ -296,7 +296,7 @@ function lmeg_shortcode_premium($atts = []) {
             <input type="hidden" name="_wpnonce"          value="<?php echo esc_attr($nonce); ?>" />
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
-            <input type="hidden" name="phone_country_iso" value="US" />
+            <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>

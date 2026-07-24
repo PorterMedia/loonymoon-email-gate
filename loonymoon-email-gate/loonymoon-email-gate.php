@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.8
+ * Version:     2.57.9
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.8');
+define('LMEG_VERSION',     '2.57.9');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -661,6 +661,7 @@ function lmeg_default_settings() {
         'logo_max_width'           => 200,  // max width in px
         'signup_success_message'   => 'Thank you for joining ' . lmeg_community(),
         'default_test_email'       => 'ian@portermedia.ca',
+        'default_country'          => 'US',   // preselected phone/address country
         // Branded email template
         'email_template_enabled'   => 1,
         'email_footer_note'        => "You're receiving this because you joined " . lmeg_community() . ".",
@@ -789,6 +790,21 @@ function lmeg_community() { return lmeg_brand_raw('community_name', get_bloginfo
 function lmeg_artist()    { return lmeg_brand_raw('artist_name', get_bloginfo('name')); }
 /** The product itself. */
 function lmeg_product()   { return 'Fanloop'; }
+
+/** The artist's chosen default phone/address country (ISO-2), fallback US. */
+function lmeg_default_country() {
+    $iso = strtoupper((string) lmeg_brand_raw('default_country', 'US'));
+    return preg_match('/^[A-Z]{2}$/', $iso) ? $iso : 'US';
+}
+/** The country list with a given ISO floated to the very top. */
+function lmeg_countries_ordered($first_iso) {
+    $first_iso = strtoupper((string) $first_iso);
+    $top = null; $rest = [];
+    foreach (lmeg_countries() as $c) {
+        if ($c[0] === $first_iso && $top === null) $top = $c; else $rest[] = $c;
+    }
+    return $top ? array_merge([$top], $rest) : $rest;
+}
 
 /**
  * Forgiving hex sanitizer for the free-text color fields: accepts "#fd0d0d",
@@ -1252,7 +1268,7 @@ function lmeg_render_form() {
     $post_id   = get_the_ID() ?: 0;
     $nonce     = wp_create_nonce('lmeg_submit');
     $action    = esc_url(admin_url('admin-post.php'));
-    $countries = lmeg_countries();
+    $countries = lmeg_countries_ordered(lmeg_default_country());
     $field     = 'lmeg-' . $post_id;
 
     ob_start();
@@ -1268,7 +1284,7 @@ function lmeg_render_form() {
                 <input type="hidden" name="post_id"       value="<?php echo esc_attr($post_id); ?>" />
                 <input type="hidden" name="redirect"      value="<?php echo esc_url(get_permalink($post_id) ?: home_url('/')); ?>" />
                 <input type="hidden" name="contact_type"  value="email" />
-                <input type="hidden" name="phone_country_iso" value="US" />
+                <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
 
                 <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
                     <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
@@ -1292,7 +1308,7 @@ function lmeg_render_form() {
                     <div class="lmeg-phone-row">
                         <select name="phone_country" class="lmeg-select" aria-label="Country">
                             <?php foreach ($countries as $c) :
-                                $selected = ($c[0] === 'US') ? ' selected' : '';
+                                $selected = ($c[0] === lmeg_default_country()) ? ' selected' : '';
                             ?>
                                 <option value="<?php echo esc_attr($c[0]); ?>" data-dial="<?php echo esc_attr($c[2]); ?>"<?php echo $selected; ?>>
                                     <?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[1] . ' (+' . $c[2] . ')'); ?>
