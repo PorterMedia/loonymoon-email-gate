@@ -373,62 +373,7 @@ function lmeg_shop_sync($force = false) {
     $attributed = 0;
 
     foreach ($orders as $o) {
-        $oid = (int) ($o['id'] ?? 0);
-        if (!$oid) continue;
-        // Skip cancelled / unpaid junk but keep pending payment methods.
-        if (!empty($o['cancelled_at'])) continue;
-
-        $email = sanitize_email($o['email'] ?? '');
-        $total = (int) round(((float) ($o['total_price'] ?? 0)) * 100);
-        $ordered_local = !empty($o['created_at'])
-            ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($o['created_at'])))
-            : null;
-
-        // Attribution.
-        $subscriber_id = null;
-        $broadcast_id  = null;
-        $attribution   = 'none';
-        if ($email) {
-            $subscriber_id = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM $subs WHERE email = %s", $email
-            ));
-            if ($subscriber_id) {
-                $attribution = 'subscriber';
-                list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
-                    (int) $subscriber_id, $ordered_local, $attribution
-                );
-                if ($broadcast_id) $attributed++;
-
-                // "customer" auto-tag — first attach fires lmeg_tag_attached,
-                // which enrolls the fan into any post-purchase sequence.
-                if (function_exists('lmeg_get_or_create_tag')) {
-                    $ct = lmeg_get_or_create_tag('customer', 'Customer', true, '#F59E0B');
-                    if ($ct) lmeg_attach_tag((int) $subscriber_id, $ct->id);
-                }
-            }
-        }
-
-        $wpdb->query($wpdb->prepare(
-            "INSERT INTO $tbl
-                (shopify_order_id, order_number, email, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
-             VALUES (%d, %s, %s, %s, %s, %s, %d, %s, %s, %s)
-             ON DUPLICATE KEY UPDATE
-                subscriber_id = VALUES(subscriber_id),
-                broadcast_id  = VALUES(broadcast_id),
-                attribution   = VALUES(attribution),
-                total_cents   = VALUES(total_cents),
-                synced_at     = VALUES(synced_at)",
-            $oid,
-            (string) ($o['order_number'] ?? ''),
-            $email ?: null,
-            $subscriber_id ?: null,
-            $broadcast_id ?: null,
-            $attribution,
-            $total,
-            strtoupper(substr((string) ($o['currency'] ?? 'USD'), 0, 3)),
-            $ordered_local,
-            $now
-        ));
+        if (lmeg_shop_record_order($o)) $attributed++;
     }
 
     update_option(LMEG_SHOP_LAST_SYNC, $now, false);
@@ -439,6 +384,105 @@ function lmeg_shop_sync($force = false) {
     $triggered = is_wp_error($aband) ? 0 : (int) ($aband['triggered'] ?? 0);
 
     return ['fetched' => count($orders), 'attributed' => $attributed, 'cart_triggers' => $triggered];
+}
+
+/**
+ * Record ONE Shopify order (from the API sync OR the order webhook) — matches
+ * it to a fan by email, attributes it to the broadcast they last clicked,
+ * attaches the "customer" tag, and upserts it into lmeg_shop_orders.
+ * Returns true if it got attributed to a broadcast.
+ */
+function lmeg_shop_record_order($o) {
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_shop_orders';
+    $subs = $wpdb->prefix . LMEG_TABLE;
+
+    $oid = (int) ($o['id'] ?? 0);
+    if (!$oid || !empty($o['cancelled_at'])) return false;
+
+    // Webhook + API payloads spell the buyer email a few different ways.
+    $email = sanitize_email($o['email'] ?? ($o['contact_email'] ?? ($o['customer']['email'] ?? '')));
+    $total = (int) round(((float) ($o['total_price'] ?? ($o['current_total_price'] ?? 0))) * 100);
+    $ordered_local = !empty($o['created_at'])
+        ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($o['created_at'])))
+        : current_time('mysql');
+
+    $subscriber_id = null;
+    $broadcast_id  = null;
+    $attribution   = 'none';
+    if ($email) {
+        $subscriber_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email));
+        if ($subscriber_id) {
+            $attribution = 'subscriber';
+            list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
+                (int) $subscriber_id, $ordered_local, $attribution
+            );
+            // "customer" auto-tag — first attach fires the post-purchase sequence.
+            if (function_exists('lmeg_get_or_create_tag')) {
+                $ct = lmeg_get_or_create_tag('customer', 'Customer', true, '#F59E0B');
+                if ($ct) lmeg_attach_tag((int) $subscriber_id, $ct->id);
+            }
+        }
+    }
+
+    $wpdb->query($wpdb->prepare(
+        "INSERT INTO $tbl
+            (shopify_order_id, order_number, email, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
+         VALUES (%d, %s, %s, %s, %s, %s, %d, %s, %s, %s)
+         ON DUPLICATE KEY UPDATE
+            subscriber_id = VALUES(subscriber_id),
+            broadcast_id  = VALUES(broadcast_id),
+            attribution   = VALUES(attribution),
+            total_cents   = VALUES(total_cents),
+            synced_at     = VALUES(synced_at)",
+        $oid,
+        (string) ($o['order_number'] ?? ($o['name'] ?? '')),
+        $email ?: null,
+        $subscriber_id ?: null,
+        $broadcast_id ?: null,
+        $attribution,
+        $total,
+        strtoupper(substr((string) ($o['currency'] ?? 'USD'), 0, 3)),
+        $ordered_local,
+        current_time('mysql')
+    ));
+    return $broadcast_id ? true : false;
+}
+
+/* ---------------------------------------------------------------------------
+ * Order webhook — the no-app path. The merchant adds a "Order creation"
+ * webhook in Settings → Notifications pointing at the tokenized URL below;
+ * Shopify then POSTs each new order here. No OAuth, no app, no token to
+ * manage — works on any store (incl. ones locked to the dev dashboard).
+ * ------------------------------------------------------------------------- */
+
+/** Secret token that authenticates the order webhook (in the URL). */
+function lmeg_shop_wh_token() {
+    return substr(hash_hmac('sha256', 'shopify-order-webhook', lmeg_get_secret()), 0, 22);
+}
+
+/** The URL the merchant pastes into Shopify → Settings → Notifications → Webhooks. */
+function lmeg_shop_wh_url() {
+    return add_query_arg('lmeg_shopify_wh', lmeg_shop_wh_token(), home_url('/'));
+}
+
+add_action('init', 'lmeg_maybe_handle_shopify_webhook');
+function lmeg_maybe_handle_shopify_webhook() {
+    if (empty($_GET['lmeg_shopify_wh'])) return;
+    if (!hash_equals(lmeg_shop_wh_token(), (string) wp_unslash($_GET['lmeg_shopify_wh']))) {
+        status_header(403); exit;
+    }
+    $raw = file_get_contents('php://input');
+    $o   = json_decode((string) $raw, true);
+    // Shopify's "Order creation" topic posts a single order object.
+    if (is_array($o) && !empty($o['id'])) {
+        if (function_exists('lmeg_shop_record_order')) lmeg_shop_record_order($o);
+        // Remember we're receiving live orders (drives the Settings status).
+        update_option('lmeg_shop_wh_last', current_time('mysql'), false);
+    }
+    status_header(200);
+    echo 'ok';
+    exit;
 }
 
 /* ---------------------------------------------------------------------------

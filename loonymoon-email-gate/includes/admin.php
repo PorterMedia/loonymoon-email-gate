@@ -2389,6 +2389,22 @@ function lmeg_admin_settings() {
             <?php if (!empty($_GET['shop_connected'])) : ?>
                 <div class="notice notice-success"><p>Shopify connected — a store access token was saved. Use “Save &amp; test Shopify” to confirm, then Sync.</p></div>
             <?php endif; ?>
+
+            <?php
+            // Recommended path: order webhook (no app / OAuth / token needed).
+            $wh_url  = function_exists('lmeg_shop_wh_url') ? lmeg_shop_wh_url() : '';
+            $wh_last = get_option('lmeg_shop_wh_last', '');
+            ?>
+            <div class="lmeg-stat" style="max-width:820px;margin:6px 0 18px;padding:16px 18px;">
+                <p style="margin:0 0 8px;font-weight:600;">Easiest — order webhook (no app, no token)</p>
+                <p class="description" style="margin:0 0 10px;">Works on any store, including ones locked to the dev dashboard. In your <strong>Shopify admin</strong> → <strong>Settings → Notifications → Webhooks</strong> → <strong>Create webhook</strong>: Event <strong>Order creation</strong>, Format <strong>JSON</strong>, and paste this URL:</p>
+                <input type="text" readonly value="<?php echo esc_attr($wh_url); ?>" onclick="this.select();" style="width:100%;max-width:760px;font-family:monospace;font-size:12px;" />
+                <p class="description" style="margin:8px 0 0;">
+                    <?php if ($wh_last) : ?><strong style="color:#34d399;">✓ Receiving orders</strong> — last one <?php echo esc_html($wh_last); ?>.
+                    <?php else : ?>Once added, every new order flows in here automatically and gets attributed to the broadcast the buyer clicked. (Forward-only — orders from the moment you add it.)<?php endif; ?>
+                </p>
+            </div>
+
             <table class="form-table" role="presentation">
                 <tr><th><label for="shopify_domain">Store domain</label></th>
                     <td><input type="text" name="shopify_domain" id="shopify_domain" class="regular-text" value="<?php echo esc_attr($s['shopify_domain'] ?? ''); ?>" placeholder="loonymoonchildstore.myshopify.com" />
