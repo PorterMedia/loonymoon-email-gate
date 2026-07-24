@@ -1909,13 +1909,13 @@ function lmeg_admin_settings() {
             'shopify_client_secret'   => sanitize_text_field(wp_unslash($_POST['shopify_client_secret'] ?? '')),
             'attribution_window_days' => max(1, min(90, (int) ($_POST['attribution_window_days'] ?? 7))),
             'utm_source'              => sanitize_title(wp_unslash($_POST['utm_source'] ?? '')) ?: (sanitize_title(lmeg_community()) ?: 'fanloop'),
-            'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
-            'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
-            'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
-            'color_border'            => !empty($_POST['color_border_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_border'] ?? '')) ?: ''),
-            'color_card_bg'           => !empty($_POST['color_card_bg_reset'])   ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_bg']   ?? '')) ?: ''),
-            'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : (sanitize_hex_color(wp_unslash($_POST['color_card_text'] ?? '')) ?: ''),
-            'color_page_bg'           => !empty($_POST['color_page_bg_reset'])   ? '' : (sanitize_hex_color(wp_unslash($_POST['color_page_bg']   ?? '')) ?: ''),
+            'color_primary'           => lmeg_sanitize_hex($_POST['color_primary']      ?? '') ?: '#111111',
+            'color_primary_text'      => lmeg_sanitize_hex($_POST['color_primary_text'] ?? '') ?: '#ffffff',
+            'color_accent'            => lmeg_sanitize_hex($_POST['color_accent']      ?? '') ?: '#3b82f6',
+            'color_border'            => !empty($_POST['color_border_reset'])    ? '' : lmeg_sanitize_hex($_POST['color_border']    ?? ''),
+            'color_card_bg'           => !empty($_POST['color_card_bg_reset'])   ? '' : lmeg_sanitize_hex($_POST['color_card_bg']   ?? ''),
+            'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : lmeg_sanitize_hex($_POST['color_card_text'] ?? ''),
+            'color_page_bg'           => !empty($_POST['color_page_bg_reset'])   ? '' : lmeg_sanitize_hex($_POST['color_page_bg']   ?? ''),
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -2025,52 +2025,77 @@ function lmeg_admin_settings() {
             </table>
 
             <h2>Colors</h2>
+            <?php
+            // Hex-first color field: a text box you can type/paste #rrggbb into
+            // is the real control (name=), with a small native swatch beside it
+            // that stays in sync. Themes vary wildly, so being able to paste an
+            // exact brand hex beats hunting in the OS color picker.
+            $color_row = function ($name, $val, $default_swatch = '#000000') {
+                $val = (string) $val;
+                $sw  = preg_match('/^#[0-9a-fA-F]{6}$/', $val) ? $val : $default_swatch;
+                ?>
+                <input type="text" name="<?php echo esc_attr($name); ?>" id="<?php echo esc_attr($name); ?>"
+                       class="lmeg-hex" data-swatch="<?php echo esc_attr($name); ?>_sw"
+                       value="<?php echo esc_attr($val); ?>" placeholder="#rrggbb" spellcheck="false"
+                       style="width:110px;font-family:monospace;text-transform:lowercase;" />
+                <input type="color" id="<?php echo esc_attr($name); ?>_sw" class="lmeg-hex-swatch"
+                       data-target="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($sw); ?>"
+                       aria-label="Pick color" style="vertical-align:middle;width:34px;height:28px;padding:0;border:0;background:none;cursor:pointer;" />
+                <?php
+            };
+            ?>
             <table class="form-table" role="presentation">
                 <tr><th><label for="color_primary">Primary button</label></th>
                     <td>
-                        <input type="color" name="color_primary" id="color_primary" value="<?php echo esc_attr($s['color_primary']); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_primary']); ?></code>
-                        <p class="description">Background of Unlock / Subscribe / tier CTAs.</p>
+                        <?php $color_row('color_primary', $s['color_primary'], '#111111'); ?>
+                        <p class="description">Background of Unlock / Subscribe / tier CTAs. Paste your exact brand hex — it's forced over the theme so the button always shows your color.</p>
                     </td></tr>
                 <tr><th><label for="color_primary_text">Primary button text</label></th>
-                    <td>
-                        <input type="color" name="color_primary_text" id="color_primary_text" value="<?php echo esc_attr($s['color_primary_text']); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_primary_text']); ?></code>
-                    </td></tr>
+                    <td><?php $color_row('color_primary_text', $s['color_primary_text'], '#ffffff'); ?></td></tr>
                 <tr><th><label for="color_accent">Accent</label></th>
                     <td>
-                        <input type="color" name="color_accent" id="color_accent" value="<?php echo esc_attr($s['color_accent']); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo esc_html($s['color_accent']); ?></code>
+                        <?php $color_row('color_accent', $s['color_accent'], '#3b82f6'); ?>
                         <p class="description">Soft paywall tint, input focus rings.</p>
                     </td></tr>
                 <tr><th><label for="color_border">Card border</label></th>
                     <td>
-                        <input type="color" name="color_border" id="color_border" value="<?php echo esc_attr($s['color_border'] ?: '#e5e5e5'); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_border'] ? esc_html($s['color_border']) : '(default translucent black)'; ?></code>
+                        <?php $color_row('color_border', $s['color_border'], '#e5e5e5'); ?>
                         <label style="margin-left:10px;"><input type="checkbox" name="color_border_reset" value="1" /> Reset to default</label>
+                        <span class="description"><?php echo $s['color_border'] ? '' : '(currently: translucent black)'; ?></span>
                     </td></tr>
                 <tr><th><label for="color_card_bg">Card background</label></th>
                     <td>
-                        <input type="color" name="color_card_bg" id="color_card_bg" value="<?php echo esc_attr($s['color_card_bg'] ?: '#ffffff'); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_card_bg'] ? esc_html($s['color_card_bg']) : '(default white)'; ?></code>
+                        <?php $color_row('color_card_bg', $s['color_card_bg'], '#ffffff'); ?>
                         <label style="margin-left:10px;"><input type="checkbox" name="color_card_bg_reset" value="1" /> Reset to default</label>
                         <p class="description">Paywall + gate card background. Set to a dark color to match a dark theme.</p>
                     </td></tr>
                 <tr><th><label for="color_card_text">Card text</label></th>
                     <td>
-                        <input type="color" name="color_card_text" id="color_card_text" value="<?php echo esc_attr($s['color_card_text'] ?: '#1a1a1a'); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_card_text'] ? esc_html($s['color_card_text']) : '(default near-black)'; ?></code>
+                        <?php $color_row('color_card_text', $s['color_card_text'], '#1a1a1a'); ?>
                         <label style="margin-left:10px;"><input type="checkbox" name="color_card_text_reset" value="1" /> Reset to default</label>
                         <p class="description">Text color on the paywall + gate card. Flip to white if you set a dark background.</p>
                     </td></tr>
                 <tr><th><label for="color_page_bg">Page background</label></th>
                     <td>
-                        <input type="color" name="color_page_bg" id="color_page_bg" value="<?php echo esc_attr($s['color_page_bg'] ?: '#000000'); ?>" />
-                        <code style="margin-left:8px;opacity:.65;"><?php echo $s['color_page_bg'] ? esc_html($s['color_page_bg']) : '(default — theme shows through)'; ?></code>
+                        <?php $color_row('color_page_bg', $s['color_page_bg'], '#000000'); ?>
                         <label style="margin-left:10px;"><input type="checkbox" name="color_page_bg_reset" value="1" /> Reset to default</label>
                         <p class="description">Whole gated-page background. Overrides theme CSS with <code>!important</code>. Applies only when a post is gated — non-gated pages stay whatever the theme wants.</p>
                     </td></tr>
             </table>
+            <script>
+            (function () {
+                // Keep each hex text box and its native swatch in sync.
+                document.querySelectorAll('.lmeg-hex-swatch').forEach(function (sw) {
+                    var txt = document.getElementById(sw.getAttribute('data-target'));
+                    if (!txt) return;
+                    sw.addEventListener('input', function () { txt.value = sw.value; });
+                    txt.addEventListener('input', function () {
+                        var v = txt.value.trim();
+                        if (/^#[0-9a-fA-F]{6}$/.test(v)) sw.value = v;
+                    });
+                });
+            })();
+            </script>
 
             <p class="description" style="margin-top:8px;">
                 <strong>Note:</strong> Card and page background colors are output with <code>!important</code>, so they beat any theme CSS. If you “unset” a value with Reset to default, the plugin drops back to letting the theme decide.

@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.3
+ * Version:     2.57.4
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.3');
+define('LMEG_VERSION',     '2.57.4');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -786,6 +786,19 @@ function lmeg_community() { return lmeg_brand_raw('community_name', get_bloginfo
 function lmeg_artist()    { return lmeg_brand_raw('artist_name', get_bloginfo('name')); }
 /** The product itself. */
 function lmeg_product()   { return 'Fanloop'; }
+
+/**
+ * Forgiving hex sanitizer for the free-text color fields: accepts "#fd0d0d",
+ * "fd0d0d", "FD0D0D", or 3-digit shorthand ("f00"). Returns '#rrggbb' lower-
+ * cased, or '' if it isn't a hex color.
+ */
+function lmeg_sanitize_hex($v) {
+    $v = strtolower(trim((string) wp_unslash($v)));
+    if ($v === '') return '';
+    $v = ltrim($v, '#');
+    if (preg_match('/^[0-9a-f]{3}$/', $v)) $v = $v[0].$v[0].$v[1].$v[1].$v[2].$v[2];
+    return preg_match('/^[0-9a-f]{6}$/', $v) ? '#' . $v : '';
+}
 
 /* ---------------------------------------------------------------------------
  * Helpers
@@ -1670,6 +1683,17 @@ function lmeg_enqueue() {
     if ($card_text) $vars[] = "--lmeg-card-text: $card_text;";
 
     $css  = '.lmeg-form,.lmeg-paywall,.lmeg-embed,.lmeg-upgrade,.lmeg-locked-wrap,.lmeg-gate{' . implode('', $vars) . '}';
+
+    // Layer 1b: SOLID buttons must win over the host theme. Themes routinely
+    // style every <button>/submit with their own bg+color at higher
+    // specificity, which was turning the artist's Subscribe button into (e.g.)
+    // white-on-green regardless of the chosen color. Force the primary color
+    // with !important, scoped to solid buttons (outline/ghost variants keep
+    // their transparent treatment).
+    $solid = ':not(.lmeg-button--outline):not(.lmeg-button--ghost):not(.lmeg-tab)';
+    $bsel  = ".lmeg-embed .lmeg-button$solid,.lmeg-form .lmeg-button$solid,.lmeg-paywall .lmeg-button$solid,.lmeg-gate .lmeg-button$solid,.lmeg-upgrade .lmeg-button$solid";
+    $css  .= "$bsel{background:$primary !important;color:$primary_text !important;border-color:$primary !important;}";
+    $css  .= str_replace('.lmeg-button', '.lmeg-button:hover', $bsel) . "{filter:brightness(.92);background:$primary !important;color:$primary_text !important;}";
 
     // Layer 2: Direct !important overrides — only when settings are set.
     if ($card_bg) {
