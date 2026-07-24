@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.57.5
+Stable tag: 2.57.6
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.6 =
+* Fix: the email/phone pill sat off-center inside its track on themes that add a top margin to buttons (the gap was bigger above than below). The pills now force margin:0 and center themselves in the track, so the padding around the active pill is even on all sides.
+* New: Placeholder text color in Settings → Colors — set the color of the greyed-out hint text inside the email/phone fields. Blank = a muted version of your card text.
+
 = 2.57.5 =
 * Fix: the Email/Phone pill toggle (and inputs/selects) now keep the plugin's own styling even on themes that aggressively restyle form controls. Geoffroy's theme was flattening both pills to identical white squares so you couldn't tell which was selected; the pill track, the muted inactive pill, and the raised active pill are now forced with !important across all form containers, using your card colors so it works on light and dark cards alike.
 

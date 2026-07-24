@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.5
+ * Version:     2.57.6
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.5');
+define('LMEG_VERSION',     '2.57.6');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -685,6 +685,7 @@ function lmeg_default_settings() {
         'utm_source'               => sanitize_title(lmeg_community()) ?: 'fanloop',
         // Front-end theming
         'color_primary'            => '#111111',
+        'color_placeholder'        => '',   // input placeholder text; blank = muted card text
         'color_primary_text'       => '#ffffff',
         'color_accent'             => '#3b82f6',
         'color_border'             => '',   // blank = default translucent black
@@ -1675,6 +1676,7 @@ function lmeg_enqueue() {
     $card_bg      = sanitize_hex_color($s['color_card_bg']      ?? '');
     $card_text    = sanitize_hex_color($s['color_card_text']    ?? '');
     $page_bg      = sanitize_hex_color($s['color_page_bg']      ?? '');
+    $placeholder  = sanitize_hex_color($s['color_placeholder']  ?? '');
 
     // Layer 1: CSS variables on every plugin container.
     $vars = ["--lmeg-primary: $primary;", "--lmeg-primary-text: $primary_text;", "--lmeg-accent: $accent;"];
@@ -1708,16 +1710,25 @@ function lmeg_enqueue() {
     $ex = function ($leaf) use ($cont) {
         return implode(',', array_map(function ($c) use ($leaf) { return "$c $leaf"; }, $cont));
     };
-    $css .= $ex('.lmeg-tabs') . '{display:inline-flex !important;gap:0 !important;padding:4px !important;'
+    $css .= $ex('.lmeg-tabs') . '{display:inline-flex !important;align-items:center !important;gap:0 !important;'
+          . 'padding:4px !important;margin:0 0 1em !important;width:auto !important;box-sizing:border-box !important;'
           . "background:color-mix(in srgb,$ctext 8%,transparent) !important;border-radius:999px !important;}";
+    // margin:0 + inline-flex centering is the key line — themes add a top
+    // margin to buttons that pushed the pill off-center inside its track.
     $css .= $ex('.lmeg-tab') . '{appearance:none !important;border:0 !important;background:transparent !important;'
-          . "color:color-mix(in srgb,$ctext 58%,transparent) !important;padding:.5em 1.1em !important;"
-          . 'border-radius:999px !important;box-shadow:none !important;font-weight:600 !important;'
-          . 'cursor:pointer !important;line-height:1 !important;width:auto !important;}';
+          . "color:color-mix(in srgb,$ctext 58%,transparent) !important;margin:0 !important;"
+          . 'display:inline-flex !important;align-items:center !important;justify-content:center !important;'
+          . 'padding:.55em 1.2em !important;border-radius:999px !important;box-shadow:none !important;'
+          . 'font-weight:600 !important;cursor:pointer !important;line-height:1 !important;'
+          . 'width:auto !important;min-height:0 !important;box-sizing:border-box !important;}';
     $css .= $ex('.lmeg-tab.is-active') . "{background:$cbg !important;color:$ctext !important;box-shadow:0 1px 3px rgba(0,0,0,.16) !important;}";
     $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
           . "{border-radius:8px !important;border:1px solid color-mix(in srgb,$ctext 22%,transparent) !important;"
-          . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;}";
+          . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;margin:0 !important;box-sizing:border-box !important;}";
+    // Placeholder color — configurable; falls back to a muted card text.
+    $ph = $placeholder ?: "color-mix(in srgb,$ctext 45%,transparent)";
+    $css .= $ex('.lmeg-input') . '::placeholder,' . $ex('.lmeg-input') . '::-webkit-input-placeholder'
+          . "{color:$ph !important;opacity:1 !important;}";
 
     // Layer 2: Direct !important overrides — only when settings are set.
     if ($card_bg) {

@@ -1916,6 +1916,7 @@ function lmeg_admin_settings() {
             'color_card_bg'           => !empty($_POST['color_card_bg_reset'])   ? '' : lmeg_sanitize_hex($_POST['color_card_bg']   ?? ''),
             'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : lmeg_sanitize_hex($_POST['color_card_text'] ?? ''),
             'color_page_bg'           => !empty($_POST['color_page_bg_reset'])   ? '' : lmeg_sanitize_hex($_POST['color_page_bg']   ?? ''),
+            'color_placeholder'       => !empty($_POST['color_placeholder_reset']) ? '' : lmeg_sanitize_hex($_POST['color_placeholder'] ?? ''),
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -2052,6 +2053,12 @@ function lmeg_admin_settings() {
                     </td></tr>
                 <tr><th><label for="color_primary_text">Primary button text</label></th>
                     <td><?php $color_row('color_primary_text', $s['color_primary_text'], '#ffffff'); ?></td></tr>
+                <tr><th><label for="color_placeholder">Placeholder text</label></th>
+                    <td>
+                        <?php $color_row('color_placeholder', $s['color_placeholder'] ?? '', '#9a8f94'); ?>
+                        <label style="margin-left:10px;"><input type="checkbox" name="color_placeholder_reset" value="1" /> Reset to default</label>
+                        <p class="description">Color of the greyed-out hint text inside the email/phone fields (e.g. &ldquo;you@example.com&rdquo;). Blank = a muted version of the card text.</p>
+                    </td></tr>
                 <tr><th><label for="color_accent">Accent</label></th>
                     <td>
                         <?php $color_row('color_accent', $s['color_accent'], '#3b82f6'); ?>
