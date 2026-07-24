@@ -8,9 +8,9 @@
  * 250k-MAU wall): same fan behavior, but the contact is captured here and the
  * artist controls the release-day message.
  *
- * Public: [loony_drop]                 — newest scheduled/released drop
- *         [loony_drop slug="new-single"]
- *         [loony_drop id="3"]
+ * Public: [fanloop_drop]               — newest scheduled/released drop
+ *         [fanloop_drop slug="new-single"]
+ *         [fanloop_drop id="3"]
  */
 
 if (!defined('ABSPATH')) {
@@ -93,7 +93,7 @@ function lmeg_admin_drops() {
     $creating = isset($_GET['new']);
 
     echo '<div class="wrap lmeg-wrap"><h1>Release Drops</h1>';
-    echo '<p class="description" style="max-width:60em;">Build a countdown page for an upcoming release. Fans tap <strong>Notify me</strong> to opt in; the moment the release time passes, everyone who signed up gets an automatic email/SMS with your streaming links. Embed a drop anywhere with <code>[loony_drop]</code> (newest) or <code>[loony_drop slug="&hellip;"]</code>.</p>';
+    echo '<p class="description" style="max-width:60em;">Build a countdown page for an upcoming release. Fans tap <strong>Notify me</strong> to opt in; the moment the release time passes, everyone who signed up gets an automatic email/SMS with your streaming links. Embed a drop anywhere with <code>[fanloop_drop]</code> (newest) or <code>[fanloop_drop slug="&hellip;"]</code>.</p>';
 
     if ($editing || $creating) {
         lmeg_admin_drop_form($editing);
@@ -127,7 +127,7 @@ function lmeg_admin_drops() {
            . '<td>' . $when . '</td>'
            . '<td>' . number_format_i18n((int) $d->notify_count) . '</td>'
            . '<td>' . $bcast . '</td>'
-           . '<td><code>[loony_drop slug="' . esc_attr($d->slug) . '"]</code></td>'
+           . '<td><code>[fanloop_drop slug="' . esc_attr($d->slug) . '"]</code></td>'
            . '<td><a href="' . esc_url(admin_url('admin.php?page=lmeg-drops&edit=' . (int) $d->id)) . '">Edit</a>'
            . ' &middot; <a href="' . esc_url(lmeg_drop_url($d)) . '" target="_blank">View</a></td>'
            . '</tr>';
@@ -376,7 +376,7 @@ function lmeg_drop_expand_links($body, $replacement) {
 }
 
 /* ---------------------------------------------------------------------------
- * Public shortcode — [loony_drop]
+ * Public shortcode — [fanloop_drop] (alias [loony_drop])
  * ------------------------------------------------------------------------- */
 
 add_shortcode('loony_drop', 'lmeg_shortcode_drop');

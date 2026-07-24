@@ -8,7 +8,7 @@
  * tracker, so clicks are counted and attributed to known fans for free.
  *
  * Config lives in the `lmeg_bio` option (no new table). Render anywhere with
- * the [loony_bio] shortcode — typically on a dedicated page like /links.
+ * the [fanloop_bio] shortcode — typically on a dedicated page like /links.
  */
 
 if (!defined('ABSPATH')) {
@@ -73,7 +73,7 @@ function lmeg_admin_bio() {
     if (!empty($_GET['saved'])) {
         echo '<div class="notice notice-success is-dismissible"><p>Bio saved.</p></div>';
     }
-    echo '<p class="description" style="max-width:60em;">Your link-in-bio page with a built-in signup. Drop <code>[loony_bio]</code> on a page (e.g. a page at <code>/links</code>) and use that URL in your Instagram/TikTok bio. Every link is click-tracked, and taps by known fans land on their timeline.</p>';
+    echo '<p class="description" style="max-width:60em;">Your link-in-bio page with a built-in signup. Drop <code>[fanloop_bio]</code> on a page (e.g. a page at <code>/links</code>) and use that URL in your Instagram/TikTok bio. Every link is click-tracked, and taps by known fans land on their timeline.</p>';
 
     echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
     wp_nonce_field('lmeg_save_bio');
@@ -117,17 +117,16 @@ function lmeg_admin_bio() {
     echo '</p></form></div>';
 }
 
-/** Best-effort: find a published page containing the [loony_bio] shortcode. */
+/** Best-effort: find a published page containing the bio shortcode (new or legacy). */
 function lmeg_bio_find_page() {
-    $q = new WP_Query([
-        'post_type'      => 'page',
-        'post_status'    => 'publish',
-        's'              => '[loony_bio',
-        'posts_per_page' => 1,
-        'fields'         => 'ids',
-        'no_found_rows'  => true,
-    ]);
-    return $q->have_posts() ? $q->posts[0] : 0;
+    global $wpdb;
+    $id = (int) $wpdb->get_var(
+        "SELECT ID FROM {$wpdb->posts}
+          WHERE post_type = 'page' AND post_status = 'publish'
+            AND (post_content LIKE '%[fanloop_bio%' OR post_content LIKE '%[loony_bio%')
+          ORDER BY ID ASC LIMIT 1"
+    );
+    return $id ?: 0;
 }
 
 add_action('admin_post_lmeg_save_bio', 'lmeg_handle_save_bio');
@@ -170,7 +169,7 @@ function lmeg_handle_save_bio() {
 }
 
 /* ---------------------------------------------------------------------------
- * Public shortcode — [loony_bio]
+ * Public shortcode — [fanloop_bio] (alias [loony_bio])
  * ------------------------------------------------------------------------- */
 
 add_shortcode('loony_bio', 'lmeg_shortcode_bio');
