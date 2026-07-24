@@ -1917,6 +1917,8 @@ function lmeg_admin_settings() {
             'color_card_text'         => !empty($_POST['color_card_text_reset']) ? '' : lmeg_sanitize_hex($_POST['color_card_text'] ?? ''),
             'color_page_bg'           => !empty($_POST['color_page_bg_reset'])   ? '' : lmeg_sanitize_hex($_POST['color_page_bg']   ?? ''),
             'color_placeholder'       => !empty($_POST['color_placeholder_reset']) ? '' : lmeg_sanitize_hex($_POST['color_placeholder'] ?? ''),
+            'fields_transparent'      => !empty($_POST['fields_transparent']) ? 1 : 0,
+            'card_transparent'        => !empty($_POST['card_transparent']) ? 1 : 0,
             'signin_heading'          => sanitize_text_field(wp_unslash($_POST['signin_heading'] ?? '')),
             'signin_message'          => sanitize_textarea_field(wp_unslash($_POST['signin_message'] ?? '')),
             'magic_link_subject'      => sanitize_text_field(wp_unslash($_POST['magic_link_subject'] ?? '')),
@@ -2088,6 +2090,12 @@ function lmeg_admin_settings() {
                         <label style="margin-left:10px;"><input type="checkbox" name="color_page_bg_reset" value="1" /> Reset to default</label>
                         <p class="description">Whole gated-page background. Overrides theme CSS with <code>!important</code>. Applies only when a post is gated — non-gated pages stay whatever the theme wants.</p>
                     </td></tr>
+                <tr><th>Field style</th>
+                    <td><label><input type="checkbox" name="fields_transparent" value="1" <?php checked(!empty($s['fields_transparent'])); ?> /> Transparent, borderless email/phone fields</label>
+                        <p class="description">Removes the fill and border from the input fields so they sit flat on the card. (The placeholder color still applies.)</p></td></tr>
+                <tr><th>Card style</th>
+                    <td><label><input type="checkbox" name="card_transparent" value="1" <?php checked(!empty($s['card_transparent'])); ?> /> Transparent, borderless card</label>
+                        <p class="description">Drops the card's background, border, and shadow so the form sits directly on your page — no box around it.</p></td></tr>
             </table>
             <script>
             (function () {

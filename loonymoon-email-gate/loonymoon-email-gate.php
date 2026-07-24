@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.6
+ * Version:     2.57.7
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.6');
+define('LMEG_VERSION',     '2.57.7');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -686,6 +686,8 @@ function lmeg_default_settings() {
         // Front-end theming
         'color_primary'            => '#111111',
         'color_placeholder'        => '',   // input placeholder text; blank = muted card text
+        'fields_transparent'       => 0,    // transparent, borderless email/phone fields
+        'card_transparent'         => 0,    // transparent, borderless form card
         'color_primary_text'       => '#ffffff',
         'color_accent'             => '#3b82f6',
         'color_border'             => '',   // blank = default translucent black
@@ -1677,6 +1679,8 @@ function lmeg_enqueue() {
     $card_text    = sanitize_hex_color($s['color_card_text']    ?? '');
     $page_bg      = sanitize_hex_color($s['color_page_bg']      ?? '');
     $placeholder  = sanitize_hex_color($s['color_placeholder']  ?? '');
+    $fields_transparent = !empty($s['fields_transparent']);
+    $card_transparent   = !empty($s['card_transparent']);
 
     // Layer 1: CSS variables on every plugin container.
     $vars = ["--lmeg-primary: $primary;", "--lmeg-primary-text: $primary_text;", "--lmeg-accent: $accent;"];
@@ -1722,13 +1726,26 @@ function lmeg_enqueue() {
           . 'font-weight:600 !important;cursor:pointer !important;line-height:1 !important;'
           . 'width:auto !important;min-height:0 !important;box-sizing:border-box !important;}';
     $css .= $ex('.lmeg-tab.is-active') . "{background:$cbg !important;color:$ctext !important;box-shadow:0 1px 3px rgba(0,0,0,.16) !important;}";
-    $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
-          . "{border-radius:8px !important;border:1px solid color-mix(in srgb,$ctext 22%,transparent) !important;"
-          . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;margin:0 !important;box-sizing:border-box !important;}";
-    // Placeholder color — configurable; falls back to a muted card text.
-    $ph = $placeholder ?: "color-mix(in srgb,$ctext 45%,transparent)";
-    $css .= $ex('.lmeg-input') . '::placeholder,' . $ex('.lmeg-input') . '::-webkit-input-placeholder'
-          . "{color:$ph !important;opacity:1 !important;}";
+    // Fields — filled by default, or transparent + borderless when chosen.
+    if ($fields_transparent) {
+        $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
+              . "{background:transparent !important;border:0 !important;border-radius:8px !important;"
+              . "color:$ctext !important;padding:.6em .2em !important;margin:0 !important;box-sizing:border-box !important;}";
+    } else {
+        $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
+              . "{border-radius:8px !important;border:1px solid color-mix(in srgb,$ctext 22%,transparent) !important;"
+              . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;margin:0 !important;box-sizing:border-box !important;}";
+    }
+    // Placeholder color — attach the pseudo to EACH selector (appending it to
+    // the comma-joined group only styles the LAST one — that was the bug where
+    // the placeholder color never reached the embed form).
+    $ph  = $placeholder ?: "color-mix(in srgb,$ctext 45%,transparent)";
+    $phx = function ($pseudo) use ($cont) {
+        return implode(',', array_map(function ($c) use ($pseudo) {
+            return "$c .lmeg-input$pseudo,$c .lmeg-select$pseudo";
+        }, $cont));
+    };
+    $css .= $phx('::placeholder') . ',' . $phx('::-webkit-input-placeholder') . "{color:$ph !important;opacity:1 !important;}";
 
     // Layer 2: Direct !important overrides — only when settings are set.
     if ($card_bg) {
@@ -1745,6 +1762,12 @@ function lmeg_enqueue() {
         // area, so the color extends edge-to-edge instead of leaving a
         // theme-colored gap around the gate.
         $css .= 'body.lmeg-page-bg{background:' . $page_bg . ' !important;}';
+    }
+
+    // Transparent card — no fill, border, or shadow, so the form sits directly
+    // on the page. Emitted last so it wins over any card background above.
+    if ($card_transparent) {
+        $css .= '.lmeg-embed--card,.lmeg-embed{background:transparent !important;border:0 !important;box-shadow:none !important;}';
     }
 
     wp_add_inline_style('lmeg-gate', $css);
