@@ -441,9 +441,11 @@ function lmeg_shop_record_order($o) {
 
     $wpdb->query($wpdb->prepare(
         "INSERT INTO $tbl
-            (shopify_order_id, order_number, email, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
-         VALUES (%d, %s, %s, %s, %s, %s, %d, %s, %s, %s)
+            (shopify_order_id, order_number, email, phone, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
+         VALUES (%d, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s)
          ON DUPLICATE KEY UPDATE
+            email         = COALESCE(VALUES(email), email),
+            phone         = COALESCE(VALUES(phone), phone),
             subscriber_id = VALUES(subscriber_id),
             broadcast_id  = VALUES(broadcast_id),
             attribution   = VALUES(attribution),
@@ -452,6 +454,7 @@ function lmeg_shop_record_order($o) {
         $oid,
         (string) ($o['order_number'] ?? ($o['name'] ?? '')),
         $email ?: null,
+        $phone_raw !== '' ? $phone_raw : null,
         $subscriber_id ?: null,
         $broadcast_id ?: null,
         $attribution,

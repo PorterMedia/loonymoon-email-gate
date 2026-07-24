@@ -3696,7 +3696,10 @@ function lmeg_admin_shop() {
         $order_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_shop_orders");
         $order_total = (int) $wpdb->get_var("SELECT COALESCE(SUM(total_cents), 0) FROM {$wpdb->prefix}lmeg_shop_orders");
         $recent = $wpdb->get_results(
-            "SELECT * FROM {$wpdb->prefix}lmeg_shop_orders ORDER BY ordered_at DESC LIMIT 100"
+            "SELECT o.*, s.email AS sub_email, s.phone AS sub_phone
+             FROM {$wpdb->prefix}lmeg_shop_orders o
+             LEFT JOIN {$wpdb->prefix}lmeg_subscribers s ON s.id = o.subscriber_id
+             ORDER BY o.ordered_at DESC LIMIT 100"
         );
         ?>
         <p style="opacity:.75;max-width:760px;margin:2px 0 12px;">
@@ -3705,7 +3708,7 @@ function lmeg_admin_shop() {
             Shopify's <code>read_orders</code> scope returns roughly the last 60 days.
         </p>
         <table class="widefat striped" style="max-width:900px;">
-            <thead><tr><th>Order</th><th>Email</th><th>Total</th><th>Customer</th><th>Attribution</th><th>Ordered</th></tr></thead>
+            <thead><tr><th>Order</th><th>Contact</th><th>Total</th><th>Customer</th><th>Attribution</th><th>Ordered</th></tr></thead>
             <tbody>
             <?php if (empty($recent)) : ?>
                 <tr><td colspan="6">No orders synced yet. Click “Sync orders now” above. If it stays empty, either there were no orders in the last ~60 days, or the connection needs a check — run “Save &amp; test Shopify” in Settings.</td></tr>
@@ -3717,13 +3720,17 @@ function lmeg_admin_shop() {
                     'none'       => '—',
                 ][$o->attribution] ?? $o->attribution;
                 $is_sub = !empty($o->subscriber_id);
+                // Contact = whatever the order carried (email first, else the phone).
+                $contact = $o->email ?: ($o->phone ?: '');
+                // Who paid = the matched fan's own email/phone (falls back to the order's).
+                $who = $is_sub ? ($o->sub_email ?: ($o->sub_phone ?: $contact)) : '';
             ?>
                 <tr>
                     <td>#<?php echo esc_html($o->order_number); ?></td>
-                    <td><?php echo esc_html($o->email ?: '—'); ?></td>
+                    <td><?php echo $contact !== '' ? esc_html($contact) : '<span style="opacity:.55;">—</span>'; ?></td>
                     <td><strong><?php echo esc_html(lmeg_format_price((int) $o->total_cents, $o->currency)); ?></strong></td>
                     <td><?php echo $is_sub
-                        ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $o->subscriber_id], admin_url('admin.php'))) . '">on the list</a>'
+                        ? '<a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $o->subscriber_id], admin_url('admin.php'))) . '">' . esc_html($who ?: 'on the list') . '</a>'
                         : '<span style="opacity:.55;">guest</span>'; ?></td>
                     <td><?php
                         if ($o->broadcast_id) {
