@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.57.7
+Stable tag: 2.57.8
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.8 =
+* Improved: admin readability. Added breathing room so the subscriber list no longer touches the bulk-actions/tag-filter toolbar above it (and similar spacing throughout). The Settings and Compose pages now have a sticky “Jump to” section bar and collapsible section headers (click a header to fold it), so you can find and skip to any section fast on the long forms.
+
 = 2.57.7 =
 * Fix: the Placeholder text color never actually reached the subscribe form — the ::placeholder pseudo was only attaching to the last selector in the group, not the embed form's fields. It now applies everywhere.
 * New: two field/card style options in Settings → Colors — "Transparent, borderless email/phone fields" and "Transparent, borderless card" — for a flat look that sits directly on your page with no box or fill.

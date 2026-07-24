@@ -34,6 +34,90 @@ function lmeg_admin_menu() {
     add_submenu_page('lmeg', 'Settings',          'Settings',          $cap, 'lmeg-settings',        'lmeg_admin_settings');
 }
 
+/**
+ * JS for the long-form pages: builds a sticky "jump to section" pill nav from
+ * the page's <h2> headers, makes each section collapsible (click the header),
+ * and highlights the section you're in as you scroll. Sections default to
+ * expanded so nothing (e.g. the Compose builder) inits while hidden.
+ */
+function lmeg_admin_sectionnav_js() {
+    return <<<'JS'
+document.addEventListener('DOMContentLoaded', function () {
+    var wrap = document.querySelector('#wpbody-content .wrap');
+    if (!wrap) return;
+    // Section headers = h2s that actually start a block of settings.
+    var h2s = Array.prototype.filter.call(wrap.querySelectorAll('h2'), function (h) {
+        return h.textContent.trim().length > 1 && h.offsetParent !== null;
+    });
+    if (h2s.length < 3) return;
+
+    var nav = document.createElement('div');
+    nav.className = 'lmeg-jumpnav';
+    var lbl = document.createElement('span');
+    lbl.className = 'lmeg-jumpnav__label';
+    lbl.textContent = 'Jump to';
+    nav.appendChild(lbl);
+
+    h2s.forEach(function (h, i) {
+        if (!h.id) h.id = 'lmeg-sec-' + i;
+        h.classList.add('lmeg-sec-h');
+
+        // Wrap everything between this h2 and the next sibling h2 so it can collapse.
+        var body = document.createElement('div');
+        body.className = 'lmeg-sec-body';
+        var n = h.nextElementSibling;
+        while (n && !(n.tagName === 'H2')) {
+            var next = n.nextElementSibling;
+            body.appendChild(n);
+            n = next;
+        }
+        h.parentNode.insertBefore(body, h.nextElementSibling);
+
+        h.addEventListener('click', function () {
+            h.classList.toggle('is-collapsed');
+            body.classList.toggle('is-collapsed');
+        });
+
+        var short = h.textContent.trim().split('—')[0].split('(')[0].trim();
+        if (short.length > 22) short = short.slice(0, 21) + '…';
+        var a = document.createElement('a');
+        a.href = '#' + h.id;
+        a.textContent = short;
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (h.classList.contains('is-collapsed')) {
+                h.classList.remove('is-collapsed');
+                body.classList.remove('is-collapsed');
+            }
+            h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            history.replaceState(null, '', '#' + h.id);
+        });
+        a.dataset.sec = h.id;
+        nav.appendChild(a);
+    });
+
+    var h1 = wrap.querySelector('h1');
+    if (h1 && h1.nextSibling) h1.parentNode.insertBefore(nav, h1.nextSibling);
+    else wrap.insertBefore(nav, wrap.firstChild);
+
+    // Scrollspy: highlight the section currently in view.
+    var links = {};
+    nav.querySelectorAll('a[data-sec]').forEach(function (a) { links[a.dataset.sec] = a; });
+    if ('IntersectionObserver' in window) {
+        var obs = new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+                if (en.isIntersecting) {
+                    Object.keys(links).forEach(function (k) { links[k].classList.remove('is-active'); });
+                    if (links[en.target.id]) links[en.target.id].classList.add('is-active');
+                }
+            });
+        }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
+        h2s.forEach(function (h) { obs.observe(h); });
+    }
+});
+JS;
+}
+
 add_action('admin_enqueue_scripts', 'lmeg_admin_assets');
 function lmeg_admin_assets($hook) {
     if (strpos((string) $hook, 'lmeg') === false) return;
@@ -56,6 +140,12 @@ function lmeg_admin_assets($hook) {
     // our scope class and leave the dark theme dormant. Re-add it in JS the
     // moment the DOM exists — this cannot be filtered away.
     wp_add_inline_script('jquery-core', "document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('lmeg-admin');});");
+    // Section jump-nav + collapsible sections on the two longest forms
+    // (Settings, Compose) so sections are easy to find and skip.
+    if (strpos((string) $hook, 'lmeg-settings') !== false || strpos((string) $hook, 'lmeg-compose') !== false) {
+        wp_add_inline_script('jquery-core', lmeg_admin_sectionnav_js());
+    }
+
     // Media picker for the logo field.
     wp_enqueue_media();
     wp_add_inline_script('jquery-core', "

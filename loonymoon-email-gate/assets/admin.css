@@ -693,3 +693,84 @@ body.lmeg-admin .wrap img[style*="border:1px solid #ddd"] {
 @media (prefers-reduced-motion: reduce) {
     body.lmeg-admin * { transition: none !important; }
 }
+
+/* ===========================================================================
+   Spacing + section navigation (readability pass)
+   ======================================================================== */
+
+/* Breathing room so the bulk-actions/filter toolbar doesn't touch the table. */
+body.lmeg-admin .tablenav.top { margin: 2px 0 16px; padding: 0; }
+body.lmeg-admin .tablenav.bottom { margin-top: 16px; }
+body.lmeg-admin .wrap table.widefat { margin-top: 12px; }
+body.lmeg-admin .wrap .form-table { margin-top: 6px; }
+body.lmeg-admin .wrap .form-table td .description,
+body.lmeg-admin .wrap p.description { margin-top: 5px; }
+/* The audience/tag picker on Compose + Segments sits above content — give it room. */
+body.lmeg-admin .lmeg-audience,
+body.lmeg-admin .lmeg-tagpicker { margin-bottom: 18px; }
+
+/* Sticky "jump to section" nav (built by JS on long pages). */
+.lmeg-jumpnav {
+    position: sticky;
+    top: 42px;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    padding: 9px 11px;
+    margin: 10px 0 24px;
+    background: color-mix(in srgb, var(--lmegA-card) 88%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--lmegA-border2);
+    border-radius: 12px;
+}
+.lmeg-jumpnav__label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lmegA-muted);
+    margin-right: 2px;
+}
+.lmeg-jumpnav a {
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 4px 11px;
+    border-radius: 999px;
+    color: var(--lmegA-muted);
+    text-decoration: none;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    transition: background .12s, color .12s;
+}
+.lmeg-jumpnav a:hover { color: var(--lmegA-text); background: var(--lmegA-bg2); }
+.lmeg-jumpnav a.is-active {
+    color: var(--lmegA-text);
+    background: color-mix(in srgb, var(--lmegA-accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--lmegA-accent) 42%, transparent);
+}
+
+/* Collapsible section headers (h2 becomes a toggle). */
+body.lmeg-admin .wrap h2.lmeg-sec-h {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    scroll-margin-top: 96px;
+}
+body.lmeg-admin .wrap h2.lmeg-sec-h::before {
+    content: '';
+    width: 7px; height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    opacity: .55;
+    transition: transform .15s;
+    margin-bottom: 3px;
+}
+body.lmeg-admin .wrap h2.lmeg-sec-h.is-collapsed::before { transform: rotate(-45deg); margin-bottom: 0; }
+body.lmeg-admin .wrap h2.lmeg-sec-h:hover { color: var(--lmegA-text); }
+.lmeg-sec-body.is-collapsed { display: none !important; }
