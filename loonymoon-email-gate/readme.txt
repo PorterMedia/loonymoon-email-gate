@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.58.4
+Stable tag: 2.58.5
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.58.5 =
+* New: Shopify orders now match a fan by PHONE as well as email — an SMS-checkout order (no email, just a cell number) is matched to your SMS subscriber by the last 10 digits, so it attributes and shows the customer instead of "guest". The webhook diagnostic also reports whether a phone was present.
+
 = 2.58.4 =
 * Diagnostic: the Shop settings now show the structure of the last order webhook (key names only, no customer data) to help confirm whether Shopify is including or redacting the buyer email.
 

@@ -400,28 +400,42 @@ function lmeg_shop_record_order($o) {
     $oid = (int) ($o['id'] ?? 0);
     if (!$oid || !empty($o['cancelled_at'])) return false;
 
-    // Webhook + API payloads spell the buyer email a few different ways.
+    // Webhook + API payloads spell the buyer email/phone a few different ways.
     $email = sanitize_email($o['email'] ?? ($o['contact_email'] ?? ($o['customer']['email'] ?? '')));
+    $phone_raw = (string) ($o['phone']
+        ?? ($o['customer']['phone']
+        ?? ($o['billing_address']['phone']
+        ?? ($o['shipping_address']['phone'] ?? ''))));
+    $phone_digits = preg_replace('/[^\d]/', '', $phone_raw);
     $total = (int) round(((float) ($o['total_price'] ?? ($o['current_total_price'] ?? 0))) * 100);
     $ordered_local = !empty($o['created_at'])
         ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($o['created_at'])))
         : current_time('mysql');
 
+    // Match the buyer to a fan: by email, then by phone (SMS-checkout orders
+    // carry no email). Phone match compares the last 10 digits so formatting
+    // and country-code differences don't matter.
     $subscriber_id = null;
     $broadcast_id  = null;
     $attribution   = 'none';
     if ($email) {
         $subscriber_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email));
-        if ($subscriber_id) {
-            $attribution = 'subscriber';
-            list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
-                (int) $subscriber_id, $ordered_local, $attribution
-            );
-            // "customer" auto-tag — first attach fires the post-purchase sequence.
-            if (function_exists('lmeg_get_or_create_tag')) {
-                $ct = lmeg_get_or_create_tag('customer', 'Customer', true, '#F59E0B');
-                if ($ct) lmeg_attach_tag((int) $subscriber_id, $ct->id);
-            }
+    }
+    if (!$subscriber_id && strlen($phone_digits) >= 10) {
+        $subscriber_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $subs WHERE phone IS NOT NULL AND phone <> '' AND RIGHT(REPLACE(phone, '+', ''), 10) = %s LIMIT 1",
+            substr($phone_digits, -10)
+        ));
+    }
+    if ($subscriber_id) {
+        $attribution = 'subscriber';
+        list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
+            (int) $subscriber_id, $ordered_local, $attribution
+        );
+        // "customer" auto-tag — first attach fires the post-purchase sequence.
+        if (function_exists('lmeg_get_or_create_tag')) {
+            $ct = lmeg_get_or_create_tag('customer', 'Customer', true, '#F59E0B');
+            if ($ct) lmeg_attach_tag((int) $subscriber_id, $ct->id);
         }
     }
 
@@ -483,10 +497,10 @@ function lmeg_maybe_handle_shopify_webhook() {
         // we can tell "no customer on the order" from "Shopify redacted the PII".
         update_option('lmeg_shop_wh_debug', wp_json_encode([
             'at'                   => current_time('mysql'),
-            'has_email_key'        => array_key_exists('email', $o),
             'email_empty'          => empty($o['email']),
-            'has_customer_key'     => array_key_exists('customer', $o),
             'customer_email_empty' => empty($o['customer']['email'] ?? null),
+            'phone_empty'          => empty($o['phone']) && empty($o['customer']['phone'] ?? null) && empty($o['billing_address']['phone'] ?? null),
+            'has_customer_key'     => array_key_exists('customer', $o),
             'top_keys'             => implode(', ', array_slice(array_keys($o), 0, 40)),
         ]), false);
     }
