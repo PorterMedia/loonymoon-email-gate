@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.4
+ * Version:     2.57.5
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.4');
+define('LMEG_VERSION',     '2.57.5');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1694,6 +1694,30 @@ function lmeg_enqueue() {
     $bsel  = ".lmeg-embed .lmeg-button$solid,.lmeg-form .lmeg-button$solid,.lmeg-paywall .lmeg-button$solid,.lmeg-gate .lmeg-button$solid,.lmeg-upgrade .lmeg-button$solid";
     $css  .= "$bsel{background:$primary !important;color:$primary_text !important;border-color:$primary !important;}";
     $css  .= str_replace('.lmeg-button', '.lmeg-button:hover', $bsel) . "{filter:brightness(.92);background:$primary !important;color:$primary_text !important;}";
+
+    // Layer 1c: form controls (email/phone pill toggle, inputs, selects) must
+    // also survive the host theme, which loves to flatten every <button>/input
+    // to its own look (Geoffroy's theme was painting both pills identical white
+    // with square corners, so you couldn't tell which was selected). We re-
+    // assert our design with !important across all plugin containers, using the
+    // effective card colors so it works on light AND dark cards. color-mix
+    // gives us the translucent track + muted inactive tab from any base color.
+    $ctext = $card_text ?: '#1a1a1a';
+    $cbg   = $card_bg   ?: '#ffffff';
+    $cont  = ['.lmeg-embed', '.lmeg-form', '.lmeg-paywall', '.lmeg-gate', '.lmeg-upgrade'];
+    $ex = function ($leaf) use ($cont) {
+        return implode(',', array_map(function ($c) use ($leaf) { return "$c $leaf"; }, $cont));
+    };
+    $css .= $ex('.lmeg-tabs') . '{display:inline-flex !important;gap:0 !important;padding:4px !important;'
+          . "background:color-mix(in srgb,$ctext 8%,transparent) !important;border-radius:999px !important;}";
+    $css .= $ex('.lmeg-tab') . '{appearance:none !important;border:0 !important;background:transparent !important;'
+          . "color:color-mix(in srgb,$ctext 58%,transparent) !important;padding:.5em 1.1em !important;"
+          . 'border-radius:999px !important;box-shadow:none !important;font-weight:600 !important;'
+          . 'cursor:pointer !important;line-height:1 !important;width:auto !important;}';
+    $css .= $ex('.lmeg-tab.is-active') . "{background:$cbg !important;color:$ctext !important;box-shadow:0 1px 3px rgba(0,0,0,.16) !important;}";
+    $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
+          . "{border-radius:8px !important;border:1px solid color-mix(in srgb,$ctext 22%,transparent) !important;"
+          . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;}";
 
     // Layer 2: Direct !important overrides — only when settings are set.
     if ($card_bg) {
