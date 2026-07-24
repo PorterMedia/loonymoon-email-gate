@@ -21,6 +21,7 @@ function lmeg_admin_menu() {
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
     add_submenu_page('lmeg', 'Release Drops',     'Release Drops',     $cap, 'lmeg-drops',           'lmeg_admin_drops');
     add_submenu_page('lmeg', 'Smart Bio',         'Smart Bio',         $cap, 'lmeg-bio',             'lmeg_admin_bio');
+    add_submenu_page('lmeg', 'Shortcodes',        'Shortcodes',        $cap, 'lmeg-shortcodes',      'lmeg_admin_shortcodes');
     add_submenu_page('lmeg', 'Members (Paid)',    'Members (Paid)',    $cap, 'lmeg-members',         'lmeg_admin_members');
     add_submenu_page('lmeg', 'Tags',              'Tags',              $cap, 'lmeg-tags',            'lmeg_admin_tags');
     add_submenu_page('lmeg', 'Segments',          'Segments',          $cap, 'lmeg-segments',        'lmeg_admin_segments');
@@ -172,6 +173,142 @@ function lmeg_render_tag_chip($tag, $opts = []) {
 
     return '<span class="lmeg-chip' . $auto_cls . $has_glyph . '" style="--lmeg-chip-color:' . $color . ';" title="' . $title . '">'
          . $icon . esc_html($label) . $count . '</span>';
+}
+
+/**
+ * Shortcodes reference — one place every artist can see (and copy) every
+ * shortcode Fanloop provides, with live IDs pulled from their own contests /
+ * surveys / drops. Fixes "how do I know what to paste on a page?".
+ */
+function lmeg_admin_shortcodes() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+
+    // Pull real IDs/slugs so examples are copy-paste ready for THIS site.
+    $contest = $wpdb->get_row("SELECT id, title FROM {$wpdb->prefix}lmeg_contests ORDER BY is_open DESC, id DESC LIMIT 1");
+    $survey  = $wpdb->get_row("SELECT id, question FROM {$wpdb->prefix}lmeg_surveys ORDER BY id DESC LIMIT 1");
+    $drop    = $wpdb->get_row("SELECT slug, title FROM {$wpdb->prefix}lmeg_drops ORDER BY id DESC LIMIT 1");
+    $cid     = $contest ? (int) $contest->id : 1;
+    $svid    = $survey ? (int) $survey->id : 1;
+    $dslug   = $drop && $drop->slug ? $drop->slug : 'new-single';
+
+    $codes = [
+        [
+            'code'  => '[fanloop_signup]',
+            'title' => 'Signup form',
+            'desc'  => 'The core email/phone opt-in. Drop it on any page, post, or widget. Fans who submit join ' . esc_html(lmeg_community()) . ' and get the welcome email.',
+            'attrs' => [
+                'style'    => 'card (default) · inline · minimal',
+                'phone'    => 'yes / no — offer SMS as well as email',
+                'heading'  => 'headline above the form',
+                'button'   => 'button label (default "Subscribe")',
+                'tiers'    => "''=free only · all=show every paid tier · 1,2=specific tier IDs",
+                'contest'  => 'a contest ID — entrants are auto-entered on signup',
+                'redirect' => 'URL to send them to after signup',
+                'success'  => 'override the per-embed thank-you message',
+            ],
+            'examples' => ['[fanloop_signup]', '[fanloop_signup style="inline" phone="yes"]', '[fanloop_signup heading="Join the club" button="Count me in"]'],
+        ],
+        [
+            'code'  => '[fanloop_premium]',
+            'title' => 'Paid membership tiers',
+            'desc'  => 'Shows your paid tiers with subscribe buttons (Stripe). Configure tiers under Tiers (Paid).',
+            'attrs' => [],
+            'examples' => ['[fanloop_premium]'],
+        ],
+        [
+            'code'  => '[fanloop_bio]',
+            'title' => 'Link-in-bio page',
+            'desc'  => 'Your link-in-bio: avatar, links, and a built-in signup. Put it on a page like /links and use that URL in your Instagram/TikTok bio. Every link is click-tracked. Configure under Smart Bio.',
+            'attrs' => [],
+            'examples' => ['[fanloop_bio]'],
+        ],
+        [
+            'code'  => '[fanloop_drop]',
+            'title' => 'Release countdown / drop',
+            'desc'  => 'A countdown page for an upcoming release with a "Notify me" opt-in; flips to streaming links the moment it drops. Configure under Release Drops.',
+            'attrs' => [
+                'slug' => 'which drop to show (newest if omitted)',
+            ],
+            'examples' => ['[fanloop_drop]', '[fanloop_drop slug="' . esc_attr($dslug) . '"]'],
+        ],
+        [
+            'code'  => '[fanloop_contest id=' . $cid . ']',
+            'title' => 'Contest entry',
+            'desc'  => 'Embeds a specific contest' . ($contest ? ' (e.g. "' . esc_html($contest->title) . '")' : '') . '. Fans enter with one tap; non-members join ' . esc_html(lmeg_community()) . ' and enter in one step. Create contests under Contests.',
+            'attrs' => ['id' => 'the contest ID (from the Contests page)'],
+            'examples' => ['[fanloop_contest id=' . $cid . ']'],
+        ],
+        [
+            'code'  => '[fanloop_survey id=' . $svid . ']',
+            'title' => 'Survey / poll',
+            'desc'  => 'A members-only poll' . ($survey ? ' (e.g. "' . esc_html(wp_trim_words($survey->question, 8)) . '")' : '') . ' with live result bars. Create surveys under Surveys.',
+            'attrs' => ['id' => 'the survey ID (from the Surveys page)'],
+            'examples' => ['[fanloop_survey id=' . $svid . ']'],
+        ],
+        [
+            'code'  => '[fanloop_tour]',
+            'title' => 'Tour dates',
+            'desc'  => 'Lists your upcoming shows with presale (members-only optional) and ticket buttons — both click-tracked to fan timelines. Manage dates under Tour.',
+            'attrs' => [
+                'past'  => 'yes to include past dates',
+                'limit' => 'max dates to show (default 50)',
+            ],
+            'examples' => ['[fanloop_tour]', '[fanloop_tour past="yes" limit="10"]'],
+        ],
+    ];
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Shortcodes</h1>
+        <p class="description" style="max-width:760px;">Paste any of these into a WordPress page, post, or block to drop a Fanloop feature onto your site. Click a code to copy it. Examples use your own IDs where they apply.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:18px;max-width:1100px;">
+            <?php foreach ($codes as $c) : ?>
+            <div class="lmeg-stat" style="display:flex;flex-direction:column;gap:8px;">
+                <div style="font-weight:700;font-size:15px;"><?php echo esc_html($c['title']); ?></div>
+                <button type="button" class="lmeg-sc-copy" data-copy="<?php echo esc_attr($c['code']); ?>"
+                    style="text-align:left;cursor:pointer;font-family:monospace;font-size:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:8px 11px;color:inherit;">
+                    <?php echo esc_html($c['code']); ?> <span style="opacity:.5;">⧉ copy</span>
+                </button>
+                <p style="margin:2px 0;font-size:13px;opacity:.85;"><?php echo $c['desc']; ?></p>
+                <?php if (!empty($c['attrs'])) : ?>
+                    <details style="font-size:12.5px;">
+                        <summary style="cursor:pointer;opacity:.75;">Options</summary>
+                        <table style="margin-top:6px;border-collapse:collapse;">
+                            <?php foreach ($c['attrs'] as $k => $v) : ?>
+                                <tr><td style="padding:3px 10px 3px 0;vertical-align:top;"><code><?php echo esc_html($k); ?></code></td>
+                                    <td style="padding:3px 0;opacity:.8;"><?php echo esc_html($v); ?></td></tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </details>
+                <?php endif; ?>
+                <?php if (count($c['examples']) > 1) : ?>
+                    <div style="font-size:12px;opacity:.7;margin-top:2px;">Examples:</div>
+                    <?php foreach ($c['examples'] as $ex) : ?>
+                        <button type="button" class="lmeg-sc-copy" data-copy="<?php echo esc_attr($ex); ?>"
+                            style="text-align:left;cursor:pointer;font-family:monospace;font-size:12px;background:none;border:1px dashed rgba(255,255,255,.14);border-radius:6px;padding:5px 9px;color:inherit;"><?php echo esc_html($ex); ?></button>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <p class="description" style="margin-top:20px;max-width:760px;">Older <code>[lmeg_&hellip;]</code> and <code>[loony_&hellip;]</code> shortcodes still work — the <code>[fanloop_&hellip;]</code> names are just the current, brandable set.</p>
+    </div>
+    <script>
+    (function () {
+        document.querySelectorAll('.lmeg-sc-copy').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var t = b.getAttribute('data-copy');
+                navigator.clipboard && navigator.clipboard.writeText(t);
+                var prev = b.innerHTML;
+                b.innerHTML = '✓ copied';
+                setTimeout(function () { b.innerHTML = prev; }, 1200);
+            });
+        });
+    })();
+    </script>
+    <?php
 }
 
 /**

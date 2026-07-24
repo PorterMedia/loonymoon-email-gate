@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.57.0
+Stable tag: 2.57.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.1 =
+* New: a Shortcodes reference page (Fanloop → Shortcodes) — every shortcode in one place with a plain-English description, click-to-copy codes, an Options list, and examples pre-filled with your own contest/survey/drop IDs. No more hunting across pages to remember what to paste.
+
 = 2.57.0 =
 * White-label: the plugin is now "Fanloop" and every artist can brand their own fan community. New Settings → Branding: a Community name (fan-facing, e.g. "the LOONYBIN") and Artist name (e.g. "LOONY", used in release-drop sign-offs + the AI assistant). All fan-facing copy — signup confirmations, the bio page, welcome text, drop emails — now flows from those fields; blank falls back to your site name. Existing installs are seeded with their current wording so nothing fans see changes. Admin screens and the plugin now read "Fanloop". New shortcode aliases [fanloop_signup]/[fanloop_bio]/[fanloop_drop]/[fanloop_contest]/[fanloop_survey]/[fanloop_tour] — the old [lmeg_*]/[loony_*] shortcodes keep working.
 
