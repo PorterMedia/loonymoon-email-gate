@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.57.9
+Stable tag: 2.57.10
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.10 =
+* Fix: the phone country picker was clipping the country name VERTICALLY (you only saw the top of the text) on themes that pin a fixed height on selects — our field padding then squeezed the text line. Fields now grow to fit their content (height:auto), so the whole country name shows. Reverted the previous full-width row change — the original inline layout is back.
+
 = 2.57.9 =
 * Fix: on the subscribe form, the phone country picker was too narrow so country names were cut off. The country selector now gets its own full-width row (dial code + number sit below it), so names like “United Kingdom (+44)” show in full.
 * New: Default country in Settings — pick which country is selected first in the phone & address pickers (it also floats to the top of the list). The dial code + hidden country field follow it automatically.

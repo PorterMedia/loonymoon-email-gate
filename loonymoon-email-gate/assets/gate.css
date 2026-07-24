@@ -100,18 +100,10 @@
 /* Phone row: country select + dial + number */
 .lmeg-phone-row {
     display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-areas:
-        "country country"
-        "dial    number";
+    grid-template-columns: minmax(120px, 1fr) auto 2fr;
     gap: 0.4em;
     align-items: stretch;
 }
-/* Country selector gets a full-width row of its own so long names like
-   "United Kingdom (+44)" are never clipped; dial + number sit below it. */
-.lmeg-phone-row .lmeg-select { grid-area: country; width: 100%; }
-.lmeg-phone-row .lmeg-dial   { grid-area: dial; }
-.lmeg-phone-row .lmeg-input  { grid-area: number; }
 
 .lmeg-dial {
     display: inline-flex;
@@ -205,7 +197,7 @@
 
 @media (max-width: 480px) {
     .lmeg-address-block { grid-template-columns: 1fr; }
-    /* phone-row already stacks (country on its own row) — no override needed */
+    .lmeg-phone-row    { grid-template-columns: 1fr auto 1fr; }
 }
 
 /* Upgrade CTA — shown to free members hitting a paid post */

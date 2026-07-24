@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.9
+ * Version:     2.57.10
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.9');
+define('LMEG_VERSION',     '2.57.10');
 define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1743,14 +1743,19 @@ function lmeg_enqueue() {
           . 'width:auto !important;min-height:0 !important;box-sizing:border-box !important;}';
     $css .= $ex('.lmeg-tab.is-active') . "{background:$cbg !important;color:$ctext !important;box-shadow:0 1px 3px rgba(0,0,0,.16) !important;}";
     // Fields — filled by default, or transparent + borderless when chosen.
+    // height:auto + min-height:0 + line-height are the fix for themes that pin
+    // a fixed height on selects/inputs — with our padding that clipped the text
+    // vertically (you only saw the top of the country name). Letting the field
+    // grow to its content keeps the whole line visible.
+    $fbox = 'height:auto !important;min-height:0 !important;line-height:1.35 !important;margin:0 !important;box-sizing:border-box !important;';
     if ($fields_transparent) {
         $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
               . "{background:transparent !important;border:0 !important;border-radius:8px !important;"
-              . "color:$ctext !important;padding:.6em .2em !important;margin:0 !important;box-sizing:border-box !important;}";
+              . "color:$ctext !important;padding:.6em .2em !important;$fbox}";
     } else {
         $css .= $ex('.lmeg-input') . ',' . $ex('.lmeg-select')
               . "{border-radius:8px !important;border:1px solid color-mix(in srgb,$ctext 22%,transparent) !important;"
-              . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;margin:0 !important;box-sizing:border-box !important;}";
+              . "background:$cbg !important;color:$ctext !important;padding:.7em .95em !important;$fbox}";
     }
     // Placeholder color — attach the pseudo to EACH selector (appending it to
     // the comma-joined group only styles the LAST one — that was the bug where
