@@ -818,12 +818,21 @@ function lmeg_confirm_token($sub_id) {
 
 function lmeg_send_confirm_email($sub) {
     if (empty($sub->email)) return;
+    // Render in the fan's language.
+    if (function_exists('lmeg_lang_override') && !empty($sub->lang)) lmeg_lang_override($sub->lang);
+    $t = function_exists('lmeg_t') ? 'lmeg_t' : function ($k) {
+        return ['confirm_intro' => "One tap and you're in:", 'confirm_signup' => 'Confirm my signup', 'confirm_ignore' => "If you didn't sign up, just ignore this email."][$k] ?? $k;
+    };
     $url  = add_query_arg('lmeg_confirm', (int) $sub->id . '-' . lmeg_confirm_token($sub->id), home_url('/'));
-    $body = '<p style="font-size:16px;">One tap and you\'re in:</p>'
-          . '<p style="margin:22px 0;"><a href="' . esc_url($url) . '" style="display:inline-block;padding:13px 30px;border-radius:8px;font-weight:600;text-decoration:none;color:#ffffff;background:#d05fa2;">Confirm my signup</a></p>'
-          . '<p style="opacity:.7;">If you didn\'t sign up, just ignore this email.</p>';
+    $body = '<p style="font-size:16px;">' . esc_html($t('confirm_intro')) . '</p>'
+          . '<p style="margin:22px 0;"><a href="' . esc_url($url) . '" style="display:inline-block;padding:13px 30px;border-radius:8px;font-weight:600;text-decoration:none;color:#ffffff;background:#d05fa2;">' . esc_html($t('confirm_signup')) . '</a></p>'
+          . '<p style="opacity:.7;">' . esc_html($t('confirm_ignore')) . '</p>';
+    $subject = function_exists('lmeg_t')
+        ? (lmeg_current_lang() === 'fr' ? 'Confirme ton inscription' : 'Confirm your signup')
+        : 'Confirm your signup';
     list($text, $html) = lmeg_build_email_with_footer($body, lmeg_unsub_url((int) $sub->id, $sub->email));
-    lmeg_email_send($sub->email, 'Confirm your signup', $text, $html);
+    lmeg_email_send($sub->email, $subject, $text, $html);
+    if (function_exists('lmeg_lang_override')) lmeg_lang_override('');
 }
 
 add_action('init', 'lmeg_maybe_handle_confirm');

@@ -1978,6 +1978,12 @@ function lmeg_admin_settings() {
             'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: ('Thank you for joining ' . lmeg_community()),
             'default_test_email'      => sanitize_email(wp_unslash($_POST['default_test_email'] ?? '')),
             'default_country'         => preg_match('/^[A-Za-z]{2}$/', $_POST['default_country'] ?? '') ? strtoupper(sanitize_text_field(wp_unslash($_POST['default_country']))) : 'US',
+            'languages'               => lmeg_sanitize_languages($_POST['languages'] ?? []),
+            'default_lang'            => (function () {
+                $d = strtolower(substr((string) sanitize_text_field(wp_unslash($_POST['default_lang'] ?? 'en')), 0, 2));
+                return array_key_exists($d, lmeg_known_langs()) ? $d : 'en';
+            })(),
+            'i18n'                    => lmeg_sanitize_i18n($_POST['i18n'] ?? []),
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
             'email_footer_note'       => sanitize_text_field(wp_unslash($_POST['email_footer_note'] ?? '')),
@@ -2097,6 +2103,57 @@ function lmeg_admin_settings() {
                     <td><input type="text" name="artist_name" id="artist_name" value="<?php echo esc_attr($s['artist_name'] ?? ''); ?>" class="regular-text" placeholder="<?php echo esc_attr(get_bloginfo('name')); ?>" />
                         <p class="description">The act — e.g. <em>LOONY</em>. Signs off release-drop emails and grounds the AI assistant. Blank = your site name.</p></td></tr>
             </table>
+
+            <h2>Languages</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Enabled languages</th>
+                    <td>
+                        <input type="hidden" name="languages[]" value="en" />
+                        <?php $enabled_now = $s['languages'] ?? ['en']; foreach (lmeg_known_langs() as $code => $name) : ?>
+                            <label style="margin-right:16px;white-space:nowrap;"><input type="checkbox" name="languages[]" value="<?php echo esc_attr($code); ?>" <?php checked(in_array($code, $enabled_now, true) || $code === 'en'); ?> <?php disabled($code === 'en'); ?> /> <?php echo esc_html($name); ?></label>
+                        <?php endforeach; ?>
+                        <p class="description">English is always on. Tick a language to offer it, then <strong>Save</strong> to reveal its translation fields below.
+                        <?php if (lmeg_site_lang_plugin()) : ?><br><strong style="color:#34d399;">Detected <?php echo esc_html(strtoupper(lmeg_site_lang_plugin())); ?> on this site</strong> — Fanloop follows your site's own language switcher automatically (no separate toggle shown to fans).<?php else : ?><br>Fans see a small language toggle on the forms.<?php endif; ?></p>
+                    </td></tr>
+                <tr><th><label for="default_lang">Default language</label></th>
+                    <td>
+                        <select name="default_lang" id="default_lang">
+                            <?php foreach (lmeg_enabled_langs() as $code) : ?>
+                                <option value="<?php echo esc_attr($code); ?>" <?php selected(lmeg_default_lang(), $code); ?>><?php echo esc_html(lmeg_known_langs()[$code]); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Used when a fan's language is unknown. Your existing copy below (Form copy, Emails, etc.) is the default language's text.</p>
+                    </td></tr>
+            </table>
+
+            <?php
+            // A translation panel for every enabled non-default language.
+            $tr_others = array_values(array_diff(lmeg_enabled_langs(), [lmeg_default_lang()]));
+            $rich_keys = ['welcome_body', 'form_message', 'soft_paywall_message'];
+            foreach ($tr_others as $tlang) :
+                $tname = lmeg_known_langs()[$tlang] ?? strtoupper($tlang);
+                ?>
+                <h2><?php echo esc_html($tname); ?> translations</h2>
+                <p class="description" style="margin:-4px 0 6px;">Type the <?php echo esc_html($tname); ?> version of each. Leave any field blank to fall back to the default-language text.</p>
+                <table class="form-table" role="presentation">
+                    <?php foreach (lmeg_translatable_copy_keys() as $tkey => $tlabel) :
+                        $base = (string) ($s[$tkey] ?? '');
+                        $val  = (string) ($s['i18n'][$tlang][$tkey] ?? '');
+                        $rich = in_array($tkey, $rich_keys, true);
+                        $name = 'i18n[' . $tlang . '][' . $tkey . ']';
+                    ?>
+                        <tr><th style="font-weight:600;"><?php echo esc_html($tlabel); ?>
+                            <?php if ($base !== '') : ?><br><span class="description" style="font-weight:400;">EN: <?php echo esc_html(mb_substr(trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($base))), 0, 70)); ?></span><?php endif; ?></th>
+                            <td>
+                                <?php if ($rich) : ?>
+                                    <textarea name="<?php echo esc_attr($name); ?>" rows="3" class="large-text"><?php echo esc_textarea($val); ?></textarea>
+                                <?php else : ?>
+                                    <input type="text" name="<?php echo esc_attr($name); ?>" class="regular-text" value="<?php echo esc_attr($val); ?>" />
+                                <?php endif; ?>
+                            </td></tr>
+                    <?php endforeach; ?>
+                </table>
+            <?php endforeach; ?>
 
             <h2>Form copy</h2>
             <table class="form-table" role="presentation">

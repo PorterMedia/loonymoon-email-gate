@@ -27,7 +27,7 @@ function lmeg_shortcode_signup($atts = []) {
     $atts = shortcode_atts([
         'heading'  => '',
         'message'  => '',
-        'button'   => 'Subscribe',
+        'button'   => '',
         'style'    => 'card',       // card | inline | minimal
         'phone'    => 'no',         // yes | no
         'consent'  => 'auto',       // auto (from settings) | none | custom text
@@ -38,6 +38,9 @@ function lmeg_shortcode_signup($atts = []) {
         'contest'  => '',           // contest ID to auto-enter after signup
     ], $atts, 'lmeg_signup');
 
+    // Default button label follows the current language when the embed didn't set one.
+    if ($atts['button'] === '') $atts['button'] = function_exists('lmeg_t') ? lmeg_t('subscribe') : 'Subscribe';
+
     // Prefill from the URL (?lmeg_email= / ?lmeg_phone=) so a link can arrive
     // with the address already filled in.
     $prefill_email = isset($_GET['lmeg_email']) ? sanitize_email(wp_unslash($_GET['lmeg_email'])) : '';
@@ -47,7 +50,7 @@ function lmeg_shortcode_signup($atts = []) {
     // Success copy: per-embed attr wins; otherwise the site-wide setting.
     if ($atts['success'] === '') {
         $s_all = lmeg_get_settings();
-        $atts['success'] = $s_all['signup_success_message'] ?: ('Thank you for joining ' . lmeg_community());
+        $atts['success'] = (function_exists('lmeg_scopy') ? lmeg_scopy('signup_success_message') : ($s_all['signup_success_message'] ?? '')) ?: ('Thank you for joining ' . lmeg_community());
     }
 
     // Resolve tier list. Empty = no tiers (current behavior); "all" = every
@@ -112,6 +115,7 @@ function lmeg_shortcode_signup($atts = []) {
     ob_start();
     ?>
     <div id="<?php echo esc_attr($id); ?>" class="lmeg-embed lmeg-embed--<?php echo esc_attr($style); ?>">
+        <?php echo lmeg_lang_switcher(); ?>
         <?php if ($atts['heading']) : ?>
             <div class="lmeg-embed__heading"><?php echo esc_html($atts['heading']); ?></div>
         <?php endif; ?>
@@ -125,6 +129,7 @@ function lmeg_shortcode_signup($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
+            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
@@ -143,24 +148,24 @@ function lmeg_shortcode_signup($atts = []) {
             <?php else : ?>
                 <?php if ($show_phone) : ?>
                     <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
-                        <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
-                        <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
+                        <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email"><?php echo esc_html(lmeg_t('email')); ?></button>
+                        <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone"><?php echo esc_html(lmeg_t('phone')); ?></button>
                     </div>
                 <?php endif; ?>
 
                 <?php if ($contest_join) : ?><input type="hidden" name="lmeg_contest_join" value="<?php echo (int) $contest_join; ?>" /><?php endif; ?>
                 <div class="lmeg-embed__row">
                     <div class="lmeg-field lmeg-field-email">
-                        <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email">Email</label>
+                        <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email"><?php echo esc_html(lmeg_t('email')); ?></label>
                         <input type="email" id="<?php echo esc_attr($id); ?>-email" name="email" required autocomplete="email"
-                               placeholder="you@example.com" class="lmeg-input" value="<?php echo esc_attr($prefill_email); ?>" />
+                               placeholder="<?php echo esc_attr(lmeg_t('email_ph')); ?>" class="lmeg-input" value="<?php echo esc_attr($prefill_email); ?>" />
                     </div>
 
                     <?php if ($show_phone) : ?>
                         <div class="lmeg-field lmeg-field-phone" hidden>
-                            <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-phone">Phone</label>
+                            <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-phone"><?php echo esc_html(lmeg_t('phone')); ?></label>
                             <div class="lmeg-phone-row">
-                                <select name="phone_country" class="lmeg-select" aria-label="Country">
+                                <select name="phone_country" class="lmeg-select" aria-label="<?php echo esc_attr(lmeg_t('country')); ?>">
                                     <?php foreach ($countries as $c) :
                                         $sel = ($c[0] === lmeg_default_country()) ? ' selected' : '';
                                     ?>
@@ -171,7 +176,7 @@ function lmeg_shortcode_signup($atts = []) {
                                 </select>
                                 <span class="lmeg-dial" aria-hidden="true">+1</span>
                                 <input type="tel" id="<?php echo esc_attr($id); ?>-phone" name="phone" inputmode="tel"
-                                       placeholder="555 123 4567" class="lmeg-input" autocomplete="tel-national" value="<?php echo esc_attr($prefill_phone); ?>" />
+                                       placeholder="<?php echo esc_attr(lmeg_t('phone_ph')); ?>" class="lmeg-input" autocomplete="tel-national" value="<?php echo esc_attr($prefill_phone); ?>" />
                             </div>
                         </div>
                     <?php endif; ?>
@@ -297,6 +302,7 @@ function lmeg_shortcode_premium($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
+            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>

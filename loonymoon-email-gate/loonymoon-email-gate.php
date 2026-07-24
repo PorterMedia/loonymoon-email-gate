@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.57.10
+ * Version:     2.58.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.57.10');
-define('LMEG_DB_VERSION',  '2.57.0');
+define('LMEG_VERSION',     '2.58.0');
+define('LMEG_DB_VERSION',  '2.58.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -69,6 +69,7 @@ function lmeg_load_env_file() {
 }
 lmeg_load_env_file();
 
+require_once LMEG_PLUGIN_DIR . 'includes/i18n.php';
 require_once LMEG_PLUGIN_DIR . 'includes/security.php';
 require_once LMEG_PLUGIN_DIR . 'includes/tags.php';
 require_once LMEG_PLUGIN_DIR . 'includes/sending.php';
@@ -216,6 +217,7 @@ function lmeg_create_tables() {
         email_status VARCHAR(12) NOT NULL DEFAULT 'ok',
         email_status_at DATETIME DEFAULT NULL,
         confirmed_at DATETIME DEFAULT NULL,
+        lang VARCHAR(5) DEFAULT NULL,
         member_tier_id BIGINT(20) UNSIGNED DEFAULT NULL,
         member_status VARCHAR(20) NOT NULL DEFAULT 'free',
         stripe_customer_id VARCHAR(64) DEFAULT NULL,
@@ -662,6 +664,9 @@ function lmeg_default_settings() {
         'signup_success_message'   => 'Thank you for joining ' . lmeg_community(),
         'default_test_email'       => 'ian@portermedia.ca',
         'default_country'          => 'US',   // preselected phone/address country
+        'languages'                => ['en'], // enabled consumer-facing languages
+        'default_lang'             => 'en',
+        'i18n'                     => [],     // ['fr' => ['form_heading'=>'…', …]]
         // Branded email template
         'email_template_enabled'   => 1,
         'email_footer_note'        => "You're receiving this because you joined " . lmeg_community() . ".",
@@ -1116,8 +1121,12 @@ function lmeg_maybe_send_welcome($subscriber_id) {
     // re-invokes this).
     if (!empty($s['double_optin']) && empty($sub->confirmed_at)) return;
 
-    $subject = lmeg_render_merge_tags($s['welcome_subject'] ?: 'Welcome', $sub);
-    $body    = lmeg_render_merge_tags($s['welcome_body']    ?: '', $sub);
+    // Render in the fan's saved language (falls back to base copy).
+    $flang = function_exists('lmeg_scopy') ? (!empty($sub->lang) ? $sub->lang : null) : null;
+    $wsub  = function_exists('lmeg_scopy') ? lmeg_scopy('welcome_subject', $flang) : ($s['welcome_subject'] ?? '');
+    $wbody = function_exists('lmeg_scopy') ? lmeg_scopy('welcome_body', $flang)    : ($s['welcome_body'] ?? '');
+    $subject = lmeg_render_merge_tags($wsub ?: 'Welcome', $sub);
+    $body    = lmeg_render_merge_tags($wbody ?: '', $sub);
 
     if (function_exists('lmeg_email_send')) {
         list($text, $html) = lmeg_build_email_with_footer($body, lmeg_unsub_url($sub->id, $sub->email));
@@ -1275,8 +1284,9 @@ function lmeg_render_form() {
     ?>
     <div class="lmeg-gate" role="region" aria-label="Unlock content">
         <div class="lmeg-gate-inner">
-            <h3 class="lmeg-heading"><?php echo esc_html($s['form_heading']); ?></h3>
-            <p class="lmeg-message"><?php echo esc_html($s['form_message']); ?></p>
+            <?php echo lmeg_lang_switcher(); ?>
+            <h3 class="lmeg-heading"><?php echo esc_html(lmeg_scopy('form_heading')); ?></h3>
+            <p class="lmeg-message"><?php echo esc_html(lmeg_scopy('form_message')); ?></p>
 
             <form class="lmeg-form" method="post" action="<?php echo $action; ?>" novalidate>
                 <input type="hidden" name="action"        value="lmeg_submit" />
@@ -1285,10 +1295,11 @@ function lmeg_render_form() {
                 <input type="hidden" name="redirect"      value="<?php echo esc_url(get_permalink($post_id) ?: home_url('/')); ?>" />
                 <input type="hidden" name="contact_type"  value="email" />
                 <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
+                <input type="hidden" name="lmeg_lang"      value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
 
                 <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
-                    <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email">Email</button>
-                    <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone">Phone</button>
+                    <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email"><?php echo esc_html(lmeg_t('email')); ?></button>
+                    <button type="button" class="lmeg-tab"           role="tab" aria-selected="false" data-channel="phone"><?php echo esc_html(lmeg_t('phone')); ?></button>
                 </div>
 
                 <div class="lmeg-hp-wrap" aria-hidden="true">
@@ -1325,7 +1336,7 @@ function lmeg_render_form() {
                     <button type="button" class="lmeg-address-toggle" aria-expanded="false">Add address info</button>
                     <div class="lmeg-address-block" hidden>
                         <?php if (!empty($s['address_message'])) : ?>
-                            <p class="lmeg-address-message"><?php echo esc_html($s['address_message']); ?></p>
+                            <p class="lmeg-address-message"><?php echo esc_html(lmeg_scopy('address_message')); ?></p>
                         <?php endif; ?>
                         <?php $req = !empty($s['address_required']) ? 'required' : ''; ?>
                         <div class="lmeg-field lmeg-field-street">
@@ -1356,8 +1367,8 @@ function lmeg_render_form() {
                     </div>
                 <?php endif; ?>
 
-                <button type="submit" class="lmeg-button"><?php echo esc_html($s['button_text']); ?></button>
-                <p class="lmeg-consent"><?php echo esc_html($s['consent_text']); ?></p>
+                <button type="submit" class="lmeg-button"><?php echo esc_html(lmeg_scopy('button_text')); ?></button>
+                <p class="lmeg-consent"><?php echo esc_html(lmeg_scopy('consent_text')); ?></p>
             </form>
         </div>
     </div>
@@ -1372,6 +1383,11 @@ function lmeg_render_form() {
 add_action('admin_post_nopriv_lmeg_submit', 'lmeg_handle_submit');
 add_action('admin_post_lmeg_submit',         'lmeg_handle_submit');
 function lmeg_handle_submit() {
+    // Lock the render language to the fan's choice from the form, so the new
+    // subscriber row (and the welcome email) is stamped with their language.
+    if (!empty($_POST['lmeg_lang']) && function_exists('lmeg_lang_override')) {
+        lmeg_lang_override(sanitize_key(wp_unslash($_POST['lmeg_lang'])));
+    }
     $posted_email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
 
     // Nonce: normally required, BUT full-page caching (very common on WP hosts)
@@ -1637,6 +1653,7 @@ function lmeg_store_subscriber($data) {
             'ip'           => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
             'user_agent'   => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
             'referrer'     => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
+            'lang'         => function_exists('lmeg_current_lang') ? lmeg_current_lang() : null,
             'created_at'   => current_time('mysql'),
         ]);
         $row_id = (int) $wpdb->insert_id;
