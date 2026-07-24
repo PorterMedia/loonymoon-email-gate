@@ -165,7 +165,7 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id, $source = 'br
               : ($source === 'sequence' ? 'sequence-' . (int) $ref : 'welcome');
 
     if (!empty($s['tracking_clicks'])) {
-        $utm_source = sanitize_title($s['utm_source'] ?? '') ?: 'loonybin';
+        $utm_source = sanitize_title($s['utm_source'] ?? '') ?: (sanitize_title(lmeg_community()) ?: 'fanloop');
         $html = preg_replace_callback(
             '/href\s*=\s*(["\'])(https?:\/\/[^"\']+)\1/i',
             function ($m) use ($broadcast_id, $subscriber_id, $utm_source, $source, $ref, $campaign) {

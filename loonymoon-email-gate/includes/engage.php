@@ -467,7 +467,7 @@ function lmeg_shortcode_contest($atts = []) {
         <?php else : ?>
             <?php
             // Everyone enters with just an email — new fans are added to the
-            // loonybin AND entered; existing fans just get entered. No sign-in.
+            // the list AND entered; existing fans just get entered. No sign-in.
             echo function_exists('lmeg_shortcode_signup') ? lmeg_shortcode_signup([
                 'contest' => $cid,
                 'phone'   => 'yes',

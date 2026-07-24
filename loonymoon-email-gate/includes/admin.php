@@ -110,9 +110,9 @@ function lmeg_admin_app_bar() {
     <div class="lmeg-appbar">
         <a class="lmeg-appbar__brand" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-overview')); ?>">
             <span class="lmeg-appbar__dot" aria-hidden="true"></span>
-            loonybin
+            <?php echo esc_html(lmeg_product()); ?>
         </a>
-        <nav class="lmeg-appbar__nav" aria-label="Loonybin sections">
+        <nav class="lmeg-appbar__nav" aria-label="Fanloop sections">
             <?php foreach ($items as $slug => $label) : ?>
                 <a class="lmeg-appbar__link<?php echo $current === $slug ? ' is-active' : ''; ?>"
                    href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>"><?php echo esc_html($label); ?></a>
@@ -1341,7 +1341,7 @@ function lmeg_admin_compose() {
                                         return;
                                     }
                                     try { b = window.LMEGBuilder.init(root, 'body_email'); }
-                                    catch(e){ if (window.console && console.error) console.error('Loonybin builder failed to initialize:', e); }
+                                    catch(e){ if (window.console && console.error) console.error('Fanloop builder failed to initialize:', e); }
                                 })();
                             }
                             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
@@ -2123,11 +2123,11 @@ function lmeg_admin_settings() {
             <h2>Email template</h2>
             <table class="form-table" role="presentation">
                 <tr><th>Branded template</th>
-                    <td><label><input type="checkbox" name="email_template_enabled" value="1" <?php checked($s['email_template_enabled'] ?? 1); ?> /> Wrap all outgoing emails in the branded loonybin template</label>
+                    <td><label><input type="checkbox" name="email_template_enabled" value="1" <?php checked($s['email_template_enabled'] ?? 1); ?> /> Wrap all outgoing emails in your branded email template</label>
                         <p class="description">Cream backdrop, white card with your logo up top, links and the accent rule in your primary color (Settings → Colors → Primary button). Applies to broadcasts, welcome emails, magic links, and sequences. Unchecked = plain text-style emails.</p></td></tr>
                 <tr><th><label for="email_footer_note">Footer note</label></th>
                     <td><input type="text" name="email_footer_note" id="email_footer_note" class="regular-text" value="<?php echo esc_attr($s['email_footer_note'] ?? ''); ?>" />
-                        <p class="description">Small line above the unsubscribe link, e.g. "You're receiving this because you joined the loonybin."</p></td></tr>
+                        <p class="description">Small line above the unsubscribe link, e.g. &ldquo;You&rsquo;re receiving this because you joined ' . esc_html(lmeg_community()) . '.&rdquo;</p></td></tr>
             </table>
 
             <h2>Twilio (SMS)</h2>

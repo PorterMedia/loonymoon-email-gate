@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.57.1
+Stable tag: 2.57.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.2 =
+* Fix: the admin app-bar brand (next to the nav) still read "loonybin" — now shows "Fanloop". Also cleaned the last few stray "loonybin" mentions in the email-template setting label and the UTM-source fallback, which now follow your branding.
+
 = 2.57.1 =
 * New: a Shortcodes reference page (Fanloop → Shortcodes) — every shortcode in one place with a plain-English description, click-to-copy codes, an Options list, and examples pre-filled with your own contest/survey/drop IDs. No more hunting across pages to remember what to paste.
 
