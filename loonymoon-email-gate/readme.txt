@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.59.0
+Stable tag: 2.59.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.59.1 =
+* New: one-click "Connect Instagram" in Settings → Instagram. Save your Meta App ID + Secret, click Connect, approve on Meta's screen — Fanloop grabs a long-lived token, finds your Instagram Business account, and auto-subscribes the messages + comments webhook. No more copying tokens or hand-wiring the webhook. Manual token entry is still available under "Connect manually instead."
+
 = 2.59.0 =
 * New: Instagram comment-to-DM — when someone comments your keyword on a post or reel, Fanloop auto-DMs them the link (Meta's private-reply), with an optional public reply on the comment. Turn it on per rule with "Also trigger on comments."
 * New: Instagram DMs capture fans — a rule can "Ask for their email," and when the fan sends it they're created as a real subscriber (welcome email + sequences fire), tagged "Instagram" (plus any custom tag you set), and their whole DM/comment thread is linked to their fan profile and timeline.

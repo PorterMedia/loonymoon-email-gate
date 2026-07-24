@@ -426,6 +426,188 @@ function lmeg_ig_verify() {
 }
 
 /* ---------------------------------------------------------------------------
+ * One-click connect — Facebook Login OAuth. The artist clicks "Connect
+ * Instagram", approves on Meta's screen, and we exchange the code for a
+ * long-lived Page token, discover their IG business account, store both, and
+ * auto-subscribe the webhook. No token/ID copying.
+ *
+ * Needs an App ID + App Secret saved first (Meta app → Settings → Basic).
+ * The redirect URI below must be listed in the app's Facebook Login →
+ * "Valid OAuth Redirect URIs".
+ * ------------------------------------------------------------------------- */
+
+/** The single redirect URI used for both the authorize + token-exchange legs. */
+function lmeg_ig_oauth_redirect_uri() {
+    return add_query_arg('lmeg_ig_oauth', 'callback', home_url('/'));
+}
+
+/** Kick off the OAuth flow (admin-post, nonce-protected). */
+add_action('admin_post_lmeg_ig_oauth_start', 'lmeg_ig_oauth_start');
+function lmeg_ig_oauth_start() {
+    if (!current_user_can('manage_options')) wp_die('Not allowed.');
+    check_admin_referer('lmeg_ig_oauth');
+    $s    = lmeg_get_settings();
+    $back = admin_url('admin.php?page=lmeg-settings');
+    if (empty($s['ig_app_id']) || empty($s['ig_app_secret'])) {
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'noapp', $back));
+        exit;
+    }
+    $state = wp_generate_password(24, false);
+    set_transient('lmeg_ig_oauth_state', $state, 15 * MINUTE_IN_SECONDS);
+    $url = 'https://www.facebook.com/v21.0/dialog/oauth?' . http_build_query([
+        'client_id'     => $s['ig_app_id'],
+        'redirect_uri'  => lmeg_ig_oauth_redirect_uri(),
+        'state'         => $state,
+        'response_type' => 'code',
+        'scope'         => 'instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_show_list,pages_manage_metadata,pages_read_engagement,business_management',
+    ]);
+    wp_redirect($url);
+    exit;
+}
+
+/** Handle Meta's redirect back to us. */
+add_action('init', 'lmeg_ig_maybe_oauth_callback');
+function lmeg_ig_maybe_oauth_callback() {
+    if (($_GET['lmeg_ig_oauth'] ?? '') !== 'callback') return;
+    $back  = admin_url('admin.php?page=lmeg-settings');
+    $state = get_transient('lmeg_ig_oauth_state');
+    delete_transient('lmeg_ig_oauth_state');
+
+    // The user returning from Meta is our admin; the state binds the round-trip.
+    if (!current_user_can('manage_options')
+        || empty($_GET['state']) || !$state
+        || !hash_equals((string) $state, (string) wp_unslash($_GET['state']))) {
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'state', $back));
+        exit;
+    }
+    if (!empty($_GET['error'])) {
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'denied', $back));
+        exit;
+    }
+    if (empty($_GET['code'])) {
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'nocode', $back));
+        exit;
+    }
+    $r = lmeg_ig_oauth_complete(sanitize_text_field(wp_unslash($_GET['code'])));
+    if (is_wp_error($r)) {
+        set_transient('lmeg_ig_oauth_msg', $r->get_error_message(), 5 * MINUTE_IN_SECONDS);
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'exchange', $back));
+        exit;
+    }
+    set_transient('lmeg_ig_oauth_msg', $r, 5 * MINUTE_IN_SECONDS);
+    wp_safe_redirect(add_query_arg('ig_connected', '1', $back));
+    exit;
+}
+
+/** Exchange code → long-lived Page token + IG account id, then subscribe webhook. */
+function lmeg_ig_oauth_complete($code) {
+    $s = lmeg_get_settings();
+    $redirect = lmeg_ig_oauth_redirect_uri();
+
+    // 1) code → short-lived user token.
+    $resp = wp_remote_get(LMEG_IG_GRAPH . '/oauth/access_token?' . http_build_query([
+        'client_id'     => $s['ig_app_id'],
+        'client_secret' => $s['ig_app_secret'],
+        'redirect_uri'  => $redirect,
+        'code'          => $code,
+    ]), ['timeout' => 15]);
+    $short = lmeg_ig_json($resp);
+    if (is_wp_error($short)) return $short;
+    if (empty($short['access_token'])) return new WP_Error('lmeg_ig_oauth', 'No user token returned.');
+
+    // 2) short → long-lived user token (~60 days).
+    $resp = wp_remote_get(LMEG_IG_GRAPH . '/oauth/access_token?' . http_build_query([
+        'grant_type'        => 'fb_exchange_token',
+        'client_id'         => $s['ig_app_id'],
+        'client_secret'     => $s['ig_app_secret'],
+        'fb_exchange_token' => $short['access_token'],
+    ]), ['timeout' => 15]);
+    $long = lmeg_ig_json($resp);
+    if (is_wp_error($long)) return $long;
+    $user_token = $long['access_token'] ?? $short['access_token'];
+
+    // 3) find the Page that has an IG business account (its token is long-lived
+    //    because it's derived from the long-lived user token).
+    $resp = wp_remote_get(LMEG_IG_GRAPH . '/me/accounts?' . http_build_query([
+        'fields'       => 'id,name,access_token,instagram_business_account{id,username}',
+        'access_token' => $user_token,
+        'limit'        => 100,
+    ]), ['timeout' => 15]);
+    $pages = lmeg_ig_json($resp);
+    if (is_wp_error($pages)) return $pages;
+
+    $page = null;
+    foreach ((array) ($pages['data'] ?? []) as $p) {
+        if (!empty($p['instagram_business_account']['id'])) { $page = $p; break; }
+    }
+    if (!$page) {
+        return new WP_Error('lmeg_ig_oauth', 'No Instagram Business account is linked to any Facebook Page on this login. In the Instagram app: Settings → Business tools → link your account to a Facebook Page, then reconnect.');
+    }
+
+    // 4) store the credentials.
+    $ig_id      = (string) $page['instagram_business_account']['id'];
+    $ig_user    = (string) ($page['instagram_business_account']['username'] ?? '');
+    $page_token = (string) $page['access_token'];
+    $page_id    = (string) $page['id'];
+
+    $opts = get_option(LMEG_OPTION, []);
+    if (!is_array($opts)) $opts = [];
+    $opts['ig_page_token'] = $page_token;
+    $opts['ig_account_id'] = $ig_id;
+    update_option(LMEG_OPTION, $opts);
+    update_option('lmeg_ig_page_id', $page_id, false);
+
+    // 5) register the app-level webhook (object=instagram) — Meta verifies our
+    //    callback via the handshake handler and starts sending events here. Uses
+    //    the app access token. Best-effort: if it fails, the manual dashboard
+    //    setup still works.
+    wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_app_id']) . '/subscriptions', [
+        'timeout' => 15,
+        'body'    => [
+            'object'       => 'instagram',
+            'callback_url' => add_query_arg('lmeg_ig', 'webhook', home_url('/')),
+            'verify_token' => lmeg_ig_verify_token(),
+            'fields'       => 'messages,comments',
+            'access_token' => $s['ig_app_id'] . '|' . $s['ig_app_secret'],
+        ],
+    ]);
+
+    // 6) subscribe THIS Page to our app so its events actually flow.
+    wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($page_id) . '/subscribed_apps', [
+        'timeout' => 15,
+        'body'    => ['subscribed_fields' => 'messages,comments', 'access_token' => $page_token],
+    ]);
+
+    return 'Connected to @' . ($ig_user ?: $ig_id) . '.';
+}
+
+/** Decode a Graph API response, surfacing Meta's error message as a WP_Error. */
+function lmeg_ig_json($resp) {
+    if (is_wp_error($resp)) return $resp;
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if (!empty($body['error']['message'])) {
+        return new WP_Error('lmeg_ig_graph', $body['error']['message']);
+    }
+    return is_array($body) ? $body : [];
+}
+
+/** Disconnect — clear the stored token/account (admin-post, nonce-protected). */
+add_action('admin_post_lmeg_ig_disconnect', 'lmeg_ig_disconnect');
+function lmeg_ig_disconnect() {
+    if (!current_user_can('manage_options')) wp_die('Not allowed.');
+    check_admin_referer('lmeg_ig_disconnect');
+    $opts = get_option(LMEG_OPTION, []);
+    if (is_array($opts)) {
+        $opts['ig_page_token'] = '';
+        $opts['ig_account_id'] = '';
+        update_option(LMEG_OPTION, $opts);
+    }
+    delete_option('lmeg_ig_page_id');
+    wp_safe_redirect(add_query_arg('ig_disconnected', '1', admin_url('admin.php?page=lmeg-settings')));
+    exit;
+}
+
+/* ---------------------------------------------------------------------------
  * Admin — rules CRUD + conversation log
  * ------------------------------------------------------------------------- */
 
@@ -563,14 +745,16 @@ function lmeg_admin_instagram() {
         </table>
 
         <h2>Meta setup (one-time)</h2>
+        <p style="max-width:820px;">The connect button does the token + webhook wiring for you. You still create a Meta app once (Meta requires it), then it's a click.</p>
         <ol style="max-width:820px;line-height:1.8;">
-            <li>Instagram account must be a <strong>Business or Creator</strong> account, linked to a Facebook Page (IG app → Settings → Business tools).</li>
-            <li>Create a Meta app at <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">developers.facebook.com/apps</a> → type <em>Business</em> → add the <strong>Messenger</strong> product → Instagram settings.</li>
-            <li>Generate a <strong>Page access token</strong> for the linked Page with <code>instagram_basic</code>, <code>instagram_manage_messages</code>, and (for comment-to-DM) <code>instagram_manage_comments</code>, plus <code>pages_manage_metadata</code>.</li>
-            <li>Configure the webhook: callback URL <code><?php echo esc_html($webhook_url); ?></code>, verify token <code><?php echo esc_html(lmeg_ig_verify_token()); ?></code>, and subscribe to <strong>messages</strong> and <strong>comments</strong>.</li>
-            <li>Paste App Secret, Page token, and your IG account ID into <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a> → Save &amp; test.</li>
-            <li><strong>Dev mode:</strong> only DMs/comments from accounts with a role on the app trigger the webhook — perfect for testing with your own IG. To go live for all fans, submit the app for Advanced Access on <code>instagram_manage_messages</code> (and <code>instagram_manage_comments</code> for comments) — a form + a short screencast, usually approved within days.</li>
+            <li>Your Instagram must be a <strong>Business or Creator</strong> account, linked to a Facebook Page (IG app → Settings → Business tools).</li>
+            <li>Create a Meta app at <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">developers.facebook.com/apps</a> → type <em>Business</em> → add the <strong>Facebook Login</strong> and <strong>Messenger</strong> products (Instagram settings).</li>
+            <li>Meta app → <strong>Settings → Basic</strong>: copy the <strong>App ID</strong> and <strong>App Secret</strong> into <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a> and <strong>Save</strong>.</li>
+            <li>Meta app → <strong>Facebook Login → Settings</strong> → add this to <em>Valid OAuth Redirect URIs</em>: <code><?php echo esc_html(function_exists('lmeg_ig_oauth_redirect_uri') ? lmeg_ig_oauth_redirect_uri() : ''); ?></code></li>
+            <li>Back in Fanloop Settings → Instagram, click <strong>Connect Instagram</strong> → approve. Your token, account ID, and the <strong>messages</strong> + <strong>comments</strong> webhook are set up automatically.</li>
+            <li><strong>Dev mode:</strong> until the app is reviewed, only DMs/comments from accounts with a role on the app trigger it — perfect for testing with your own IG. To go live for all fans, submit for Advanced Access on <code>instagram_manage_messages</code> (and <code>instagram_manage_comments</code> for comments) — a form + a short screencast, usually approved within days.</li>
         </ol>
+        <p style="max-width:820px;opacity:.7;">Prefer to wire it by hand? The manual token/webhook fields are still under Settings → Instagram (“Connect manually instead”).</p>
     </div>
     <?php
 }

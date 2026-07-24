@@ -1997,6 +1997,7 @@ function lmeg_admin_settings() {
             'ai_api_key'              => sanitize_text_field(wp_unslash($_POST['ai_api_key'] ?? '')),
             'ai_model'                => sanitize_text_field(wp_unslash($_POST['ai_model'] ?? '')) ?: 'claude-haiku-4-5-20251001',
             // Instagram DM automation
+            'ig_app_id'               => sanitize_text_field(wp_unslash($_POST['ig_app_id'] ?? '')),
             'ig_app_secret'           => sanitize_text_field(wp_unslash($_POST['ig_app_secret'] ?? '')),
             'ig_page_token'           => sanitize_text_field(wp_unslash($_POST['ig_page_token'] ?? '')),
             'ig_account_id'           => sanitize_text_field(wp_unslash($_POST['ig_account_id'] ?? '')),
@@ -2369,21 +2370,74 @@ function lmeg_admin_settings() {
             </table>
 
             <h2>Instagram (DM automation)</h2>
+            <?php
+            $ig_ok       = function_exists('lmeg_ig_configured') && lmeg_ig_configured();
+            $ig_has_app  = !empty($s['ig_app_id']) && !empty($s['ig_app_secret']);
+            $ig_redirect = function_exists('lmeg_ig_oauth_redirect_uri') ? lmeg_ig_oauth_redirect_uri() : add_query_arg('lmeg_ig_oauth', 'callback', home_url('/'));
+            if (!empty($_GET['ig_connected'])) {
+                $m = get_transient('lmeg_ig_oauth_msg'); delete_transient('lmeg_ig_oauth_msg');
+                echo '<div class="notice notice-success"><p>Instagram connected' . ($m ? ' — ' . esc_html($m) : '') . ' The webhook was subscribed automatically.</p></div>';
+            } elseif (!empty($_GET['ig_disconnected'])) {
+                echo '<div class="notice notice-info"><p>Instagram disconnected.</p></div>';
+            } elseif (!empty($_GET['ig_oauth_err'])) {
+                $err = sanitize_text_field(wp_unslash($_GET['ig_oauth_err']));
+                $detail = get_transient('lmeg_ig_oauth_msg'); delete_transient('lmeg_ig_oauth_msg');
+                $map = [
+                    'noapp'    => 'Save your App ID and App Secret first, then click Connect.',
+                    'state'    => 'The connection request expired or didn’t match. Please try again.',
+                    'denied'   => 'You cancelled the Instagram permission screen.',
+                    'nocode'   => 'Instagram didn’t return an authorization code. Try again.',
+                    'exchange' => 'Couldn’t complete the connection' . ($detail ? ': ' . $detail : '.'),
+                ];
+                echo '<div class="notice notice-error"><p>' . esc_html($map[$err] ?? 'Instagram connection failed.') . '</p></div>';
+            }
+            ?>
+            <div style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
+                <p style="margin:0 0 10px;font-size:14px;">
+                    <?php if ($ig_ok) : ?>
+                        <strong style="color:#16a34a;">✓ Connected</strong> — Instagram account <code><?php echo esc_html($s['ig_account_id']); ?></code>.
+                        Fans DMing or commenting your keywords are handled automatically.
+                    <?php else : ?>
+                        <strong>One-click connect.</strong> Save your <em>App ID</em> + <em>App Secret</em> below, then click Connect — we’ll grab the token, find your IG account, and subscribe the webhook for you.
+                    <?php endif; ?>
+                </p>
+                <p style="margin:0 0 6px;">
+                    <?php if ($ig_has_app) : ?>
+                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_oauth_start'), 'lmeg_ig_oauth')); ?>" class="button button-primary"><?php echo $ig_ok ? 'Reconnect Instagram' : 'Connect Instagram'; ?></a>
+                    <?php else : ?>
+                        <button type="button" class="button button-primary" disabled title="Save App ID + App Secret first">Connect Instagram</button>
+                        <span style="opacity:.7;margin-left:8px;">↓ add + save your App ID and App Secret first</span>
+                    <?php endif; ?>
+                    <?php if ($ig_ok) : ?>
+                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_disconnect'), 'lmeg_ig_disconnect')); ?>" class="button" style="margin-left:6px;" onclick="return confirm('Disconnect Instagram?');">Disconnect</a>
+                    <?php endif; ?>
+                </p>
+                <p class="description" style="margin:8px 0 0;">In your Meta app → <strong>Facebook Login → Settings</strong>, add this to <strong>Valid OAuth Redirect URIs</strong>:<br><code><?php echo esc_html($ig_redirect); ?></code></p>
+            </div>
             <table class="form-table" role="presentation">
-                <tr><th><label for="ig_account_id">IG account ID</label></th>
-                    <td><input type="text" name="ig_account_id" id="ig_account_id" class="regular-text" value="<?php echo esc_attr($s['ig_account_id'] ?? ''); ?>" placeholder="1784XXXXXXXXXXXXX" />
-                        <p class="description">The Instagram Business account ID from your Meta app's Instagram settings (not your @handle).</p></td></tr>
-                <tr><th><label for="ig_page_token">Page access token</label></th>
-                    <td><input type="password" name="ig_page_token" id="ig_page_token" class="regular-text" value="<?php echo esc_attr($s['ig_page_token'] ?? ''); ?>" autocomplete="off" /></td></tr>
+                <tr><th><label for="ig_app_id">App ID</label></th>
+                    <td><input type="text" name="ig_app_id" id="ig_app_id" class="regular-text" value="<?php echo esc_attr($s['ig_app_id'] ?? ''); ?>" placeholder="1234567890" />
+                        <p class="description">Meta app → Settings → Basic → App ID.</p></td></tr>
                 <tr><th><label for="ig_app_secret">App secret</label></th>
                     <td><input type="password" name="ig_app_secret" id="ig_app_secret" class="regular-text" value="<?php echo esc_attr($s['ig_app_secret'] ?? ''); ?>" autocomplete="off" />
-                        <p class="description">Meta app → Settings → Basic → App Secret. Used to verify webhook signatures.</p></td></tr>
+                        <p class="description">Meta app → Settings → Basic → App Secret. Used for the connect handshake and to verify webhook signatures.</p></td></tr>
                 <tr><th><label for="ig_verify_token">Webhook verify token</label></th>
                     <td><input type="text" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
                         <p class="description">Webhook callback URL: <code><?php echo esc_html(add_query_arg('lmeg_ig', 'webhook', home_url('/'))); ?></code> — full setup steps on the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-instagram')); ?>">Instagram page</a>.</p></td></tr>
-                <tr><th>Test connection</th>
-                    <td><button type="submit" name="lmeg_test" value="instagram" class="button">Save &amp; test Instagram</button></td></tr>
+                <tr><th>Save / test</th>
+                    <td><button type="submit" name="lmeg_test" value="instagram" class="button">Save &amp; test Instagram</button>
+                        <p class="description">Save your App ID + Secret here, then use <strong>Connect Instagram</strong> above. “Save &amp; test” confirms an existing connection.</p></td></tr>
             </table>
+            <details style="max-width:760px;margin:0 0 8px;"><summary style="cursor:pointer;opacity:.75;">Connect manually instead (paste a Page token + account ID)</summary>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="ig_account_id">IG account ID</label></th>
+                    <td><input type="text" name="ig_account_id" id="ig_account_id" class="regular-text" value="<?php echo esc_attr($s['ig_account_id'] ?? ''); ?>" placeholder="1784XXXXXXXXXXXXX" />
+                        <p class="description">The Instagram Business account ID (not your @handle).</p></td></tr>
+                <tr><th><label for="ig_page_token">Page access token</label></th>
+                    <td><input type="password" name="ig_page_token" id="ig_page_token" class="regular-text" value="<?php echo esc_attr($s['ig_page_token'] ?? ''); ?>" autocomplete="off" />
+                        <p class="description">A long-lived Page access token with <code>instagram_manage_messages</code> (+ <code>instagram_manage_comments</code> for comment-to-DM).</p></td></tr>
+            </table>
+            </details>
 
             <h2>Shop (Shopify)</h2>
             <?php if (!empty($_GET['shop_connected'])) : ?>
