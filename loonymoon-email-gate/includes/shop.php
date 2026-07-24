@@ -183,10 +183,16 @@ function lmeg_shop_oauth_callback() {
             'Shopify', ['response' => 400]);
     };
 
-    if (!$code || !$state || !$expected || !hash_equals((string) $expected, $state)) $fail('security state mismatch — start Connect again from Settings.');
+    if (!$code) $fail('no authorization code in the callback — try the install link again.');
     if (!$secret || !$cid) $fail('missing Client ID/Secret — add them in Settings first.');
     if ($shop && $domain && strtolower($shop) !== strtolower($domain)) $fail('shop mismatch (' . $shop . ' vs ' . $domain . ').');
-    if (!lmeg_shop_oauth_verify_hmac(wp_unslash($_GET), $secret)) $fail('HMAC verification failed — the callback signature did not match.');
+    // Shopify signs every OAuth callback with the app secret — that HMAC is the
+    // REAL authentication, so it's required. The CSRF "state" we set during the
+    // "Connect" button flow is an extra guard for that path, but a custom-
+    // distribution app's own signed install link legitimately arrives WITHOUT
+    // it. So: always verify the HMAC; verify state only when one is present.
+    if (!lmeg_shop_oauth_verify_hmac(wp_unslash($_GET), $secret)) $fail('signature verification failed — the callback was not properly signed by Shopify.');
+    if ($state && $expected && !hash_equals((string) $expected, $state)) $fail('security state mismatch — start Connect again from Settings.');
 
     $exchange_shop = $shop ?: $domain;
     $resp = wp_remote_post('https://' . $exchange_shop . '/admin/oauth/access_token', [
