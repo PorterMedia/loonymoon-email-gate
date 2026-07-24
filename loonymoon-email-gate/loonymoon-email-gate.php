@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Loonymoon Email Gate
+ * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.56.5
+ * Version:     2.57.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.56.5');
-define('LMEG_DB_VERSION',  '2.56.1');
+define('LMEG_VERSION',     '2.57.0');
+define('LMEG_DB_VERSION',  '2.57.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -163,6 +163,19 @@ function lmeg_maybe_migrate() {
             foreach ($rows as $r) {
                 lmeg_apply_auto_tags($r);
             }
+        }
+    }
+
+    // White-label (2.57): seed THIS existing install's brand so nothing the
+    // fans see changes. Only fires on upgrade — a fresh install sets its
+    // db_version to current at activation, so this block is skipped and its
+    // brand falls back to the site name until the artist sets it.
+    if (version_compare($current, '2.57.0', '<')) {
+        $opt = get_option(LMEG_OPTION);
+        if (is_array($opt)) {
+            if (empty($opt['community_name'])) $opt['community_name'] = 'the Loonybin';
+            if (empty($opt['artist_name']))    $opt['artist_name']    = 'LOONY';
+            update_option(LMEG_OPTION, $opt);
         }
     }
 
@@ -605,6 +618,9 @@ function lmeg_default_settings() {
         // Brevo — the email provider
         'brevo_api_key'       => '',
         'double_optin'        => 0,
+        // White-label branding (per artist)
+        'community_name'      => '',   // fan-facing list/community name — "the LOONYBIN"
+        'artist_name'         => '',   // the act — "LOONY" (sign-offs, AI persona)
         'digest_enabled'      => 1,
         'digest_email'        => '',
         'brevo_from_email'    => '',
@@ -638,16 +654,16 @@ function lmeg_default_settings() {
         'upgrade_message'          => 'This post is for paid members. Pick a plan to keep reading.',
         'soft_paywall_heading'     => 'Support what you love',
         'soft_paywall_message'     => 'This post is free to read — or if you value the work, becoming a paid member keeps it going.',
-        'paywall_heading'          => 'Unlock the Loonybin',
+        'paywall_heading'          => 'Unlock ' . lmeg_community(),
         'paywall_premium_label'    => 'Get premium access',
         'paywall_unlock_label'     => 'Unlock',
         'logo_url'                 => '',   // URL to logo image shown above the card
         'logo_max_width'           => 200,  // max width in px
-        'signup_success_message'   => 'Thank you for joining the loonybin',
+        'signup_success_message'   => 'Thank you for joining ' . lmeg_community(),
         'default_test_email'       => 'ian@portermedia.ca',
         // Branded email template
         'email_template_enabled'   => 1,
-        'email_footer_note'        => "You're receiving this because you joined the loonybin.",
+        'email_footer_note'        => "You're receiving this because you joined " . lmeg_community() . ".",
         // Spotify analytics (Client Credentials — app-level, no user login)
         'spotify_client_id'        => '',
         'spotify_client_secret'    => '',
@@ -666,7 +682,7 @@ function lmeg_default_settings() {
         'shopify_client_id'        => '',   // Dev-dashboard app Client ID (client credentials)
         'shopify_client_secret'    => '',   // Dev-dashboard app Client secret
         'attribution_window_days'  => 7,
-        'utm_source'               => 'loonybin',
+        'utm_source'               => sanitize_title(lmeg_community()) ?: 'fanloop',
         // Front-end theming
         'color_primary'            => '#111111',
         'color_primary_text'       => '#ffffff',
@@ -749,6 +765,27 @@ function lmeg_get_settings() {
     }
     return $opts;
 }
+
+/* ---------------------------------------------------------------------------
+ * White-label brand helpers.
+ *
+ * Fanloop is the PRODUCT (plugin/admin identity, fixed). Each artist sets their
+ * own COMMUNITY name (fan-facing, e.g. "the LOONYBIN") and ARTIST name (email
+ * sign-offs, AI persona). These read the raw option DIRECTLY — never
+ * lmeg_get_settings() — so they're safe to call from inside
+ * lmeg_default_settings() without recursion.
+ * ------------------------------------------------------------------------- */
+function lmeg_brand_raw($key, $fallback = '') {
+    $opt = get_option(LMEG_OPTION);
+    $v   = is_array($opt) ? trim((string) ($opt[$key] ?? '')) : '';
+    return $v !== '' ? $v : $fallback;
+}
+/** Fan-facing community/list name — "the LOONYBIN". Falls back to the site name. */
+function lmeg_community() { return lmeg_brand_raw('community_name', get_bloginfo('name') ?: 'the list'); }
+/** The artist / act — "LOONY". Falls back to the site name. */
+function lmeg_artist()    { return lmeg_brand_raw('artist_name', get_bloginfo('name')); }
+/** The product itself. */
+function lmeg_product()   { return 'Fanloop'; }
 
 /* ---------------------------------------------------------------------------
  * Helpers
@@ -1342,7 +1379,7 @@ function lmeg_handle_submit() {
         $interval = isset($parts[2]) && $parts[2] === 'annual' ? 'annual' : 'monthly';
         $tier     = $tier_id ? lmeg_tier($tier_id) : null;
         if (!$tier) {
-            wp_die('Tier not found. Configure at Email Gate → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
+            wp_die('Tier not found. Configure at Fanloop → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
         }
         $session = lmeg_stripe_create_checkout($existing_member, $tier, $interval);
         if (is_wp_error($session)) {
@@ -1493,7 +1530,7 @@ function lmeg_handle_submit() {
             $interval = isset($parts[2]) && $parts[2] === 'annual' ? 'annual' : 'monthly';
             $tier     = $tier_id ? lmeg_tier($tier_id) : null;
             if (!$tier) {
-                wp_die('Tier not found. Configure at Email Gate → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
+                wp_die('Tier not found. Configure at Fanloop → Tiers (Paid).', 'Checkout error', ['response' => 400, 'back_link' => true]);
             }
             $session = lmeg_stripe_create_checkout($found, $tier, $interval);
             if (is_wp_error($session)) {

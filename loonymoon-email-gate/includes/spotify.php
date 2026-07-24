@@ -379,13 +379,13 @@ function lmeg_admin_spotify() {
     }
 
     if (!lmeg_spotify_configured()) {
-        echo '<div class="wrap"><h1>Email Gate — Spotify</h1><div class="notice notice-info"><p>Add your Spotify client ID, secret, and artist ID under <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings')) . '">Settings → Spotify</a>. These come from a free app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> — no special access needed for artist stats.</p></div></div>';
+        echo '<div class="wrap"><h1>Fanloop — Spotify</h1><div class="notice notice-info"><p>Add your Spotify client ID, secret, and artist ID under <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings')) . '">Settings → Spotify</a>. These come from a free app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> — no special access needed for artist stats.</p></div></div>';
         return;
     }
 
     $ov = lmeg_spotify_overview(!empty($_GET['refresh']));
     if (is_wp_error($ov)) {
-        echo '<div class="wrap"><h1>Email Gate — Spotify</h1><div class="notice notice-error"><p>' . esc_html($ov->get_error_message()) . '</p></div></div>';
+        echo '<div class="wrap"><h1>Fanloop — Spotify</h1><div class="notice notice-error"><p>' . esc_html($ov->get_error_message()) . '</p></div></div>';
         return;
     }
 
@@ -406,7 +406,7 @@ function lmeg_admin_spotify() {
     }
     ?>
     <div class="wrap">
-        <h1>Email Gate — Spotify</h1>
+        <h1>Fanloop — Spotify</h1>
         <?php echo $notice; ?>
         <p>
             <a class="button" href="<?php echo esc_url(add_query_arg('refresh', 1)); ?>">Refresh</a>

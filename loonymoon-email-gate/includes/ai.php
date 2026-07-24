@@ -117,7 +117,7 @@ function lmeg_ai_ask($question) {
     $context = lmeg_ai_context();
     $model   = $s['ai_model'] ?: 'claude-haiku-4-5-20251001';
 
-    $system = "You are the analytics assistant inside a musician's fan-CRM WordPress plugin (\"loonybin\", for the artist LOONY). "
+    $system = "You are the analytics assistant inside " . lmeg_artist() . "'s fan community (\"" . lmeg_community() . "\"), running on the Fanloop fan-CRM platform. "
             . "Answer the user's question using ONLY the DATA SNAPSHOT below. Be concrete, cite the numbers, and when useful give one actionable next step (e.g. which segment to email, when to send). "
             . "If the snapshot doesn't contain the answer, say so plainly and suggest what to enable or track. Keep it tight — a few sentences or a short list. Never invent numbers.\n\n"
             . "DATA SNAPSHOT:\n" . $context;
@@ -186,7 +186,7 @@ function lmeg_admin_ai() {
     ];
     ?>
     <div class="wrap">
-        <h1>Email Gate — Ask AI</h1>
+        <h1>Fanloop — Ask AI</h1>
 
         <?php if (!$ready) : ?>
             <div class="notice notice-info"><p>Add your Anthropic API key under <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → AI assistant</a> to enable this. Get one at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.</p></div>

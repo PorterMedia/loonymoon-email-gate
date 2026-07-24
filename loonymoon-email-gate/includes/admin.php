@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 add_action('admin_menu', 'lmeg_admin_menu');
 function lmeg_admin_menu() {
     $cap = 'manage_options';
-    add_menu_page('Email Gate', 'Email Gate', $cap, 'lmeg',           'lmeg_admin_subscribers', 'dashicons-email-alt', 30);
+    add_menu_page('Fanloop', 'Fanloop', $cap, 'lmeg',           'lmeg_admin_subscribers', 'dashicons-email-alt', 30);
     add_submenu_page('lmeg', 'Overview',          'Overview',          $cap, 'lmeg-overview',        'lmeg_admin_overview');
     add_submenu_page('lmeg', 'Subscribers',       'Subscribers',       $cap, 'lmeg',                 'lmeg_admin_subscribers');
     add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
@@ -372,7 +372,7 @@ function lmeg_admin_tags() {
     $rows = lmeg_all_tags();
     ?>
     <div class="wrap">
-        <h1>Email Gate — Tags</h1>
+        <h1>Fanloop — Tags</h1>
         <?php echo $notice; ?>
         <p>Tags group subscribers into segments. <strong>Auto</strong> tags (channel, country, has-address) are managed by the plugin — you can rename or recolor them, but their membership updates automatically when subscribers change.</p>
 
@@ -662,7 +662,7 @@ function lmeg_admin_subscribers() {
     echo $notice;
     ?>
     <div class="wrap">
-        <h1>Email Gate — Subscribers</h1>
+        <h1>Fanloop — Subscribers</h1>
         <?php
         // Growth at a glance — day boundaries in SITE time, not UTC.
         $today_start = current_time('Y-m-d') . ' 00:00:00';
@@ -992,7 +992,7 @@ function lmeg_admin_compose() {
     $ajax_nonce  = wp_create_nonce('lmeg_audience');
     ?>
     <div class="wrap">
-        <h1>Email Gate — Compose Broadcast</h1>
+        <h1>Fanloop — Compose Broadcast</h1>
         <?php echo $notice; ?>
         <p>
             Auto-routes per subscriber.
@@ -1612,7 +1612,7 @@ function lmeg_admin_broadcasts() {
     $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
     ?>
     <div class="wrap">
-        <h1>Email Gate — Broadcast History</h1>
+        <h1>Fanloop — Broadcast History</h1>
         <?php
         // List health — 30d deliverability at a glance.
         $ev_t   = $wpdb->prefix . 'lmeg_broadcast_events';
@@ -1708,6 +1708,8 @@ function lmeg_admin_settings() {
             // Brevo (the email provider)
             'brevo_api_key'       => sanitize_text_field(wp_unslash($_POST['brevo_api_key'] ?? '')),
             'double_optin'        => !empty($_POST['double_optin']) ? 1 : 0,
+            'community_name'      => sanitize_text_field(wp_unslash($_POST['community_name'] ?? '')),
+            'artist_name'         => sanitize_text_field(wp_unslash($_POST['artist_name'] ?? '')),
             'digest_enabled'      => !empty($_POST['digest_enabled']) ? 1 : 0,
             'digest_email'        => sanitize_email(wp_unslash($_POST['digest_email'] ?? '')),
             'brevo_from_email'    => sanitize_email(wp_unslash($_POST['brevo_from_email'] ?? '')),
@@ -1746,7 +1748,7 @@ function lmeg_admin_settings() {
             'paywall_premium_label'   => sanitize_text_field(wp_unslash($_POST['paywall_premium_label'] ?? '')),
             'logo_url'                => esc_url_raw(wp_unslash($_POST['logo_url'] ?? '')),
             'logo_max_width'          => max(20, min(800, (int) ($_POST['logo_max_width'] ?? 200))),
-            'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: 'Thank you for joining the loonybin',
+            'signup_success_message'  => sanitize_text_field(wp_unslash($_POST['signup_success_message'] ?? '')) ?: ('Thank you for joining ' . lmeg_community()),
             'default_test_email'      => sanitize_email(wp_unslash($_POST['default_test_email'] ?? '')),
             // Branded email template
             'email_template_enabled'  => !empty($_POST['email_template_enabled']) ? 1 : 0,
@@ -1769,7 +1771,7 @@ function lmeg_admin_settings() {
             'shopify_client_id'       => sanitize_text_field(wp_unslash($_POST['shopify_client_id'] ?? '')),
             'shopify_client_secret'   => sanitize_text_field(wp_unslash($_POST['shopify_client_secret'] ?? '')),
             'attribution_window_days' => max(1, min(90, (int) ($_POST['attribution_window_days'] ?? 7))),
-            'utm_source'              => sanitize_title(wp_unslash($_POST['utm_source'] ?? '')) ?: 'loonybin',
+            'utm_source'              => sanitize_title(wp_unslash($_POST['utm_source'] ?? '')) ?: (sanitize_title(lmeg_community()) ?: 'fanloop'),
             'color_primary'           => sanitize_hex_color(wp_unslash($_POST['color_primary']      ?? '')) ?: '#111111',
             'color_primary_text'      => sanitize_hex_color(wp_unslash($_POST['color_primary_text'] ?? '')) ?: '#ffffff',
             'color_accent'            => sanitize_hex_color(wp_unslash($_POST['color_accent']      ?? '')) ?: '#3b82f6',
@@ -1841,7 +1843,7 @@ function lmeg_admin_settings() {
     $s = lmeg_get_settings();
     ?>
     <div class="wrap">
-        <h1>Email Gate — Settings</h1>
+        <h1>Fanloop — Settings</h1>
 
         <?php
         $env_keys = function_exists('lmeg_env_managed_keys') ? lmeg_env_managed_keys() : [];
@@ -1853,6 +1855,17 @@ function lmeg_admin_settings() {
 
         <form method="post">
             <?php wp_nonce_field('lmeg_settings', 'lmeg_settings_nonce'); ?>
+
+            <h2>Branding</h2>
+            <p class="description" style="max-width:640px;margin-bottom:8px;">This is what your fans see. Fanloop stays behind the scenes.</p>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="community_name">Community name</label></th>
+                    <td><input type="text" name="community_name" id="community_name" value="<?php echo esc_attr($s['community_name'] ?? ''); ?>" class="regular-text" placeholder="<?php echo esc_attr(get_bloginfo('name') ?: 'the list'); ?>" />
+                        <p class="description">Your fan list / community, as fans see it — e.g. <em>the LOONYBIN</em>. Used in signup confirmations, the bio page, and welcome copy (&ldquo;Join <strong><?php echo esc_html(lmeg_community()); ?></strong>&rdquo;). Blank = your site name.</p></td></tr>
+                <tr><th><label for="artist_name">Artist name</label></th>
+                    <td><input type="text" name="artist_name" id="artist_name" value="<?php echo esc_attr($s['artist_name'] ?? ''); ?>" class="regular-text" placeholder="<?php echo esc_attr(get_bloginfo('name')); ?>" />
+                        <p class="description">The act — e.g. <em>LOONY</em>. Signs off release-drop emails and grounds the AI assistant. Blank = your site name.</p></td></tr>
+            </table>
 
             <h2>Form copy</h2>
             <table class="form-table" role="presentation">
@@ -1867,7 +1880,7 @@ function lmeg_admin_settings() {
                 <tr><th><label for="consent_text">Consent line</label></th>
                     <td><textarea name="consent_text" id="consent_text" rows="2" class="large-text"><?php echo esc_textarea($s['consent_text']); ?></textarea></td></tr>
                 <tr><th><label for="signup_success_message">Signup success message</label></th>
-                    <td><input type="text" name="signup_success_message" id="signup_success_message" class="regular-text" value="<?php echo esc_attr($s['signup_success_message'] ?? 'Thank you for joining the loonybin'); ?>" />
+                    <td><input type="text" name="signup_success_message" id="signup_success_message" class="regular-text" value="<?php echo esc_attr($s['signup_success_message'] ?? ('Thank you for joining ' . lmeg_community())); ?>" />
                         <p class="description">Shown in place of the <code>[lmeg_signup]</code> form after someone joins. A per-embed <code>success="…"</code> attribute overrides this.</p></td></tr>
                 <tr><th><label for="default_test_email">Default test recipient</label></th>
                     <td><input type="email" name="default_test_email" id="default_test_email" class="regular-text" value="<?php echo esc_attr($s['default_test_email'] ?? ''); ?>" placeholder="ian@portermedia.ca" />
@@ -2068,7 +2081,7 @@ function lmeg_admin_settings() {
                     <td><input type="number" min="1" max="90" name="attribution_window_days" id="attribution_window_days" class="small-text" value="<?php echo (int) ($s['attribution_window_days'] ?? 7); ?>" />
                         <p class="description">An order counts toward a broadcast if the buyer clicked (or opened) that broadcast within this many days before purchasing. Last click wins.</p></td></tr>
                 <tr><th><label for="utm_source">UTM source</label></th>
-                    <td><input type="text" name="utm_source" id="utm_source" class="regular-text" value="<?php echo esc_attr($s['utm_source'] ?? 'loonybin'); ?>" />
+                    <td><input type="text" name="utm_source" id="utm_source" class="regular-text" value="<?php echo esc_attr($s['utm_source'] ?? (sanitize_title(lmeg_community()) ?: 'fanloop')); ?>" />
                         <p class="description">Broadcast links get <code>utm_source=&lt;this&gt;&amp;utm_medium=email&amp;utm_campaign=broadcast-N</code> appended so Shopify's own analytics see the traffic too.</p></td></tr>
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="shopify" class="button">Save &amp; test Shopify</button>
@@ -2398,7 +2411,7 @@ function lmeg_admin_segments() {
     foreach ($all_tags as $t) $tag_by_id[(int) $t->id] = $t;
     ?>
     <div class="wrap">
-        <h1>Email Gate — Segments</h1>
+        <h1>Fanloop — Segments</h1>
         <?php echo $notice; ?>
         <p>Saved tag filters. Pick a segment from the Compose screen instead of re-checking the same tags every time.</p>
 
@@ -2494,7 +2507,7 @@ function lmeg_admin_templates() {
     $rows    = $wpdb->get_results("SELECT * FROM $tbl ORDER BY name ASC");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Templates</h1>
+        <h1>Fanloop — Templates</h1>
         <?php echo $notice; ?>
         <p>Reusable subject + body pairs. Merge tags: <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{city}</code>, <code>{country}</code>, <code>{site_name}</code>, <code>{site_url}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>.</p>
 
@@ -2705,7 +2718,7 @@ function lmeg_admin_sequences() {
     $seqs = $wpdb->get_results("SELECT * FROM $seq_tbl ORDER BY name ASC");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Sequences</h1>
+        <h1>Fanloop — Sequences</h1>
         <?php echo $notice; ?>
         <p>Automated multi-step journeys. Pick a trigger tag; every subscriber who receives that tag gets enrolled and works through the steps at the pace you set.</p>
 
@@ -2794,7 +2807,7 @@ function lmeg_admin_sequences() {
 add_action('wp_dashboard_setup', 'lmeg_dashboard_widget_setup');
 function lmeg_dashboard_widget_setup() {
     if (!current_user_can('manage_options')) return;
-    wp_add_dashboard_widget('lmeg_dashboard', 'Email Gate', 'lmeg_dashboard_widget_render');
+    wp_add_dashboard_widget('lmeg_dashboard', 'Fanloop', 'lmeg_dashboard_widget_render');
 }
 
 function lmeg_dashboard_widget_render() {
@@ -2939,7 +2952,7 @@ function lmeg_admin_tiers() {
     $rows    = lmeg_all_tiers();
     ?>
     <div class="wrap">
-        <h1>Email Gate — Paid Tiers</h1>
+        <h1>Fanloop — Paid Tiers</h1>
         <?php echo $notice; ?>
         <p>Configure paid subscription tiers. Create the product + prices in Stripe first, then paste the Stripe price IDs here. Stripe keys live in <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Stripe</a>.</p>
 
@@ -3016,7 +3029,7 @@ function lmeg_admin_tiers() {
 
 add_action('add_meta_boxes', 'lmeg_register_access_meta_box');
 function lmeg_register_access_meta_box() {
-    add_meta_box('lmeg_access', 'Email Gate — Access', 'lmeg_access_meta_box', 'post', 'side', 'high');
+    add_meta_box('lmeg_access', 'Fanloop — Access', 'lmeg_access_meta_box', 'post', 'side', 'high');
 }
 
 function lmeg_access_meta_box($post) {
@@ -3121,7 +3134,7 @@ function lmeg_admin_members() {
     foreach ($tiers as $t) { $currency = $t->currency; break; }
     ?>
     <div class="wrap">
-        <h1>Email Gate — Members (Paid)</h1>
+        <h1>Fanloop — Members (Paid)</h1>
 
         <?php if (empty($tiers)) : ?>
             <div class="notice notice-info"><p>No tiers configured yet. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-tiers')); ?>">Create your first tier →</a></p></div>
@@ -3226,7 +3239,7 @@ function lmeg_admin_shop() {
     $last_sync  = get_option(LMEG_SHOP_LAST_SYNC, '');
     ?>
     <div class="wrap">
-        <h1>Email Gate — Shop Revenue</h1>
+        <h1>Fanloop — Shop Revenue</h1>
         <?php echo $notice; ?>
 
         <?php if (!$configured) : ?>
@@ -3576,7 +3589,7 @@ function lmeg_admin_audience() {
     );
     ?>
     <div class="wrap">
-        <h1>Email Gate — Audience</h1>
+        <h1>Fanloop — Audience</h1>
         <?php echo $notice; ?>
 
         <form method="post" style="margin:12px 0;">
@@ -3782,7 +3795,7 @@ function lmeg_admin_smartlinks() {
     $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY created_at DESC LIMIT 200");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Smartlinks</h1>
+        <h1>Fanloop — Smartlinks</h1>
         <?php echo $notice; ?>
         <p>Short, trackable links: <code><?php echo esc_html(home_url('/go/')); ?>&lt;slug&gt;</code>. Use them in bios, posters, broadcasts — clicks are counted, and clicks by known fans land on their timeline.</p>
 

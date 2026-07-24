@@ -49,7 +49,7 @@ function lmeg_build_email_with_footer($body, $unsub_url) {
 }
 
 /**
- * Wrap email content in the branded loonybin template.
+ * Wrap email content in the artist's branded email template.
  *
  * Design pulled from the /subscribe/ page: warm cream backdrop, white
  * rounded card, the site's primary (pink) accent for links and the top
@@ -600,7 +600,7 @@ function lmeg_send_test($channel, $to, $subject, $body) {
 add_filter('cron_schedules', 'lmeg_cron_schedules');
 function lmeg_cron_schedules($s) {
     if (!isset($s['lmeg_minute'])) {
-        $s['lmeg_minute'] = ['interval' => 60, 'display' => 'Every Minute (Loonymoon Email Gate)'];
+        $s['lmeg_minute'] = ['interval' => 60, 'display' => 'Every Minute (Fanloop)'];
     }
     return $s;
 }

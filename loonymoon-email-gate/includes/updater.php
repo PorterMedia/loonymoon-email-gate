@@ -45,7 +45,7 @@ function lmeg_updater_cron_schedules($schedules) {
     $secs = lmeg_updater_interval_seconds();
     $schedules['lmeg_update_check'] = [
         'interval' => $secs,
-        'display'  => 'Every ' . (int) round($secs / 60) . ' minutes (Loonymoon Email Gate)',
+        'display'  => 'Every ' . (int) round($secs / 60) . ' minutes (Fanloop)',
     ];
     return $schedules;
 }
@@ -183,7 +183,7 @@ function lmeg_updater_info($result, $action, $args) {
     $zip         = lmeg_updater_zip_url($release);
 
     return (object) [
-        'name'          => 'Loonymoon Email Gate',
+        'name'          => 'Fanloop',
         'slug'          => dirname(plugin_basename(LMEG_PLUGIN_FILE)),
         'version'       => $new_version,
         'author'        => '<a href="https://github.com/' . esc_attr(LMEG_GITHUB_OWNER) . '">' . esc_html(LMEG_GITHUB_OWNER) . '</a>',

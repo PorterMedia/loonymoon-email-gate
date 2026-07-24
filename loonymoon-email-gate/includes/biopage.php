@@ -22,7 +22,7 @@ function lmeg_bio_defaults() {
         'avatar_url'       => '',
         'accent'           => '',
         'show_capture'     => 1,
-        'capture_headline' => 'Join the loonybin',
+        'capture_headline' => 'Join ' . lmeg_community(),
         'capture_sub'      => 'New music, shows, and drops — straight to you.',
         'links'            => [], // [['label','url','slug'], ...]
     ];
@@ -174,6 +174,7 @@ function lmeg_handle_save_bio() {
  * ------------------------------------------------------------------------- */
 
 add_shortcode('loony_bio', 'lmeg_shortcode_bio');
+add_shortcode('fanloop_bio', 'lmeg_shortcode_bio');
 function lmeg_shortcode_bio($atts = []) {
     $cfg    = lmeg_bio_config();
     $s      = lmeg_get_settings();
@@ -191,7 +192,7 @@ function lmeg_shortcode_bio($atts = []) {
 
         <?php if ($cfg['show_capture']) : ?>
             <?php if ($success) : ?>
-                <div class="lmeg-bio__ok" role="status">✓ You&rsquo;re in. Welcome to the loonybin.</div>
+                <div class="lmeg-bio__ok" role="status">✓ You&rsquo;re in. Welcome to <?php echo esc_html(lmeg_community()); ?>.</div>
             <?php else : ?>
                 <div class="lmeg-bio__capture">
                     <?php if ($cfg['capture_headline']) : ?><div class="lmeg-bio__caphead"><?php echo esc_html($cfg['capture_headline']); ?></div><?php endif; ?>

@@ -148,7 +148,7 @@ function lmeg_admin_drop_form($drop) {
         // datetime-local wants "Y-m-dTH:i" in the site's wall-clock time.
         $release_local = date('Y-m-d\TH:i', strtotime($drop->release_at));
     }
-    $default_email = "The wait is over — it's out now.\n\nListen everywhere:\n{links}\n\nThank you for being here.\nLOONY";
+    $default_email = "The wait is over — it's out now.\n\nListen everywhere:\n{links}\n\nThank you for being here.\n" . lmeg_artist();
     $default_sms   = "It's out now 💫 Listen: {links}";
 
     $val = function ($field, $fallback = '') use ($drop, $is_new) {
@@ -380,6 +380,7 @@ function lmeg_drop_expand_links($body, $replacement) {
  * ------------------------------------------------------------------------- */
 
 add_shortcode('loony_drop', 'lmeg_shortcode_drop');
+add_shortcode('fanloop_drop', 'lmeg_shortcode_drop');
 function lmeg_shortcode_drop($atts = []) {
     $atts = shortcode_atts(['id' => '', 'slug' => ''], $atts, 'loony_drop');
 

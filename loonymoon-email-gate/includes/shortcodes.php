@@ -20,7 +20,9 @@ if (!defined('ABSPATH')) {
 }
 
 add_shortcode('lmeg_signup',  'lmeg_shortcode_signup');
+add_shortcode('fanloop_signup', 'lmeg_shortcode_signup');
 add_shortcode('lmeg_premium', 'lmeg_shortcode_premium');
+add_shortcode('fanloop_premium', 'lmeg_shortcode_premium');
 function lmeg_shortcode_signup($atts = []) {
     $atts = shortcode_atts([
         'heading'  => '',
@@ -45,7 +47,7 @@ function lmeg_shortcode_signup($atts = []) {
     // Success copy: per-embed attr wins; otherwise the site-wide setting.
     if ($atts['success'] === '') {
         $s_all = lmeg_get_settings();
-        $atts['success'] = $s_all['signup_success_message'] ?: 'Thank you for joining the loonybin';
+        $atts['success'] = $s_all['signup_success_message'] ?: ('Thank you for joining ' . lmeg_community());
     }
 
     // Resolve tier list. Empty = no tiers (current behavior); "all" = every
@@ -220,7 +222,7 @@ function lmeg_shortcode_signup($atts = []) {
 /**
  * [lmeg_premium] — embeddable tier-selection form for premium access.
  *
- * Renders tier cards (from Email Gate → Tiers (Paid)) and lets visitors
+ * Renders tier cards (from Fanloop → Tiers (Paid)) and lets visitors
  * subscribe in one form submission — email captured + Stripe Checkout
  * created in a single request. Existing members skip the email input
  * and go straight to checkout on tier click.
@@ -260,7 +262,7 @@ function lmeg_shortcode_premium($atts = []) {
     }
 
     if (empty($all_tiers)) {
-        return '<div class="lmeg-embed lmeg-embed--card lmeg-embed--premium"><em>No paid tiers configured yet. Add one at Email Gate → Tiers (Paid).</em></div>';
+        return '<div class="lmeg-embed lmeg-embed--card lmeg-embed--premium"><em>No paid tiers configured yet. Add one at Fanloop → Tiers (Paid).</em></div>';
     }
 
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;

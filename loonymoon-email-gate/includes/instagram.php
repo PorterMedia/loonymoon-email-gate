@@ -240,7 +240,7 @@ function lmeg_admin_instagram() {
     $msgs  = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_ig_messages ORDER BY id DESC LIMIT 60");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Instagram DMs</h1>
+        <h1>Fanloop — Instagram DMs</h1>
         <?php echo $notice; ?>
 
         <?php if (!$configured) : ?>
@@ -255,7 +255,7 @@ function lmeg_admin_instagram() {
             <?php wp_nonce_field('lmeg_ig', 'lmeg_ig_nonce'); ?>
             <input type="hidden" name="lmeg_action" value="create" />
             <input type="text" name="keyword" placeholder="LOONY" style="max-width:160px;" required />
-            <textarea name="reply_text" rows="2" style="flex:1;min-width:280px;" required placeholder="yo! join the loonybin here → https://loonymoonchild.com/subscribe/"></textarea>
+            <textarea name="reply_text" rows="2" style="flex:1;min-width:280px;" required placeholder="<?php echo esc_attr('yo! join ' . lmeg_community() . ' here → ' . home_url('/subscribe/')); ?>"></textarea>
             <button type="submit" class="button button-primary">Add rule</button>
         </form>
 

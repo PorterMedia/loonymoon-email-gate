@@ -13,6 +13,7 @@ if (!defined('ABSPATH')) {
  * ======================================================================== */
 
 add_shortcode('lmeg_tour', 'lmeg_shortcode_tour');
+add_shortcode('fanloop_tour', 'lmeg_shortcode_tour');
 function lmeg_shortcode_tour($atts = []) {
     $atts = shortcode_atts(['past' => 'no', 'limit' => 50], $atts, 'lmeg_tour');
     global $wpdb;
@@ -90,6 +91,7 @@ function lmeg_tour_tracked_url($kind, $d) {
  * ======================================================================== */
 
 add_shortcode('lmeg_survey', 'lmeg_shortcode_survey');
+add_shortcode('fanloop_survey', 'lmeg_shortcode_survey');
 function lmeg_shortcode_survey($atts = []) {
     $atts = shortcode_atts(['id' => 0], $atts, 'lmeg_survey');
     global $wpdb;
@@ -393,6 +395,7 @@ function lmeg_maybe_handle_contest_enter() {
 }
 
 add_shortcode('lmeg_contest', 'lmeg_shortcode_contest');
+add_shortcode('fanloop_contest', 'lmeg_shortcode_contest');
 function lmeg_shortcode_contest($atts = []) {
     $atts = shortcode_atts(['id' => 0], $atts, 'lmeg_contest');
     global $wpdb;
@@ -552,7 +555,7 @@ function lmeg_admin_tour() {
     $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY show_date ASC LIMIT 200");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Tour</h1>
+        <h1>Fanloop — Tour</h1>
         <?php echo $notice; ?>
         <p>Embed anywhere with <code>[lmeg_tour]</code> (upcoming) or <code>[lmeg_tour past="yes"]</code> (all). Presale links marked members-only show a 🔒 to non-members — a built-in reason to join the list.</p>
 
@@ -637,7 +640,7 @@ function lmeg_admin_surveys() {
     $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
     ?>
     <div class="wrap">
-        <h1>Email Gate — Surveys</h1>
+        <h1>Fanloop — Surveys</h1>
         <?php echo $notice; ?>
         <p>One-question polls, members-only voting, one vote each. Embed with <code>[lmeg_survey id=N]</code> — results show after voting.</p>
 
@@ -753,7 +756,7 @@ function lmeg_admin_contests() {
     $editing = !empty($_GET['edit']) ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE id = %d", (int) $_GET['edit'])) : null;
     ?>
     <div class="wrap">
-        <h1>Email Gate — Contests</h1>
+        <h1>Fanloop — Contests</h1>
         <?php echo $notice; ?>
         <p>Members enter with one click; every friend they refer during the contest is <strong>+3 entries</strong>. Embed with <code>[lmeg_contest id=N]</code>. Winner is drawn weighted by entries.</p>
         <p style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:10px 14px;max-width:820px;">

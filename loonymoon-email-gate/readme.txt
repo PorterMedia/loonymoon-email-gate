@@ -1,10 +1,10 @@
-=== Loonymoon Email Gate ===
+=== Fanloop ===
 Contributors: portermedia
 Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.56.5
+Stable tag: 2.57.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.57.0 =
+* White-label: the plugin is now "Fanloop" and every artist can brand their own fan community. New Settings → Branding: a Community name (fan-facing, e.g. "the LOONYBIN") and Artist name (e.g. "LOONY", used in release-drop sign-offs + the AI assistant). All fan-facing copy — signup confirmations, the bio page, welcome text, drop emails — now flows from those fields; blank falls back to your site name. Existing installs are seeded with their current wording so nothing fans see changes. Admin screens and the plugin now read "Fanloop". New shortcode aliases [fanloop_signup]/[fanloop_bio]/[fanloop_drop]/[fanloop_contest]/[fanloop_survey]/[fanloop_tour] — the old [lmeg_*]/[loony_*] shortcodes keep working.
+
 = 2.56.5 =
 * Fix: fatal error ("Cannot use object of type WP_Error as array", spotify.php:107) that could take down the Overview page when Spotify's top-tracks or albums call failed transiently (rate limit/network). The artist call was guarded but the two follow-ups weren't; they now degrade to a partial snapshot instead of crashing.
 
