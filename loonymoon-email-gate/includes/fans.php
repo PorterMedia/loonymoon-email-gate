@@ -253,6 +253,31 @@ function lmeg_geo_distance_km($lat1, $lng1, $lat2, $lng2) {
 }
 
 /**
+ * One-shot backfill: fans who already have a language on file but no lang:*
+ * tag (signed up before language auto-tags existed) get re-tagged.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_lang_tag_backfill', 64);
+function lmeg_lang_tag_backfill() {
+    if (get_option('lmeg_lang_tag_fix_done')) return;
+    global $wpdb;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results(
+        "SELECT s.* FROM $subs s
+          WHERE s.lang IS NOT NULL AND s.lang <> ''
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->prefix}lmeg_subscriber_tags st
+                  JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id
+                 WHERE st.subscriber_id = s.id AND t.slug LIKE 'lang:%'
+            )
+          LIMIT 50"
+    );
+    if (!$rows) { update_option('lmeg_lang_tag_fix_done', 1, false); return; }
+    foreach ($rows as $r) {
+        if (function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($r);
+    }
+}
+
+/**
  * One-shot cleanup: fans who were tagged has-address off a city/region alone
  * (possible between v2.55.25's IP-city backfill and the stricter street-or-
  * postal rule) get their auto-tags recomputed, which detaches the tag.

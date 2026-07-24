@@ -129,7 +129,7 @@ function lmeg_shortcode_signup($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
-            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
+            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_detect_lang() ?: lmeg_current_lang()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
@@ -302,7 +302,7 @@ function lmeg_shortcode_premium($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
-            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
+            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_detect_lang() ?: lmeg_current_lang()); ?>" />
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>

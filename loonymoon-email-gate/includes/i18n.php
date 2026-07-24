@@ -268,3 +268,35 @@ function lmeg_sanitize_i18n($raw) {
     }
     return $out;
 }
+
+/**
+ * Raw detected language for STORAGE — the fan's real browsing language (site
+ * plugin > toggle > cookie > browser), validated only to a known language
+ * (NOT gated by the enabled list). So a fan on the French WPML page is recorded
+ * as French even before the artist has switched on French UI/translations.
+ */
+function lmeg_detect_lang() {
+    $pick   = '';
+    $plugin = lmeg_site_lang_plugin();
+    if ($plugin === 'wpml') {
+        $pick = defined('ICL_LANGUAGE_CODE') ? ICL_LANGUAGE_CODE : (string) apply_filters('wpml_current_language', null);
+    } elseif ($plugin === 'polylang' && function_exists('pll_current_language')) {
+        $pick = (string) pll_current_language('slug');
+    }
+    if (!$pick) {
+        if (!empty($_GET['lmeg_lang']))         $pick = sanitize_key(wp_unslash($_GET['lmeg_lang']));
+        elseif (!empty($_COOKIE['lmeg_lang']))  $pick = sanitize_key(wp_unslash($_COOKIE['lmeg_lang']));
+        elseif (!empty($_SERVER['HTTP_ACCEPT_LANGUAGE'])) $pick = substr((string) $_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2);
+    }
+    $pick = strtolower(substr((string) $pick, 0, 2));
+    return array_key_exists($pick, lmeg_known_langs()) ? $pick : '';
+}
+
+/** Language to STORE for a signing-up fan: the form's field wins, else detect. */
+function lmeg_signup_lang() {
+    if (!empty($_POST['lmeg_lang'])) {
+        $p = strtolower(substr(sanitize_key(wp_unslash($_POST['lmeg_lang'])), 0, 2));
+        if (array_key_exists($p, lmeg_known_langs())) return $p;
+    }
+    return lmeg_detect_lang();
+}

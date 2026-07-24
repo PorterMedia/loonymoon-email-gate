@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.58.0
+Stable tag: 2.58.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.58.1 =
+* New: a fan's language is now visible and targetable. Each fan gets a ‘Language: FranÃ§ais’ (or English…) auto-tag — shown on their profile (new Language row) and in the fan list, and available in the Compose audience filter under a ‘Language’ group, so you can send a broadcast to only French (or only English) subscribers. Existing fans with a language on file are back-tagged automatically.
+* Improved: the signup language is now captured robustly from the page a fan signs up on (e.g. your French WPML page) even before French UI is switched on in Fanloop — so segmenting by language works right away.
+
 = 2.58.0 =
 * New: consumer-facing multi-language support (English + French to start, more can be added). Fanloop follows your site's language plugin when one is active (WPML / Polylang detected automatically — no duplicate switcher), and shows its own EN/FR toggle on the forms otherwise. Enable languages + set a default in Settings ’ Languages, then fill in the French version of your custom copy (headings, consent, success + welcome messages) in the translation panel. Built-in words (Email, Phone, Subscribe…) are translated for you. Each fan's language is saved on signup, and welcome / confirmation emails are sent in their language. First pass covers the signup form, the on-post gate, and automated emails; the bio/drops/contest pages and broadcasts come next.
 

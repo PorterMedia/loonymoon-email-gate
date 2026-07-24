@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.58.0
+ * Version:     2.58.1
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.58.0');
+define('LMEG_VERSION',     '2.58.1');
 define('LMEG_DB_VERSION',  '2.58.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1295,7 +1295,7 @@ function lmeg_render_form() {
                 <input type="hidden" name="redirect"      value="<?php echo esc_url(get_permalink($post_id) ?: home_url('/')); ?>" />
                 <input type="hidden" name="contact_type"  value="email" />
                 <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
-                <input type="hidden" name="lmeg_lang"      value="<?php echo esc_attr(lmeg_current_lang()); ?>" />
+                <input type="hidden" name="lmeg_lang"      value="<?php echo esc_attr(lmeg_detect_lang() ?: lmeg_current_lang()); ?>" />
 
                 <div class="lmeg-tabs" role="tablist" aria-label="Contact method">
                     <button type="button" class="lmeg-tab is-active" role="tab" aria-selected="true"  data-channel="email"><?php echo esc_html(lmeg_t('email')); ?></button>
@@ -1653,7 +1653,7 @@ function lmeg_store_subscriber($data) {
             'ip'           => substr(function_exists('lmeg_client_ip') ? lmeg_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
             'user_agent'   => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
             'referrer'     => substr($_SERVER['HTTP_REFERER'] ?? '', 0, 255),
-            'lang'         => function_exists('lmeg_current_lang') ? lmeg_current_lang() : null,
+            'lang'         => function_exists('lmeg_signup_lang') ? (lmeg_signup_lang() ?: null) : null,
             'created_at'   => current_time('mysql'),
         ]);
         $row_id = (int) $wpdb->insert_id;

@@ -418,6 +418,7 @@ function lmeg_render_tag_picker($all_tags, $selected_ids = [], $input_name = 'ta
         'yours'   => ['label' => 'Your tags',        'fold' => false, 'tags' => []],
         'fantype' => ['label' => 'Fan type',         'fold' => false, 'tags' => []],
         'channel' => ['label' => 'Channel & plan',   'fold' => false, 'tags' => []],
+        'lang'    => ['label' => 'Language',          'fold' => false, 'tags' => []],
         'source'  => ['label' => 'Sources & events', 'fold' => false, 'tags' => []],
         'country' => ['label' => 'Country',          'fold' => true,  'tags' => []],
         'city'    => ['label' => 'City',             'fold' => true,  'tags' => []],
@@ -427,6 +428,7 @@ function lmeg_render_tag_picker($all_tags, $selected_ids = [], $input_name = 'ta
         if (empty($t->is_auto))                                                  $g = 'yours';
         elseif (strpos($slug, 'fan-type:') === 0)                                $g = 'fantype';
         elseif (strpos($slug, 'channel:') === 0 || strpos($slug, 'tier:') === 0) $g = 'channel';
+        elseif (strpos($slug, 'lang:') === 0)                                    $g = 'lang';
         elseif (strpos($slug, 'country:') === 0)                                 $g = 'country';
         elseif (strpos($slug, 'city:') === 0)                                    $g = 'city';
         else                                                                     $g = 'source';
@@ -3796,6 +3798,7 @@ function lmeg_admin_fan_profile($fan_id) {
                 <?php if ($sub->email) : ?><tr><th style="width:160px;">Email</th><td><?php echo esc_html($sub->email); ?></td></tr><?php endif; ?>
                 <?php if ($sub->phone) : ?><tr><th>Phone</th><td><?php echo esc_html($sub->phone); ?></td></tr><?php endif; ?>
                 <?php if ($sub->country) : ?><tr><th>Country</th><td><?php echo esc_html(lmeg_flag_emoji($sub->country) . ' ' . $sub->country); ?></td></tr><?php endif; ?>
+                <?php if (!empty($sub->lang) && function_exists('lmeg_known_langs')) : $lnames = lmeg_known_langs(); ?><tr><th>Language</th><td><?php echo esc_html($lnames[strtolower(substr($sub->lang, 0, 2))] ?? strtoupper($sub->lang)); ?></td></tr><?php endif; ?>
                 <?php $addr = array_filter([$sub->street, $sub->city, $sub->region, $sub->postal_code]); ?>
                 <?php if ($addr) : ?><tr><th>Address</th><td><?php echo esc_html(implode(', ', $addr)); ?></td></tr><?php endif; ?>
                 <?php if ($referrer) : ?><tr><th>Referred by</th><td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $referrer->id], admin_url('admin.php'))); ?>"><?php echo esc_html($referrer->email ?: $referrer->phone); ?></a></td></tr><?php endif; ?>

@@ -164,6 +164,18 @@ function lmeg_apply_auto_tags($sub) {
         }
     }
 
+    // lang:<code> — the fan's language, for translated broadcasts + segmenting
+    // (e.g. "send this only to French subscribers").
+    lmeg_detach_auto_tags($sub->id, 'lang:');
+    if (!empty($sub->lang) && function_exists('lmeg_known_langs')) {
+        $lc    = strtolower(substr((string) $sub->lang, 0, 2));
+        $names = lmeg_known_langs();
+        if (isset($names[$lc])) {
+            $t = lmeg_get_or_create_tag('lang:' . $lc, 'Language: ' . $names[$lc], true);
+            if ($t) lmeg_attach_tag($sub->id, $t->id);
+        }
+    }
+
     // has-address — a REAL, mailable address: street or postal code, the
     // fields only a human form / Shopify order provides. City/region alone
     // no longer qualify — since v2.55.25 those can be IP-derived
