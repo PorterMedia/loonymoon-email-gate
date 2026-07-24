@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.58.6
+Stable tag: 2.58.7
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.58.7 =
+* Fix: Shop Revenue no longer says "Shopify isn't connected" when you're using the order-webhook path. The page now opens whenever orders are arriving (webhook or API), shows a "Receiving orders via webhook" status, and only shows the API "Sync now" button when API credentials are set.
+
 = 2.58.6 =
 * New: Shop Revenue now has a "Contact" column (email, or the phone number for SMS-checkout orders) and the "Customer" column shows the matched fan's email or phone — so you can see who paid, not just "on the list". Orders now store the buyer's phone.
 

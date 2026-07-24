@@ -3592,24 +3592,38 @@ function lmeg_admin_shop() {
 
     $configured = lmeg_shop_configured();
     $last_sync  = get_option(LMEG_SHOP_LAST_SYNC, '');
+    // The webhook path needs no API connection — it feeds the orders table
+    // directly. Treat the page as "live" if orders are arriving that way too.
+    $wh_last     = get_option('lmeg_shop_wh_last', '');
+    $has_orders  = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_shop_orders");
+    $wh_active   = $wh_last || $has_orders;
     ?>
     <div class="wrap">
         <h1>Fanloop — Shop Revenue</h1>
         <?php echo $notice; ?>
 
-        <?php if (!$configured) : ?>
-            <div class="notice notice-info"><p>Shopify isn't connected yet. Under
-                <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Shop (Shopify)</a>,
-                add your store domain + Client ID/Secret and click “Connect with Shopify” (or paste a legacy static token).</p></div>
+        <?php if (!$configured && !$wh_active) : ?>
+            <div class="notice notice-info"><p>No shop connected yet. The quickest way: in
+                <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Shop (Shopify)</a>
+                copy the <strong>order webhook URL</strong> and paste it into your Shopify admin under
+                Settings → Notifications → Webhooks (Order creation, JSON). No app or token needed.
+                For live/paid stores that also want abandoned-cart recovery, add your store domain + Client ID/Secret and click “Connect with Shopify”.</p></div>
         </div>
         <?php return; endif; ?>
 
+        <?php if ($configured) : ?>
         <form method="post" style="margin:12px 0;">
             <?php wp_nonce_field('lmeg_shop', 'lmeg_shop_nonce'); ?>
             <input type="hidden" name="lmeg_action" value="sync_now" />
             <button type="submit" class="button button-primary">Sync orders now</button>
             <span style="margin-left:10px;opacity:.65;">Last sync: <?php echo $last_sync ? esc_html($last_sync) : 'never'; ?> · auto-syncs every ~15 min</span>
         </form>
+        <?php else : ?>
+        <p style="margin:12px 0;opacity:.8;">
+            <strong style="color:#34d399;">Receiving orders via webhook</strong><?php echo $wh_last ? ' — last one ' . esc_html($wh_last) : ''; ?>.
+            New orders appear here automatically. (No “Sync now” button because there’s no API connection — orders are pushed to you as they happen.)
+        </p>
+        <?php endif; ?>
 
         <?php
         $t30 = lmeg_shop_totals(30);
@@ -3705,13 +3719,17 @@ function lmeg_admin_shop() {
         <p style="opacity:.75;max-width:760px;margin:2px 0 12px;">
             <strong><?php echo number_format_i18n($order_count); ?></strong> orders synced ·
             <strong><?php echo esc_html(lmeg_format_price($order_total)); ?></strong> total revenue.
-            Shopify's <code>read_orders</code> scope returns roughly the last 60 days.
+            <?php echo $configured
+                ? "Shopify's <code>read_orders</code> scope returns roughly the last 60 days."
+                : 'Orders arrive live via the webhook — this list grows as new orders come in.'; ?>
         </p>
         <table class="widefat striped" style="max-width:900px;">
             <thead><tr><th>Order</th><th>Contact</th><th>Total</th><th>Customer</th><th>Attribution</th><th>Ordered</th></tr></thead>
             <tbody>
             <?php if (empty($recent)) : ?>
-                <tr><td colspan="6">No orders synced yet. Click “Sync orders now” above. If it stays empty, either there were no orders in the last ~60 days, or the connection needs a check — run “Save &amp; test Shopify” in Settings.</td></tr>
+                <tr><td colspan="6"><?php echo $configured
+                    ? 'No orders synced yet. Click “Sync orders now” above. If it stays empty, either there were no orders in the last ~60 days, or the connection needs a check — run “Save &amp; test Shopify” in Settings.'
+                    : 'No orders yet. As soon as someone checks out on your store, Shopify posts the order here via the webhook.'; ?></td></tr>
             <?php else : foreach ($recent as $o) :
                 $att_label = [
                     'click'      => '🖱 clicked broadcast',
