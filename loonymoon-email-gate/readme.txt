@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.59.1
+Stable tag: 2.59.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.59.2 =
+* New: import historical Shopify orders from a CSV. The order webhook is forward-only, so Shop Revenue now has an "Import historical orders (CSV)" tool — export from Shopify (Orders → Export → All orders) and upload it to backfill your full order history. Each order is matched to a fan by email/phone, de-duplicated against what's already recorded (safe to re-run), and only money actually collected is counted (pending/voided/refunded skipped). No post-purchase automations fire on import.
+
 = 2.59.1 =
 * New: one-click "Connect Instagram" in Settings → Instagram. Save your Meta App ID + Secret, click Connect, approve on Meta's screen — Fanloop grabs a long-lived token, finds your Instagram Business account, and auto-subscribes the messages + comments webhook. No more copying tokens or hand-wiring the webhook. Manual token entry is still available under "Connect manually instead."
 

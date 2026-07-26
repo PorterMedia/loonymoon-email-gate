@@ -3644,6 +3644,26 @@ function lmeg_admin_shop() {
         }
     }
 
+    // Historical backfill from a Shopify orders-export CSV.
+    if (isset($_POST['lmeg_shop_import_nonce']) && wp_verify_nonce($_POST['lmeg_shop_import_nonce'], 'lmeg_shop_import')) {
+        if (empty($_FILES['lmeg_orders_csv']['tmp_name']) || !is_uploaded_file($_FILES['lmeg_orders_csv']['tmp_name'])
+            || ($_FILES['lmeg_orders_csv']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $notice = '<div class="notice notice-error"><p>No file received (or it was too large for the server). Try again with the CSV.</p></div>';
+        } else {
+            $res = lmeg_shop_import_csv($_FILES['lmeg_orders_csv']['tmp_name']);
+            if (!empty($res['error'])) {
+                $notice = '<div class="notice notice-error"><p>' . esc_html($res['error']) . '</p></div>';
+            } else {
+                $notice = '<div class="notice notice-success"><p><strong>Imported ' . (int) $res['imported']
+                    . ' historical order' . ($res['imported'] === 1 ? '' : 's') . '</strong> — '
+                    . esc_html(lmeg_format_price((int) $res['revenue_cents'])) . ', '
+                    . (int) $res['matched'] . ' matched to a fan. Skipped '
+                    . (int) $res['skipped_dup'] . ' already recorded and '
+                    . (int) $res['skipped_unpaid'] . ' unpaid/void.</p></div>';
+            }
+        }
+    }
+
     $configured = lmeg_shop_configured();
     $last_sync  = get_option(LMEG_SHOP_LAST_SYNC, '');
     // The webhook path needs no API connection — it feeds the orders table
@@ -3655,6 +3675,16 @@ function lmeg_admin_shop() {
     <div class="wrap">
         <h1>Fanloop — Shop Revenue</h1>
         <?php echo $notice; ?>
+
+        <details style="max-width:760px;margin:10px 0 16px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:4px 14px;"<?php echo empty($has_orders) ? ' open' : ''; ?>>
+            <summary style="cursor:pointer;font-weight:600;padding:10px 0;">Import historical orders (CSV)</summary>
+            <p style="opacity:.8;margin:6px 0;">The webhook only captures orders from the day you set it up. To backfill older history, export from <strong>Shopify admin → Orders → Export → All orders → “Plain CSV file”</strong> and upload it here. Each order is matched to a fan by email/phone and de-duplicated against what’s already here, so it’s safe to run more than once (and paid orders only — refunds/voids are skipped).</p>
+            <form method="post" enctype="multipart/form-data" style="margin:8px 0 12px;">
+                <?php wp_nonce_field('lmeg_shop_import', 'lmeg_shop_import_nonce'); ?>
+                <input type="file" name="lmeg_orders_csv" accept=".csv,text/csv,text/plain" required />
+                <button type="submit" class="button button-primary">Import CSV</button>
+            </form>
+        </details>
 
         <?php if (!$configured && !$wh_active) : ?>
             <div class="notice notice-info"><p>No shop connected yet. The quickest way: in

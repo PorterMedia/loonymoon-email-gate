@@ -387,6 +387,29 @@ function lmeg_shop_sync($force = false) {
 }
 
 /**
+ * Match a Shopify buyer to a fan: email first, then phone (last 10 digits, so
+ * formatting and country code don't matter). Returns a subscriber id or 0.
+ */
+function lmeg_shop_match_subscriber($email, $phone_raw) {
+    global $wpdb;
+    $subs  = $wpdb->prefix . LMEG_TABLE;
+    $email = sanitize_email((string) $email);
+    if ($email) {
+        $id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email));
+        if ($id) return $id;
+    }
+    $digits = preg_replace('/[^\d]/', '', (string) $phone_raw);
+    if (strlen($digits) >= 10) {
+        $id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $subs WHERE phone IS NOT NULL AND phone <> '' AND RIGHT(REPLACE(phone, '+', ''), 10) = %s LIMIT 1",
+            substr($digits, -10)
+        ));
+        if ($id) return $id;
+    }
+    return 0;
+}
+
+/**
  * Record ONE Shopify order (from the API sync OR the order webhook) — matches
  * it to a fan by email, attributes it to the broadcast they last clicked,
  * attaches the "customer" tag, and upserts it into lmeg_shop_orders.
@@ -406,27 +429,16 @@ function lmeg_shop_record_order($o) {
         ?? ($o['customer']['phone']
         ?? ($o['billing_address']['phone']
         ?? ($o['shipping_address']['phone'] ?? ''))));
-    $phone_digits = preg_replace('/[^\d]/', '', $phone_raw);
     $total = (int) round(((float) ($o['total_price'] ?? ($o['current_total_price'] ?? 0))) * 100);
     $ordered_local = !empty($o['created_at'])
         ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($o['created_at'])))
         : current_time('mysql');
 
-    // Match the buyer to a fan: by email, then by phone (SMS-checkout orders
-    // carry no email). Phone match compares the last 10 digits so formatting
-    // and country-code differences don't matter.
-    $subscriber_id = null;
+    // Match the buyer to a fan (email, then phone — SMS-checkout orders carry
+    // no email).
+    $subscriber_id = lmeg_shop_match_subscriber($email, $phone_raw);
     $broadcast_id  = null;
     $attribution   = 'none';
-    if ($email) {
-        $subscriber_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM $subs WHERE email = %s", $email));
-    }
-    if (!$subscriber_id && strlen($phone_digits) >= 10) {
-        $subscriber_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $subs WHERE phone IS NOT NULL AND phone <> '' AND RIGHT(REPLACE(phone, '+', ''), 10) = %s LIMIT 1",
-            substr($phone_digits, -10)
-        ));
-    }
     if ($subscriber_id) {
         $attribution = 'subscriber';
         list($broadcast_id, $attribution) = lmeg_shop_attribute_broadcast(
@@ -464,6 +476,96 @@ function lmeg_shop_record_order($o) {
         current_time('mysql')
     ));
     return $broadcast_id ? true : false;
+}
+
+/**
+ * Backfill historical orders from a Shopify "Orders → Export" CSV. The webhook
+ * is forward-only, so this fills in everything that happened before it. Each
+ * order is matched to a fan by email/phone and deduped by order number against
+ * what's already stored. No post-purchase sequences fire (this is bulk history,
+ * not live orders) and revenue only counts money that was actually collected.
+ * Returns a stats array.
+ */
+function lmeg_shop_import_csv($file) {
+    global $wpdb;
+    $tbl   = $wpdb->prefix . 'lmeg_shop_orders';
+    $stats = ['imported' => 0, 'matched' => 0, 'skipped_dup' => 0, 'skipped_unpaid' => 0, 'revenue_cents' => 0, 'error' => ''];
+
+    $fh = @fopen($file, 'r');
+    if (!$fh) { $stats['error'] = 'Could not read the uploaded file.'; return $stats; }
+
+    $header = fgetcsv($fh, 0, ",", "\"", "\\");
+    if (!$header) { fclose($fh); $stats['error'] = 'The file looks empty.'; return $stats; }
+    $col = [];
+    foreach ($header as $i => $h) { $col[strtolower(trim((string) $h))] = $i; }
+    if (!isset($col['name'])) {
+        fclose($fh);
+        $stats['error'] = 'This doesn’t look like a Shopify orders export (no “Name” column). In Shopify: Orders → Export → plain CSV.';
+        return $stats;
+    }
+    $pick = function ($row, $names) use ($col) {
+        foreach ((array) $names as $n) {
+            if (isset($col[$n], $row[$col[$n]]) && $row[$col[$n]] !== '') return $row[$col[$n]];
+        }
+        return '';
+    };
+
+    $seen = [];
+    $now  = current_time('mysql');
+    while (($row = fgetcsv($fh, 0, ",", "\"", "\\")) !== false) {
+        if (!is_array($row)) continue;
+        $name = trim((string) ($row[$col['name']] ?? ''));
+        if ($name === '' || isset($seen[$name])) continue;
+        // Shopify writes order-level fields (Total, Email, …) only on the FIRST
+        // row of each order; later rows are line items with a blank Total.
+        $total_raw = $pick($row, ['total']);
+        if ($total_raw === '') continue;
+        $seen[$name] = true;
+
+        // Only money actually collected (skip pending/authorized/voided and
+        // fully refunded net-zero orders). An empty status is treated as paid
+        // because some exports leave it blank for completed orders.
+        $status = strtolower(trim((string) $pick($row, ['financial status'])));
+        if (!in_array($status, ['paid', 'partially_paid', 'partially_refunded', ''], true)) {
+            $stats['skipped_unpaid']++;
+            continue;
+        }
+        $cents = (int) round(((float) preg_replace('/[^0-9.\-]/', '', (string) $total_raw)) * 100);
+        if ($cents <= 0) { $stats['skipped_unpaid']++; continue; }
+
+        $order_number = ltrim($name, '#');
+        if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM $tbl WHERE order_number = %s LIMIT 1", $order_number))) {
+            $stats['skipped_dup']++;
+            continue;
+        }
+
+        $email    = sanitize_email((string) $pick($row, ['email']));
+        $phone    = (string) $pick($row, ['phone', 'billing phone', 'shipping phone']);
+        $created  = (string) $pick($row, ['created at', 'paid at']);
+        $ordered  = $created ? get_date_from_gmt(gmdate('Y-m-d H:i:s', strtotime($created))) : $now;
+        $currency = strtoupper(substr((string) ($pick($row, ['currency']) ?: 'USD'), 0, 3));
+        $sid      = lmeg_shop_match_subscriber($email, $phone);
+        // Synthetic PK from the order number (real webhook order ids are 13+
+        // digits, so small order numbers never collide with them).
+        $syn = ctype_digit($order_number) ? (int) $order_number : (int) sprintf('%u', crc32($name));
+        if ($syn <= 0) continue;
+
+        $ok = $wpdb->query($wpdb->prepare(
+            "INSERT INTO $tbl
+                (shopify_order_id, order_number, email, phone, subscriber_id, broadcast_id, attribution, total_cents, currency, ordered_at, synced_at)
+             VALUES (%d, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s)
+             ON DUPLICATE KEY UPDATE order_number = VALUES(order_number)",
+            $syn, $order_number, $email ?: null, $phone !== '' ? $phone : null,
+            $sid ?: null, null, $sid ? 'subscriber' : 'none', $cents, $currency, $ordered, $now
+        ));
+        if ($ok !== false) {
+            $stats['imported']++;
+            $stats['revenue_cents'] += $cents;
+            if ($sid) $stats['matched']++;
+        }
+    }
+    fclose($fh);
+    return $stats;
 }
 
 /* ---------------------------------------------------------------------------
