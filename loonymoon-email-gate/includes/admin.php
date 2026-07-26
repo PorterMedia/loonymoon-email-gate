@@ -2406,7 +2406,7 @@ function lmeg_admin_settings() {
                         <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_oauth_start'), 'lmeg_ig_oauth')); ?>" class="button button-primary"><?php echo $ig_ok ? 'Reconnect Instagram' : 'Connect Instagram'; ?></a>
                     <?php else : ?>
                         <button type="button" class="button button-primary" disabled title="Save App ID + App Secret first">Connect Instagram</button>
-                        <span style="opacity:.7;margin-left:8px;">↓ add + save your App ID and App Secret first</span>
+                        <span style="color:#3c434a;margin-left:8px;">↓ add + save your App ID and App Secret first</span>
                     <?php endif; ?>
                     <?php if ($ig_ok) : ?>
                         <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_disconnect'), 'lmeg_ig_disconnect')); ?>" class="button" style="margin-left:6px;" onclick="return confirm('Disconnect Instagram?');">Disconnect</a>
@@ -3678,7 +3678,7 @@ function lmeg_admin_shop() {
 
         <details style="max-width:760px;margin:10px 0 16px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:4px 14px;"<?php echo empty($has_orders) ? ' open' : ''; ?>>
             <summary style="cursor:pointer;font-weight:600;padding:10px 0;">Import historical orders (CSV)</summary>
-            <p style="opacity:.8;margin:6px 0;">The webhook only captures orders from the day you set it up. To backfill older history, export from <strong>Shopify admin → Orders → Export → All orders → “Plain CSV file”</strong> and upload it here. Each order is matched to a fan by email/phone and de-duplicated against what’s already here, so it’s safe to run more than once (and paid orders only — refunds/voids are skipped).</p>
+            <p style="color:#3c434a;margin:6px 0;">The webhook only captures orders from the day you set it up. To backfill older history, export from <strong>Shopify admin → Orders → Export → All orders → “Plain CSV file”</strong> and upload it here. Each order is matched to a fan by email/phone and de-duplicated against what’s already here, so it’s safe to run more than once (and paid orders only — refunds/voids are skipped).</p>
             <form method="post" enctype="multipart/form-data" style="margin:8px 0 12px;">
                 <?php wp_nonce_field('lmeg_shop_import', 'lmeg_shop_import_nonce'); ?>
                 <input type="file" name="lmeg_orders_csv" accept=".csv,text/csv,text/plain" required />
