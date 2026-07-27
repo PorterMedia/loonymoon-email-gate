@@ -124,11 +124,11 @@ function lmeg_admin_assets($hook) {
     wp_enqueue_style('lmeg-admin-font', 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap', [], null);
     wp_enqueue_style('lmeg-admin', LMEG_PLUGIN_URL . 'assets/admin.css', ['lmeg-admin-font'], LMEG_VERSION);
 
-    // Drag-and-drop email builder — only on the Compose page. Version the
-    // assets by file mtime so a changed builder.js/css always busts browser +
-    // CDN caches (a stale builder.js vs the fresh inline init script is what
-    // breaks the composer — they must move together).
-    if (strpos((string) $hook, 'lmeg-compose') !== false) {
+    // Drag-and-drop email builder — on the Compose page and the Sequences
+    // step editor. Version the assets by file mtime so a changed builder.js/css
+    // always busts browser + CDN caches (a stale builder.js vs the fresh inline
+    // init script is what breaks the composer — they must move together).
+    if (strpos((string) $hook, 'lmeg-compose') !== false || strpos((string) $hook, 'lmeg-sequences') !== false) {
         $bd_cssv = @filemtime(LMEG_PLUGIN_DIR . 'assets/builder.css') ?: LMEG_VERSION;
         $bd_jsv  = @filemtime(LMEG_PLUGIN_DIR . 'assets/builder.js')  ?: LMEG_VERSION;
         wp_enqueue_style('lmeg-builder', LMEG_PLUGIN_URL . 'assets/builder.css', ['lmeg-admin'], $bd_cssv);
@@ -3017,9 +3017,12 @@ function lmeg_admin_sequences() {
             $subject     = sanitize_text_field(wp_unslash($_POST['subject'] ?? ''));
             $body_email  = wp_kses_post(wp_unslash($_POST['body_email'] ?? ''));
             $body_sms    = sanitize_textarea_field(wp_unslash($_POST['body_sms'] ?? ''));
+            // Builder block JSON (source of truth for re-editing in the builder).
+            $body_blocks = wp_unslash($_POST['body_email_blocks'] ?? '');
             if ($sequence_id) {
                 $data = compact('sequence_id', 'position', 'delay_days', 'subject', 'body_email', 'body_sms');
-                $data['delay_days'] = $delay;
+                $data['delay_days']        = $delay;
+                $data['body_email_blocks'] = ($body_blocks !== '' ? $body_blocks : null);
                 if ($id) {
                     $wpdb->update($step_tbl, $data, ['id' => $id]);
                 } else {
@@ -3093,6 +3096,7 @@ function lmeg_admin_sequences() {
                         <td><?php echo $eng['opens']; ?><?php echo $sent ? ' <span style="opacity:.5;">(' . $orate . '%)</span>' : ''; ?></td>
                         <td><?php echo $eng['clicks']; ?><?php echo $sent ? ' <span style="opacity:.5;">(' . $crate . '%)</span>' : ''; ?></td>
                         <td>
+                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-sequences&edit=' . (int) $edit->id . '&step=' . (int) $step->id) . '#step-form'); ?>">Edit</a>
                             <form method="post" onsubmit="return confirm('Delete step?');" style="display:inline;">
                                 <?php wp_nonce_field('lmeg_seqs', 'lmeg_seq_nonce'); ?>
                                 <input type="hidden" name="lmeg_action" value="delete_step" />
@@ -3105,19 +3109,93 @@ function lmeg_admin_sequences() {
                 </tbody>
             </table>
 
-            <h2>Add a step</h2>
+            <?php
+            // The step form doubles as add + edit. ?step=<id> loads a step in.
+            $step_edit = (int) ($_GET['step'] ?? 0);
+            $sedit     = $step_edit ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $step_tbl WHERE id = %d AND sequence_id = %d", $step_edit, $edit->id)) : null;
+            $accent    = esc_attr(lmeg_get_settings()['color_primary'] ?? '#d05fa2');
+            ?>
+            <h2 id="step-form"><?php echo $sedit ? 'Edit step ' . (int) $sedit->position : 'Add a step'; ?></h2>
             <form method="post">
                 <?php wp_nonce_field('lmeg_seqs', 'lmeg_seq_nonce'); ?>
                 <input type="hidden" name="lmeg_action" value="save_step" />
                 <input type="hidden" name="sequence_id" value="<?php echo (int) $edit->id; ?>" />
+                <?php if ($sedit) : ?><input type="hidden" name="step_id" value="<?php echo (int) $sedit->id; ?>" /><?php endif; ?>
                 <table class="form-table" role="presentation">
-                    <tr><th>Position</th><td><input type="number" name="position" value="<?php echo count($steps) + 1; ?>" min="1" class="small-text" /></td></tr>
-                    <tr><th>Delay (days after prior step / enrollment)</th><td><input type="number" name="delay_days" value="0" min="0" class="small-text" /></td></tr>
-                    <tr><th>Subject</th><td><input type="text" name="subject" class="regular-text" placeholder="{name}, a follow-up" /></td></tr>
-                    <tr><th>Email body</th><td><textarea name="body_email" rows="6" class="large-text"></textarea></td></tr>
-                    <tr><th>SMS body</th><td><textarea name="body_sms" rows="3" class="large-text" maxlength="1600"></textarea></td></tr>
+                    <tr><th>Position</th><td><input type="number" name="position" value="<?php echo $sedit ? (int) $sedit->position : count($steps) + 1; ?>" min="1" class="small-text" /></td></tr>
+                    <tr><th>Delay (days after prior step / enrollment)</th><td><input type="number" name="delay_days" value="<?php echo $sedit ? (int) $sedit->delay_days : 0; ?>" min="0" class="small-text" /></td></tr>
+                    <tr><th>Subject</th><td><input type="text" name="subject" class="regular-text" value="<?php echo esc_attr($sedit->subject ?? ''); ?>" placeholder="{name}, a follow-up" /></td></tr>
+                    <tr><th>Email body</th><td>
+                        <div class="lmeg-bd-modes">
+                            <button type="button" class="lmeg-bd-mode is-active" data-mode="builder">🧱 Drag &amp; drop builder</button>
+                            <button type="button" class="lmeg-bd-mode" data-mode="rich">Rich text / HTML</button>
+                        </div>
+                        <div id="lmeg-builder-root" data-accent="<?php echo $accent; ?>"></div>
+                        <input type="hidden" id="body_email_blocks" name="body_email_blocks" value="<?php echo esc_attr($sedit->body_email_blocks ?? ''); ?>" />
+                        <input type="hidden" id="body_email_mode" name="body_email_mode" value="builder" />
+                        <div id="lmeg-rich-wrap" style="display:none;">
+                        <?php wp_editor($sedit->body_email ?? '', 'body_email', [
+                            'textarea_name' => 'body_email',
+                            'textarea_rows' => 12,
+                            'media_buttons' => true,
+                            'teeny'         => false,
+                            'quicktags'     => true,
+                        ]); ?>
+                        </div>
+                        <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send.</p>
+                    </td></tr>
+                    <tr><th>SMS body</th><td><textarea name="body_sms" rows="3" class="large-text" maxlength="1600"><?php echo esc_textarea($sedit->body_sms ?? ''); ?></textarea></td></tr>
                 </table>
-                <p><button type="submit" class="button button-primary">Add step</button></p>
+                <p>
+                    <button type="submit" class="button button-primary"><?php echo $sedit ? 'Save step' : 'Add step'; ?></button>
+                    <?php if ($sedit) : ?><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-sequences&edit=' . (int) $edit->id) . '#step-form'); ?>" class="button">Cancel edit</a><?php endif; ?>
+                </p>
+                <script>
+                (function(){
+                    function boot(){
+                        var root = document.getElementById('lmeg-builder-root');
+                        var richWrap = document.getElementById('lmeg-rich-wrap');
+                        var modeField = document.getElementById('body_email_mode');
+                        if (!root) return;
+                        var b = null;
+                        function setMode(mode){
+                            var builder = mode !== 'rich';
+                            document.querySelectorAll('.lmeg-bd-mode').forEach(function(x){
+                                x.classList.toggle('is-active', x.dataset.mode === (builder ? 'builder' : 'rich'));
+                            });
+                            root.style.display = builder ? '' : 'none';
+                            if (richWrap) richWrap.style.display = builder ? 'none' : '';
+                            if (modeField) modeField.value = builder ? 'builder' : 'rich';
+                        }
+                        function pushBuilder(){ if (!b) return; try { (b.pushToEditor || b.sync || function(){}).call(b); } catch(e){} }
+                        document.querySelectorAll('.lmeg-bd-mode').forEach(function(btn){
+                            btn.addEventListener('click', function(){
+                                var toRich = btn.dataset.mode === 'rich';
+                                if (toRich) pushBuilder();
+                                setMode(toRich ? 'rich' : 'builder');
+                            });
+                        });
+                        var f = root.closest('form');
+                        if (f) f.addEventListener('submit', function(){
+                            var mode = modeField ? modeField.value : 'builder';
+                            if (mode === 'rich') { if (window.tinymce) { try { tinymce.triggerSave(); } catch(e){} } }
+                            else pushBuilder();
+                        });
+                        setMode('builder');
+                        var tries = 0;
+                        (function initBuilder(){
+                            if (!window.LMEGBuilder) {
+                                if (tries++ < 40) { setTimeout(initBuilder, 100); return; }
+                                root.innerHTML = '<div style="padding:16px;border:1px dashed #d8ccc0;border-radius:10px;color:#6a5f5a;font-size:13px;">The drag &amp; drop builder didn’t load (a caching/optimization plugin may be blocking it). Click <strong>Rich text / HTML</strong> above to compose instead.</div>';
+                                return;
+                            }
+                            try { b = window.LMEGBuilder.init(root, 'body_email'); }
+                            catch(e){ if (window.console && console.error) console.error('Fanloop builder failed to initialize:', e); }
+                        })();
+                    }
+                    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+                })();
+                </script>
             </form>
         </div>
         <?php
