@@ -845,3 +845,71 @@ function lmeg_admin_top_fans() {
     </div>
     <?php
 }
+
+/* ---------------------------------------------------------------------------
+ * Referrals — attribute revenue to the fans who bring in other fans. The
+ * owned-data take on Laylo's Affiliates: who's your street team, and how much
+ * have the fans they referred actually spent?
+ * ------------------------------------------------------------------------- */
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Referrals', 'Referrals', 'manage_options', 'lmeg-referrals', 'lmeg_admin_referrals');
+}, 22);
+
+function lmeg_admin_referrals() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $subs   = $wpdb->prefix . LMEG_TABLE;
+    $orders = $wpdb->prefix . 'lmeg_shop_orders';
+
+    $total_referred = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE referred_by IS NOT NULL");
+    $total_refs     = (int) $wpdb->get_var("SELECT COUNT(DISTINCT referred_by) FROM $subs WHERE referred_by IS NOT NULL");
+    $referred_rev   = (int) $wpdb->get_var(
+        "SELECT COALESCE(SUM(o.total_cents),0) FROM $orders o JOIN $subs f ON f.id = o.subscriber_id WHERE f.referred_by IS NOT NULL"
+    );
+
+    $rows = $wpdb->get_results(
+        "SELECT ref.id, ref.email, ref.first_name, ref.phone, ref.referral_code,
+                COUNT(DISTINCT fan.id) AS referred_count,
+                COUNT(DISTINCT o.subscriber_id) AS buyers,
+                COALESCE(SUM(o.total_cents),0) AS rev_cents
+         FROM $subs ref
+         JOIN $subs fan ON fan.referred_by = ref.id
+         LEFT JOIN $orders o ON o.subscriber_id = fan.id
+         GROUP BY ref.id
+         ORDER BY rev_cents DESC, referred_count DESC
+         LIMIT 100"
+    );
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Referrals</h1>
+        <p style="max-width:820px;">Who's bringing in new fans — and how much those referred fans have spent. Every fan has a referral link (the <code>{referral_link}</code> merge tag / their profile); this ranks your best advocates so you can reward them.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;max-width:720px;margin:16px 0;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Referred fans</div><div class="lmeg-stat__value"><?php echo number_format_i18n($total_referred); ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Referrers</div><div class="lmeg-stat__value"><?php echo number_format_i18n($total_refs); ?></div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Referred-fan revenue</div><div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price($referred_rev)); ?></div></div>
+        </div>
+
+        <h2>Top referrers</h2>
+        <table class="widefat striped" style="max-width:900px;">
+            <thead><tr><th>#</th><th>Fan</th><th>Code</th><th>Referred</th><th>Buyers</th><th>Attributed revenue</th></tr></thead>
+            <tbody>
+            <?php if (empty($rows)) : ?>
+                <tr><td colspan="6">No referrals yet. Share the <code>{referral_link}</code> merge tag in a broadcast (or the Step-5 "put me on" email) and this fills in as fans bring friends.</td></tr>
+            <?php else : $i = 0; foreach ($rows as $r) : $i++; ?>
+                <tr>
+                    <td><?php echo $i; ?></td>
+                    <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $r->id], admin_url('admin.php'))); ?>"><?php echo esc_html($r->first_name ?: $r->email ?: $r->phone ?: ('Fan #' . $r->id)); ?></a></td>
+                    <td><?php echo $r->referral_code ? '<code>' . esc_html($r->referral_code) . '</code>' : '—'; ?></td>
+                    <td><strong><?php echo (int) $r->referred_count; ?></strong></td>
+                    <td><?php echo (int) $r->buyers; ?></td>
+                    <td><?php echo (int) $r->rev_cents ? '<strong>' . esc_html(lmeg_format_price((int) $r->rev_cents)) . '</strong>' : '—'; ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+        <p class="description" style="max-width:820px;margin-top:12px;">Payouts are manual for now — reward your top referrers with a discount code, free merch, or guest-list spots.</p>
+    </div>
+    <?php
+}
