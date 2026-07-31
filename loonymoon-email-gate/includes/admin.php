@@ -3215,9 +3215,56 @@ function lmeg_admin_sequences() {
                 <input type="hidden" name="sequence_id" value="<?php echo (int) $edit->id; ?>" />
                 <?php if ($sedit) : ?><input type="hidden" name="step_id" value="<?php echo (int) $sedit->id; ?>" /><?php endif; ?>
                 <table class="form-table" role="presentation">
+                    <?php if (function_exists('lmeg_ai_configured') && lmeg_ai_configured()) : ?>
+                    <tr>
+                        <th>✨ Write with AI</th>
+                        <td>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;max-width:660px;">
+                                <input type="text" id="lmeg-ai-brief" class="regular-text" style="flex:1;min-width:260px;" placeholder="What's this step about? e.g. day-3 nudge to check out the shop" />
+                                <button type="button" class="button button-secondary" id="lmeg-ai-write">✨ Write it</button>
+                                <span id="lmeg-ai-write-status" style="font-size:12px;"></span>
+                            </div>
+                            <p class="description">Drafts this step's subject, email, and SMS in <?php echo esc_html(function_exists('lmeg_artist') ? lmeg_artist() : 'your'); ?>'s voice (learns from your recent sends). Review + edit before saving.</p>
+                        </td>
+                    </tr>
+                    <script>
+                    (function(){
+                        var ajax  = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+                        var nonce = <?php echo wp_json_encode(wp_create_nonce('lmeg_ai')); ?>;
+                        var btn = document.getElementById('lmeg-ai-write');
+                        var brief = document.getElementById('lmeg-ai-brief');
+                        var status = document.getElementById('lmeg-ai-write-status');
+                        if (!btn) return;
+                        function setEmail(html){
+                            var richBtn = document.querySelector('.lmeg-bd-mode[data-mode="rich"]');
+                            if (richBtn) richBtn.click();
+                            if (window.tinymce && tinymce.get('body_email')) { try { tinymce.get('body_email').setContent(html); } catch(e){} }
+                            var ta = document.getElementById('body_email'); if (ta) ta.value = html;
+                        }
+                        btn.addEventListener('click', function(){
+                            var b = (brief.value || '').trim();
+                            if (!b) { brief.focus(); return; }
+                            btn.disabled = true; var old = btn.textContent; btn.textContent = 'Writing…'; status.textContent = '';
+                            var fd = new FormData();
+                            fd.append('action','lmeg_ai_compose'); fd.append('nonce',nonce); fd.append('brief',b);
+                            fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
+                                if (d && d.success) {
+                                    var s = document.getElementById('subject'); if (s && d.data.subject) s.value = d.data.subject;
+                                    if (d.data.email) setEmail(d.data.email);
+                                    var sms = document.getElementById('body_sms'); if (sms && d.data.sms) sms.value = d.data.sms;
+                                    status.textContent = '✓ drafted — review + edit below';
+                                } else {
+                                    status.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error');
+                                }
+                            }).catch(function(){ status.textContent = '⚠ network error'; })
+                            .finally(function(){ btn.disabled = false; btn.textContent = old; });
+                        });
+                    })();
+                    </script>
+                    <?php endif; ?>
                     <tr><th>Position</th><td><input type="number" name="position" value="<?php echo $sedit ? (int) $sedit->position : count($steps) + 1; ?>" min="1" class="small-text" /></td></tr>
                     <tr><th>Delay (days after prior step / enrollment)</th><td><input type="number" name="delay_days" value="<?php echo $sedit ? (int) $sedit->delay_days : 0; ?>" min="0" class="small-text" /></td></tr>
-                    <tr><th>Subject</th><td><input type="text" name="subject" class="regular-text" value="<?php echo esc_attr($sedit->subject ?? ''); ?>" placeholder="{name}, a follow-up" /></td></tr>
+                    <tr><th>Subject</th><td><input type="text" name="subject" id="subject" class="regular-text" value="<?php echo esc_attr($sedit->subject ?? ''); ?>" placeholder="{name}, a follow-up" /></td></tr>
                     <tr><th>Email body</th><td>
                         <div class="lmeg-bd-modes">
                             <button type="button" class="lmeg-bd-mode is-active" data-mode="builder">🧱 Drag &amp; drop builder</button>
@@ -3237,7 +3284,7 @@ function lmeg_admin_sequences() {
                         </div>
                         <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send.</p>
                     </td></tr>
-                    <tr><th>SMS body</th><td><textarea name="body_sms" rows="3" class="large-text" maxlength="1600"><?php echo esc_textarea($sedit->body_sms ?? ''); ?></textarea></td></tr>
+                    <tr><th>SMS body</th><td><textarea name="body_sms" id="body_sms" rows="3" class="large-text" maxlength="1600"><?php echo esc_textarea($sedit->body_sms ?? ''); ?></textarea></td></tr>
                 </table>
                 <p>
                     <button type="submit" class="button button-primary"><?php echo $sedit ? 'Save step' : 'Add step'; ?></button>
