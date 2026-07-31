@@ -155,6 +155,99 @@ function lmeg_ai_verify() {
     return 'AI connected — model responded.';
 }
 
+/**
+ * A few recent completed broadcasts, as voice/tone examples for the composer.
+ */
+function lmeg_ai_voice_examples($limit = 3) {
+    global $wpdb;
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT subject, body, body_sms FROM {$wpdb->prefix}lmeg_broadcasts
+         WHERE status = 'completed' ORDER BY id DESC LIMIT %d", (int) $limit
+    ));
+    $out = [];
+    foreach ((array) $rows as $r) {
+        $email = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string) $r->body)));
+        $sms   = trim((string) $r->body_sms);
+        $ex = '';
+        if ($r->subject) $ex .= 'Subject: ' . $r->subject . "\n";
+        if ($email !== '') $ex .= 'Email: ' . mb_substr($email, 0, 400) . "\n";
+        if ($sms !== '')   $ex .= 'SMS: ' . mb_substr($sms, 0, 200);
+        $ex = trim($ex);
+        if ($ex !== '') $out[] = $ex;
+    }
+    return $out;
+}
+
+/**
+ * Draft a broadcast in the artist's voice from a short brief. Returns
+ * ['subject','email','sms'] or WP_Error.
+ */
+function lmeg_ai_compose($brief, $channel = 'both') {
+    $s = lmeg_get_settings();
+    if (empty($s['ai_api_key'])) return new WP_Error('lmeg_ai_unconfigured', 'Add your Anthropic API key in Settings → AI assistant.');
+    $brief = trim(wp_strip_all_tags((string) $brief));
+    if ($brief === '') return new WP_Error('lmeg_ai_empty', 'Tell me what the message is about first.');
+
+    $artist    = lmeg_artist();
+    $community = lmeg_community();
+    $voice     = trim((string) ($s['ai_voice'] ?? ''));
+    $examples  = lmeg_ai_voice_examples(3);
+    $model     = $s['ai_model'] ?: 'claude-haiku-4-5-20251001';
+
+    $system = "You are {$artist}, writing a message to your fan community (\"{$community}\"). "
+        . "Write in {$artist}'s authentic voice — like the artist personally texting/emailing their fans, NOT a marketer. Warm, personal, real. "
+        . "Use merge tags where natural: {name} (fan's first name), {unique_code} (their code), {referral_link}. "
+        . "Email: tight, skimmable, one clear call to action. SMS: under 300 characters, no links unless essential."
+        . ($voice !== '' ? "\n\nARTIST VOICE NOTES:\n{$voice}" : '')
+        . ($examples ? "\n\nPAST MESSAGES — match this voice and tone closely:\n\n" . implode("\n\n---\n\n", $examples) : '')
+        . "\n\nReturn ONLY a raw JSON object (no markdown, no prose) with exactly these keys: "
+        . "\"subject\" (email subject line), \"email\" (simple HTML using only <p> and <a href=\"\"> tags), \"sms\" (plain text). "
+        . "Leave a field as an empty string if it isn't needed.";
+
+    $resp = wp_remote_post(LMEG_AI_ENDPOINT, [
+        'timeout' => 45,
+        'headers' => [
+            'x-api-key'         => $s['ai_api_key'],
+            'anthropic-version' => '2023-06-01',
+            'content-type'      => 'application/json',
+        ],
+        'body' => wp_json_encode([
+            'model'      => $model,
+            'max_tokens' => 1200,
+            'system'     => $system,
+            'messages'   => [['role' => 'user', 'content' => 'Write a message about: ' . $brief]],
+        ]),
+    ]);
+    if (is_wp_error($resp)) return $resp;
+    $code = wp_remote_retrieve_response_code($resp);
+    $d    = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code !== 200) return new WP_Error('lmeg_ai_http_' . $code, $d['error']['message'] ?? ('HTTP ' . $code));
+
+    $text = '';
+    foreach ((array) ($d['content'] ?? []) as $b) {
+        if (($b['type'] ?? '') === 'text') $text .= $b['text'];
+    }
+    // Pull the JSON object out (in case the model wraps it in prose/fences).
+    if (preg_match('/\{.*\}/s', $text, $m)) $text = $m[0];
+    $parsed = json_decode($text, true);
+    if (!is_array($parsed)) return new WP_Error('lmeg_ai_parse', 'The model returned an unexpected format — try again.');
+
+    return [
+        'subject' => (string) ($parsed['subject'] ?? ''),
+        'email'   => wp_kses_post((string) ($parsed['email'] ?? '')),
+        'sms'     => trim(wp_strip_all_tags((string) ($parsed['sms'] ?? ''))),
+    ];
+}
+
+add_action('wp_ajax_lmeg_ai_compose', 'lmeg_ajax_ai_compose');
+function lmeg_ajax_ai_compose() {
+    if (!current_user_can('manage_options')) wp_send_json_error(['msg' => 'forbidden'], 403);
+    check_ajax_referer('lmeg_ai', 'nonce');
+    $r = lmeg_ai_compose($_POST['brief'] ?? '', $_POST['channel'] ?? 'both');
+    if (is_wp_error($r)) wp_send_json_error(['msg' => $r->get_error_message()]);
+    wp_send_json_success($r);
+}
+
 /* ---------------------------------------------------------------------------
  * AJAX + admin page
  * ------------------------------------------------------------------------- */

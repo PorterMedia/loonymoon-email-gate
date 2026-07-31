@@ -1340,6 +1340,53 @@ function lmeg_admin_compose() {
 
             <h2>Email (via Brevo) — sent to <?php echo $count_email; ?> subscriber<?php echo $count_email === 1 ? '' : 's'; ?></h2>
             <table class="form-table" role="presentation">
+                <?php if (function_exists('lmeg_ai_configured') && lmeg_ai_configured()) : ?>
+                <tr>
+                    <th>✨ Write with AI</th>
+                    <td>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;max-width:660px;">
+                            <input type="text" id="lmeg-ai-brief" class="regular-text" style="flex:1;min-width:260px;" placeholder="What's this about? e.g. presale for the Toronto show, or new single out Friday" />
+                            <button type="button" class="button button-secondary" id="lmeg-ai-write">✨ Write it</button>
+                            <span id="lmeg-ai-write-status" style="font-size:12px;"></span>
+                        </div>
+                        <p class="description">Drafts a subject, email, and SMS in <?php echo esc_html(function_exists('lmeg_artist') ? lmeg_artist() : 'your'); ?>'s voice (learns from your recent sends). Review + edit before sending. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings') . '#lmeg-sec-ai'); ?>">Tune the voice →</a></p>
+                    </td>
+                </tr>
+                <script>
+                (function(){
+                    var ajax  = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+                    var nonce = <?php echo wp_json_encode(wp_create_nonce('lmeg_ai')); ?>;
+                    var btn = document.getElementById('lmeg-ai-write');
+                    var brief = document.getElementById('lmeg-ai-brief');
+                    var status = document.getElementById('lmeg-ai-write-status');
+                    if (!btn) return;
+                    function setEmail(html){
+                        var richBtn = document.querySelector('.lmeg-bd-mode[data-mode="rich"]');
+                        if (richBtn) richBtn.click(); // show the HTML in the rich editor
+                        if (window.tinymce && tinymce.get('body_email')) { try { tinymce.get('body_email').setContent(html); } catch(e){} }
+                        var ta = document.getElementById('body_email'); if (ta) ta.value = html;
+                    }
+                    btn.addEventListener('click', function(){
+                        var b = (brief.value || '').trim();
+                        if (!b) { brief.focus(); return; }
+                        btn.disabled = true; var old = btn.textContent; btn.textContent = 'Writing…'; status.textContent = '';
+                        var fd = new FormData();
+                        fd.append('action','lmeg_ai_compose'); fd.append('nonce',nonce); fd.append('brief',b);
+                        fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
+                            if (d && d.success) {
+                                var s = document.getElementById('subject'); if (s && d.data.subject) s.value = d.data.subject;
+                                if (d.data.email) setEmail(d.data.email);
+                                var sms = document.getElementById('body_sms'); if (sms && d.data.sms) sms.value = d.data.sms;
+                                status.textContent = '✓ drafted — review + edit below';
+                            } else {
+                                status.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error');
+                            }
+                        }).catch(function(){ status.textContent = '⚠ network error'; })
+                        .finally(function(){ btn.disabled = false; btn.textContent = old; });
+                    });
+                })();
+                </script>
+                <?php endif; ?>
                 <tr>
                     <th><label for="subject">Subject</label></th>
                     <td><input type="text" name="subject" id="subject" class="regular-text" value="<?php echo esc_attr($vals['subject']); ?>" /></td>
@@ -2023,6 +2070,7 @@ function lmeg_admin_settings() {
             // AI assistant
             'ai_api_key'              => sanitize_text_field(wp_unslash($_POST['ai_api_key'] ?? '')),
             'ai_model'                => sanitize_text_field(wp_unslash($_POST['ai_model'] ?? '')) ?: 'claude-haiku-4-5-20251001',
+            'ai_voice'                => sanitize_textarea_field(wp_unslash($_POST['ai_voice'] ?? '')),
             // Instagram DM automation
             'ig_app_id'               => sanitize_text_field(wp_unslash($_POST['ig_app_id'] ?? '')),
             'ig_app_secret'           => sanitize_text_field(wp_unslash($_POST['ig_app_secret'] ?? '')),
@@ -2392,6 +2440,9 @@ function lmeg_admin_settings() {
                 <tr><th><label for="ai_model">Model</label></th>
                     <td><input type="text" name="ai_model" id="ai_model" class="regular-text" value="<?php echo esc_attr($s['ai_model'] ?? 'claude-haiku-4-5-20251001'); ?>" />
                         <p class="description">Default <code>claude-haiku-4-5-20251001</code> (fast + cheap). Swap for a larger model if you want deeper analysis.</p></td></tr>
+                <tr><th><label for="ai_voice">Artist voice</label></th>
+                    <td><textarea name="ai_voice" id="ai_voice" rows="4" class="large-text" placeholder="e.g. lowercase, warm and a little chaotic; texting spelling (u, ur, wanna); bursts of CAPS when hyped; signs off with a 🖤. talks to fans like close friends."><?php echo esc_textarea($s['ai_voice'] ?? ''); ?></textarea>
+                        <p class="description">Optional. Describe how <?php echo esc_html(function_exists('lmeg_artist') ? lmeg_artist() : 'the artist'); ?> writes. The <strong>✨ Write with AI</strong> button on the Compose page uses this (plus your recent sends) to draft emails + texts in their voice.</p></td></tr>
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="ai" class="button">Save &amp; test AI</button></td></tr>
             </table>
