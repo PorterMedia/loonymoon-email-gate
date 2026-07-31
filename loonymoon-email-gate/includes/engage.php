@@ -591,6 +591,7 @@ function lmeg_admin_tour() {
                     </td>
                     <td><?php echo $d->status === 'soldout' ? '<span style="color:#F87171;">Sold out</span>' : '<span style="color:#34D399;">On sale</span>'; ?></td>
                     <td>
+                        <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-compose&prefill=tour&tour=' . (int) $d->id)); ?>" title="Draft an announcement to fans within 100km of <?php echo esc_attr($d->city); ?>">🔔 Notify nearby fans</a>
                         <form method="post" style="display:inline;">
                             <?php wp_nonce_field('lmeg_tour', 'lmeg_tour_nonce'); ?>
                             <input type="hidden" name="date_id" value="<?php echo (int) $d->id; ?>" />

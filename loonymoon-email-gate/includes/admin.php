@@ -1142,6 +1142,29 @@ function lmeg_admin_compose() {
         'radius_city'      => '',
     ];
 
+    // Deep-link prefill: "Notify nearby fans" from a tour date pre-targets the
+    // radius to the show's city and drafts the announcement. It only fills the
+    // form — the human still reviews the copy + audience and hits send.
+    if (!isset($_POST['lmeg_action']) && ($_GET['prefill'] ?? '') === 'tour' && !empty($_GET['tour'])) {
+        global $wpdb;
+        $td = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_tour_dates WHERE id = %d", (int) $_GET['tour']));
+        if ($td) {
+            $artist = function_exists('lmeg_artist') ? lmeg_artist() : get_bloginfo('name');
+            $when   = date_i18n('M j', strtotime($td->show_date));
+            $tix    = trim((string) $td->ticket_url) ?: trim((string) $td->presale_url);
+            $vals['radius_city']     = $td->city;
+            $vals['radius_km']       = 100;
+            $vals['subject']         = $artist . ' in ' . $td->city . ' — ' . $when . ' 🎟️';
+            $vals['body_email_mode'] = 'rich';
+            $vals['body_email']      = '<p>Big news — <strong>' . esc_html($artist) . '</strong> is playing <strong>' . esc_html($td->city) . '</strong>!</p>'
+                . '<p><strong>' . esc_html($td->venue) . '</strong><br>' . esc_html(date_i18n('l, F j, Y', strtotime($td->show_date))) . '</p>'
+                . ($tix ? '<p><a href="' . esc_url($tix) . '">Get tickets →</a></p>' : '')
+                . '<p>You’re getting this because you’re near ' . esc_html($td->city) . '. see you there? 🖤</p>';
+            $vals['body_sms']        = $artist . ' is playing ' . $td->city . ' on ' . $when . '! ' . ($tix ? $tix . ' ' : '') . 'see u there 🖤';
+            $notice = '<div class="notice notice-info"><p><strong>Drafted a show announcement for ' . esc_html($td->city) . '</strong>, pre-targeted to fans within 100&nbsp;km. Review the copy + audience below, then send.</p></div>';
+        }
+    }
+
     if (isset($_POST['lmeg_action']) && check_admin_referer('lmeg_compose', 'lmeg_compose_nonce')) {
         $vals['subject']    = sanitize_text_field(wp_unslash($_POST['subject'] ?? ''));
         $vals['body_email'] = wp_kses_post(wp_unslash($_POST['body_email'] ?? ''));
