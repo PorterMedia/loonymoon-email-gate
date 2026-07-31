@@ -1937,6 +1937,10 @@ function lmeg_admin_settings() {
             // Brevo (the email provider)
             'brevo_api_key'       => sanitize_text_field(wp_unslash($_POST['brevo_api_key'] ?? '')),
             'double_optin'        => !empty($_POST['double_optin']) ? 1 : 0,
+            'pixels_enabled'      => !empty($_POST['pixels_enabled']) ? 1 : 0,
+            'pixel_meta'          => preg_replace('/[^A-Za-z0-9_\-]/', '', (string) wp_unslash($_POST['pixel_meta'] ?? '')),
+            'pixel_ga'            => preg_replace('/[^A-Za-z0-9_\-]/', '', (string) wp_unslash($_POST['pixel_ga'] ?? '')),
+            'pixel_tiktok'        => preg_replace('/[^A-Za-z0-9_\-]/', '', (string) wp_unslash($_POST['pixel_tiktok'] ?? '')),
             'community_name'      => sanitize_text_field(wp_unslash($_POST['community_name'] ?? '')),
             'artist_name'         => sanitize_text_field(wp_unslash($_POST['artist_name'] ?? '')),
             'digest_enabled'      => !empty($_POST['digest_enabled']) ? 1 : 0,
@@ -2367,6 +2371,21 @@ function lmeg_admin_settings() {
                         <p class="description">Default <code>claude-haiku-4-5-20251001</code> (fast + cheap). Swap for a larger model if you want deeper analysis.</p></td></tr>
                 <tr><th>Test connection</th>
                     <td><button type="submit" name="lmeg_test" value="ai" class="button">Save &amp; test AI</button></td></tr>
+            </table>
+
+            <h2>Retargeting pixels</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Enable pixels</th><td><label><input type="checkbox" name="pixels_enabled" value="1" <?php checked($s['pixels_enabled'] ?? 0); ?> /> Load these pixels on the front end of your site</label>
+                    <p class="description">Builds ad-retargeting audiences from your site visitors and fires a conversion event when someone subscribes. Nothing loads unless at least one ID below is filled in.</p></td></tr>
+                <tr><th><label for="pixel_meta">Meta (Facebook) Pixel ID</label></th>
+                    <td><input type="text" name="pixel_meta" id="pixel_meta" class="regular-text" value="<?php echo esc_attr($s['pixel_meta'] ?? ''); ?>" placeholder="123456789012345" />
+                        <p class="description">Meta Events Manager → your pixel → the numeric ID. Fires <code>PageView</code> everywhere + <code>Lead</code> on signup.</p></td></tr>
+                <tr><th><label for="pixel_ga">Google tag ID</label></th>
+                    <td><input type="text" name="pixel_ga" id="pixel_ga" class="regular-text" value="<?php echo esc_attr($s['pixel_ga'] ?? ''); ?>" placeholder="G-XXXXXXX or AW-XXXXXXX" />
+                        <p class="description">GA4 Measurement ID (<code>G-…</code>) or Google Ads tag (<code>AW-…</code>). Fires the <code>sign_up</code> event on signup.</p></td></tr>
+                <tr><th><label for="pixel_tiktok">TikTok Pixel ID</label></th>
+                    <td><input type="text" name="pixel_tiktok" id="pixel_tiktok" class="regular-text" value="<?php echo esc_attr($s['pixel_tiktok'] ?? ''); ?>" placeholder="CXXXXXXXXXXXXXXXXXXX" />
+                        <p class="description">TikTok Events Manager → your pixel ID. Fires <code>CompleteRegistration</code> on signup.</p></td></tr>
             </table>
 
             <h2>Instagram (DM automation)</h2>

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.60.0
+Stable tag: 2.60.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.60.1 =
+* New: retargeting pixels (Settings → Retargeting pixels). Add your Meta, Google (GA4/Ads), and/or TikTok IDs and Fanloop loads the pixels on your site's front end to build ad-retargeting audiences — and fires a conversion event (Lead / sign_up / CompleteRegistration) when a fan subscribes. Matches Laylo's pixel-tracking feature.
+
 = 2.60.0 =
 * New: the drag & drop email builder is now on the Sequences page too — build each automation step with blocks (or Rich text / HTML), exactly like Compose. Steps are now editable (new Edit button) and the builder layout is saved per step so you can reopen and tweak it. Great for building multi-email welcome/nurture journeys.
 
