@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.60.5
+ * Version:     2.61.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.60.5');
-define('LMEG_DB_VERSION',  '2.60.0');
+define('LMEG_VERSION',     '2.61.0');
+define('LMEG_DB_VERSION',  '2.61.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -85,6 +85,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
 require_once LMEG_PLUGIN_DIR . 'includes/spotify.php';
 require_once LMEG_PLUGIN_DIR . 'includes/ai.php';
+require_once LMEG_PLUGIN_DIR . 'includes/social.php';
 require_once LMEG_PLUGIN_DIR . 'includes/updater.php';
 require_once LMEG_PLUGIN_DIR . 'includes/admin.php';
 
@@ -475,6 +476,18 @@ function lmeg_create_tables() {
         popularity INT DEFAULT NULL,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (snap_date)
+    ) $charset;");
+
+    $social = $wpdb->prefix . 'lmeg_social_snapshots';
+    dbDelta("CREATE TABLE $social (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        platform VARCHAR(16) NOT NULL,
+        snap_date DATE NOT NULL,
+        followers BIGINT(20) UNSIGNED DEFAULT NULL,
+        media_count BIGINT(20) UNSIGNED DEFAULT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_platform_date (platform, snap_date)
     ) $charset;");
 
     $igr = $wpdb->prefix . 'lmeg_ig_rules';
