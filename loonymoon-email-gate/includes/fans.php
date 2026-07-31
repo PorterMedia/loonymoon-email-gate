@@ -760,3 +760,88 @@ function lmeg_fan_engagement($subscriber_id) {
     ));
     return ['opens' => (int) ($row->opens ?? 0), 'clicks' => (int) ($row->clicks ?? 0)];
 }
+
+/* ---------------------------------------------------------------------------
+ * Top Fans — a leaderboard of your biggest supporters, ranked by revenue +
+ * engagement. The owned-data answer to Laylo's "Notable Fans": instead of
+ * chasing social follower counts, surface who actually shows up for you.
+ * One efficient ranked query (aggregated subqueries) so it scales.
+ * ------------------------------------------------------------------------- */
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Top Fans', 'Top Fans', 'manage_options', 'lmeg-top-fans', 'lmeg_admin_top_fans');
+}, 21);
+
+function lmeg_admin_top_fans() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $subs   = $wpdb->prefix . LMEG_TABLE;
+    $orders = $wpdb->prefix . 'lmeg_shop_orders';
+    $events = $wpdb->prefix . 'lmeg_broadcast_events';
+    $notice = '';
+
+    // Composite supporter score: revenue $ ×5 + clicks ×3 + opens + visits, and
+    // a boost for paying members. No user input in the SQL — static + safe.
+    $score = "(COALESCE(o.rev,0)/100*5 + COALESCE(e.clicks,0)*3 + COALESCE(e.opens,0) + COALESCE(e.visits,0) + IF(s.member_status='active',50,0))";
+    $rows = $wpdb->get_results(
+        "SELECT s.id, s.email, s.phone, s.first_name, s.member_status, s.created_at,
+                COALESCE(o.rev,0) rev_cents, COALESCE(o.orders,0) orders,
+                COALESCE(e.opens,0) opens, COALESCE(e.clicks,0) clicks, COALESCE(e.visits,0) visits,
+                $score AS score
+         FROM $subs s
+         LEFT JOIN (SELECT subscriber_id, SUM(total_cents) rev, COUNT(*) orders FROM $orders GROUP BY subscriber_id) o ON o.subscriber_id = s.id
+         LEFT JOIN (SELECT subscriber_id,
+                       SUM(event_type='open') opens,
+                       SUM(event_type='click') clicks,
+                       SUM(event_type='pageview') visits
+                    FROM $events GROUP BY subscriber_id) e ON e.subscriber_id = s.id
+         WHERE s.unsubscribed_at IS NULL
+         ORDER BY score DESC, rev_cents DESC
+         LIMIT 100"
+    );
+
+    // One-click: tag the top N as VIP for targeting.
+    if (isset($_POST['lmeg_topfans_nonce']) && wp_verify_nonce($_POST['lmeg_topfans_nonce'], 'lmeg_topfans')) {
+        $n = max(1, min(100, (int) ($_POST['vip_n'] ?? 25)));
+        $tag = function_exists('lmeg_get_or_create_tag') ? lmeg_get_or_create_tag('vip', 'VIP', false, '#f59e0b') : null;
+        $tagged = 0;
+        if ($tag) {
+            foreach (array_slice($rows, 0, $n) as $r) { lmeg_attach_tag((int) $r->id, $tag->id); $tagged++; }
+        }
+        $notice = '<div class="notice notice-success"><p>Tagged your top <strong>' . (int) $tagged . '</strong> fans as <strong>VIP</strong> — now target them in Compose or a Sequence.</p></div>';
+    }
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Top Fans</h1>
+        <?php echo $notice; ?>
+        <p style="max-width:760px;">Your biggest supporters, ranked by a blend of <strong>revenue</strong>, <strong>clicks &amp; opens</strong>, on-site visits, and membership. Give them early access, comp tickets, or a shout-out.</p>
+
+        <form method="post" style="margin:12px 0;">
+            <?php wp_nonce_field('lmeg_topfans', 'lmeg_topfans_nonce'); ?>
+            Tag the top <input type="number" name="vip_n" value="25" min="1" max="100" class="small-text" /> as
+            <button type="submit" class="button button-primary">🏷 VIP</button>
+            <span class="description" style="margin-left:6px;">Adds a <code>vip</code> tag you can target.</span>
+        </form>
+
+        <table class="widefat striped" style="max-width:920px;">
+            <thead><tr><th>#</th><th>Fan</th><th>Score</th><th>Revenue</th><th>Clicks</th><th>Opens</th><th>Member</th><th>Joined</th></tr></thead>
+            <tbody>
+            <?php if (empty($rows)) : ?>
+                <tr><td colspan="8">No fans yet — this fills in as opens, clicks, and orders come in.</td></tr>
+            <?php else : $i = 0; foreach ($rows as $r) : $i++; ?>
+                <tr>
+                    <td><?php echo $i; ?></td>
+                    <td><a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $r->id], admin_url('admin.php'))); ?>"><?php echo esc_html($r->first_name ?: $r->email ?: $r->phone ?: ('Fan #' . $r->id)); ?></a></td>
+                    <td><strong><?php echo (int) round($r->score); ?></strong></td>
+                    <td><?php echo (int) $r->rev_cents ? esc_html(lmeg_format_price((int) $r->rev_cents)) : '—'; ?></td>
+                    <td><?php echo (int) $r->clicks; ?></td>
+                    <td><?php echo (int) $r->opens; ?></td>
+                    <td><?php echo $r->member_status === 'active' ? '⭐ paying' : '—'; ?></td>
+                    <td><?php echo esc_html(mb_substr((string) $r->created_at, 0, 10)); ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}

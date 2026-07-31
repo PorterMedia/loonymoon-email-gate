@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.60.4
+Stable tag: 2.60.5
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.60.5 =
+* New: Top Fans leaderboard (Fanloop → Top Fans). Ranks your biggest supporters by a blend of revenue, clicks/opens, on-site visits, and membership — the owned-data answer to Laylo's "Notable Fans." One click tags the top N as VIP so you can target them in Compose or a Sequence (early access, comp tickets, shout-outs).
+
 = 2.60.4 =
 * New: "✨ Write with AI" now works on Sequence steps too, not just Compose. Draft any automation step (welcome series, abandoned-cart recovery, win-backs) in the artist's voice from a one-line brief. Also confirmed drop pages already ship a live countdown timer.
 
