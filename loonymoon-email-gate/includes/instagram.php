@@ -203,6 +203,41 @@ function lmeg_ig_capture_fan($ig_user_id, $username, $email, $rule = null) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Story mentions — a fan tags the artist in their Instagram story. We log it,
+ * tag a known fan as a story-mentioner (a segmentable UGC list), and — if a
+ * thank-you/permission reply is set — auto-DM them (within Meta's 24h window)
+ * to say thanks and ask to repost. (Laylo/Cobrand "story mentions → UGC".)
+ * ------------------------------------------------------------------------- */
+
+function lmeg_ig_handle_story_mention($sender) {
+    global $wpdb;
+    // Once per user per hour (a fan may tag across several story frames).
+    if (!lmeg_rate_limit('ig_story_' . $sender, 1, HOUR_IN_SECONDS)) return;
+
+    $username = lmeg_ig_lookup_username($sender);
+    $linked   = lmeg_ig_linked_subscriber($sender);
+
+    lmeg_ig_log($sender, $username, 'in', 'mentioned you in their story 📸', ['source' => 'story', 'subscriber_id' => $linked]);
+
+    // Tag a known fan so you can find + reward the people repping you.
+    if ($linked && function_exists('lmeg_get_or_create_tag')) {
+        $t = lmeg_get_or_create_tag('story-mention', 'Story mention', true, '#E1306C');
+        if ($t) lmeg_attach_tag((int) $linked, $t->id);
+    }
+
+    // Auto thank-you + repost-permission ask, if configured.
+    $s     = lmeg_get_settings();
+    $reply = trim((string) ($s['ig_story_reply'] ?? ''));
+    if ($reply !== '') {
+        $sub      = $linked ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $linked)) : null;
+        $rendered = lmeg_ig_render($reply, $sub);
+        if (!is_wp_error(lmeg_ig_dm($sender, $rendered))) {
+            lmeg_ig_log($sender, $username, 'out', $rendered, ['source' => 'story', 'subscriber_id' => $linked]);
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------------
  * Inbound DM handling
  * ------------------------------------------------------------------------- */
 
@@ -210,9 +245,20 @@ function lmeg_ig_handle_message_event($event) {
     global $wpdb;
 
     $sender = (string) ($event['sender']['id'] ?? '');
-    $text   = (string) ($event['message']['text'] ?? '');
     $echo   = !empty($event['message']['is_echo']);
-    if (!$sender || $text === '' || $echo) return;
+    if (!$sender || $echo) return;
+
+    // Story mention — a fan tagged the artist in their IG story. It arrives here
+    // as a message with a story_mention attachment (usually no text). Handle + stop.
+    foreach ((array) ($event['message']['attachments'] ?? []) as $att) {
+        if (($att['type'] ?? '') === 'story_mention') {
+            lmeg_ig_handle_story_mention($sender);
+            return;
+        }
+    }
+
+    $text = (string) ($event['message']['text'] ?? '');
+    if ($text === '') return;
 
     // Flood guard: at most 30 inbound rows per user per hour.
     if (!lmeg_rate_limit('ig_in_' . $sender, 30, HOUR_IN_SECONDS)) return;
@@ -800,7 +846,7 @@ function lmeg_admin_instagram() {
                         <a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $m->subscriber_id], admin_url('admin.php'))); ?>"><?php echo esc_html($who); ?> ↗</a>
                     <?php else : echo esc_html($who); endif; ?></td>
                     <td style="max-width:420px;"><?php echo esc_html($m->text); ?></td>
-                    <td style="font-size:12px;opacity:.75;"><?php echo $m->source === 'comment' ? '📝 comment' : '💬 DM'; ?></td>
+                    <td style="font-size:12px;opacity:.75;"><?php echo $m->source === 'comment' ? '📝 comment' : ($m->source === 'story' ? '📸 story' : '💬 DM'); ?></td>
                     <td><?php echo esc_html($m->created_at); ?></td>
                 </tr>
             <?php endforeach; endif; ?>

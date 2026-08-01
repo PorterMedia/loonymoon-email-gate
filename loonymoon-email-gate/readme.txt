@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.61.5
+Stable tag: 2.61.6
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.61.6 =
+* New: Instagram story mentions. When a fan tags you in their story, Fanloop logs it, tags a known fan "story-mention" (a segmentable UGC list), and can auto-DM a thank-you + repost-permission ask (Settings → Instagram → Story-mention auto-reply). Turns your most enthusiastic fans into UGC + reach. (Laylo/Cobrand "story mentions" feature.)
+
 = 2.61.5 =
 * New: Instagram Connect now lets you PICK which account to connect when you manage several. Previously it grabbed the first IG-linked Page on your login; now if there's more than one it shows a chooser so each site connects to the right artist.
 * New: "Save & test Instagram" validates your App ID + App Secret directly (catches a wrong/mismatched secret immediately, instead of failing mid-Connect).

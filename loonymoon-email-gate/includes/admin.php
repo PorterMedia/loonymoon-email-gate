@@ -2074,6 +2074,7 @@ function lmeg_admin_settings() {
             // Instagram DM automation
             'ig_app_id'               => sanitize_text_field(wp_unslash($_POST['ig_app_id'] ?? '')),
             'ig_app_secret'           => sanitize_text_field(wp_unslash($_POST['ig_app_secret'] ?? '')),
+            'ig_story_reply'          => sanitize_textarea_field(wp_unslash($_POST['ig_story_reply'] ?? '')),
             'ig_page_token'           => sanitize_text_field(wp_unslash($_POST['ig_page_token'] ?? '')),
             'ig_account_id'           => sanitize_text_field(wp_unslash($_POST['ig_account_id'] ?? '')),
             'ig_verify_token'         => sanitize_text_field(wp_unslash($_POST['ig_verify_token'] ?? '')),
@@ -2534,6 +2535,9 @@ function lmeg_admin_settings() {
                 <tr><th><label for="ig_verify_token">Webhook verify token</label></th>
                     <td><input type="text" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
                         <p class="description">Webhook callback URL: <code><?php echo esc_html(add_query_arg('lmeg_ig', 'webhook', home_url('/'))); ?></code> — full setup steps on the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-instagram')); ?>">Instagram page</a>.</p></td></tr>
+                <tr><th><label for="ig_story_reply">Story-mention auto-reply</label></th>
+                    <td><textarea name="ig_story_reply" id="ig_story_reply" rows="2" class="large-text" placeholder="Leave blank to not auto-reply"><?php echo esc_textarea($s['ig_story_reply'] ?? ''); ?></textarea>
+                        <p class="description">When a fan tags you in their Instagram story, they get this DM (thank-you + repost permission) and a <code>story-mention</code> tag. Merge tags work: <code>{community}</code>, <code>{artist}</code>. Blank = don't auto-reply.</p></td></tr>
                 <tr><th>Save / test</th>
                     <td><button type="submit" name="lmeg_test" value="instagram" class="button">Save &amp; test Instagram</button>
                         <p class="description">Save your App ID + Secret here, then use <strong>Connect Instagram</strong> above. “Save &amp; test” confirms an existing connection.</p></td></tr>
