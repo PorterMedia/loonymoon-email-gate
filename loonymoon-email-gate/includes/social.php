@@ -454,8 +454,9 @@ function lmeg_admin_social() {
     $sp_ok  = function_exists('lmeg_spotify_configured') && lmeg_spotify_configured();
     $ig_ok  = function_exists('lmeg_ig_configured') && lmeg_ig_configured();
     $ai_ok  = function_exists('lmeg_ai_configured') && lmeg_ai_configured();
-    $card   = 'background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;';
-    $dash   = 'background:#fff;border:1px dashed #dcdcde;border-radius:10px;padding:16px;';
+    $card   = 'background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
+    $dash   = 'background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
+    $muted  = '#8B90A0';
 
     // Demo/preview mode — sample data so the dashboard can be seen before connect.
     $demo        = !empty($_GET['demo']);
@@ -483,11 +484,7 @@ function lmeg_admin_social() {
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
-        if ($d === 0 && !$per_day) return '';
-        $col = $d >= 0 ? '#16a34a' : '#dc2626';
-        $txt = ($d >= 0 ? '▲ +' : '▼ ') . number_format_i18n(abs($d));
-        if ($days) $txt .= ' / ' . (int) $days . 'd';
-        return '<div style="font-size:12px;color:' . $col . ';margin-top:2px;">' . $txt . '</div>';
+        return lmeg_chart_delta_chip($d, $per_day, $days);
     };
     ?>
     <div class="wrap">
@@ -508,25 +505,25 @@ function lmeg_admin_social() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:1000px;margin-bottom:8px;">
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">📸 Instagram</div>
-                <div style="font-size:24px;font-weight:700;color:#111;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
-                <div style="font-size:12px;color:#3c434a;"><?php echo $ig ? 'followers · ' . number_format_i18n($ig['media_count']) . ' posts' : 'not connected'; ?></div>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
+                <div style="font-size:12px;color:#8B90A0;"><?php echo $ig ? 'followers · ' . number_format_i18n($ig['media_count']) . ' posts' : 'not connected'; ?></div>
                 <?php echo $delta_html($ig_stats['delta'], $ig_stats['per_day'], $ig_stats['days']); ?>
             </div>
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">🎧 Spotify</div>
-                <div style="font-size:24px;font-weight:700;color:#111;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
-                <div style="font-size:12px;color:#3c434a;"><?php echo (!$ov || is_wp_error($ov)) ? 'not connected' : 'followers · popularity ' . (int) $ov['popularity'] . '/100'; ?></div>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
+                <div style="font-size:12px;color:#8B90A0;"><?php echo (!$ov || is_wp_error($ov)) ? 'not connected' : 'followers · popularity ' . (int) $ov['popularity'] . '/100'; ?></div>
                 <?php echo $delta_html($sp_stats['delta'], $sp_stats['per_day'], $sp_stats['days']); ?>
             </div>
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">💜 Your fan list</div>
-                <div style="font-size:24px;font-weight:700;color:#111;"><?php echo number_format_i18n($fan_ct); ?></div>
-                <div style="font-size:12px;color:#3c434a;">owned contacts you can reach anytime</div>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($fan_ct); ?></div>
+                <div style="font-size:12px;color:#8B90A0;">owned contacts you can reach anytime</div>
             </div>
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">🔁 Story mentions</div>
-                <div style="font-size:24px;font-weight:700;color:#111;"><?php echo $ig_ok ? number_format_i18n($stories) : '—'; ?></div>
-                <div style="font-size:12px;color:#3c434a;">tagged you in a story · last 30 days</div>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo $ig_ok ? number_format_i18n($stories) : '—'; ?></div>
+                <div style="font-size:12px;color:#8B90A0;">tagged you in a story · last 30 days</div>
             </div>
         </div>
 
@@ -535,9 +532,9 @@ function lmeg_admin_social() {
             <?php if ($ig_ok) : $ispark = lmeg_social_sparkline($ig_stats['vals']); ?>
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">📸 Instagram followers</div>
-                <div style="font-size:22px;font-weight:700;color:#111;margin:2px 0;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
-                <?php if ($ig_stats['days'] >= 1) : ?><div style="font-size:12px;color:#3c434a;"><?php echo ($ig_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($ig_stats['delta']); ?> over <?php echo (int) $ig_stats['days']; ?> days · <?php echo $ig_stats['per_day']; ?>/day</div><?php endif; ?>
-                <?php if ($ispark) : ?><svg viewBox="0 0 320 60" width="100%" height="60" style="margin-top:8px;"><polyline fill="none" stroke="#E1306C" stroke-width="2" points="<?php echo esc_attr($ispark); ?>"/></svg><?php else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
+                <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
+                <?php if ($ig_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($ig_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($ig_stats['delta']); ?> over <?php echo (int) $ig_stats['days']; ?> days · <?php echo $ig_stats['per_day']; ?>/day</div><?php endif; ?>
+                <?php if ($ispark) : echo lmeg_chart_line($ig_stats['vals'], ['color' => '#E1306C', 'uid' => 'ig-follows']); else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
             </div>
             <?php else : ?>
             <div style="<?php echo $dash; ?>"><div style="font-weight:600;">📸 Instagram</div><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect</a> to track follower growth.</p></div>
@@ -546,9 +543,9 @@ function lmeg_admin_social() {
             <?php if ($sp_ok) : $spark = lmeg_social_sparkline($sp_stats['vals']); ?>
             <div style="<?php echo $card; ?>">
                 <div style="font-weight:600;">🎧 Spotify followers</div>
-                <div style="font-size:22px;font-weight:700;color:#111;margin:2px 0;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
-                <?php if ($sp_stats['days'] >= 1) : ?><div style="font-size:12px;color:#3c434a;"><?php echo ($sp_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($sp_stats['delta']); ?> over <?php echo (int) $sp_stats['days']; ?> days · <?php echo $sp_stats['per_day']; ?>/day</div><?php endif; ?>
-                <?php if ($spark) : ?><svg viewBox="0 0 320 60" width="100%" height="60" style="margin-top:8px;"><polyline fill="none" stroke="#1DB954" stroke-width="2" points="<?php echo esc_attr($spark); ?>"/></svg><?php else : ?><p class="description">History builds day by day.</p><?php endif; ?>
+                <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
+                <?php if ($sp_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($sp_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($sp_stats['delta']); ?> over <?php echo (int) $sp_stats['days']; ?> days · <?php echo $sp_stats['per_day']; ?>/day</div><?php endif; ?>
+                <?php if ($spark) : echo lmeg_chart_line($sp_stats['vals'], ['color' => '#1DB954', 'uid' => 'sp-follows']); else : ?><p class="description">History builds day by day.</p><?php endif; ?>
             </div>
             <?php else : ?>
             <div style="<?php echo $dash; ?>"><div style="font-weight:600;">🎧 Spotify</div><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>
@@ -562,11 +559,11 @@ function lmeg_admin_social() {
             <p class="description" style="max-width:820px;">No recent posts found yet.</p>
         <?php else : ?>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;max-width:760px;margin-bottom:10px;">
-                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Engagement rate</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo $content['eng_rate']; ?>%</div><div style="font-size:12px;color:#3c434a;">likes+comments ÷ followers</div></div>
-                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Avg per post</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo number_format_i18n($content['avg_eng']); ?></div><div style="font-size:12px;color:#3c434a;">engagements</div></div>
-                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Posting cadence</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo $content['cadence']; ?></div><div style="font-size:12px;color:#3c434a;">days between posts</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Engagement rate</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo $content['eng_rate']; ?>%</div><div style="font-size:12px;color:#8B90A0;">likes+comments ÷ followers</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Avg per post</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($content['avg_eng']); ?></div><div style="font-size:12px;color:#8B90A0;">engagements</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Posting cadence</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo $content['cadence']; ?></div><div style="font-size:12px;color:#8B90A0;">days between posts</div></div>
                 <?php if ($best_day) : ?>
-                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Best day to post</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo esc_html($best_day['day']); ?></div><div style="font-size:12px;color:#3c434a;">your posts land best (last <?php echo (int) $best_day['samples']; ?>)</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Best day to post</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo esc_html($best_day['day']); ?></div><div style="font-size:12px;color:#8B90A0;">your posts land best (last <?php echo (int) $best_day['samples']; ?>)</div></div>
                 <?php endif; ?>
             </div>
             <h3 style="margin:14px 0 6px;">Top posts</h3>
@@ -579,10 +576,10 @@ function lmeg_admin_social() {
                 ?>
                     <tr>
                         <td style="max-width:360px;"><?php echo esc_html($cap); ?></td>
-                        <td style="font-size:12px;color:#3c434a;"><?php echo esc_html(ucwords(strtolower(str_replace('_', ' ', $p['type'])))); ?></td>
+                        <td style="font-size:12px;color:#8B90A0;"><?php echo esc_html(ucwords(strtolower(str_replace('_', ' ', $p['type'])))); ?></td>
                         <td><strong><?php echo number_format_i18n($p['likes']); ?></strong></td>
                         <td><?php echo number_format_i18n($p['comments']); ?></td>
-                        <td style="font-size:12px;color:#3c434a;"><?php echo $p['timestamp'] ? esc_html(date_i18n('M j', strtotime($p['timestamp']))) : '—'; ?></td>
+                        <td style="font-size:12px;color:#8B90A0;"><?php echo $p['timestamp'] ? esc_html(date_i18n('M j', strtotime($p['timestamp']))) : '—'; ?></td>
                         <td><?php if ($p['permalink']) : ?><a href="<?php echo esc_url($p['permalink']); ?>" target="_blank" rel="noopener">View ↗</a><?php endif; ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -607,15 +604,15 @@ function lmeg_admin_social() {
 
         <h2 style="margin-top:24px;">Fan sentiment</h2>
         <?php if ($demo && $demo_sent) : $x = $demo_sent; ?>
-            <div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:6px;color:#111;max-width:820px;">
-                <?php foreach (['Positive' => ['positive', '#16a34a'], 'Neutral' => ['neutral', '#9ca3af'], 'Negative' => ['negative', '#dc2626']] as $lbl => $kc) : $pct = (int) $x[$kc[0]]; ?>
-                    <div style="margin:5px 0;"><span style="display:inline-block;width:74px;"><?php echo $lbl; ?></span><span style="display:inline-block;height:12px;width:<?php echo max(2, $pct * 2); ?>px;background:<?php echo $kc[1]; ?>;border-radius:6px;vertical-align:middle;"></span> <?php echo $pct; ?>%</div>
+            <div style="<?php echo $card; ?>margin-top:6px;max-width:820px;">
+                <?php foreach (['Positive' => ['positive', '#34D399'], 'Neutral' => ['neutral', '#8B90A0'], 'Negative' => ['negative', '#F87171']] as $lbl => $kc) : $pct = (int) $x[$kc[0]]; ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin:7px 0;"><span style="width:64px;font-size:13px;color:#8B90A0;"><?php echo $lbl; ?></span><span style="flex:1;max-width:340px;height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;display:inline-block;"><span style="display:block;width:<?php echo max(1, $pct); ?>%;height:100%;background:<?php echo $kc[1]; ?>;border-radius:999px;"></span></span><span style="width:40px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;"><?php echo $pct; ?>%</span></div>
                 <?php endforeach; ?>
-                <p style="margin:12px 0 4px;font-weight:600;">What they’re talking about</p><div><?php foreach ($x['themes'] as $t) : ?><span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 10px;margin:2px;font-size:12px;"><?php echo esc_html($t); ?></span><?php endforeach; ?></div>
-                <p style="margin:12px 0 4px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['highlights'] as $h) : ?><li>“<?php echo esc_html($h); ?>”</li><?php endforeach; ?></ul>
-                <p style="margin:12px 0 4px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['questions'] as $q) : ?><li><?php echo esc_html($q); ?></li><?php endforeach; ?></ul>
-                <p style="margin:12px 0 4px;font-weight:600;color:#b45309;">Worth watching</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['watch'] as $w) : ?><li><?php echo esc_html($w); ?></li><?php endforeach; ?></ul>
-                <p class="description" style="margin-top:10px;">Based on <?php echo (int) $x['_count']; ?> recent comments.</p>
+                <p style="margin:16px 0 6px;font-weight:600;">What they’re talking about</p><div><?php foreach ($x['themes'] as $t) : ?><span style="display:inline-block;background:rgba(124,108,246,.15);color:#C4BBFF;border:1px solid rgba(124,108,246,.30);border-radius:999px;padding:3px 11px;margin:3px 3px 0 0;font-size:12px;"><?php echo esc_html($t); ?></span><?php endforeach; ?></div>
+                <p style="margin:16px 0 6px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;line-height:1.6;"><?php foreach ($x['highlights'] as $h) : ?><li>“<?php echo esc_html($h); ?>”</li><?php endforeach; ?></ul>
+                <p style="margin:16px 0 6px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;line-height:1.6;"><?php foreach ($x['questions'] as $q) : ?><li><?php echo esc_html($q); ?></li><?php endforeach; ?></ul>
+                <p style="margin:16px 0 6px;font-weight:600;color:#FBBF24;">Worth watching</p><ul style="margin:0 0 0 18px;line-height:1.6;"><?php foreach ($x['watch'] as $w) : ?><li><?php echo esc_html($w); ?></li><?php endforeach; ?></ul>
+                <p class="description" style="margin-top:12px;">Based on <?php echo (int) $x['_count']; ?> recent comments.</p>
             </div>
         <?php elseif (!$ig_ok || !$ai_ok) : ?>
             <p class="description" style="max-width:820px;">Needs <?php echo !$ig_ok ? 'Instagram connected' : ''; echo (!$ig_ok && !$ai_ok) ? ' and ' : ''; echo !$ai_ok ? 'your Anthropic API key (Settings → AI assistant)' : ''; ?>. Then Fanloop reads your recent comments and summarizes the mood, themes, standout comments, and questions worth answering.</p>
@@ -629,7 +626,7 @@ function lmeg_admin_social() {
         <h2 style="margin-top:24px;">Listening digest</h2>
         <p style="max-width:820px;">One AI brief across everything above — how you're doing and what to do next.</p>
         <?php if ($demo && $demo_digest) : ?>
-        <div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:6px;color:#111;line-height:1.6;max-width:820px;"><?php echo wp_kses_post(nl2br(preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', esc_html($demo_digest)))); ?></div>
+        <div style="<?php echo $card; ?>border-left:3px solid #D05FA2;margin-top:6px;line-height:1.7;max-width:820px;"><?php echo wp_kses_post(nl2br(preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', esc_html($demo_digest)))); ?></div>
         <?php else : ?>
         <p><button type="button" class="button button-primary" id="lmeg-digest-btn">Generate digest</button> <span id="lmeg-digest-status" style="font-size:12px;margin-left:8px;"></span></p>
         <div id="lmeg-digest-out" style="max-width:820px;"></div>
@@ -646,18 +643,18 @@ function lmeg_admin_social() {
             var sBtn = document.getElementById('lmeg-sent-btn');
             if (sBtn) {
                 var sOut = document.getElementById('lmeg-sent-out'), sSt = document.getElementById('lmeg-sent-status');
-                function bar(label, pct, color){ pct = parseInt(pct||0,10); return '<div style="margin:5px 0;"><span style="display:inline-block;width:74px;">'+label+'</span><span style="display:inline-block;height:12px;width:'+Math.max(2,pct*2)+'px;background:'+color+';border-radius:6px;vertical-align:middle;"></span> '+pct+'%</div>'; }
+                function bar(label, pct, color){ pct = parseInt(pct||0,10); return '<div style="display:flex;align-items:center;gap:10px;margin:7px 0;"><span style="width:64px;font-size:13px;color:#8B90A0;">'+label+'</span><span style="flex:1;max-width:340px;height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;display:inline-block;"><span style="display:block;width:'+Math.max(1,pct)+'%;height:100%;background:'+color+';border-radius:999px;"></span></span><span style="width:40px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;">'+pct+'%</span></div>'; }
                 sBtn.addEventListener('click', function(){
                     sBtn.disabled = true; sSt.textContent = 'Reading comments…';
                     var fd = new FormData(); fd.append('action','lmeg_social_sentiment'); fd.append('nonce',nonce);
                     fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
                         if (d && d.success) { var x = d.data;
-                            var html = '<div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:10px;color:#111;">';
-                            html += bar('Positive', x.positive, '#16a34a') + bar('Neutral', x.neutral, '#9ca3af') + bar('Negative', x.negative, '#dc2626');
-                            if (x.themes && x.themes.length) html += '<p style="margin:12px 0 4px;font-weight:600;">What they’re talking about</p><div>'+x.themes.map(function(t){return '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 10px;margin:2px;font-size:12px;">'+esc(t)+'</span>';}).join('')+'</div>';
-                            if (x.highlights && x.highlights.length) html += '<p style="margin:12px 0 4px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;">'+x.highlights.map(function(h){return '<li>“'+esc(h)+'”</li>';}).join('')+'</ul>';
-                            if (x.questions && x.questions.length) html += '<p style="margin:12px 0 4px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;">'+x.questions.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ul>';
-                            if (x.watch && x.watch.length) html += '<p style="margin:12px 0 4px;font-weight:600;color:#b45309;">Worth watching</p><ul style="margin:0 0 0 18px;">'+x.watch.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul>';
+                            var html = '<div style="background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;">';
+                            html += bar('Positive', x.positive, '#34D399') + bar('Neutral', x.neutral, '#8B90A0') + bar('Negative', x.negative, '#F87171');
+                            if (x.themes && x.themes.length) html += '<p style="margin:16px 0 6px;font-weight:600;">What they’re talking about</p><div>'+x.themes.map(function(t){return '<span style="display:inline-block;background:rgba(124,108,246,.15);color:#C4BBFF;border:1px solid rgba(124,108,246,.30);border-radius:999px;padding:3px 11px;margin:3px 3px 0 0;font-size:12px;">'+esc(t)+'</span>';}).join('')+'</div>';
+                            if (x.highlights && x.highlights.length) html += '<p style="margin:16px 0 6px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.highlights.map(function(h){return '<li>“'+esc(h)+'”</li>';}).join('')+'</ul>';
+                            if (x.questions && x.questions.length) html += '<p style="margin:16px 0 6px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.questions.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ul>';
+                            if (x.watch && x.watch.length) html += '<p style="margin:16px 0 6px;font-weight:600;color:#FBBF24;">Worth watching</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.watch.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul>';
                             html += '<p class="description" style="margin-top:10px;">Based on '+(parseInt(x._count||0,10))+' recent comments.</p></div>';
                             sOut.innerHTML = html; sSt.textContent = '';
                         } else { sSt.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error'); }
@@ -672,7 +669,7 @@ function lmeg_admin_social() {
                     dBtn.disabled = true; dSt.textContent = 'Thinking…';
                     var fd = new FormData(); fd.append('action','lmeg_social_digest'); fd.append('nonce',nonce);
                     fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
-                        if (d && d.success) { dOut.innerHTML = '<div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:10px;color:#111;line-height:1.6;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
+                        if (d && d.success) { dOut.innerHTML = '<div style="background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-left:3px solid #D05FA2;border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;line-height:1.7;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
                         else { dSt.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error'); }
                     }).catch(function(){ dSt.textContent = '⚠ network error'; }).finally(function(){ dBtn.disabled = false; });
                 });

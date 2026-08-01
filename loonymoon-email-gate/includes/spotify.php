@@ -434,7 +434,7 @@ function lmeg_admin_spotify() {
             <div class="lmeg-stat" style="grid-column:span 2;">
                 <div class="lmeg-stat__label">Follower trend (30d)</div>
                 <?php if ($spark) : ?>
-                    <svg viewBox="0 0 320 60" width="100%" height="60" style="margin-top:6px;"><polyline fill="none" stroke="#1DB954" stroke-width="2" points="<?php echo esc_attr($spark); ?>" /></svg>
+                    <?php echo lmeg_chart_line($vals, ['color' => '#1DB954', 'uid' => 'sp-page', 'h' => 64]); ?>
                 <?php else : ?>
                     <div class="lmeg-stat__value" style="font-size:15px;font-weight:500;">Collecting…</div>
                     <div class="lmeg-stat__hint">A daily snapshot is captured automatically; the line fills in over the next few days.</div>

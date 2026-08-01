@@ -3532,9 +3532,7 @@ function lmeg_dashboard_widget_render() {
                 <span style="color:#1a6f1a;">+<?php echo $day30; ?></span> last 30 days ·
                 <span style="opacity:.6;"><?php echo $unsub; ?> unsubscribed</span>
             </div>
-            <svg viewBox="0 0 <?php echo $w; ?> <?php echo $h; ?>" width="100%" height="<?php echo $h; ?>" style="margin-top:8px;">
-                <polyline fill="none" stroke="#3b82f6" stroke-width="1.5" points="<?php echo esc_attr($spark); ?>" />
-            </svg>
+            <?php echo lmeg_chart_line($counts, ['color' => '#3b82f6', 'uid' => 'dash-signups', 'h' => 48, 'baseline' => false]); ?>
             <?php
             // MRR / paying member line — only render if any tier exists.
             $mrr_cents = 0; $paying_n = 0; $currency = 'USD';
@@ -4652,7 +4650,7 @@ function lmeg_admin_overview() {
                 <div class="lmeg-stat__label">Active subscribers</div>
                 <div class="lmeg-stat__value"><?php echo number_format_i18n($active); ?></div>
                 <div class="lmeg-stat__hint"><span style="color:#34D399;">+<?php echo $new30; ?></span> · <?php echo $unsub30; ?> lost (30d)</div>
-                <svg viewBox="0 0 <?php echo $w; ?> <?php echo $h; ?>" width="100%" height="<?php echo $h; ?>" style="margin-top:8px;"><polyline fill="none" stroke="#D05FA2" stroke-width="1.6" points="<?php echo esc_attr($spark); ?>"/></svg>
+                <?php echo lmeg_chart_line($counts, ['color' => '#D05FA2', 'uid' => 'ov-signups', 'h' => 54]); ?>
             </div>
             <div class="lmeg-stat">
                 <div class="lmeg-stat__label">MRR</div>
