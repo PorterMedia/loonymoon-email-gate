@@ -913,3 +913,73 @@ function lmeg_admin_referrals() {
     </div>
     <?php
 }
+
+/* ---------------------------------------------------------------------------
+ * Get Started — a setup checklist so a new (white-labeled) artist can see what
+ * to connect next. Read-only; each item links to where to set it up, and it
+ * surfaces the connect-Instagram/Spotify steps that unlock the newest features.
+ * ------------------------------------------------------------------------- */
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Get Started', 'Get Started', 'manage_options', 'lmeg-setup', 'lmeg_admin_setup');
+}, 1);
+
+function lmeg_admin_setup() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $s    = lmeg_get_settings();
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $set  = admin_url('admin.php?page=lmeg-settings');
+
+    $sub_count  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs");
+    $bcast_sent = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_broadcasts WHERE status = 'completed'");
+    $seq_active = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_sequences WHERE is_active = 1");
+    $drop_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_drops");
+
+    // [label, done?, link, hint, optional?]
+    $items = [
+        ['Name your artist + community', (function_exists('lmeg_brand_raw') && lmeg_brand_raw('artist_name', '') !== ''), $set, 'So emails, forms, and the AI speak as you (e.g. “LOONY” / “the LOONYBIN”).', false],
+        ['Connect email (Brevo)', (!empty($s['brevo_api_key']) && !empty($s['brevo_from_email'])), $set, 'Your API key + a verified from-address. Required to send email.', false],
+        ['Place a signup form', ($sub_count > 0), admin_url('admin.php?page=lmeg-shortcodes'), 'Drop the [fanloop_signup] shortcode on a page. ' . ($sub_count > 0 ? number_format_i18n($sub_count) . ' fans so far.' : 'No fans yet.'), false],
+        ['Send your first broadcast', ($bcast_sent > 0), admin_url('admin.php?page=lmeg-compose'), 'Email or text your list — try ✨ Write with AI.', false],
+        ['Turn on a welcome sequence', ($seq_active > 0), admin_url('admin.php?page=lmeg-sequences'), 'Automate a welcome journey for every new fan.', false],
+        ['Connect Instagram', (function_exists('lmeg_ig_configured') && lmeg_ig_configured()), $set, 'Unlocks DM automation, comment-to-DM, and social listening + growth.', true],
+        ['Connect your shop (Shopify)', ((function_exists('lmeg_shop_configured') && lmeg_shop_configured()) || get_option('lmeg_shop_wh_last', '')), $set, 'Attribute revenue to your fans + campaigns.', true],
+        ['Connect Spotify', (function_exists('lmeg_spotify_configured') && lmeg_spotify_configured()), admin_url('admin.php?page=lmeg-spotify'), 'Follower growth + analytics.', true],
+        ['Add SMS (Twilio)', (!empty($s['twilio_account_sid'])), $set, 'Text your fans, not just email.', true],
+        ['Add your AI key', (function_exists('lmeg_ai_configured') && lmeg_ai_configured()), $set, 'Powers Ask AI, the ✨ voice composer, and comment sentiment.', true],
+        ['Create a drop', ($drop_count > 0), admin_url('admin.php?page=lmeg-drops'), 'A release/announcement page with a countdown timer.', true],
+    ];
+
+    $core      = array_filter($items, function ($i) { return !$i[4]; });
+    $core_done = count(array_filter($core, function ($i) { return $i[1]; }));
+    $all_done  = count(array_filter($items, function ($i) { return $i[1]; }));
+    $pct       = round(100 * $all_done / max(1, count($items)));
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Get Started</h1>
+        <p style="max-width:760px;">Everything you connect makes Fanloop do more. Core steps first; the rest unlock extra powers.</p>
+
+        <div style="max-width:640px;margin:14px 0;">
+            <div style="height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden;"><div style="height:100%;width:<?php echo (int) $pct; ?>%;background:linear-gradient(90deg,#d05fa2,#a855f7);"></div></div>
+            <div style="font-size:13px;margin-top:6px;color:#3c434a;"><strong><?php echo $all_done; ?>/<?php echo count($items); ?></strong> set up · core <strong><?php echo $core_done; ?>/<?php echo count($core); ?></strong></div>
+        </div>
+
+        <table class="widefat" style="max-width:820px;">
+            <tbody>
+            <?php foreach ($items as $it) : list($label, $done, $link, $hint, $optional) = $it; ?>
+                <tr>
+                    <td style="width:30px;font-size:18px;"><?php echo $done ? '✅' : '⬜'; ?></td>
+                    <td>
+                        <strong style="<?php echo $done ? 'color:#16a34a;' : 'color:#111;'; ?>"><?php echo esc_html($label); ?></strong>
+                        <?php if ($optional) : ?><span style="font-size:11px;background:#eef2ff;color:#3730a3;border-radius:999px;padding:1px 7px;margin-left:6px;">optional</span><?php endif; ?>
+                        <div style="font-size:12px;color:#3c434a;margin-top:2px;"><?php echo esc_html($hint); ?></div>
+                    </td>
+                    <td style="width:110px;text-align:right;"><?php if (!$done) : ?><a class="button button-small" href="<?php echo esc_url($link); ?>">Set up →</a><?php else : ?><a href="<?php echo esc_url($link); ?>" style="font-size:12px;">Manage</a><?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}

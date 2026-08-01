@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.61.1
+Stable tag: 2.61.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.61.2 =
+* New: Get Started checklist (Fanloop → Get Started). A setup progress tracker for new (white-labeled) artists — shows what's connected and what to do next (brand, email, first form/broadcast/sequence, plus optional Instagram/Shopify/Spotify/SMS/AI/drop), each linking straight to where to set it up. Makes onboarding a new artist a guided path.
+
 = 2.61.1 =
 * New: Referrals page (Fanloop → Referrals). Attributes revenue to the fans who bring in other fans — a leaderboard of your best advocates with how many fans they referred, how many bought, and total attributed revenue. Reward your street team. (Owned-data take on Laylo's Affiliates.)
 
