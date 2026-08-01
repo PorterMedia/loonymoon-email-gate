@@ -291,6 +291,124 @@ function lmeg_brevo_verify() {
 }
 
 /* ---------------------------------------------------------------------------
+ * Deliverability — surface the artist's Brevo sender + domain authentication
+ * (SPF/DKIM) status so emails land in the inbox, not spam. Read-only; the DNS
+ * setup itself happens in Brevo. (Laylo's "custom domains" is the same idea.)
+ * ------------------------------------------------------------------------- */
+
+function lmeg_brevo_get($path) {
+    $s = lmeg_get_settings();
+    if (empty($s['brevo_api_key'])) return new WP_Error('lmeg_brevo_unconfigured', 'Add your Brevo API key first.');
+    $resp = wp_remote_get('https://api.brevo.com/v3/' . ltrim($path, '/'), [
+        'timeout' => 15,
+        'headers' => ['api-key' => $s['brevo_api_key'], 'accept' => 'application/json'],
+    ]);
+    if (is_wp_error($resp)) return $resp;
+    $code = wp_remote_retrieve_response_code($resp);
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code !== 200) {
+        return new WP_Error('lmeg_brevo_http_' . $code, (is_array($body) && !empty($body['message'])) ? $body['message'] : ('Brevo HTTP ' . $code));
+    }
+    return is_array($body) ? $body : [];
+}
+
+function lmeg_brevo_deliverability($force = false) {
+    $cache = 'lmeg_brevo_deliv';
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    $senders = lmeg_brevo_get('senders');
+    $domains = lmeg_brevo_get('senders/domains');
+    $out = [
+        'senders' => (!is_wp_error($senders) && isset($senders['senders'])) ? $senders['senders'] : [],
+        'domains' => (!is_wp_error($domains) && isset($domains['domains'])) ? $domains['domains'] : [],
+        'error'   => is_wp_error($senders) ? $senders->get_error_message() : (is_wp_error($domains) ? $domains->get_error_message() : ''),
+    ];
+    set_transient($cache, $out, 10 * MINUTE_IN_SECONDS);
+    return $out;
+}
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Deliverability', 'Deliverability', 'manage_options', 'lmeg-deliverability', 'lmeg_admin_deliverability');
+}, 20);
+
+function lmeg_admin_deliverability() {
+    if (!current_user_can('manage_options')) return;
+    $s           = lmeg_get_settings();
+    $from        = trim((string) ($s['brevo_from_email'] ?? ''));
+    $from_domain = ($from && strpos($from, '@') !== false) ? strtolower(substr(strrchr($from, '@'), 1)) : '';
+    $refresh     = !empty($_GET['refresh']);
+    if ($refresh) check_admin_referer('lmeg_deliv_refresh');
+
+    if (empty($s['brevo_api_key'])) {
+        echo '<div class="wrap"><h1>Fanloop — Deliverability</h1><div class="notice notice-info"><p>Add your Brevo API key under <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings')) . '">Settings → Brevo</a> to check your sending domain.</p></div></div>';
+        return;
+    }
+    $d = lmeg_brevo_deliverability($refresh);
+
+    $matched = null;
+    foreach ((array) $d['domains'] as $dom) {
+        if (isset($dom['domain']) && strtolower($dom['domain']) === $from_domain) { $matched = $dom; break; }
+    }
+    $authed = $matched ? (!empty($matched['authenticated']) || !empty($matched['verified'])) : false;
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Deliverability</h1>
+        <p style="max-width:820px;">Authenticate your sending domain so your emails land in the inbox, not spam. This reads the live status from your Brevo account.</p>
+        <p><a class="button" href="<?php echo esc_url(wp_nonce_url(add_query_arg('refresh', 1), 'lmeg_deliv_refresh')); ?>">Refresh</a></p>
+
+        <?php if (!empty($d['error'])) : ?>
+            <div class="notice notice-warning"><p>Couldn't read Brevo status: <?php echo esc_html($d['error']); ?></p></div>
+        <?php endif; ?>
+
+        <h2>Your from-address</h2>
+        <?php if (!$from) : ?>
+            <p>No from-address set. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Set one in Settings → Brevo</a>.</p>
+        <?php else : ?>
+            <table class="widefat" style="max-width:720px;"><tbody>
+                <tr><td style="width:30px;font-size:18px;"><?php echo $authed ? '✅' : '⚠️'; ?></td>
+                    <td><strong style="color:#111;"><?php echo esc_html($from); ?></strong>
+                    <div style="font-size:12px;color:#3c434a;margin-top:2px;">
+                    <?php if ($authed) : ?>Domain <code><?php echo esc_html($from_domain); ?></code> is authenticated in Brevo — good to send.
+                    <?php elseif ($matched) : ?>Domain <code><?php echo esc_html($from_domain); ?></code> is in Brevo but <strong>not yet authenticated</strong> — add the SPF/DKIM records below.
+                    <?php else : ?>Domain <code><?php echo esc_html($from_domain); ?></code> isn't set up in Brevo yet. Add + authenticate it to stay out of spam.<?php endif; ?>
+                    </div></td></tr>
+            </tbody></table>
+        <?php endif; ?>
+
+        <h2 style="margin-top:22px;">Domains</h2>
+        <?php if (empty($d['domains'])) : ?>
+            <p class="description" style="max-width:820px;">No domains found in your Brevo account yet — add yours below.</p>
+        <?php else : ?>
+            <table class="widefat striped" style="max-width:720px;"><thead><tr><th>Domain</th><th>Authenticated</th></tr></thead><tbody>
+            <?php foreach ($d['domains'] as $dom) : $ok = !empty($dom['authenticated']) || !empty($dom['verified']); ?>
+                <tr><td><code><?php echo esc_html($dom['domain'] ?? '—'); ?></code></td>
+                    <td><?php echo $ok ? '<span style="color:#16a34a;">✓ authenticated</span>' : '<span style="color:#b45309;">✗ not authenticated</span>'; ?></td></tr>
+            <?php endforeach; ?>
+            </tbody></table>
+        <?php endif; ?>
+
+        <h2 style="margin-top:22px;">How to authenticate (one-time)</h2>
+        <ol style="max-width:820px;line-height:1.8;">
+            <li>In Brevo → <strong>Senders, Domains &amp; Dedicated IPs → Domains</strong>, add <code><?php echo esc_html($from_domain ?: 'yourdomain.com'); ?></code>.</li>
+            <li>Brevo shows DNS records — add the <strong>DKIM</strong> (<code>brevo._domainkey</code>) and <strong>SPF</strong> records at your domain's DNS host.</li>
+            <li>Add a <strong>DMARC</strong> record (<code>_dmarc</code> → <code>v=DMARC1; p=none;</code> to start) — it lifts inbox placement.</li>
+            <li>Click <strong>Verify</strong> in Brevo, then hit <em>Refresh</em> above — the check turns green.</li>
+        </ol>
+        <p class="description" style="max-width:820px;">A branded, authenticated from-address (e.g. <code>hi@<?php echo esc_html($from_domain ?: 'yourband.com'); ?></code>) is the single biggest deliverability lever — the same idea as Laylo's custom domains.</p>
+
+        <?php if (!empty($d['senders'])) : ?>
+        <h2 style="margin-top:22px;">Senders</h2>
+        <table class="widefat striped" style="max-width:720px;"><thead><tr><th>Sender</th><th>Email</th><th>Status</th></tr></thead><tbody>
+        <?php foreach ($d['senders'] as $sd) : ?>
+            <tr><td><?php echo esc_html($sd['name'] ?? '—'); ?></td><td><?php echo esc_html($sd['email'] ?? '—'); ?></td>
+                <td><?php echo !empty($sd['active']) ? '<span style="color:#16a34a;">✓ active</span>' : '<span style="color:#b45309;">pending</span>'; ?></td></tr>
+        <?php endforeach; ?>
+        </tbody></table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
  * Provider-agnostic wrapper — pick sender based on settings
  * ------------------------------------------------------------------------- */
 
