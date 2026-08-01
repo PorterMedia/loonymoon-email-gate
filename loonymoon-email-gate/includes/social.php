@@ -389,6 +389,57 @@ function lmeg_social_sparkline($vals, $w = 320, $h = 60) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Demo / preview data — lets the artist see the full dashboard before their
+ * accounts are connected. Deterministic sample values for an artist ~LOONY.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_social_demo() {
+    $mk = function ($vals) {
+        $n = count($vals); $delta = $vals[$n - 1] - $vals[0]; $days = max(1, $n - 1);
+        return ['current' => $vals[$n - 1], 'delta' => $delta, 'days' => $days, 'per_day' => round($delta / $days, 1), 'vals' => $vals];
+    };
+    $ig_vals = []; $v = 26720;
+    for ($i = 0; $i < 30; $i++) { $ig_vals[] = $v; $v += 35 + ($i % 4) * 6 - ($i % 3) * 4; }
+    $sp_vals = []; $v = 49850;
+    for ($i = 0; $i < 30; $i++) { $sp_vals[] = $v; $v += 46 + ($i % 5) * 5 - ($i % 2) * 8; }
+
+    $top = [
+        ['caption' => 'SOFT THING is OUT NOW 🖤 go stream it pls', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'likes' => 4210, 'comments' => 318],
+        ['caption' => 'toronto we’re coming for u 🎟️ presale in bio', 'type' => 'CAROUSEL_ALBUM', 'permalink' => '#', 'timestamp' => '2026-07-28T18:00:00+0000', 'likes' => 3120, 'comments' => 402],
+        ['caption' => 'studio dump 🎹 which one should i finish', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-25T20:00:00+0000', 'likes' => 2890, 'comments' => 560],
+        ['caption' => 'thank u for 27k 🥹 the LOONYBIN is everything', 'type' => 'IMAGE', 'permalink' => '#', 'timestamp' => '2026-07-22T17:00:00+0000', 'likes' => 2540, 'comments' => 210],
+        ['caption' => 'behind the scenes of the video 👀', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-19T16:00:00+0000', 'likes' => 2210, 'comments' => 145],
+        ['caption' => 'new merch dropping friday 👀🔥', 'type' => 'CAROUSEL_ALBUM', 'permalink' => '#', 'timestamp' => '2026-07-16T19:00:00+0000', 'likes' => 1980, 'comments' => 176],
+        ['caption' => 'acoustic version… should i release it?', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-13T21:00:00+0000', 'likes' => 1740, 'comments' => 230],
+        ['caption' => 'ootd for the show tonight 💜', 'type' => 'IMAGE', 'permalink' => '#', 'timestamp' => '2026-07-10T22:00:00+0000', 'likes' => 1320, 'comments' => 88],
+    ];
+    return [
+        'ig'         => ['username' => 'loonymoonchild', 'followers' => end($ig_vals), 'media_count' => 142, 'follows' => 612],
+        'ig_stats'   => $mk($ig_vals),
+        'ov'         => ['followers' => end($sp_vals), 'popularity' => 47, 'url' => '#', 'top_tracks' => []],
+        'sp_stats'   => $mk($sp_vals),
+        'fan_ct'     => 3412,
+        'stories'    => 23,
+        'content'    => ['count' => 25, 'avg_eng' => 1360, 'eng_rate' => 4.9, 'cadence' => 2.7, 'top' => $top],
+        'best_day'   => ['day' => 'Friday', 'samples' => 25],
+        'types'      => [
+            ['label' => 'Reels / Video', 'count' => 13, 'avg' => 2210],
+            ['label' => 'Carousels', 'count' => 6, 'avg' => 1490],
+            ['label' => 'Photos', 'count' => 6, 'avg' => 1090],
+        ],
+        'sentiment'  => [
+            'positive' => 79, 'neutral' => 17, 'negative' => 4,
+            'themes'     => ['the new single', 'tour dates', 'merch', 'your voice', 'the music video'],
+            'highlights' => ['this song is on repeat, obsessed 😭🖤', 'saw u live and cried, best night ever', 'ur the best artist of our generation fr'],
+            'questions'  => ['when are u coming to vancouver??', 'is the vinyl restocking?', 'what mic do u use for vocals'],
+            'watch'      => ['a few fans frustrated the presale sold out fast'],
+            '_count'     => 80,
+        ],
+        'digest'     => "You’re on a strong run: Instagram is up ~+" . (end($ig_vals) - $ig_vals[0]) . " in 30 days and “SOFT THING” is driving your best engagement in months — Reels are landing about 2× your photos. Fan sentiment is 79% positive; the community is hyped on the single and asking for more tour cities.\n\n**Do next:** 1) Cut the acoustic version as a Reel and post it Friday (your best day). 2) Answer the top question in a story — fans want a Vancouver date. 3) Restock the vinyl; people are actively asking.",
+    ];
+}
+
+/* ---------------------------------------------------------------------------
  * Admin page
  * ------------------------------------------------------------------------- */
 
@@ -406,17 +457,30 @@ function lmeg_admin_social() {
     $card   = 'background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;';
     $dash   = 'background:#fff;border:1px dashed #dcdcde;border-radius:10px;padding:16px;';
 
-    // Pull the data once.
-    $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
-    $ig_stats = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
-    $ov       = $sp_ok ? lmeg_spotify_overview() : null;
-    $sp_snaps = ($sp_ok && function_exists('lmeg_spotify_snapshots')) ? lmeg_spotify_snapshots(60) : [];
-    $sp_stats = lmeg_social_series_stats($sp_snaps);
-    $fan_ct   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE unsubscribed_at IS NULL");
-    $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
-    $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
-    $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
-    $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
+    // Demo/preview mode — sample data so the dashboard can be seen before connect.
+    $demo        = !empty($_GET['demo']);
+    $demo_sent   = null;
+    $demo_digest = null;
+
+    if ($demo) {
+        $ig_ok = $sp_ok = $ai_ok = true;
+        $dd = lmeg_social_demo();
+        $ig = $dd['ig']; $ig_stats = $dd['ig_stats']; $ov = $dd['ov']; $sp_stats = $dd['sp_stats'];
+        $fan_ct = $dd['fan_ct']; $stories = $dd['stories']; $content = $dd['content'];
+        $best_day = $dd['best_day']; $types = $dd['types'];
+        $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
+    } else {
+        $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
+        $ig_stats = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
+        $ov       = $sp_ok ? lmeg_spotify_overview() : null;
+        $sp_snaps = ($sp_ok && function_exists('lmeg_spotify_snapshots')) ? lmeg_spotify_snapshots(60) : [];
+        $sp_stats = lmeg_social_series_stats($sp_snaps);
+        $fan_ct   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE unsubscribed_at IS NULL");
+        $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
+        $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
+        $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
+        $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
+    }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
         if ($d === 0 && !$per_day) return '';
@@ -429,6 +493,12 @@ function lmeg_admin_social() {
     <div class="wrap">
         <h1>Fanloop — Social Listening</h1>
         <p style="max-width:820px;">A read on <?php echo esc_html($artist); ?>'s social presence, straight from your connected accounts — audience, growth, content, and how fans feel.</p>
+
+        <?php if ($demo) : ?>
+            <div class="notice notice-warning" style="max-width:900px;"><p><strong>👁 Demo data</strong> — this is a preview with sample numbers so you can see the layout and feel. <a href="<?php echo esc_url(remove_query_arg('demo')); ?>">Switch to live data →</a></p></div>
+        <?php else : ?>
+            <p><a class="button" href="<?php echo esc_url(add_query_arg('demo', 1)); ?>">👁 Preview with demo data</a></p>
+        <?php endif; ?>
 
         <?php if (!$ig_ok) : ?>
             <div class="notice notice-info" style="max-width:900px;"><p><strong>Connect Instagram</strong> (<a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a>) to light up followers, top posts, story mentions, and comment sentiment. Spotify + your fan list show below now.</p></div>
@@ -536,7 +606,18 @@ function lmeg_admin_social() {
         <?php endif; ?>
 
         <h2 style="margin-top:24px;">Fan sentiment</h2>
-        <?php if (!$ig_ok || !$ai_ok) : ?>
+        <?php if ($demo && $demo_sent) : $x = $demo_sent; ?>
+            <div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:6px;color:#111;max-width:820px;">
+                <?php foreach (['Positive' => ['positive', '#16a34a'], 'Neutral' => ['neutral', '#9ca3af'], 'Negative' => ['negative', '#dc2626']] as $lbl => $kc) : $pct = (int) $x[$kc[0]]; ?>
+                    <div style="margin:5px 0;"><span style="display:inline-block;width:74px;"><?php echo $lbl; ?></span><span style="display:inline-block;height:12px;width:<?php echo max(2, $pct * 2); ?>px;background:<?php echo $kc[1]; ?>;border-radius:6px;vertical-align:middle;"></span> <?php echo $pct; ?>%</div>
+                <?php endforeach; ?>
+                <p style="margin:12px 0 4px;font-weight:600;">What they’re talking about</p><div><?php foreach ($x['themes'] as $t) : ?><span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 10px;margin:2px;font-size:12px;"><?php echo esc_html($t); ?></span><?php endforeach; ?></div>
+                <p style="margin:12px 0 4px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['highlights'] as $h) : ?><li>“<?php echo esc_html($h); ?>”</li><?php endforeach; ?></ul>
+                <p style="margin:12px 0 4px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['questions'] as $q) : ?><li><?php echo esc_html($q); ?></li><?php endforeach; ?></ul>
+                <p style="margin:12px 0 4px;font-weight:600;color:#b45309;">Worth watching</p><ul style="margin:0 0 0 18px;"><?php foreach ($x['watch'] as $w) : ?><li><?php echo esc_html($w); ?></li><?php endforeach; ?></ul>
+                <p class="description" style="margin-top:10px;">Based on <?php echo (int) $x['_count']; ?> recent comments.</p>
+            </div>
+        <?php elseif (!$ig_ok || !$ai_ok) : ?>
             <p class="description" style="max-width:820px;">Needs <?php echo !$ig_ok ? 'Instagram connected' : ''; echo (!$ig_ok && !$ai_ok) ? ' and ' : ''; echo !$ai_ok ? 'your Anthropic API key (Settings → AI assistant)' : ''; ?>. Then Fanloop reads your recent comments and summarizes the mood, themes, standout comments, and questions worth answering.</p>
         <?php else : ?>
             <p style="max-width:820px;">Reads the comments on your recent Instagram posts and summarizes the mood — powered by your AI key. Cached ~6h.</p>
@@ -547,8 +628,12 @@ function lmeg_admin_social() {
         <?php if ($ai_ok && ($ig_ok || $sp_ok)) : ?>
         <h2 style="margin-top:24px;">Listening digest</h2>
         <p style="max-width:820px;">One AI brief across everything above — how you're doing and what to do next.</p>
+        <?php if ($demo && $demo_digest) : ?>
+        <div style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px;margin-top:6px;color:#111;line-height:1.6;max-width:820px;"><?php echo wp_kses_post(nl2br(preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', esc_html($demo_digest)))); ?></div>
+        <?php else : ?>
         <p><button type="button" class="button button-primary" id="lmeg-digest-btn">Generate digest</button> <span id="lmeg-digest-status" style="font-size:12px;margin-left:8px;"></span></p>
         <div id="lmeg-digest-out" style="max-width:820px;"></div>
+        <?php endif; ?>
         <?php endif; ?>
 
         <?php if (($ig_ok && $ai_ok) || ($ai_ok && ($ig_ok || $sp_ok))) : ?>

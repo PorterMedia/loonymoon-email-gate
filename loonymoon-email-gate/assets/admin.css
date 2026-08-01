@@ -774,3 +774,50 @@ body.lmeg-admin .wrap h2.lmeg-sec-h::before {
 body.lmeg-admin .wrap h2.lmeg-sec-h.is-collapsed::before { transform: rotate(-45deg); margin-bottom: 0; }
 body.lmeg-admin .wrap h2.lmeg-sec-h:hover { color: var(--lmegA-text); }
 .lmeg-sec-body.is-collapsed { display: none !important; }
+
+/* ============================================================================
+   Alerts & messages — the dark theme sets .wrap text to near-white, but WP
+   notices/alerts have a LIGHT background, so their inherited text was
+   light-on-light (unreadable). Force dark, high-contrast text on every alert
+   across all Fanloop admin pages. (Ian: recurring contrast issue — root fix.)
+   ========================================================================== */
+body.lmeg-admin .notice,
+body.lmeg-admin div.updated,
+body.lmeg-admin div.error,
+body.lmeg-admin .notice-success,
+body.lmeg-admin .notice-error,
+body.lmeg-admin .notice-warning,
+body.lmeg-admin .notice-info {
+    background-color: #fff !important;
+    color: #1d2327 !important;
+}
+body.lmeg-admin .notice p,
+body.lmeg-admin .notice li,
+body.lmeg-admin .notice strong,
+body.lmeg-admin .notice span,
+body.lmeg-admin div.updated p,
+body.lmeg-admin div.error p {
+    color: #1d2327 !important;
+}
+body.lmeg-admin .notice a,
+body.lmeg-admin div.updated a,
+body.lmeg-admin div.error a {
+    color: #2271b1 !important;
+}
+body.lmeg-admin .notice code {
+    background: #f0f0f1 !important;
+    color: #1d2327 !important;
+}
+
+/* White cards/boxes rendered with an inline light background also inherit the
+   theme's near-white text on any un-coloured child (e.g. a card heading) —
+   invisible on white. Force dark text on any element given a white inline
+   background; explicit child colours still override. Root fix, no per-card edits. */
+body.lmeg-admin [style*="background:#fff"],
+body.lmeg-admin [style*="background: #fff"],
+body.lmeg-admin [style*="background:#ffffff"],
+body.lmeg-admin [style*="background: #ffffff"],
+body.lmeg-admin [style*="background-color:#fff"],
+body.lmeg-admin [style*="background-color: #fff"] {
+    color: #1d2327;
+}
