@@ -76,10 +76,13 @@ function lmeg_social_snapshots($platform, $days = 60) {
 
 /** current value, total change over the window, and average change/day. */
 function lmeg_social_series_stats($rows, $field = 'followers') {
-    $vals = [];
-    foreach ((array) $rows as $r) { $vals[] = (int) $r->$field; }
+    $vals = []; $labels = [];
+    foreach ((array) $rows as $r) {
+        $vals[]   = (int) $r->$field;
+        $labels[] = isset($r->snap_date) ? date_i18n('M j', strtotime($r->snap_date)) : '';
+    }
     $n = count($vals);
-    if ($n === 0) return ['current' => null, 'delta' => 0, 'days' => 0, 'per_day' => 0, 'vals' => []];
+    if ($n === 0) return ['current' => null, 'delta' => 0, 'days' => 0, 'per_day' => 0, 'vals' => [], 'labels' => []];
     $delta = $vals[$n - 1] - $vals[0];
     $days  = max(1, $n - 1);
     return [
@@ -88,6 +91,7 @@ function lmeg_social_series_stats($rows, $field = 'followers') {
         'days'    => $days,
         'per_day' => round($delta / $days, 1),
         'vals'    => $vals,
+        'labels'  => $labels,
     ];
 }
 
@@ -396,7 +400,9 @@ function lmeg_social_sparkline($vals, $w = 320, $h = 60) {
 function lmeg_social_demo() {
     $mk = function ($vals) {
         $n = count($vals); $delta = $vals[$n - 1] - $vals[0]; $days = max(1, $n - 1);
-        return ['current' => $vals[$n - 1], 'delta' => $delta, 'days' => $days, 'per_day' => round($delta / $days, 1), 'vals' => $vals];
+        $labels = [];
+        for ($i = 0; $i < $n; $i++) { $labels[] = date_i18n('M j', strtotime('-' . ($n - 1 - $i) . ' days')); }
+        return ['current' => $vals[$n - 1], 'delta' => $delta, 'days' => $days, 'per_day' => round($delta / $days, 1), 'vals' => $vals, 'labels' => $labels];
     };
     // Organic-looking growth (small daily variance incl. a few flat/down days)
     // so the trend lines read like real analytics rather than a synthetic ramp.
@@ -536,7 +542,7 @@ function lmeg_admin_social() {
                 <?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram followers'); ?>
                 <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
                 <?php if ($ig_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($ig_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($ig_stats['delta']); ?> over <?php echo (int) $ig_stats['days']; ?> days · <?php echo $ig_stats['per_day']; ?>/day</div><?php endif; ?>
-                <?php if ($ispark) : echo lmeg_chart_line($ig_stats['vals'], ['color' => '#E1306C', 'uid' => 'ig-follows']); else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
+                <?php if ($ispark) : echo lmeg_chart_line($ig_stats['vals'], ['color' => '#E1306C', 'uid' => 'ig-follows', 'labels' => $ig_stats['labels'] ?? [], 'suffix' => 'followers']); else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
             </div>
             <?php else : ?>
             <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect</a> to track follower growth.</p></div>
@@ -547,7 +553,7 @@ function lmeg_admin_social() {
                 <?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify followers'); ?>
                 <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
                 <?php if ($sp_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($sp_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($sp_stats['delta']); ?> over <?php echo (int) $sp_stats['days']; ?> days · <?php echo $sp_stats['per_day']; ?>/day</div><?php endif; ?>
-                <?php if ($spark) : echo lmeg_chart_line($sp_stats['vals'], ['color' => '#1DB954', 'uid' => 'sp-follows']); else : ?><p class="description">History builds day by day.</p><?php endif; ?>
+                <?php if ($spark) : echo lmeg_chart_line($sp_stats['vals'], ['color' => '#1DB954', 'uid' => 'sp-follows', 'labels' => $sp_stats['labels'] ?? [], 'suffix' => 'followers']); else : ?><p class="description">History builds day by day.</p><?php endif; ?>
             </div>
             <?php else : ?>
             <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>

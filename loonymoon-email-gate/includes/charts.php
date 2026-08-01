@@ -66,18 +66,25 @@ function lmeg_chart_line($vals, $args = []) {
         'dot'          => true,
         'baseline'     => false, // minimal by default — the fill grounds the chart
         'area_opacity' => 0.30,
+        'labels'       => [],    // parallel array of date labels (enables date in tooltip)
+        'suffix'       => '',    // unit shown after the value in the tooltip
     ]);
     if (count($vals) < 2) return '';
 
     $w = (float) $a['w']; $h = (float) $a['h']; $pad = (float) $a['pad'];
     $min = min($vals); $max = max($vals); $range = max(0.0001, $max - $min);
     $n = count($vals); $step = $w / ($n - 1);
+    $labels = array_values((array) $a['labels']);
+    $has_labels = count($labels) === $n;
 
-    $pts = []; $firstx = 0.0; $lastx = 0.0; $lasty = 0.0;
+    $pts = []; $data = []; $firstx = 0.0; $lastx = 0.0; $lasty = 0.0;
     foreach ($vals as $i => $v) {
         $x = round($i * $step, 2);
         $y = round($h - $pad - (($v - $min) / $range) * ($h - 2 * $pad), 2);
         $pts[] = [$x, $y];
+        // Tooltip payload: x-ratio (0..1), y in px (matches the H-tall wrapper),
+        // the value, and the date label.
+        $data[] = ['xr' => round($i / ($n - 1), 4), 'y' => $y, 'v' => $v, 'l' => $has_labels ? (string) $labels[$i] : ''];
         if ($i === 0) $firstx = $x;
         $lastx = $x; $lasty = $y;
     }
@@ -90,7 +97,7 @@ function lmeg_chart_line($vals, $args = []) {
     // preserveAspectRatio="none" stretches the plot to the card's full width;
     // vector-effect keeps the stroke a constant width regardless of that stretch.
     $svg  = '<svg class="lmegc-line" viewBox="0 0 ' . $w . ' ' . $h . '" width="100%" height="' . $h
-          . '" preserveAspectRatio="none" style="display:block;overflow:visible;margin-top:12px;" aria-hidden="true">';
+          . '" preserveAspectRatio="none" style="display:block;overflow:visible;" aria-hidden="true">';
     $svg .= '<defs><linearGradient id="' . esc_attr($gid) . '" x1="0" y1="0" x2="0" y2="1">'
           . '<stop offset="0" stop-color="' . esc_attr($col) . '" stop-opacity="' . esc_attr($a['area_opacity']) . '"/>'
           . '<stop offset="0.55" stop-color="' . esc_attr($col) . '" stop-opacity="' . esc_attr(round($a['area_opacity'] * 0.35, 3)) . '"/>'
@@ -113,7 +120,59 @@ function lmeg_chart_line($vals, $args = []) {
               . '" stroke="#12141F" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
     }
     $svg .= '</svg>';
-    return $svg;
+
+    // Interactive layer — a guide line, a marker dot, and a tooltip that follow
+    // the cursor to the nearest point. Fully inline-styled + hidden by default,
+    // so it stays invisible on pages where the hover JS isn't printed.
+    $json = function_exists('wp_json_encode') ? wp_json_encode($data) : json_encode($data);
+    $hover = '<span class="lmegc-cursor" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.22);display:none;pointer-events:none;"></span>'
+           . '<span class="lmegc-dot" style="position:absolute;width:9px;height:9px;border-radius:50%;display:none;pointer-events:none;transform:translate(-50%,-50%);background:' . esc_attr($col) . ';box-shadow:0 0 0 3px ' . esc_attr($col) . '33;"></span>'
+           . '<span class="lmegc-tip" style="position:absolute;display:none;pointer-events:none;background:#0E0F16;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:5px 9px;font-size:12px;line-height:1.35;color:#F4F5F7;white-space:nowrap;transform:translate(-50%,calc(-100% - 12px));box-shadow:0 8px 22px rgba(0,0,0,.45);z-index:6;"></span>';
+
+    return '<div class="lmegc-wrap" style="position:relative;margin-top:12px;height:' . $h . 'px;cursor:crosshair;" '
+         . 'data-points="' . esc_attr($json) . '" data-suffix="' . esc_attr($a['suffix']) . '">' . $svg . $hover . '</div>';
+}
+
+/**
+ * Print the chart hover script once, in the admin footer of Fanloop pages.
+ * Inline (not enqueued) so an optimization plugin's stale-file cache can't
+ * drop it. Attaches to every .lmegc-wrap on the page.
+ */
+add_action('admin_footer', 'lmeg_chart_footer_assets');
+function lmeg_chart_footer_assets() {
+    if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
+    ?>
+<script id="lmeg-chart-hover">
+(function(){
+  function init(){
+    var wraps = document.querySelectorAll('.lmegc-wrap[data-points]');
+    for (var k = 0; k < wraps.length; k++) (function(w){
+      if (w._lmegc) return; w._lmegc = 1;
+      var pts; try { pts = JSON.parse(w.getAttribute('data-points')); } catch(e){ return; }
+      if (!pts || pts.length < 2) return;
+      var suffix = w.getAttribute('data-suffix') || '';
+      var cur = w.querySelector('.lmegc-cursor'), dot = w.querySelector('.lmegc-dot'), tip = w.querySelector('.lmegc-tip');
+      function fmt(n){ try { return Number(n).toLocaleString(); } catch(e){ return n; } }
+      function move(e){
+        var r = w.getBoundingClientRect(); if (!r.width) return;
+        var ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        var best = 0, bd = 2;
+        for (var i = 0; i < pts.length; i++){ var d = Math.abs(pts[i].xr - ratio); if (d < bd){ bd = d; best = i; } }
+        var p = pts[best], px = p.xr * r.width;
+        cur.style.left = px + 'px'; cur.style.display = 'block';
+        dot.style.left = px + 'px'; dot.style.top = p.y + 'px'; dot.style.display = 'block';
+        tip.style.left = Math.max(34, Math.min(r.width - 34, px)) + 'px'; tip.style.top = p.y + 'px';
+        tip.innerHTML = '<strong>' + fmt(p.v) + '</strong>' + (suffix ? ' ' + suffix : '') + (p.l ? '<br><span style="color:#8B90A0;">' + p.l + '</span>' : '');
+        tip.style.display = 'block';
+      }
+      function leave(){ cur.style.display = 'none'; dot.style.display = 'none'; tip.style.display = 'none'; }
+      w.addEventListener('mousemove', move); w.addEventListener('mouseleave', leave);
+    })(wraps[k]);
+  }
+  if (document.readyState !== 'loading') init(); else document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+    <?php
 }
 
 /**
@@ -183,6 +242,12 @@ function lmeg_icon($name, $args = []) {
             return $stroke('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/>');
         case 'volume':
             return $stroke('<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/>');
+        case 'dollar':
+            return $stroke('<line x1="12" y1="1.5" x2="12" y2="22.5"/><path d="M17 5.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>');
+        case 'send':
+            return $stroke('<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>');
+        case 'globe':
+            return $stroke('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>');
         default:
             return $stroke('<circle cx="12" cy="12" r="9"/>');
     }

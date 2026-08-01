@@ -391,7 +391,8 @@ function lmeg_admin_spotify() {
 
     $snaps = lmeg_spotify_snapshots(30);
     // Build a sparkline for followers.
-    $vals = array_map(function ($r) { return (int) $r->followers; }, (array) $snaps);
+    $vals    = array_map(function ($r) { return (int) $r->followers; }, (array) $snaps);
+    $slabels = array_map(function ($r) { return isset($r->snap_date) ? date_i18n('M j', strtotime($r->snap_date)) : ''; }, (array) $snaps);
     $spark = '';
     if (count($vals) >= 2) {
         $min = min($vals); $max = max($vals); $range = max(1, $max - $min);
@@ -415,7 +416,7 @@ function lmeg_admin_spotify() {
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:18px 0;max-width:1000px;">
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">Followers</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Followers</div><?php echo lmeg_icon_badge('users', '#1DB954', 26); ?></div>
                 <div class="lmeg-stat__value"><?php echo number_format_i18n($ov['followers']); ?></div>
                 <?php if (count($vals) >= 2) :
                     $delta = end($vals) - reset($vals); ?>
@@ -427,14 +428,14 @@ function lmeg_admin_spotify() {
                 <?php endif; ?>
             </div>
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">Popularity</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Popularity</div><?php echo lmeg_icon_badge('sparkle', '#7C6CF6', 26); ?></div>
                 <div class="lmeg-stat__value"><?php echo (int) $ov['popularity']; ?><span style="font-size:14px;opacity:.5;">/100</span></div>
                 <div class="lmeg-stat__hint">Spotify's 0–100 score</div>
             </div>
             <div class="lmeg-stat" style="grid-column:span 2;">
-                <div class="lmeg-stat__label">Follower trend (30d)</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Follower trend (30d)</div><?php echo lmeg_icon_badge('trending-up', '#1DB954', 26); ?></div>
                 <?php if ($spark) : ?>
-                    <?php echo lmeg_chart_line($vals, ['color' => '#1DB954', 'uid' => 'sp-page', 'h' => 64]); ?>
+                    <?php echo lmeg_chart_line($vals, ['color' => '#1DB954', 'uid' => 'sp-page', 'h' => 64, 'labels' => $slabels, 'suffix' => 'followers']); ?>
                 <?php else : ?>
                     <div class="lmeg-stat__value" style="font-size:15px;font-weight:500;">Collecting…</div>
                     <div class="lmeg-stat__hint">A daily snapshot is captured automatically; the line fills in over the next few days.</div>

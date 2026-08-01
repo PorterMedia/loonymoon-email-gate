@@ -4625,6 +4625,7 @@ function lmeg_admin_overview() {
     $byday = []; for ($i=29;$i>=0;$i--) $byday[date('Y-m-d', strtotime("-$i days"))] = 0;
     foreach ($daily as $d) $byday[$d->d] = (int) $d->n;
     $counts = array_values($byday); $max = max($counts) ?: 1;
+    $olabels = array_map(function ($d) { return date_i18n('M j', strtotime($d)); }, array_keys($byday));
     $w=280;$h=54;$step=$w/max(1,count($counts)-1);$pts=[];
     foreach ($counts as $i=>$n){ $pts[] = round($i*$step,1).','.round($h-($n/$max)*($h-4)-2,1); }
     $spark = implode(' ', $pts);
@@ -4654,23 +4655,23 @@ function lmeg_admin_overview() {
         <!-- headline KPIs -->
         <div class="lmeg-ov-kpis">
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">Active subscribers</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Active subscribers</div><?php echo lmeg_icon_badge('users', '#7C6CF6', 26); ?></div>
                 <div class="lmeg-stat__value"><?php echo number_format_i18n($active); ?></div>
                 <div class="lmeg-stat__hint"><span style="color:#34D399;">+<?php echo $new30; ?></span> · <?php echo $unsub30; ?> lost (30d)</div>
-                <?php echo lmeg_chart_line($counts, ['color' => '#D05FA2', 'uid' => 'ov-signups', 'h' => 54]); ?>
+                <?php echo lmeg_chart_line($counts, ['color' => '#D05FA2', 'uid' => 'ov-signups', 'h' => 54, 'labels' => $olabels, 'suffix' => 'signups']); ?>
             </div>
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">MRR</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">MRR</div><?php echo lmeg_icon_badge('dollar', '#34D399', 26); ?></div>
                 <div class="lmeg-stat__value"><?php echo esc_html($fmt($mrr)); ?></div>
                 <div class="lmeg-stat__hint"><?php echo $paying; ?> paying members</div>
             </div>
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">Campaign revenue (30d)</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Campaign revenue (30d)</div><?php echo lmeg_icon_badge('send', '#D05FA2', 26); ?></div>
                 <div class="lmeg-stat__value"><?php echo esc_html($fmt($camp)); ?></div>
                 <div class="lmeg-stat__hint"><?php echo $camp_orders; ?> orders from broadcasts</div>
             </div>
             <div class="lmeg-stat">
-                <div class="lmeg-stat__label">Spotify followers</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Spotify followers</div><?php echo lmeg_icon_badge('spotify', '#1DB954', 26); ?></div>
                 <?php if ($sp) : ?>
                     <div class="lmeg-stat__value"><?php echo number_format_i18n($sp['followers']); ?></div>
                     <div class="lmeg-stat__hint"><?php echo $sp_delta!==null ? '<span style="color:'.($sp_delta>=0?'#34D399':'#F87171').';">'.($sp_delta>=0?'+':'').number_format_i18n($sp_delta).'</span> (30d) · ' : ''; ?>pop <?php echo (int)$sp['popularity']; ?></div>
@@ -4685,7 +4686,7 @@ function lmeg_admin_overview() {
         <div class="lmeg-ov-grid">
             <!-- fan types -->
             <div class="lmeg-ov-panel">
-                <div class="lmeg-ov-panel__head">Fan types <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Audience →</a></div>
+                <div class="lmeg-ov-panel__head"><span style="display:inline-flex;align-items:center;gap:7px;"><span style="color:#7C6CF6;display:inline-flex;"><?php echo lmeg_icon('users', ['size' => 15, 'sw' => 2]); ?></span>Fan types</span> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Audience →</a></div>
                 <?php if (empty($types)) : ?>
                     <p class="lmeg-ov-empty">Run "Recalculate" on the Audience page to score fans.</p>
                 <?php else : foreach ($types as $t) : $pct = round(100*(int)$t->n/$tt_total); ?>
@@ -4699,7 +4700,7 @@ function lmeg_admin_overview() {
 
             <!-- countries -->
             <div class="lmeg-ov-panel">
-                <div class="lmeg-ov-panel__head">Where fans are <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Map →</a></div>
+                <div class="lmeg-ov-panel__head"><span style="display:inline-flex;align-items:center;gap:7px;"><span style="color:#3b82f6;display:inline-flex;"><?php echo lmeg_icon('globe', ['size' => 15, 'sw' => 2]); ?></span>Where fans are</span> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-audience')); ?>">Map →</a></div>
                 <?php if (empty($countries)) : ?>
                     <p class="lmeg-ov-empty">Country fills in from phone/address signups and IP geolocation.</p>
                 <?php else : foreach ($countries as $c) : $pct=round(100*(int)$c->n/$c_max); ?>
@@ -4713,7 +4714,7 @@ function lmeg_admin_overview() {
 
             <!-- last broadcast -->
             <div class="lmeg-ov-panel">
-                <div class="lmeg-ov-panel__head">Last broadcast <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts')); ?>">History →</a></div>
+                <div class="lmeg-ov-panel__head"><span style="display:inline-flex;align-items:center;gap:7px;"><span style="color:#D05FA2;display:inline-flex;"><?php echo lmeg_icon('send', ['size' => 15, 'sw' => 2]); ?></span>Last broadcast</span> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts')); ?>">History →</a></div>
                 <?php if (!$last) : ?>
                     <p class="lmeg-ov-empty">No broadcasts yet. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-compose')); ?>">Compose one →</a></p>
                 <?php else :
@@ -4731,7 +4732,7 @@ function lmeg_admin_overview() {
 
             <!-- spotify -->
             <div class="lmeg-ov-panel">
-                <div class="lmeg-ov-panel__head">Spotify <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Details →</a></div>
+                <div class="lmeg-ov-panel__head"><span style="display:inline-flex;align-items:center;gap:7px;"><span style="color:#1DB954;display:inline-flex;"><?php echo lmeg_icon('spotify', ['size' => 15]); ?></span>Spotify</span> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Details →</a></div>
                 <?php if (!$sp) : ?>
                     <p class="lmeg-ov-empty">Not connected. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Add keys →</a></p>
                 <?php else : ?>
