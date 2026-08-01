@@ -365,8 +365,8 @@ function lmeg_admin_deliverability() {
         <?php else : ?>
             <table class="widefat" style="max-width:720px;"><tbody>
                 <tr><td style="width:30px;font-size:18px;"><?php echo $authed ? '✅' : '⚠️'; ?></td>
-                    <td><strong style="color:#111;"><?php echo esc_html($from); ?></strong>
-                    <div style="font-size:12px;color:#3c434a;margin-top:2px;">
+                    <td><strong style="color:#F4F5F7;"><?php echo esc_html($from); ?></strong>
+                    <div style="font-size:12px;color:#8B90A0;margin-top:2px;">
                     <?php if ($authed) : ?>Domain <code><?php echo esc_html($from_domain); ?></code> is authenticated in Brevo — good to send.
                     <?php elseif ($matched) : ?>Domain <code><?php echo esc_html($from_domain); ?></code> is in Brevo but <strong>not yet authenticated</strong> — add the SPF/DKIM records below.
                     <?php else : ?>Domain <code><?php echo esc_html($from_domain); ?></code> isn't set up in Brevo yet. Add + authenticate it to stay out of spam.<?php endif; ?>
@@ -381,7 +381,7 @@ function lmeg_admin_deliverability() {
             <table class="widefat striped" style="max-width:720px;"><thead><tr><th>Domain</th><th>Authenticated</th></tr></thead><tbody>
             <?php foreach ($d['domains'] as $dom) : $ok = !empty($dom['authenticated']) || !empty($dom['verified']); ?>
                 <tr><td><code><?php echo esc_html($dom['domain'] ?? '—'); ?></code></td>
-                    <td><?php echo $ok ? '<span style="color:#16a34a;">✓ authenticated</span>' : '<span style="color:#b45309;">✗ not authenticated</span>'; ?></td></tr>
+                    <td><?php echo $ok ? '<span style="color:#34D399;">✓ authenticated</span>' : '<span style="color:#FBBF24;">✗ not authenticated</span>'; ?></td></tr>
             <?php endforeach; ?>
             </tbody></table>
         <?php endif; ?>
@@ -400,7 +400,7 @@ function lmeg_admin_deliverability() {
         <table class="widefat striped" style="max-width:720px;"><thead><tr><th>Sender</th><th>Email</th><th>Status</th></tr></thead><tbody>
         <?php foreach ($d['senders'] as $sd) : ?>
             <tr><td><?php echo esc_html($sd['name'] ?? '—'); ?></td><td><?php echo esc_html($sd['email'] ?? '—'); ?></td>
-                <td><?php echo !empty($sd['active']) ? '<span style="color:#16a34a;">✓ active</span>' : '<span style="color:#b45309;">pending</span>'; ?></td></tr>
+                <td><?php echo !empty($sd['active']) ? '<span style="color:#34D399;">✓ active</span>' : '<span style="color:#FBBF24;">pending</span>'; ?></td></tr>
         <?php endforeach; ?>
         </tbody></table>
         <?php endif; ?>

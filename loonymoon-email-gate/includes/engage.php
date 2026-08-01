@@ -830,7 +830,7 @@ function lmeg_admin_contests() {
             ?>
                 <tr>
                     <td><strong><?php echo esc_html($c->title); ?></strong> <span class="description">· ID <?php echo (int) $c->id; ?></span>
-                        <?php if ($active && (int) $active->id === (int) $c->id) : ?><br><span class="description" style="color:#1a6f1a;">plain <code>{contest_link}</code> points here</span><?php endif; ?></td>
+                        <?php if ($active && (int) $active->id === (int) $c->id) : ?><br><span class="description" style="color:#34D399;">plain <code>{contest_link}</code> points here</span><?php endif; ?></td>
                     <td><?php
                         if ($winner) {
                             echo '🏆 <a href="' . esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $winner->id], admin_url('admin.php'))) . '">' . esc_html($winner->email ?: $winner->phone) . '</a>';

@@ -961,8 +961,8 @@ function lmeg_admin_setup() {
         <p style="max-width:760px;">Everything you connect makes Fanloop do more. Core steps first; the rest unlock extra powers.</p>
 
         <div style="max-width:640px;margin:14px 0;">
-            <div style="height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden;"><div style="height:100%;width:<?php echo (int) $pct; ?>%;background:linear-gradient(90deg,#d05fa2,#a855f7);"></div></div>
-            <div style="font-size:13px;margin-top:6px;color:#3c434a;"><strong><?php echo $all_done; ?>/<?php echo count($items); ?></strong> set up · core <strong><?php echo $core_done; ?>/<?php echo count($core); ?></strong></div>
+            <div style="height:12px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;"><div style="height:100%;width:<?php echo (int) $pct; ?>%;background:linear-gradient(90deg,#d05fa2,#a855f7);"></div></div>
+            <div style="font-size:13px;margin-top:6px;color:#8B90A0;"><strong><?php echo $all_done; ?>/<?php echo count($items); ?></strong> set up · core <strong><?php echo $core_done; ?>/<?php echo count($core); ?></strong></div>
         </div>
 
         <table class="widefat" style="max-width:820px;">
@@ -971,9 +971,9 @@ function lmeg_admin_setup() {
                 <tr>
                     <td style="width:30px;font-size:18px;"><?php echo $done ? '✅' : '⬜'; ?></td>
                     <td>
-                        <strong style="<?php echo $done ? 'color:#16a34a;' : 'color:#111;'; ?>"><?php echo esc_html($label); ?></strong>
-                        <?php if ($optional) : ?><span style="font-size:11px;background:#eef2ff;color:#3730a3;border-radius:999px;padding:1px 7px;margin-left:6px;">optional</span><?php endif; ?>
-                        <div style="font-size:12px;color:#3c434a;margin-top:2px;"><?php echo esc_html($hint); ?></div>
+                        <strong style="<?php echo $done ? 'color:#34D399;' : 'color:#F4F5F7;'; ?>"><?php echo esc_html($label); ?></strong>
+                        <?php if ($optional) : ?><span style="font-size:11px;background:rgba(124,108,246,.18);color:#C4BBFF;border-radius:999px;padding:1px 7px;margin-left:6px;">optional</span><?php endif; ?>
+                        <div style="font-size:12px;color:#8B90A0;margin-top:2px;"><?php echo esc_html($hint); ?></div>
                     </td>
                     <td style="width:110px;text-align:right;"><?php if (!$done) : ?><a class="button button-small" href="<?php echo esc_url($link); ?>">Set up →</a><?php else : ?><a href="<?php echo esc_url($link); ?>" style="font-size:12px;">Manage</a><?php endif; ?></td>
                 </tr>

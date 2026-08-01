@@ -177,27 +177,34 @@ function lmeg_admin_body_class($classes) {
 }
 
 /**
- * Contrast guard — printed INLINE in the admin head (not via the cacheable
- * admin.css file, which optimization plugins were serving stale). The plugin's
- * dark theme sets .wrap text near-white, so WP notices/alerts AND any inline
- * white-background card inherited near-white text on a light surface —
- * unreadable. This forces dark, high-contrast text on every alert and every
- * white card across all Fanloop admin pages, while preserving explicit accent
- * colours (green/red/etc.) and leaving form inputs to the theme. Root fix for
- * a recurring readability complaint.
+ * Dark-theme normalizer — printed INLINE in the admin head (not via the
+ * cacheable admin.css file, which optimization plugins were serving stale).
+ * The plugin admin is a DARK theme, so WP notices/alerts and any stray
+ * light/white card must be dark surfaces with light text (a white box reads
+ * as broken on the dark canvas — a recurring complaint). This restyles every
+ * WP notice as a dark card with a per-type coloured accent, and darkens any
+ * inline white-background card, forcing readable light text on both. Runs on
+ * every Fanloop admin page so it can't be missed page by page.
  */
 add_action('admin_head', 'lmeg_admin_contrast_css', 99);
 function lmeg_admin_contrast_css() {
     if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
     echo "<style id=\"lmeg-contrast-fix\">\n"
-        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error{background:#fff!important;color:#1d2327!important;}\n"
-        . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice span,body.lmeg-admin .notice strong{color:#1d2327!important;}\n"
-        . "body.lmeg-admin .notice a{color:#2271b1!important;}\n"
-        . "body.lmeg-admin .notice code{background:#f0f0f1!important;color:#1d2327!important;}\n"
-        . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background-color:#fff!important;color:#1d2327!important;}\n"
-        . "body.lmeg-admin [style*=\"background:#fff\"] label,body.lmeg-admin [style*=\"background:#fff\"] p,body.lmeg-admin [style*=\"background:#fff\"] li,body.lmeg-admin [style*=\"background:#fff\"] h1,body.lmeg-admin [style*=\"background:#fff\"] h2,body.lmeg-admin [style*=\"background:#fff\"] h3,body.lmeg-admin [style*=\"background:#fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] div:not([style*=\"color\"]){color:#1d2327!important;}\n"
-        . "body.lmeg-admin [style*=\"background: #fff\"] label,body.lmeg-admin [style*=\"background: #fff\"] p,body.lmeg-admin [style*=\"background: #fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] div:not([style*=\"color\"]){color:#1d2327!important;}\n"
-        . "body.lmeg-admin [style*=\"background:#fff\"] [style*=\"opacity\"],body.lmeg-admin [style*=\"background: #fff\"] [style*=\"opacity\"]{opacity:1!important;}\n"
+        // WP notices / alerts → dark card with a coloured left accent (never white).
+        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:12px!important;box-shadow:none!important;}\n"
+        . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice h1,body.lmeg-admin .notice h2,body.lmeg-admin .notice h3,body.lmeg-admin .notice label,body.lmeg-admin .notice strong,body.lmeg-admin .notice span:not([style*=\"color\"]),body.lmeg-admin div.updated p,body.lmeg-admin div.error p{color:#F4F5F7!important;}\n"
+        . "body.lmeg-admin .notice em{color:#C7CAD6!important;}\n"
+        . "body.lmeg-admin .notice a{color:#E58BBD!important;}\n"
+        . "body.lmeg-admin .notice code{background:rgba(255,255,255,.09)!important;color:#F4F5F7!important;}\n"
+        . "body.lmeg-admin .notice-success,body.lmeg-admin div.updated{border-left-color:#34D399!important;}\n"
+        . "body.lmeg-admin .notice-error,body.lmeg-admin div.error{border-left-color:#F87171!important;}\n"
+        . "body.lmeg-admin .notice-warning{border-left-color:#FBBF24!important;}\n"
+        . "body.lmeg-admin .notice-info{border-left-color:#7C6CF6!important;}\n"
+        . "body.lmeg-admin .notice .notice-dismiss:before{color:#8B90A0!important;}\n"
+        // Belt-and-suspenders: any inline white card → dark surface + light text.
+        . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background:#161826!important;background-image:none!important;color:#F4F5F7!important;border-color:rgba(255,255,255,.10)!important;}\n"
+        . "body.lmeg-admin [style*=\"background:#fff\"] label,body.lmeg-admin [style*=\"background:#fff\"] p,body.lmeg-admin [style*=\"background:#fff\"] li,body.lmeg-admin [style*=\"background:#fff\"] h1,body.lmeg-admin [style*=\"background:#fff\"] h2,body.lmeg-admin [style*=\"background:#fff\"] h3,body.lmeg-admin [style*=\"background:#fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] div:not([style*=\"color\"]){color:#F4F5F7!important;}\n"
+        . "body.lmeg-admin [style*=\"background: #fff\"] label,body.lmeg-admin [style*=\"background: #fff\"] p,body.lmeg-admin [style*=\"background: #fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] div:not([style*=\"color\"]){color:#F4F5F7!important;}\n"
         . "</style>\n";
 }
 
@@ -943,7 +950,7 @@ function lmeg_admin_subscribers() {
         <?php $rejects = function_exists('lmeg_recent_signup_rejects') ? lmeg_recent_signup_rejects(30) : []; ?>
         <?php if ($rejects) : ?>
         <details style="margin:2px 0 16px;max-width:820px;">
-            <summary style="cursor:pointer;color:#a05a00;font-weight:600;">⚠ <?php echo count($rejects); ?> recent signup<?php echo count($rejects) === 1 ? '' : 's'; ?> did not get added — see why</summary>
+            <summary style="cursor:pointer;color:#FBBF24;font-weight:600;">⚠ <?php echo count($rejects); ?> recent signup<?php echo count($rejects) === 1 ? '' : 's'; ?> did not get added — see why</summary>
             <table class="widefat striped" style="margin-top:8px;">
                 <thead><tr><th>When</th><th>Email</th><th>Location</th><th>Tags</th><th>Reason it was dropped</th><th>IP</th><th></th></tr></thead>
                 <tbody>
@@ -968,8 +975,8 @@ function lmeg_admin_subscribers() {
                         <td><?php echo esc_html($reason_label); ?></td>
                         <td><?php echo esc_html($rj['ip']); ?></td>
                         <td style="white-space:nowrap;"><?php if ($added) : ?>
-                            <span style="color:#1a6f1a;font-weight:600;">✓ Added</span>
-                            <span style="color:#1a6f1a;"><?php echo !empty($rj['welcome']) ? '· welcome email sent ✉️' : '· no welcome (already had one, or disabled)'; ?></span>
+                            <span style="color:#34D399;font-weight:600;">✓ Added</span>
+                            <span style="color:#34D399;"><?php echo !empty($rj['welcome']) ? '· welcome email sent ✉️' : '· no welcome (already had one, or disabled)'; ?></span>
                             <br><span class="description"><?php echo esc_html($rj['added_at']); ?></span>
                         <?php elseif ($can_add) : ?>
                             <form method="post" style="margin:0;">
@@ -1090,8 +1097,8 @@ function lmeg_admin_subscribers() {
                     $link    = $r->post_id ? get_permalink($r->post_id) : '';
                     $contact = $r->contact_type === 'phone' ? $r->phone : $r->email;
                     $status_dot = $r->unsubscribed_at
-                        ? '<span title="Unsubscribed ' . esc_attr($r->unsubscribed_at) . '" style="color:#a00;">● Unsubscribed</span>'
-                        : '<span style="color:#1a6f1a;">● Active</span>';
+                        ? '<span title="Unsubscribed ' . esc_attr($r->unsubscribed_at) . '" style="color:#F87171;">● Unsubscribed</span>'
+                        : '<span style="color:#34D399;">● Active</span>';
                 ?>
                     <tr<?php echo $r->unsubscribed_at ? ' style="opacity:.55;"' : ''; ?>>
                         <td class="check-column"><input type="checkbox" name="sub_ids[]" value="<?php echo (int) $r->id; ?>" /></td>
@@ -1445,7 +1452,7 @@ function lmeg_admin_compose() {
                             <span style="opacity:.4;">·</span>
                             <span id="lmeg-email-chars">0 chars</span>
                             <span style="opacity:.4;">·</span>
-                            <span id="lmeg-email-read" style="padding:1px 8px;border-radius:999px;background:#eef2ff;color:#3a3a8a;">&lt; 1 min read</span>
+                            <span id="lmeg-email-read" style="padding:1px 8px;border-radius:999px;background:rgba(124,108,246,.18);color:#C4BBFF;">&lt; 1 min read</span>
                         </div>
                         <p class="description">Build with drag &amp; drop blocks, or switch to Rich text / HTML. Merge tags work in text blocks: <code>{name}</code>, <code>{unique_code}</code>, <code>{referral_link}</code>. Everything renders inside your branded template on send. Leave empty to skip the email channel.</p>
 
@@ -1559,8 +1566,8 @@ function lmeg_admin_compose() {
                             <span style="opacity:.4;">·</span>
                             <span id="lmeg-sms-segs">0 segments</span>
                             <span style="opacity:.4;">·</span>
-                            <span id="lmeg-sms-enc" style="padding:1px 8px;border-radius:999px;background:#e7f5e7;color:#1a6f1a;">GSM-7</span>
-                            <span id="lmeg-sms-warn" style="display:none;color:#a05a00;">⚠ multi-segment — each segment billed separately</span>
+                            <span id="lmeg-sms-enc" style="padding:1px 8px;border-radius:999px;background:rgba(52,211,153,.16);color:#34D399;">GSM-7</span>
+                            <span id="lmeg-sms-warn" style="display:none;color:#FBBF24;">⚠ multi-segment — each segment billed separately</span>
                         </div>
                         <p class="description">Plain text. Up to 160 chars per segment in standard encoding, 70 per segment if you include emoji or accents. Leave blank to skip the SMS channel.</p>
                     </td>
@@ -1631,12 +1638,12 @@ function lmeg_admin_compose() {
             elSegs.textContent  = r.segs + ' segment' + (r.segs === 1 ? '' : 's');
             if (r.isGsm) {
                 elEnc.textContent = 'GSM-7';
-                elEnc.style.background = '#e7f5e7';
-                elEnc.style.color = '#1a6f1a';
+                elEnc.style.background = 'rgba(52,211,153,.16)';
+                elEnc.style.color = '#34D399';
             } else {
                 elEnc.textContent = 'Unicode';
-                elEnc.style.background = '#fff3cd';
-                elEnc.style.color = '#7a5a00';
+                elEnc.style.background = 'rgba(251,191,36,.16)';
+                elEnc.style.color = '#FBBF24';
             }
             elWarn.style.display = r.segs > 1 ? '' : 'none';
         }
@@ -1685,7 +1692,7 @@ function lmeg_admin_compose() {
                     if (d && d.success) {
                         var html = 'Sending to <strong>' + d.data.count + '</strong> subscriber' + (d.data.count === 1 ? '' : 's');
                         if (d.data.radius) html += ' <span style="opacity:.7;">within ' + d.data.radius + '</span>';
-                        if (d.data.radius_error) html += ' <em style="color:#a05a00;">— ' + d.data.radius_error + '</em>';
+                        if (d.data.radius_error) html += ' <em style="color:#FBBF24;">— ' + d.data.radius_error + '</em>';
                         countEl.innerHTML = html;
                     } else {
                         var why = (t || '').substring(0, 140).replace(/</g, '&lt;');
@@ -1903,11 +1910,11 @@ function lmeg_admin_broadcasts() {
             <?php if ($b->subject) : ?><p><strong>Subject:</strong> <?php echo esc_html($b->subject); ?></p><?php endif; ?>
             <?php if (!empty($b->body)) : ?>
                 <h2>Email body</h2>
-                <pre style="background:#f6f7f7;color:#2a2a2a;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body); ?></pre>
+                <pre style="background:#12141F;color:#E7E9F0;border:1px solid rgba(255,255,255,.08);padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body); ?></pre>
             <?php endif; ?>
             <?php if (!empty($b->body_sms)) : ?>
                 <h2>SMS body</h2>
-                <pre style="background:#f6f7f7;color:#2a2a2a;padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
+                <pre style="background:#12141F;color:#E7E9F0;border:1px solid rgba(255,255,255,.08);padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
             <?php endif; ?>
             <h2>Recipient log (latest 1000)</h2>
             <table class="widefat striped">
@@ -1919,8 +1926,8 @@ function lmeg_admin_broadcasts() {
                         <td><?php echo esc_html($l->recipient); ?></td>
                         <td><?php echo esc_html($l->status); ?></td>
                         <td><?php echo esc_html($l->sent_at ?: '—'); ?></td>
-                        <td><?php echo $l->opened_at ? '<span style="color:#1a6f1a;">✓</span> ' . esc_html($l->opened_at) : '—'; ?></td>
-                        <td><?php echo $l->first_clicked_at ? '<span style="color:#1a6f1a;">✓</span> ' . esc_html($l->first_clicked_at) : '—'; ?></td>
+                        <td><?php echo $l->opened_at ? '<span style="color:#34D399;">✓</span> ' . esc_html($l->opened_at) : '—'; ?></td>
+                        <td><?php echo $l->first_clicked_at ? '<span style="color:#34D399;">✓</span> ' . esc_html($l->first_clicked_at) : '—'; ?></td>
                         <td><?php echo esc_html($l->error ?: ''); ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -2519,10 +2526,10 @@ function lmeg_admin_settings() {
                 <?php wp_nonce_field('lmeg_ig_choose'); ?>
                 <input type="hidden" name="action" value="lmeg_ig_oauth_choose" />
                 <?php foreach ($ig_choices as $ci => $cand) : ?>
-                    <label style="display:block;padding:9px 0;border-bottom:1px solid #f0f0f1;cursor:pointer;">
+                    <label style="display:block;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;">
                         <input type="radio" name="ig_choice" value="<?php echo (int) $ci; ?>" <?php checked($ci, 0); ?> />
-                        <strong style="color:#111;">@<?php echo esc_html($cand['ig_user'] ?: $cand['ig_id']); ?></strong>
-                        <span style="color:#3c434a;font-size:12px;"> — Facebook Page: <?php echo esc_html($cand['page_name'] ?: '—'); ?></span>
+                        <strong style="color:#F4F5F7;">@<?php echo esc_html($cand['ig_user'] ?: $cand['ig_id']); ?></strong>
+                        <span style="color:#8B90A0;font-size:12px;"> — Facebook Page: <?php echo esc_html($cand['page_name'] ?: '—'); ?></span>
                     </label>
                 <?php endforeach; ?>
                 <p style="margin-top:12px;"><button type="submit" class="button button-primary">Connect this account</button></p>
@@ -2531,8 +2538,8 @@ function lmeg_admin_settings() {
             <div style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
                 <p style="margin:0 0 10px;font-size:14px;">
                     <?php if ($ig_ok) : $ig_handle = get_option('lmeg_ig_username', ''); ?>
-                        <strong style="color:#16a34a;">✓ Connected</strong> — <?php echo $ig_handle ? '<strong style="color:#111;">@' . esc_html($ig_handle) . '</strong>' : 'account <code>' . esc_html($s['ig_account_id']) . '</code>'; ?>.
-                        <?php if ($ig_handle) : ?><span style="color:#3c434a;">Not the right account? Click <strong>Reconnect</strong> and pick a different one.</span><?php endif; ?>
+                        <strong style="color:#34D399;">✓ Connected</strong> — <?php echo $ig_handle ? '<strong style="color:#F4F5F7;">@' . esc_html($ig_handle) . '</strong>' : 'account <code>' . esc_html($s['ig_account_id']) . '</code>'; ?>.
+                        <?php if ($ig_handle) : ?><span style="color:#8B90A0;">Not the right account? Click <strong>Reconnect</strong> and pick a different one.</span><?php endif; ?>
                         Fans DMing or commenting your keywords are handled automatically.
                     <?php else : ?>
                         <strong>One-click connect.</strong> Save your <em>App ID</em> + <em>App Secret</em> below, then click Connect — we’ll grab the token, find your IG account, and subscribe the webhook for you.
@@ -2543,7 +2550,7 @@ function lmeg_admin_settings() {
                         <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_oauth_start'), 'lmeg_ig_oauth')); ?>" class="button button-primary"><?php echo $ig_ok ? 'Reconnect Instagram' : 'Connect Instagram'; ?></a>
                     <?php else : ?>
                         <button type="button" class="button button-primary" disabled title="Save App ID + App Secret first">Connect Instagram</button>
-                        <span style="color:#3c434a;margin-left:8px;">↓ add + save your App ID and App Secret first</span>
+                        <span style="color:#8B90A0;margin-left:8px;">↓ add + save your App ID and App Secret first</span>
                     <?php endif; ?>
                     <?php if ($ig_ok) : ?>
                         <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_ig_disconnect'), 'lmeg_ig_disconnect')); ?>" class="button" style="margin-left:6px;" onclick="return confirm('Disconnect Instagram?');">Disconnect</a>
@@ -3830,12 +3837,12 @@ function lmeg_admin_members() {
             </div>
             <div class="lmeg-stat">
                 <div class="lmeg-stat__label">New (30d)</div>
-                <div class="lmeg-stat__value" style="color:#1a6f1a;">+<?php echo $new_30d; ?></div>
+                <div class="lmeg-stat__value" style="color:#34D399;">+<?php echo $new_30d; ?></div>
                 <div class="lmeg-stat__hint">Stripe-created subs</div>
             </div>
             <div class="lmeg-stat">
                 <div class="lmeg-stat__label">Churn (30d)</div>
-                <div class="lmeg-stat__value" style="color:#a00;">-<?php echo $churn_30d; ?></div>
+                <div class="lmeg-stat__value" style="color:#F87171;">-<?php echo $churn_30d; ?></div>
                 <div class="lmeg-stat__hint">cancellations expiring</div>
             </div>
         </div>
@@ -3867,7 +3874,7 @@ function lmeg_admin_members() {
             <?php else : foreach ($rows as $r) :
                 $tier   = $tier_by_id[(int) $r->member_tier_id] ?? null;
                 $source = $r->stripe_subscription_id ? '💳 Stripe' : '<em>Comped</em>';
-                $status_style = $r->member_status === 'active' ? '#1a6f1a' : ($r->member_status === 'cancelled' ? '#a05a00' : '#a00');
+                $status_style = $r->member_status === 'active' ? '#34D399' : ($r->member_status === 'cancelled' ? '#FBBF24' : '#F87171');
             ?>
                 <tr>
                     <td><?php echo esc_html($r->email); ?></td>
@@ -3941,7 +3948,7 @@ function lmeg_admin_shop() {
 
         <details style="max-width:760px;margin:10px 0 16px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:4px 14px;"<?php echo empty($has_orders) ? ' open' : ''; ?>>
             <summary style="cursor:pointer;font-weight:600;padding:10px 0;">Import historical orders (CSV)</summary>
-            <p style="color:#3c434a;margin:6px 0;">The webhook only captures orders from the day you set it up. To backfill older history, export from <strong>Shopify admin → Orders → Export → All orders → “Plain CSV file”</strong> and upload it here. Each order is matched to a fan by email/phone and de-duplicated against what’s already here, so it’s safe to run more than once (and paid orders only — refunds/voids are skipped).</p>
+            <p style="color:#8B90A0;margin:6px 0;">The webhook only captures orders from the day you set it up. To backfill older history, export from <strong>Shopify admin → Orders → Export → All orders → “Plain CSV file”</strong> and upload it here. Each order is matched to a fan by email/phone and de-duplicated against what’s already here, so it’s safe to run more than once (and paid orders only — refunds/voids are skipped).</p>
             <form method="post" enctype="multipart/form-data" style="margin:8px 0 12px;">
                 <?php wp_nonce_field('lmeg_shop_import', 'lmeg_shop_import_nonce'); ?>
                 <input type="file" name="lmeg_orders_csv" accept=".csv,text/csv,text/plain" required />
