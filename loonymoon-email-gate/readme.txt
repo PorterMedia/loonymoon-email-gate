@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.62.0
+Stable tag: 2.62.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.62.1 =
+* Add: Social Listening now shows your best day to post — the weekday your own posts have historically landed the most engagement (owned-data heuristic).
+
 = 2.62.0 =
 * Big: Social Listening expanded into a full dashboard. New Audience snapshot (Instagram + Spotify followers + your owned fan list + 30-day story-mention count), richer Growth trends (per-day rate + 30-day change), a Content-performance section (top posts by engagement, engagement rate, average per post, posting cadence), Fan-sentiment now also surfaces fan questions worth answering, and a new AI "Listening digest" that turns everything into a short brief with concrete next actions. Instagram parts light up on connect; Spotify + fan-list work now.
 

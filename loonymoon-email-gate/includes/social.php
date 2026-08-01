@@ -151,6 +151,32 @@ function lmeg_social_ig_content_stats() {
     ];
 }
 
+/**
+ * Best day to post — which weekday the artist's own posts have historically
+ * landed the most engagement on. A rough owned-data heuristic (true
+ * audience-online timing needs the insights permission), so it's labelled
+ * modestly. Returns null until there's enough post history.
+ */
+function lmeg_social_ig_best_time() {
+    $media = lmeg_social_ig_media(25);
+    if (count($media) < 5) return null;
+    $by_dow = [];
+    foreach ($media as $m) {
+        if (empty($m['timestamp'])) continue;
+        $ts  = strtotime($m['timestamp']);
+        $by_dow[(int) wp_date('w', $ts)][] = $m['likes'] + $m['comments'];
+    }
+    if (!$by_dow) return null;
+    $best = null; $best_avg = -1; $n = 0;
+    foreach ($by_dow as $d => $arr) {
+        $avg = array_sum($arr) / count($arr);
+        $n  += count($arr);
+        if ($avg > $best_avg) { $best_avg = $avg; $best = $d; }
+    }
+    $days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return ['day' => $days[$best], 'samples' => $n];
+}
+
 /** Story mentions received in the last N days (UGC signal). */
 function lmeg_social_story_mentions($days = 30) {
     global $wpdb;
@@ -361,6 +387,7 @@ function lmeg_admin_social() {
     $fan_ct   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE unsubscribed_at IS NULL");
     $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
     $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
+    $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
 
     $delta_html = function ($d, $per_day = null, $days = null) {
         if ($d === 0 && !$per_day) return '';
@@ -439,6 +466,9 @@ function lmeg_admin_social() {
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Engagement rate</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo $content['eng_rate']; ?>%</div><div style="font-size:12px;color:#3c434a;">likes+comments ÷ followers</div></div>
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Avg per post</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo number_format_i18n($content['avg_eng']); ?></div><div style="font-size:12px;color:#3c434a;">engagements</div></div>
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Posting cadence</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo $content['cadence']; ?></div><div style="font-size:12px;color:#3c434a;">days between posts</div></div>
+                <?php if ($best_day) : ?>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Best day to post</div><div style="font-size:22px;font-weight:700;color:#111;"><?php echo esc_html($best_day['day']); ?></div><div style="font-size:12px;color:#3c434a;">your posts land best (last <?php echo (int) $best_day['samples']; ?>)</div></div>
+                <?php endif; ?>
             </div>
             <h3 style="margin:14px 0 6px;">Top posts</h3>
             <table class="widefat striped" style="max-width:900px;">
