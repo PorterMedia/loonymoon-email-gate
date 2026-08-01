@@ -133,7 +133,8 @@ function lmeg_social_ig_content_stats() {
     $times     = [];
     foreach ($media as $m) {
         $total_eng += $m['likes'] + $m['comments'];
-        if ($m['timestamp']) $times[] = strtotime($m['timestamp']);
+        $ts = $m['timestamp'] ? strtotime($m['timestamp']) : false;
+        if ($ts) $times[] = $ts;
     }
     $count   = count($media);
     $avg_eng = $count ? $total_eng / $count : 0;
@@ -162,8 +163,8 @@ function lmeg_social_ig_best_time() {
     if (count($media) < 5) return null;
     $by_dow = [];
     foreach ($media as $m) {
-        if (empty($m['timestamp'])) continue;
-        $ts  = strtotime($m['timestamp']);
+        $ts = $m['timestamp'] ? strtotime($m['timestamp']) : false;
+        if (!$ts) continue;
         $by_dow[(int) wp_date('w', $ts)][] = $m['likes'] + $m['comments'];
     }
     if (!$by_dow) return null;
