@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.63.0
+Stable tag: 2.63.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.63.1 =
+* Fix (contrast, for real): the admin.css contrast rules weren't loading because an optimization plugin was serving a stale, un-versioned stylesheet. The contrast guard is now printed INLINE in the admin head, so it always loads fresh — every alert/notice and every white card across all Fanloop admin pages now has dark, readable text (verified live on the Instagram page).
+
 = 2.63.0 =
 * Fix (contrast): the dark admin theme was making light-background alerts, notices, and white cards inherit near-white text — unreadable. Forced dark, high-contrast text on every notice/alert and every white card across all Fanloop admin pages.
 * New: Social Listening "Preview with demo data" — see the full dashboard (audience, growth, top posts, formats, sentiment, digest) with realistic sample numbers before your accounts are connected.

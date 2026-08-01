@@ -177,6 +177,31 @@ function lmeg_admin_body_class($classes) {
 }
 
 /**
+ * Contrast guard — printed INLINE in the admin head (not via the cacheable
+ * admin.css file, which optimization plugins were serving stale). The plugin's
+ * dark theme sets .wrap text near-white, so WP notices/alerts AND any inline
+ * white-background card inherited near-white text on a light surface —
+ * unreadable. This forces dark, high-contrast text on every alert and every
+ * white card across all Fanloop admin pages, while preserving explicit accent
+ * colours (green/red/etc.) and leaving form inputs to the theme. Root fix for
+ * a recurring readability complaint.
+ */
+add_action('admin_head', 'lmeg_admin_contrast_css', 99);
+function lmeg_admin_contrast_css() {
+    if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
+    echo "<style id=\"lmeg-contrast-fix\">\n"
+        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error{background:#fff!important;color:#1d2327!important;}\n"
+        . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice span,body.lmeg-admin .notice strong{color:#1d2327!important;}\n"
+        . "body.lmeg-admin .notice a{color:#2271b1!important;}\n"
+        . "body.lmeg-admin .notice code{background:#f0f0f1!important;color:#1d2327!important;}\n"
+        . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background-color:#fff!important;color:#1d2327!important;}\n"
+        . "body.lmeg-admin [style*=\"background:#fff\"] label,body.lmeg-admin [style*=\"background:#fff\"] p,body.lmeg-admin [style*=\"background:#fff\"] li,body.lmeg-admin [style*=\"background:#fff\"] h1,body.lmeg-admin [style*=\"background:#fff\"] h2,body.lmeg-admin [style*=\"background:#fff\"] h3,body.lmeg-admin [style*=\"background:#fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] div:not([style*=\"color\"]){color:#1d2327!important;}\n"
+        . "body.lmeg-admin [style*=\"background: #fff\"] label,body.lmeg-admin [style*=\"background: #fff\"] p,body.lmeg-admin [style*=\"background: #fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] div:not([style*=\"color\"]){color:#1d2327!important;}\n"
+        . "body.lmeg-admin [style*=\"background:#fff\"] [style*=\"opacity\"],body.lmeg-admin [style*=\"background: #fff\"] [style*=\"opacity\"]{opacity:1!important;}\n"
+        . "</style>\n";
+}
+
+/**
  * App-style header bar rendered above every plugin page — brand mark +
  * primary nav pills. Injected once via in_admin_header, no per-page edits.
  */
