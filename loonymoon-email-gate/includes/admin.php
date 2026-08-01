@@ -2484,7 +2484,24 @@ function lmeg_admin_settings() {
                 ];
                 echo '<div class="notice notice-error"><p>' . esc_html($map[$err] ?? 'Instagram connection failed.') . '</p></div>';
             }
+            $ig_choices = (!empty($_GET['ig_choose']) && current_user_can('manage_options'))
+                ? get_transient('lmeg_ig_oauth_choices_' . get_current_user_id()) : null;
             ?>
+            <?php if (is_array($ig_choices) && $ig_choices) : ?>
+            <div class="notice notice-info" style="max-width:760px;"><p><strong>You manage several Instagram accounts.</strong> Pick the one to connect to <em>this</em> site (<?php echo esc_html(wp_parse_url(home_url(), PHP_URL_HOST)); ?>).</p></div>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
+                <?php wp_nonce_field('lmeg_ig_choose'); ?>
+                <input type="hidden" name="action" value="lmeg_ig_oauth_choose" />
+                <?php foreach ($ig_choices as $ci => $cand) : ?>
+                    <label style="display:block;padding:9px 0;border-bottom:1px solid #f0f0f1;cursor:pointer;">
+                        <input type="radio" name="ig_choice" value="<?php echo (int) $ci; ?>" <?php checked($ci, 0); ?> />
+                        <strong style="color:#111;">@<?php echo esc_html($cand['ig_user'] ?: $cand['ig_id']); ?></strong>
+                        <span style="color:#3c434a;font-size:12px;"> — Facebook Page: <?php echo esc_html($cand['page_name'] ?: '—'); ?></span>
+                    </label>
+                <?php endforeach; ?>
+                <p style="margin-top:12px;"><button type="submit" class="button button-primary">Connect this account</button></p>
+            </form>
+            <?php endif; ?>
             <div style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
                 <p style="margin:0 0 10px;font-size:14px;">
                     <?php if ($ig_ok) : ?>

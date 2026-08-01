@@ -406,10 +406,40 @@ function lmeg_ig_lookup_username($igsid) {
     return $username;
 }
 
+/**
+ * Validate the App ID + App Secret directly (the exact check the Connect flow
+ * does when exchanging the code), so a wrong/mismatched secret is caught on the
+ * settings page instead of failing mid-OAuth.
+ */
+function lmeg_ig_verify_app() {
+    $s = lmeg_get_settings();
+    if (empty($s['ig_app_id']) || empty($s['ig_app_secret'])) {
+        return new WP_Error('lmeg_ig_noapp', 'Add your App ID and App Secret first.');
+    }
+    $resp = wp_remote_get(LMEG_IG_GRAPH . '/oauth/access_token?' . http_build_query([
+        'client_id'     => $s['ig_app_id'],
+        'client_secret' => $s['ig_app_secret'],
+        'grant_type'    => 'client_credentials',
+    ]), ['timeout' => 15]);
+    if (is_wp_error($resp)) return $resp;
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if (!empty($body['access_token'])) {
+        return '✓ App ID + App Secret are valid. Now click “Connect Instagram” above to finish.';
+    }
+    $msg = $body['error']['message'] ?? ('HTTP ' . wp_remote_retrieve_response_code($resp));
+    return new WP_Error('lmeg_ig_appcheck', 'App credentials failed: ' . $msg
+        . ' — re-copy the App Secret from THIS app’s Settings → Basic (App ID ' . $s['ig_app_id'] . '), clear the field, paste, Save.');
+}
+
 function lmeg_ig_verify() {
     $s = lmeg_get_settings();
     if (!lmeg_ig_configured()) {
-        return new WP_Error('lmeg_ig_unconfigured', 'Fill in the IG account ID and Page access token first.');
+        // Not connected yet — but if the App ID + Secret are in, validate THEM
+        // so a bad secret surfaces here rather than mid-Connect.
+        if (!empty($s['ig_app_id']) && !empty($s['ig_app_secret'])) {
+            return lmeg_ig_verify_app();
+        }
+        return new WP_Error('lmeg_ig_unconfigured', 'Add your App ID + App Secret, then click “Connect Instagram”. (Or paste an IG account ID + Page token under “Connect manually instead”.)');
     }
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id']) . '?fields=username,name&access_token=' . rawurlencode($s['ig_page_token']),
@@ -494,7 +524,31 @@ function lmeg_ig_maybe_oauth_callback() {
         wp_safe_redirect(add_query_arg('ig_oauth_err', 'exchange', $back));
         exit;
     }
+    // Multiple IG accounts on this login → send them to the chooser.
+    if (is_array($r) && !empty($r['choose'])) {
+        wp_safe_redirect(add_query_arg('ig_choose', '1', $back));
+        exit;
+    }
     set_transient('lmeg_ig_oauth_msg', $r, 5 * MINUTE_IN_SECONDS);
+    wp_safe_redirect(add_query_arg('ig_connected', '1', $back));
+    exit;
+}
+
+/** Chooser submit — the admin picked which IG account to connect. */
+add_action('admin_post_lmeg_ig_oauth_choose', 'lmeg_ig_oauth_choose');
+function lmeg_ig_oauth_choose() {
+    if (!current_user_can('manage_options')) wp_die('Not allowed.');
+    check_admin_referer('lmeg_ig_choose');
+    $back    = admin_url('admin.php?page=lmeg-settings');
+    $choices = get_transient('lmeg_ig_oauth_choices_' . get_current_user_id());
+    $idx     = (int) ($_POST['ig_choice'] ?? -1);
+    if (!is_array($choices) || !isset($choices[$idx])) {
+        wp_safe_redirect(add_query_arg('ig_oauth_err', 'state', $back));
+        exit;
+    }
+    $msg = lmeg_ig_store_connection($choices[$idx]);
+    delete_transient('lmeg_ig_oauth_choices_' . get_current_user_id());
+    set_transient('lmeg_ig_oauth_msg', $msg, 5 * MINUTE_IN_SECONDS);
     wp_safe_redirect(add_query_arg('ig_connected', '1', $back));
     exit;
 }
@@ -536,31 +590,42 @@ function lmeg_ig_oauth_complete($code) {
     $pages = lmeg_ig_json($resp);
     if (is_wp_error($pages)) return $pages;
 
-    $page = null;
+    // Collect EVERY Page that has a linked IG business account — a manager may
+    // administer several (their own + the artists they manage). One → connect
+    // it; several → let them pick which IG this particular site is for.
+    $candidates = [];
     foreach ((array) ($pages['data'] ?? []) as $p) {
-        if (!empty($p['instagram_business_account']['id'])) { $page = $p; break; }
+        if (empty($p['instagram_business_account']['id'])) continue;
+        $candidates[] = [
+            'ig_id'     => (string) $p['instagram_business_account']['id'],
+            'ig_user'   => (string) ($p['instagram_business_account']['username'] ?? ''),
+            'token'     => (string) ($p['access_token'] ?? ''),
+            'page_id'   => (string) $p['id'],
+            'page_name' => (string) ($p['name'] ?? ''),
+        ];
     }
-    if (!$page) {
+    if (!$candidates) {
         return new WP_Error('lmeg_ig_oauth', 'No Instagram Business account is linked to any Facebook Page on this login. In the Instagram app: Settings → Business tools → link your account to a Facebook Page, then reconnect.');
     }
+    if (count($candidates) === 1) {
+        return lmeg_ig_store_connection($candidates[0]);
+    }
+    // Several — stash them (15 min) and send the admin to a chooser.
+    set_transient('lmeg_ig_oauth_choices_' . get_current_user_id(), $candidates, 15 * MINUTE_IN_SECONDS);
+    return ['choose' => true];
+}
 
-    // 4) store the credentials.
-    $ig_id      = (string) $page['instagram_business_account']['id'];
-    $ig_user    = (string) ($page['instagram_business_account']['username'] ?? '');
-    $page_token = (string) $page['access_token'];
-    $page_id    = (string) $page['id'];
-
+/** Persist one chosen IG connection + wire up its webhooks. Returns a message. */
+function lmeg_ig_store_connection($cand) {
+    $s    = lmeg_get_settings();
     $opts = get_option(LMEG_OPTION, []);
     if (!is_array($opts)) $opts = [];
-    $opts['ig_page_token'] = $page_token;
-    $opts['ig_account_id'] = $ig_id;
+    $opts['ig_page_token'] = (string) $cand['token'];
+    $opts['ig_account_id'] = (string) $cand['ig_id'];
     update_option(LMEG_OPTION, $opts);
-    update_option('lmeg_ig_page_id', $page_id, false);
+    update_option('lmeg_ig_page_id', (string) $cand['page_id'], false);
 
-    // 5) register the app-level webhook (object=instagram) — Meta verifies our
-    //    callback via the handshake handler and starts sending events here. Uses
-    //    the app access token. Best-effort: if it fails, the manual dashboard
-    //    setup still works.
+    // App-level webhook (object=instagram), via the app access token.
     wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_app_id']) . '/subscriptions', [
         'timeout' => 15,
         'body'    => [
@@ -571,14 +636,12 @@ function lmeg_ig_oauth_complete($code) {
             'access_token' => $s['ig_app_id'] . '|' . $s['ig_app_secret'],
         ],
     ]);
-
-    // 6) subscribe THIS Page to our app so its events actually flow.
-    wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($page_id) . '/subscribed_apps', [
+    // Subscribe THIS page so its events flow.
+    wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($cand['page_id']) . '/subscribed_apps', [
         'timeout' => 15,
-        'body'    => ['subscribed_fields' => 'messages,comments', 'access_token' => $page_token],
+        'body'    => ['subscribed_fields' => 'messages,comments', 'access_token' => (string) $cand['token']],
     ]);
-
-    return 'Connected to @' . ($ig_user ?: $ig_id) . '.';
+    return 'Connected to @' . ($cand['ig_user'] ?: $cand['ig_id']) . '.';
 }
 
 /** Decode a Graph API response, surfacing Meta's error message as a WP_Error. */
