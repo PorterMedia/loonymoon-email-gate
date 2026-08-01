@@ -398,10 +398,12 @@ function lmeg_social_demo() {
         $n = count($vals); $delta = $vals[$n - 1] - $vals[0]; $days = max(1, $n - 1);
         return ['current' => $vals[$n - 1], 'delta' => $delta, 'days' => $days, 'per_day' => round($delta / $days, 1), 'vals' => $vals];
     };
-    $ig_vals = []; $v = 26720;
-    for ($i = 0; $i < 30; $i++) { $ig_vals[] = $v; $v += 35 + ($i % 4) * 6 - ($i % 3) * 4; }
-    $sp_vals = []; $v = 49850;
-    for ($i = 0; $i < 30; $i++) { $sp_vals[] = $v; $v += 46 + ($i % 5) * 5 - ($i % 2) * 8; }
+    // Organic-looking growth (small daily variance incl. a few flat/down days)
+    // so the trend lines read like real analytics rather than a synthetic ramp.
+    $ig_vals = []; $v = 26540;
+    foreach ([44, 58, 50, 30, 66, 48, 18, -9, 55, 74, 40, 47, 63, 26, -14, 60, 70, 44, 52, 78, 36, 21, -7, 68, 84, 49, 57, 72, 41, 61] as $d) { $v += $d; $ig_vals[] = $v; }
+    $sp_vals = []; $v = 49760;
+    foreach ([58, 66, 50, 74, 42, 61, 31, 70, 55, -11, 78, 63, 47, 72, 52, 40, 76, 59, -15, 84, 67, 50, 73, 61, 44, 69, 54, 63, 48, 71] as $d) { $v += $d; $sp_vals[] = $v; }
 
     $top = [
         ['caption' => 'SOFT THING is OUT NOW 🖤 go stream it pls', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'likes' => 4210, 'comments' => 318],
@@ -492,9 +494,9 @@ function lmeg_admin_social() {
         <p style="max-width:820px;">A read on <?php echo esc_html($artist); ?>'s social presence, straight from your connected accounts — audience, growth, content, and how fans feel.</p>
 
         <?php if ($demo) : ?>
-            <div class="notice notice-warning" style="max-width:900px;"><p><strong>👁 Demo data</strong> — this is a preview with sample numbers so you can see the layout and feel. <a href="<?php echo esc_url(remove_query_arg('demo')); ?>">Switch to live data →</a></p></div>
+            <div class="notice notice-warning" style="max-width:900px;"><p><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;"><?php echo lmeg_icon('eye', ['size' => 15, 'sw' => 2]); ?><strong>Demo data</strong></span> — this is a preview with sample numbers so you can see the layout and feel. <a href="<?php echo esc_url(remove_query_arg('demo')); ?>">Switch to live data →</a></p></div>
         <?php else : ?>
-            <p><a class="button" href="<?php echo esc_url(add_query_arg('demo', 1)); ?>">👁 Preview with demo data</a></p>
+            <p><a class="button" href="<?php echo esc_url(add_query_arg('demo', 1)); ?>"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;"><?php echo lmeg_icon('eye', ['size' => 15, 'sw' => 2]); ?>Preview with demo data</span></a></p>
         <?php endif; ?>
 
         <?php if (!$ig_ok) : ?>
@@ -504,24 +506,24 @@ function lmeg_admin_social() {
         <h2>Audience</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:1000px;margin-bottom:8px;">
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">📸 Instagram</div>
+                <?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram'); ?>
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
                 <div style="font-size:12px;color:#8B90A0;"><?php echo $ig ? 'followers · ' . number_format_i18n($ig['media_count']) . ' posts' : 'not connected'; ?></div>
                 <?php echo $delta_html($ig_stats['delta'], $ig_stats['per_day'], $ig_stats['days']); ?>
             </div>
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">🎧 Spotify</div>
+                <?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?>
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
                 <div style="font-size:12px;color:#8B90A0;"><?php echo (!$ov || is_wp_error($ov)) ? 'not connected' : 'followers · popularity ' . (int) $ov['popularity'] . '/100'; ?></div>
                 <?php echo $delta_html($sp_stats['delta'], $sp_stats['per_day'], $sp_stats['days']); ?>
             </div>
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">💜 Your fan list</div>
+                <?php echo lmeg_card_head('users', '#7C6CF6', 'Your fan list'); ?>
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($fan_ct); ?></div>
                 <div style="font-size:12px;color:#8B90A0;">owned contacts you can reach anytime</div>
             </div>
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">🔁 Story mentions</div>
+                <?php echo lmeg_card_head('at-sign', '#D05FA2', 'Story mentions'); ?>
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo $ig_ok ? number_format_i18n($stories) : '—'; ?></div>
                 <div style="font-size:12px;color:#8B90A0;">tagged you in a story · last 30 days</div>
             </div>
@@ -531,24 +533,24 @@ function lmeg_admin_social() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;max-width:1000px;">
             <?php if ($ig_ok) : $ispark = lmeg_social_sparkline($ig_stats['vals']); ?>
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">📸 Instagram followers</div>
+                <?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram followers'); ?>
                 <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
                 <?php if ($ig_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($ig_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($ig_stats['delta']); ?> over <?php echo (int) $ig_stats['days']; ?> days · <?php echo $ig_stats['per_day']; ?>/day</div><?php endif; ?>
                 <?php if ($ispark) : echo lmeg_chart_line($ig_stats['vals'], ['color' => '#E1306C', 'uid' => 'ig-follows']); else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
             </div>
             <?php else : ?>
-            <div style="<?php echo $dash; ?>"><div style="font-weight:600;">📸 Instagram</div><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect</a> to track follower growth.</p></div>
+            <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect</a> to track follower growth.</p></div>
             <?php endif; ?>
 
             <?php if ($sp_ok) : $spark = lmeg_social_sparkline($sp_stats['vals']); ?>
             <div style="<?php echo $card; ?>">
-                <div style="font-weight:600;">🎧 Spotify followers</div>
+                <?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify followers'); ?>
                 <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo (!$ov || is_wp_error($ov)) ? '—' : number_format_i18n($ov['followers']); ?></div>
                 <?php if ($sp_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($sp_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($sp_stats['delta']); ?> over <?php echo (int) $sp_stats['days']; ?> days · <?php echo $sp_stats['per_day']; ?>/day</div><?php endif; ?>
                 <?php if ($spark) : echo lmeg_chart_line($sp_stats['vals'], ['color' => '#1DB954', 'uid' => 'sp-follows']); else : ?><p class="description">History builds day by day.</p><?php endif; ?>
             </div>
             <?php else : ?>
-            <div style="<?php echo $dash; ?>"><div style="font-weight:600;">🎧 Spotify</div><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>
+            <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>
             <?php endif; ?>
         </div>
 
@@ -568,7 +570,7 @@ function lmeg_admin_social() {
             </div>
             <h3 style="margin:14px 0 6px;">Top posts</h3>
             <table class="widefat striped" style="max-width:900px;">
-                <thead><tr><th>Post</th><th>Type</th><th>❤️ Likes</th><th>💬 Comments</th><th>When</th><th></th></tr></thead>
+                <thead><tr><th>Post</th><th>Type</th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('heart', ['size' => 14, 'sw' => 2]); ?>Likes</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('message', ['size' => 14, 'sw' => 2]); ?>Comments</span></th><th>When</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($content['top'] as $p) :
                     $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($p['caption'])));
@@ -592,7 +594,7 @@ function lmeg_admin_social() {
                 <tbody>
                 <?php foreach ($types as $ti => $tp) : ?>
                     <tr>
-                        <td><?php echo $ti === 0 ? '🏆 ' : ''; ?><strong><?php echo esc_html($tp['label']); ?></strong></td>
+                        <td><?php if ($ti === 0) echo '<span style="display:inline-flex;vertical-align:middle;margin-right:7px;color:#FBBF24;">' . lmeg_icon('trophy', ['size' => 15, 'sw' => 2]) . '</span>'; ?><strong><?php echo esc_html($tp['label']); ?></strong></td>
                         <td><?php echo (int) $tp['count']; ?></td>
                         <td><strong><?php echo number_format_i18n($tp['avg']); ?></strong></td>
                     </tr>
