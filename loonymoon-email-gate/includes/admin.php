@@ -2505,8 +2505,9 @@ function lmeg_admin_settings() {
             <?php endif; ?>
             <div style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
                 <p style="margin:0 0 10px;font-size:14px;">
-                    <?php if ($ig_ok) : ?>
-                        <strong style="color:#16a34a;">✓ Connected</strong> — Instagram account <code><?php echo esc_html($s['ig_account_id']); ?></code>.
+                    <?php if ($ig_ok) : $ig_handle = get_option('lmeg_ig_username', ''); ?>
+                        <strong style="color:#16a34a;">✓ Connected</strong> — <?php echo $ig_handle ? '<strong style="color:#111;">@' . esc_html($ig_handle) . '</strong>' : 'account <code>' . esc_html($s['ig_account_id']) . '</code>'; ?>.
+                        <?php if ($ig_handle) : ?><span style="color:#3c434a;">Not the right account? Click <strong>Reconnect</strong> and pick a different one.</span><?php endif; ?>
                         Fans DMing or commenting your keywords are handled automatically.
                     <?php else : ?>
                         <strong>One-click connect.</strong> Save your <em>App ID</em> + <em>App Secret</em> below, then click Connect — we’ll grab the token, find your IG account, and subscribe the webhook for you.

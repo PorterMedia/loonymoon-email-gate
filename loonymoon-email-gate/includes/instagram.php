@@ -670,6 +670,7 @@ function lmeg_ig_store_connection($cand) {
     $opts['ig_account_id'] = (string) $cand['ig_id'];
     update_option(LMEG_OPTION, $opts);
     update_option('lmeg_ig_page_id', (string) $cand['page_id'], false);
+    update_option('lmeg_ig_username', (string) $cand['ig_user'], false);
 
     // App-level webhook (object=instagram), via the app access token.
     wp_remote_post(LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_app_id']) . '/subscriptions', [
@@ -712,6 +713,7 @@ function lmeg_ig_disconnect() {
         update_option(LMEG_OPTION, $opts);
     }
     delete_option('lmeg_ig_page_id');
+    delete_option('lmeg_ig_username');
     wp_safe_redirect(add_query_arg('ig_disconnected', '1', admin_url('admin.php?page=lmeg-settings')));
     exit;
 }
