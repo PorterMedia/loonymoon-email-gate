@@ -177,6 +177,33 @@ function lmeg_social_ig_best_time() {
     return ['day' => $days[$best], 'samples' => $n];
 }
 
+/**
+ * Which content format earns the most engagement — Reels/Video vs Photo vs
+ * Carousel — from the artist's own recent posts. Sorted best-first.
+ */
+function lmeg_social_ig_type_breakdown() {
+    $media = lmeg_social_ig_media(25);
+    if (count($media) < 3) return null;
+    $by = [];
+    foreach ($media as $m) {
+        $t = $m['type'] !== '' ? $m['type'] : 'UNKNOWN';
+        if (!isset($by[$t])) $by[$t] = ['count' => 0, 'eng' => 0];
+        $by[$t]['count']++;
+        $by[$t]['eng'] += $m['likes'] + $m['comments'];
+    }
+    $labels = ['VIDEO' => 'Reels / Video', 'IMAGE' => 'Photos', 'CAROUSEL_ALBUM' => 'Carousels', 'UNKNOWN' => 'Other'];
+    $out = [];
+    foreach ($by as $t => $d) {
+        $out[] = [
+            'label' => $labels[$t] ?? ucwords(strtolower(str_replace('_', ' ', $t))),
+            'count' => $d['count'],
+            'avg'   => (int) round($d['eng'] / max(1, $d['count'])),
+        ];
+    }
+    usort($out, function ($a, $b) { return $b['avg'] <=> $a['avg']; });
+    return $out;
+}
+
 /** Story mentions received in the last N days (UGC signal). */
 function lmeg_social_story_mentions($days = 30) {
     global $wpdb;
@@ -388,6 +415,7 @@ function lmeg_admin_social() {
     $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
     $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
     $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
+    $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
 
     $delta_html = function ($d, $per_day = null, $days = null) {
         if ($d === 0 && !$per_day) return '';
@@ -489,6 +517,21 @@ function lmeg_admin_social() {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php if ($types && count($types) > 1) : ?>
+            <h3 style="margin:16px 0 6px;">What format works best</h3>
+            <table class="widefat striped" style="max-width:520px;">
+                <thead><tr><th>Format</th><th>Posts</th><th>Avg engagement</th></tr></thead>
+                <tbody>
+                <?php foreach ($types as $ti => $tp) : ?>
+                    <tr>
+                        <td><?php echo $ti === 0 ? '🏆 ' : ''; ?><strong><?php echo esc_html($tp['label']); ?></strong></td>
+                        <td><?php echo (int) $tp['count']; ?></td>
+                        <td><strong><?php echo number_format_i18n($tp['avg']); ?></strong></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
         <?php endif; ?>
 
         <h2 style="margin-top:24px;">Fan sentiment</h2>
