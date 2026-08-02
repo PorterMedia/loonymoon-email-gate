@@ -193,9 +193,12 @@ function lmeg_admin_contrast_css() {
         // Layout — use the screen. Widen the shell, let card grids fill the width,
         // and give alerts the full content width (WP-standard, not a narrow strip).
         . "body.lmeg-admin #wpbody-content .wrap{max-width:1600px!important;}\n"
+        // Consistency: every top-level panel/section/table/grid on a page spans
+        // the full content width, so panels stop being a jumble of 760/820/900px.
+        . "body.lmeg-admin .wrap > [style*=\"max-width\"]{max-width:100%!important;}\n"
         . "body.lmeg-admin .wrap div[style*=\"grid-template-columns\"]{max-width:100%!important;}\n"
         // WP notices / alerts → dark card with a coloured left accent (never white), full width.
-        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:12px!important;box-shadow:none!important;max-width:100%!important;}\n"
+        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:14px!important;box-shadow:none!important;max-width:100%!important;}\n"
         . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice h1,body.lmeg-admin .notice h2,body.lmeg-admin .notice h3,body.lmeg-admin .notice label,body.lmeg-admin .notice strong,body.lmeg-admin .notice span:not([style*=\"color\"]),body.lmeg-admin div.updated p,body.lmeg-admin div.error p{color:#F4F5F7!important;}\n"
         . "body.lmeg-admin .notice em{color:#C7CAD6!important;}\n"
         . "body.lmeg-admin .notice a{color:#E58BBD!important;}\n"
@@ -205,8 +208,9 @@ function lmeg_admin_contrast_css() {
         . "body.lmeg-admin .notice-warning{border-left-color:#FBBF24!important;}\n"
         . "body.lmeg-admin .notice-info{border-left-color:#7C6CF6!important;}\n"
         . "body.lmeg-admin .notice .notice-dismiss:before{color:#8B90A0!important;}\n"
-        // Belt-and-suspenders: any inline white card → dark surface + light text.
-        . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background:#161826!important;background-image:none!important;color:#F4F5F7!important;border-color:rgba(255,255,255,.10)!important;}\n"
+        // Belt-and-suspenders: any inline white card → the canonical dark panel
+        // (same gradient/border/radius as .lmeg-stat) so every card matches.
+        . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background:linear-gradient(160deg,#161826,#1C1F2E)!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;}\n"
         . "body.lmeg-admin [style*=\"background:#fff\"] label,body.lmeg-admin [style*=\"background:#fff\"] p,body.lmeg-admin [style*=\"background:#fff\"] li,body.lmeg-admin [style*=\"background:#fff\"] h1,body.lmeg-admin [style*=\"background:#fff\"] h2,body.lmeg-admin [style*=\"background:#fff\"] h3,body.lmeg-admin [style*=\"background:#fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background:#fff\"] div:not([style*=\"color\"]){color:#F4F5F7!important;}\n"
         . "body.lmeg-admin [style*=\"background: #fff\"] label,body.lmeg-admin [style*=\"background: #fff\"] p,body.lmeg-admin [style*=\"background: #fff\"] strong:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] span:not([style*=\"color\"]),body.lmeg-admin [style*=\"background: #fff\"] div:not([style*=\"color\"]){color:#F4F5F7!important;}\n"
         . "</style>\n";

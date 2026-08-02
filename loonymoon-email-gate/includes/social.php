@@ -462,7 +462,7 @@ function lmeg_admin_social() {
     $sp_ok  = function_exists('lmeg_spotify_configured') && lmeg_spotify_configured();
     $ig_ok  = function_exists('lmeg_ig_configured') && lmeg_ig_configured();
     $ai_ok  = function_exists('lmeg_ai_configured') && lmeg_ai_configured();
-    $card   = 'background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
+    $card   = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
     $dash   = 'background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
     $muted  = '#8B90A0';
 
@@ -657,7 +657,7 @@ function lmeg_admin_social() {
                     var fd = new FormData(); fd.append('action','lmeg_social_sentiment'); fd.append('nonce',nonce);
                     fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
                         if (d && d.success) { var x = d.data;
-                            var html = '<div style="background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;">';
+                            var html = '<div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;">';
                             html += bar('Positive', x.positive, '#34D399') + bar('Neutral', x.neutral, '#8B90A0') + bar('Negative', x.negative, '#F87171');
                             if (x.themes && x.themes.length) html += '<p style="margin:16px 0 6px;font-weight:600;">What they’re talking about</p><div>'+x.themes.map(function(t){return '<span style="display:inline-block;background:rgba(124,108,246,.15);color:#C4BBFF;border:1px solid rgba(124,108,246,.30);border-radius:999px;padding:3px 11px;margin:3px 3px 0 0;font-size:12px;">'+esc(t)+'</span>';}).join('')+'</div>';
                             if (x.highlights && x.highlights.length) html += '<p style="margin:16px 0 6px;font-weight:600;">Highlights</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.highlights.map(function(h){return '<li>“'+esc(h)+'”</li>';}).join('')+'</ul>';
@@ -677,7 +677,7 @@ function lmeg_admin_social() {
                     dBtn.disabled = true; dSt.textContent = 'Thinking…';
                     var fd = new FormData(); fd.append('action','lmeg_social_digest'); fd.append('nonce',nonce);
                     fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
-                        if (d && d.success) { dOut.innerHTML = '<div style="background:linear-gradient(160deg,#1C1F2E,#161826);border:1px solid rgba(255,255,255,.08);border-left:3px solid #D05FA2;border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;line-height:1.7;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
+                        if (d && d.success) { dOut.innerHTML = '<div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-left:3px solid #D05FA2;border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;line-height:1.7;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
                         else { dSt.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error'); }
                     }).catch(function(){ dSt.textContent = '⚠ network error'; }).finally(function(){ dBtn.disabled = false; });
                 });
