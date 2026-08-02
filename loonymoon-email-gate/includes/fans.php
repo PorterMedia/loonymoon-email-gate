@@ -920,10 +920,10 @@ function lmeg_admin_referrals() {
  * surfaces the connect-Instagram/Spotify steps that unlock the newest features.
  * ------------------------------------------------------------------------- */
 
-add_action('admin_menu', function () {
-    add_submenu_page('lmeg', 'Get Started', 'Get Started', 'manage_options', 'lmeg-setup', 'lmeg_admin_setup');
-}, 1);
-
+// NOTE: the Get Started submenu is registered in lmeg_admin_menu() (admin.php),
+// alongside every other Fanloop page, so it's added AFTER the parent 'lmeg'
+// menu exists. Registering it here on a separate priority-1 admin_menu hook
+// ran before the parent and left the page unroutable on some WP setups (blank).
 function lmeg_admin_setup() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;

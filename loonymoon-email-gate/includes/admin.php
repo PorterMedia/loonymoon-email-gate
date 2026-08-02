@@ -16,6 +16,7 @@ function lmeg_admin_menu() {
     $cap = 'manage_options';
     add_menu_page('Fanloop', 'Fanloop', $cap, 'lmeg',           'lmeg_admin_subscribers', 'dashicons-email-alt', 30);
     add_submenu_page('lmeg', 'Overview',          'Overview',          $cap, 'lmeg-overview',        'lmeg_admin_overview');
+    add_submenu_page('lmeg', 'Get Started',       'Get Started',       $cap, 'lmeg-setup',           'lmeg_admin_setup');
     add_submenu_page('lmeg', 'Subscribers',       'Subscribers',       $cap, 'lmeg',                 'lmeg_admin_subscribers');
     add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
@@ -186,6 +187,26 @@ function lmeg_admin_body_class($classes) {
  * inline white-background card, forcing readable light text on both. Runs on
  * every Fanloop admin page so it can't be missed page by page.
  */
+/**
+ * Never fail silently. On any Fanloop admin page, catch a fatal from this
+ * plugin at shutdown and print the message/file/line instead of a blank page,
+ * so problems are diagnosable in place (styled to match the dark theme).
+ */
+add_action('admin_head', 'lmeg_admin_fatal_guard', 0);
+function lmeg_admin_fatal_guard() {
+    if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
+    register_shutdown_function(function () {
+        $e = error_get_last();
+        if (!$e || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
+        if (strpos((string) ($e['file'] ?? ''), 'loonymoon-email-gate') === false) return;
+        echo '<div style="margin:16px;padding:14px 18px;background:#161826;border:1px solid #F87171;'
+           . 'border-left:4px solid #F87171;border-radius:12px;color:#F4F5F7;font:13px/1.5 ui-monospace,Menlo,monospace;">'
+           . '<strong style="color:#F87171;">Fanloop error</strong><br>'
+           . esc_html((string) $e['message']) . '<br><span style="color:#8B90A0;">'
+           . esc_html((string) $e['file']) . ' : line ' . (int) $e['line'] . '</span></div>';
+    });
+}
+
 add_action('admin_head', 'lmeg_admin_contrast_css', 99);
 function lmeg_admin_contrast_css() {
     if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
