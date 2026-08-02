@@ -190,8 +190,12 @@ add_action('admin_head', 'lmeg_admin_contrast_css', 99);
 function lmeg_admin_contrast_css() {
     if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
     echo "<style id=\"lmeg-contrast-fix\">\n"
-        // WP notices / alerts → dark card with a coloured left accent (never white).
-        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:12px!important;box-shadow:none!important;}\n"
+        // Layout — use the screen. Widen the shell, let card grids fill the width,
+        // and give alerts the full content width (WP-standard, not a narrow strip).
+        . "body.lmeg-admin #wpbody-content .wrap{max-width:1600px!important;}\n"
+        . "body.lmeg-admin .wrap div[style*=\"grid-template-columns\"]{max-width:100%!important;}\n"
+        // WP notices / alerts → dark card with a coloured left accent (never white), full width.
+        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:12px!important;box-shadow:none!important;max-width:100%!important;}\n"
         . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice h1,body.lmeg-admin .notice h2,body.lmeg-admin .notice h3,body.lmeg-admin .notice label,body.lmeg-admin .notice strong,body.lmeg-admin .notice span:not([style*=\"color\"]),body.lmeg-admin div.updated p,body.lmeg-admin div.error p{color:#F4F5F7!important;}\n"
         . "body.lmeg-admin .notice em{color:#C7CAD6!important;}\n"
         . "body.lmeg-admin .notice a{color:#E58BBD!important;}\n"
