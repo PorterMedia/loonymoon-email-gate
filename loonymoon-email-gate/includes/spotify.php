@@ -204,7 +204,7 @@ function lmeg_spotify_export_csv() {
     header('Content-Disposition: attachment; filename="loony-spotify-history-' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, ['date', 'followers', 'popularity']);
-    foreach ($rows as $r) fputcsv($out, $r);
+    foreach ($rows as $r) fputcsv($out, array_map('lmeg_csv_cell', $r));
     fclose($out);
     exit;
 }

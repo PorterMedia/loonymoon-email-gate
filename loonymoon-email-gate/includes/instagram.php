@@ -54,7 +54,10 @@ function lmeg_ig_maybe_handle_webhook() {
         $challenge = $_GET['hub_challenge']    ?? '';
         // PHP renames hub.mode → hub_mode automatically.
         if ($mode === 'subscribe' && hash_equals(lmeg_ig_verify_token(), (string) $token)) {
-            echo $challenge;
+            // Meta's hub.challenge is an integer; cast + plaintext so nothing but
+            // digits can ever be reflected into the response body.
+            header('Content-Type: text/plain; charset=utf-8');
+            echo (int) $challenge;
             exit;
         }
         status_header(403);

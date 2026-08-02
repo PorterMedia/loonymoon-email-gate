@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.65.4
+ * Version:     2.65.5
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.65.4');
+define('LMEG_VERSION',     '2.65.5');
 define('LMEG_DB_VERSION',  '2.65.3');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -832,6 +832,21 @@ function lmeg_product()   { return 'Fanloop'; }
 function lmeg_default_country() {
     $iso = strtoupper((string) lmeg_brand_raw('default_country', 'US'));
     return preg_match('/^[A-Z]{2}$/', $iso) ? $iso : 'US';
+}
+
+/**
+ * Neutralize CSV formula/DDE injection. A cell whose first character is one a
+ * spreadsheet treats as a formula (= + - @, tab, CR) gets a leading apostrophe
+ * so Excel/Sheets render it as literal text instead of executing it. Apply to
+ * every value written with fputcsv in the exporters — fields like name/city/
+ * referrer come from unauthenticated signups.
+ */
+function lmeg_csv_cell($v) {
+    $v = (string) $v;
+    if ($v !== '' && in_array($v[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+        return "'" . $v;
+    }
+    return $v;
 }
 /** The country list with a given ISO floated to the very top. */
 function lmeg_countries_ordered($first_iso) {

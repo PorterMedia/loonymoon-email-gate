@@ -951,7 +951,7 @@ function lmeg_export_contest_csv() {
     foreach ($rows as $r) {
         $total = function_exists('lmeg_contest_bonus_entries')
             ? lmeg_contest_bonus_entries($contest, $r->subscriber_id) : $r->entries;
-        fputcsv($out, [$r->email, $r->phone, $r->first_name, $r->country, $total, $r->entered_at]);
+        fputcsv($out, array_map('lmeg_csv_cell', [$r->email, $r->phone, $r->first_name, $r->country, $total, $r->entered_at]));
     }
     fclose($out);
     exit;

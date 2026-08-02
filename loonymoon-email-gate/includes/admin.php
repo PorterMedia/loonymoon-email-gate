@@ -2445,7 +2445,7 @@ function lmeg_admin_settings() {
                     <td><label><input type="checkbox" name="double_optin" value="1" <?php checked(!empty($s['double_optin'])); ?> /> New email signups must confirm via a one-tap email before receiving broadcasts</label>
                         <p class="description">CASL-friendly express consent. The gate still unlocks instantly — only list sends wait for the confirm. Everyone already on the list is grandfathered in.</p></td></tr>
                 <tr><th><label for="brevo_api_key">API key</label></th>
-                    <td><input type="text" name="brevo_api_key" id="brevo_api_key" value="<?php echo esc_attr($s['brevo_api_key']); ?>" class="regular-text" autocomplete="off" placeholder="xkeysib-..." />
+                    <td><input type="password" name="brevo_api_key" id="brevo_api_key" value="<?php echo esc_attr($s['brevo_api_key']); ?>" class="regular-text" autocomplete="off" placeholder="xkeysib-..." />
                         <p class="description">Brevo → SMTP &amp; API → API Keys → your v3 key. Starts with <code>xkeysib-</code>.</p></td></tr>
                 <tr><th><label for="brevo_from_email">From email</label></th>
                     <td><input type="email" name="brevo_from_email" id="brevo_from_email" value="<?php echo esc_attr($s['brevo_from_email']); ?>" class="regular-text" placeholder="hello@loonymoonchild.com" />
@@ -2595,7 +2595,7 @@ function lmeg_admin_settings() {
                     <td><input type="password" name="ig_app_secret" id="ig_app_secret" class="regular-text" value="<?php echo esc_attr($s['ig_app_secret'] ?? ''); ?>" autocomplete="off" />
                         <p class="description">Meta app → Settings → Basic → App Secret. Used for the connect handshake and to verify webhook signatures.</p></td></tr>
                 <tr><th><label for="ig_verify_token">Webhook verify token</label></th>
-                    <td><input type="text" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
+                    <td><input type="password" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
                         <p class="description">Webhook callback URL: <code><?php echo esc_html(add_query_arg('lmeg_ig', 'webhook', home_url('/'))); ?></code> — full setup steps on the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-instagram')); ?>">Instagram page</a>.</p></td></tr>
                 <tr><th><label for="ig_story_reply">Story-mention auto-reply</label></th>
                     <td><textarea name="ig_story_reply" id="ig_story_reply" rows="2" class="large-text" placeholder="Leave blank to not auto-reply"><?php echo esc_textarea($s['ig_story_reply'] ?? ''); ?></textarea>
@@ -2945,7 +2945,7 @@ function lmeg_export_csv() {
 
     $out = fopen('php://output', 'w');
     fputcsv($out, ['contact_type', 'email', 'phone', 'country', 'street', 'city', 'region', 'postal_code', 'post_id', 'ip', 'referrer', 'created_at', 'unsubscribed_at']);
-    foreach ($rows as $r) fputcsv($out, $r);
+    foreach ($rows as $r) fputcsv($out, array_map('lmeg_csv_cell', $r));
     fclose($out);
     exit;
 }
@@ -4458,6 +4458,7 @@ function lmeg_admin_audience() {
         (function () {
             var pts = <?php echo wp_json_encode($map_pts); ?>;
             if (!pts.length || typeof L === 'undefined') return;
+            function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
             var map = L.map('lmeg-fanmap', { scrollWheelZoom: false });
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12
@@ -4468,9 +4469,9 @@ function lmeg_admin_audience() {
                 var m = L.circleMarker([p.lat, p.lng], {
                     radius: r, color: '#d05fa2', weight: 1.5, fillColor: '#d05fa2', fillOpacity: 0.35
                 }).addTo(map);
-                m.bindPopup('<strong>' + p.city + (p.region ? ', ' + p.region : '') + '</strong><br>' +
+                m.bindPopup('<strong>' + esc(p.city) + (p.region ? ', ' + esc(p.region) : '') + '</strong><br>' +
                     p.n + ' fan' + (p.n === 1 ? '' : 's') + (p.sf ? ' · ' + p.sf + ' superfan' + (p.sf === 1 ? '' : 's') : '') +
-                    '<br><a href="' + p.url + '">View these fans →</a>');
+                    '<br><a href="' + encodeURI(p.url) + '">View these fans →</a>');
                 group.push(m);
             });
             map.fitBounds(L.featureGroup(group).getBounds().pad(0.25));
