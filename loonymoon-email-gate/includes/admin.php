@@ -2589,10 +2589,10 @@ function lmeg_admin_settings() {
             </div>
             <table class="form-table" role="presentation">
                 <tr><th><label for="ig_app_id">App ID</label></th>
-                    <td><input type="text" name="ig_app_id" id="ig_app_id" class="regular-text" value="<?php echo esc_attr($s['ig_app_id'] ?? ''); ?>" placeholder="1234567890" />
+                    <td><input type="text" name="ig_app_id" id="ig_app_id" class="regular-text" value="<?php echo esc_attr($s['ig_app_id'] ?? ''); ?>" placeholder="1234567890" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" readonly onfocus="this.removeAttribute('readonly');" />
                         <p class="description">Meta app → Settings → Basic → App ID.</p></td></tr>
                 <tr><th><label for="ig_app_secret">App secret</label></th>
-                    <td><input type="password" name="ig_app_secret" id="ig_app_secret" class="regular-text" value="<?php echo esc_attr($s['ig_app_secret'] ?? ''); ?>" autocomplete="off" />
+                    <td><input type="password" name="ig_app_secret" id="ig_app_secret" class="regular-text" value="<?php echo esc_attr($s['ig_app_secret'] ?? ''); ?>" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" readonly onfocus="this.removeAttribute('readonly');" />
                         <p class="description">Meta app → Settings → Basic → App Secret. Used for the connect handshake and to verify webhook signatures.</p></td></tr>
                 <tr><th><label for="ig_verify_token">Webhook verify token</label></th>
                     <td><input type="password" name="ig_verify_token" id="ig_verify_token" class="regular-text" value="<?php echo esc_attr(($s['ig_verify_token'] ?? '') ?: (function_exists('lmeg_ig_verify_token') ? lmeg_ig_verify_token() : '')); ?>" />
