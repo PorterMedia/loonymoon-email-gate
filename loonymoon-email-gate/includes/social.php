@@ -54,15 +54,31 @@ add_action('lmeg_broadcast_tick', 'lmeg_social_snapshot_tick', 55);
 function lmeg_social_snapshot_tick() {
     if (get_transient('lmeg_social_snap_done')) return;
     set_transient('lmeg_social_snap_done', 1, DAY_IN_SECONDS);
-    $st = lmeg_ig_account_stats(true);
-    if (!$st) return;
     global $wpdb;
-    $wpdb->query($wpdb->prepare(
-        "INSERT INTO {$wpdb->prefix}lmeg_social_snapshots (platform, snap_date, followers, media_count, created_at)
-         VALUES ('instagram', %s, %d, %d, %s)
-         ON DUPLICATE KEY UPDATE followers = VALUES(followers), media_count = VALUES(media_count)",
-        current_time('Y-m-d'), $st['followers'], $st['media_count'], current_time('mysql')
-    ));
+    $today = current_time('Y-m-d');
+    $now   = current_time('mysql');
+
+    // Instagram followers + post count.
+    $st = lmeg_ig_account_stats(true);
+    if ($st) {
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$wpdb->prefix}lmeg_social_snapshots (platform, snap_date, followers, media_count, created_at)
+             VALUES ('instagram', %s, %d, %d, %s)
+             ON DUPLICATE KEY UPDATE followers = VALUES(followers), media_count = VALUES(media_count)",
+            $today, $st['followers'], $st['media_count'], $now
+        ));
+    }
+
+    // Facebook Page followers (same connection — no reconnect needed).
+    $fb = function_exists('lmeg_fb_page_stats') ? lmeg_fb_page_stats(true) : null;
+    if ($fb) {
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$wpdb->prefix}lmeg_social_snapshots (platform, snap_date, followers, media_count, created_at)
+             VALUES ('facebook', %s, %d, %d, %s)
+             ON DUPLICATE KEY UPDATE followers = VALUES(followers)",
+            $today, $fb['followers'], 0, $now
+        ));
+    }
 }
 
 function lmeg_social_snapshots($platform, $days = 60) {
@@ -220,7 +236,133 @@ function lmeg_social_story_mentions($days = 30) {
 }
 
 /* ---------------------------------------------------------------------------
- * Comment sentiment — AI over recent Instagram post comments
+ * Facebook Page — comes free with the Instagram connection. The OAuth grants
+ * a Page token with `pages_read_engagement`, and the Page id is stored at
+ * connect time (`lmeg_ig_page_id`), so the artist's FB Page needs no separate
+ * connect: same token, same Graph host.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_fb_configured() {
+    $s = lmeg_get_settings();
+    return !empty($s['ig_page_token']) && (bool) get_option('lmeg_ig_page_id');
+}
+
+/** Page name + follower count (falls back to fan/like count). 1h cache. */
+function lmeg_fb_page_stats($force = false) {
+    if (!lmeg_fb_configured()) return null;
+    $cache = 'lmeg_fb_page_stats';
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    $s   = lmeg_get_settings();
+    $pid = get_option('lmeg_ig_page_id');
+    $resp = wp_remote_get(
+        LMEG_IG_GRAPH . '/' . rawurlencode($pid)
+            . '?fields=name,followers_count,fan_count&access_token=' . rawurlencode($s['ig_page_token']),
+        ['timeout' => 12]
+    );
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return null;
+    $d = json_decode(wp_remote_retrieve_body($resp), true);
+    if (!is_array($d) || isset($d['error'])) return null;
+    $out = [
+        'name'      => (string) ($d['name'] ?? ''),
+        'followers' => isset($d['followers_count']) ? (int) $d['followers_count'] : (int) ($d['fan_count'] ?? 0),
+        'fans'      => (int) ($d['fan_count'] ?? 0),
+    ];
+    set_transient($cache, $out, HOUR_IN_SECONDS);
+    return $out;
+}
+
+/** Recent Page posts with engagement (reactions + comments + shares). 1h cache. */
+function lmeg_fb_posts($limit = 25, $force = false) {
+    if (!lmeg_fb_configured()) return [];
+    $cache = 'lmeg_fb_posts';
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    $s   = lmeg_get_settings();
+    $pid = get_option('lmeg_ig_page_id');
+    $resp = wp_remote_get(
+        LMEG_IG_GRAPH . '/' . rawurlencode($pid)
+            . '/posts?fields=id,message,story,created_time,permalink_url,shares,'
+            . 'comments.summary(true).limit(0),reactions.summary(true).limit(0)&limit=' . (int) $limit
+            . '&access_token=' . rawurlencode($s['ig_page_token']),
+        ['timeout' => 15]
+    );
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
+    $d = json_decode(wp_remote_retrieve_body($resp), true);
+    $out = [];
+    foreach ((array) ($d['data'] ?? []) as $p) {
+        $out[] = [
+            'id'        => (string) ($p['id'] ?? ''),
+            'caption'   => (string) ($p['message'] ?? ($p['story'] ?? '')),
+            'permalink' => (string) ($p['permalink_url'] ?? ''),
+            'timestamp' => (string) ($p['created_time'] ?? ''),
+            'likes'     => (int) ($p['reactions']['summary']['total_count'] ?? 0),
+            'comments'  => (int) ($p['comments']['summary']['total_count'] ?? 0),
+            'shares'    => (int) ($p['shares']['count'] ?? 0),
+        ];
+    }
+    set_transient($cache, $out, HOUR_IN_SECONDS);
+    return $out;
+}
+
+/** Aggregate FB content performance — mirrors the IG one, engagement adds shares. */
+function lmeg_fb_content_stats() {
+    $posts = lmeg_fb_posts(25);
+    if (!$posts) return null;
+    $fb        = lmeg_fb_page_stats();
+    $followers = $fb ? max(1, $fb['followers']) : 0;
+    $total_eng = 0; $times = [];
+    foreach ($posts as $p) {
+        $total_eng += $p['likes'] + $p['comments'] + $p['shares'];
+        $ts = $p['timestamp'] ? strtotime($p['timestamp']) : false;
+        if ($ts) $times[] = $ts;
+    }
+    $count   = count($posts);
+    $avg_eng = $count ? $total_eng / $count : 0;
+    sort($times);
+    $cadence = (count($times) >= 2)
+        ? round((($times[count($times) - 1] - $times[0]) / (count($times) - 1)) / DAY_IN_SECONDS, 1)
+        : 0;
+    usort($posts, function ($a, $b) {
+        return (($b['likes'] + $b['comments'] + $b['shares']) <=> ($a['likes'] + $a['comments'] + $a['shares']));
+    });
+    return [
+        'count'    => $count,
+        'avg_eng'  => (int) round($avg_eng),
+        'eng_rate' => $followers ? round(100 * $avg_eng / $followers, 2) : 0,
+        'cadence'  => $cadence,
+        'top'      => array_slice($posts, 0, 8),
+    ];
+}
+
+/** Recent FB comment text, for sentiment. */
+function lmeg_fb_comments($max = 60) {
+    if (!lmeg_fb_configured()) return [];
+    $s   = lmeg_get_settings();
+    $pid = get_option('lmeg_ig_page_id');
+    $tok = rawurlencode($s['ig_page_token']);
+    $posts = wp_remote_get(
+        LMEG_IG_GRAPH . '/' . rawurlencode($pid) . '/posts?fields=id,comments.summary(true).limit(0)&limit=12&access_token=' . $tok,
+        ['timeout' => 12]
+    );
+    if (is_wp_error($posts) || wp_remote_retrieve_response_code($posts) !== 200) return [];
+    $pd = json_decode(wp_remote_retrieve_body($posts), true);
+    $comments = [];
+    foreach ((array) ($pd['data'] ?? []) as $p) {
+        if (count($comments) >= $max) break;
+        if (empty($p['comments']['summary']['total_count'])) continue;
+        $cr = wp_remote_get(LMEG_IG_GRAPH . '/' . rawurlencode($p['id']) . '/comments?fields=message&limit=25&access_token=' . $tok, ['timeout' => 12]);
+        if (is_wp_error($cr) || wp_remote_retrieve_response_code($cr) !== 200) continue;
+        $cd = json_decode(wp_remote_retrieve_body($cr), true);
+        foreach ((array) ($cd['data'] ?? []) as $c) {
+            $t = trim((string) ($c['message'] ?? ''));
+            if ($t !== '') $comments[] = mb_substr($t, 0, 300);
+            if (count($comments) >= $max) break;
+        }
+    }
+    return $comments;
+}
+
+/* ---------------------------------------------------------------------------
+ * Comment sentiment — AI over recent Instagram + Facebook post comments
  * ------------------------------------------------------------------------- */
 
 function lmeg_social_ig_comments($max = 80) {
@@ -253,17 +395,17 @@ function lmeg_social_sentiment($force = false) {
     if (!function_exists('lmeg_ai_configured') || !lmeg_ai_configured()) {
         return new WP_Error('lmeg_ai_unconfigured', 'Add your Anthropic API key in Settings → AI assistant to analyze sentiment.');
     }
-    if (!lmeg_ig_configured()) {
-        return new WP_Error('lmeg_ig_unconfigured', 'Connect Instagram first (Settings → Instagram).');
+    if (!lmeg_ig_configured() && !lmeg_fb_configured()) {
+        return new WP_Error('lmeg_ig_unconfigured', 'Connect Instagram or Facebook first (Settings → Instagram).');
     }
-    $comments = lmeg_social_ig_comments(80);
-    if (!$comments) return new WP_Error('lmeg_social_nocomments', 'No recent Instagram comments found to analyze.');
+    $comments = array_merge(lmeg_social_ig_comments(60), lmeg_fb_comments(40));
+    if (!$comments) return new WP_Error('lmeg_social_nocomments', 'No recent Instagram or Facebook comments found to analyze.');
 
     $s     = lmeg_get_settings();
     $model = $s['ai_model'] ?: 'claude-haiku-4-5-20251001';
     $list  = "- " . implode("\n- ", $comments);
     $system = "You analyze fan comment sentiment for the artist " . lmeg_artist() . ". "
-        . "Given recent Instagram comments, return ONLY a raw JSON object (no prose) with keys: "
+        . "Given recent Instagram and Facebook comments, return ONLY a raw JSON object (no prose) with keys: "
         . "\"positive\" (int percent), \"neutral\" (int percent), \"negative\" (int percent) — these three sum to ~100; "
         . "\"themes\" (array of up to 5 short strings — what fans are talking about); "
         . "\"highlights\" (array of up to 3 short verbatim standout positive comments); "
@@ -327,6 +469,14 @@ function lmeg_social_ai_digest($force = false) {
         $sm = lmeg_social_story_mentions(30);
         $lines[] = "Story mentions (30d): " . $sm . ".";
     }
+    if (lmeg_fb_configured()) {
+        $fb = lmeg_fb_page_stats();
+        if ($fb) $lines[] = "Facebook Page: " . number_format($fb['followers']) . " followers.";
+        $fbs = lmeg_social_series_stats(lmeg_social_snapshots('facebook', 30));
+        if ($fbs['days'] >= 1) $lines[] = "FB follower change: " . ($fbs['delta'] >= 0 ? '+' : '') . $fbs['delta'] . " over " . $fbs['days'] . " days.";
+        $fcs = lmeg_fb_content_stats();
+        if ($fcs) $lines[] = "Recent " . $fcs['count'] . " FB posts: avg " . $fcs['avg_eng'] . " engagements each, " . $fcs['eng_rate'] . "% engagement rate.";
+    }
     if (function_exists('lmeg_spotify_configured') && lmeg_spotify_configured()) {
         $ov = lmeg_spotify_overview();
         if (!is_wp_error($ov)) $lines[] = "Spotify: " . number_format($ov['followers']) . " followers, popularity " . $ov['popularity'] . "/100.";
@@ -335,7 +485,7 @@ function lmeg_social_ai_digest($force = false) {
     if (is_array($sent)) {
         $lines[] = "Comment sentiment: {$sent['positive']}% positive / {$sent['neutral']}% neutral / {$sent['negative']}% negative. Themes: " . implode(', ', array_slice((array) ($sent['themes'] ?? []), 0, 5)) . ".";
     }
-    if (!$lines) return new WP_Error('lmeg_social_nodata', 'Connect Instagram or Spotify first — no social data to summarize yet.');
+    if (!$lines) return new WP_Error('lmeg_social_nodata', 'Connect Instagram, Facebook, or Spotify first — no social data to summarize yet.');
 
     $s      = lmeg_get_settings();
     $model  = $s['ai_model'] ?: 'claude-haiku-4-5-20251001';
@@ -410,6 +560,17 @@ function lmeg_social_demo() {
     foreach ([44, 58, 50, 30, 66, 48, 18, -9, 55, 74, 40, 47, 63, 26, -14, 60, 70, 44, 52, 78, 36, 21, -7, 68, 84, 49, 57, 72, 41, 61] as $d) { $v += $d; $ig_vals[] = $v; }
     $sp_vals = []; $v = 49760;
     foreach ([58, 66, 50, 74, 42, 61, 31, 70, 55, -11, 78, 63, 47, 72, 52, 40, 76, 59, -15, 84, 67, 50, 73, 61, 44, 69, 54, 63, 48, 71] as $d) { $v += $d; $sp_vals[] = $v; }
+    $fb_vals = []; $v = 18240;
+    foreach ([12, 18, 9, 22, 6, -4, 15, 20, 11, 17, -7, 24, 13, 8, 19, 5, -3, 21, 14, 10, 16, 23, 7, -5, 18, 12, 20, 9, 15, 22] as $d) { $v += $d; $fb_vals[] = $v; }
+
+    $fb_top = [
+        ['caption' => 'SOFT THING is out now — link in comments 🖤', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'likes' => 612, 'comments' => 74, 'shares' => 128],
+        ['caption' => 'Toronto — presale is live. Who’s coming? 🎟️', 'permalink' => '#', 'timestamp' => '2026-07-28T18:00:00+0000', 'likes' => 540, 'comments' => 96, 'shares' => 88],
+        ['caption' => 'Thank you for 18k here 🥹 the LOONYBIN keeps growing', 'permalink' => '#', 'timestamp' => '2026-07-22T17:00:00+0000', 'likes' => 470, 'comments' => 52, 'shares' => 41],
+        ['caption' => 'New merch drops Friday 👀🔥', 'permalink' => '#', 'timestamp' => '2026-07-16T19:00:00+0000', 'likes' => 388, 'comments' => 44, 'shares' => 33],
+        ['caption' => 'Behind the scenes of the video 🎬', 'permalink' => '#', 'timestamp' => '2026-07-19T16:00:00+0000', 'likes' => 356, 'comments' => 29, 'shares' => 22],
+        ['caption' => 'Should I release the acoustic version?', 'permalink' => '#', 'timestamp' => '2026-07-13T21:00:00+0000', 'likes' => 302, 'comments' => 61, 'shares' => 18],
+    ];
 
     $top = [
         ['caption' => 'SOFT THING is OUT NOW 🖤 go stream it pls', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'likes' => 4210, 'comments' => 318],
@@ -424,7 +585,25 @@ function lmeg_social_demo() {
     return [
         'ig'         => ['username' => 'loonymoonchild', 'followers' => end($ig_vals), 'media_count' => 142, 'follows' => 612],
         'ig_stats'   => $mk($ig_vals),
-        'ov'         => ['followers' => end($sp_vals), 'popularity' => 47, 'url' => '#', 'top_tracks' => []],
+        'fb'         => ['name' => 'LOONY', 'followers' => end($fb_vals), 'fans' => end($fb_vals)],
+        'fb_stats'   => $mk($fb_vals),
+        'fb_content' => ['count' => 18, 'avg_eng' => 540, 'eng_rate' => 3.0, 'cadence' => 3.4, 'top' => $fb_top],
+        'ov'         => [
+            'name' => 'LOONY', 'followers' => end($sp_vals), 'popularity' => 47, 'url' => '#',
+            'genres' => ['art pop', 'indie pop', 'canadian indie'],
+            'top_tracks' => [
+                ['name' => 'SOFT THING', 'popularity' => 68, 'album' => 'SOFT THING', 'url' => '#'],
+                ['name' => 'Overgrown', 'popularity' => 61, 'album' => 'the LOONYBIN', 'url' => '#'],
+                ['name' => 'Moonchild', 'popularity' => 57, 'album' => 'the LOONYBIN', 'url' => '#'],
+                ['name' => 'Static', 'popularity' => 52, 'album' => 'Static / Bloom', 'url' => '#'],
+                ['name' => 'Bloom', 'popularity' => 49, 'album' => 'Static / Bloom', 'url' => '#'],
+            ],
+            'releases' => [
+                ['name' => 'SOFT THING', 'type' => 'single', 'date' => '2026-07-31', 'url' => '#', 'img' => ''],
+                ['name' => 'Static / Bloom', 'type' => 'single', 'date' => '2026-05-14', 'url' => '#', 'img' => ''],
+                ['name' => 'the LOONYBIN', 'type' => 'album', 'date' => '2026-02-20', 'url' => '#', 'img' => ''],
+            ],
+        ],
         'sp_stats'   => $mk($sp_vals),
         'fan_ct'     => 3412,
         'stories'    => 23,
@@ -461,6 +640,7 @@ function lmeg_admin_social() {
     $artist = function_exists('lmeg_artist') ? lmeg_artist() : get_bloginfo('name');
     $sp_ok  = function_exists('lmeg_spotify_configured') && lmeg_spotify_configured();
     $ig_ok  = function_exists('lmeg_ig_configured') && lmeg_ig_configured();
+    $fb_ok  = function_exists('lmeg_fb_configured') && lmeg_fb_configured();
     $ai_ok  = function_exists('lmeg_ai_configured') && lmeg_ai_configured();
     $card   = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
     $dash   = 'background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:18px 20px;color:#F4F5F7;';
@@ -472,15 +652,19 @@ function lmeg_admin_social() {
     $demo_digest = null;
 
     if ($demo) {
-        $ig_ok = $sp_ok = $ai_ok = true;
+        $ig_ok = $sp_ok = $ai_ok = $fb_ok = true;
         $dd = lmeg_social_demo();
         $ig = $dd['ig']; $ig_stats = $dd['ig_stats']; $ov = $dd['ov']; $sp_stats = $dd['sp_stats'];
+        $fb = $dd['fb']; $fb_stats = $dd['fb_stats']; $fb_content = $dd['fb_content'];
         $fan_ct = $dd['fan_ct']; $stories = $dd['stories']; $content = $dd['content'];
         $best_day = $dd['best_day']; $types = $dd['types'];
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
         $ig_stats = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
+        $fb        = $fb_ok ? lmeg_fb_page_stats() : null;
+        $fb_stats  = lmeg_social_series_stats(lmeg_social_snapshots('facebook', 30));
+        $fb_content = $fb_ok ? lmeg_fb_content_stats() : null;
         $ov       = $sp_ok ? lmeg_spotify_overview() : null;
         $sp_snaps = ($sp_ok && function_exists('lmeg_spotify_snapshots')) ? lmeg_spotify_snapshots(60) : [];
         $sp_stats = lmeg_social_series_stats($sp_snaps);
@@ -506,7 +690,7 @@ function lmeg_admin_social() {
         <?php endif; ?>
 
         <?php if (!$ig_ok) : ?>
-            <div class="notice notice-info" style="max-width:900px;"><p><strong>Connect Instagram</strong> (<a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a>) to light up followers, top posts, story mentions, and comment sentiment. Spotify + your fan list show below now.</p></div>
+            <div class="notice notice-info" style="max-width:900px;"><p><strong>Connect Instagram</strong> (<a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a>) to light up followers, top posts, story mentions, and comment sentiment — your <strong>Facebook Page</strong> comes with the same connection. Spotify + your fan list show below now.</p></div>
         <?php endif; ?>
 
         <h2>Audience</h2>
@@ -516,6 +700,12 @@ function lmeg_admin_social() {
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo $ig ? number_format_i18n($ig['followers']) : '—'; ?></div>
                 <div style="font-size:12px;color:#8B90A0;"><?php echo $ig ? 'followers · ' . number_format_i18n($ig['media_count']) . ' posts' : 'not connected'; ?></div>
                 <?php echo $delta_html($ig_stats['delta'], $ig_stats['per_day'], $ig_stats['days']); ?>
+            </div>
+            <div style="<?php echo $card; ?>">
+                <?php echo lmeg_card_head('facebook', '#1877F2', 'Facebook'); ?>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo ($fb_ok && $fb) ? number_format_i18n($fb['followers']) : '—'; ?></div>
+                <div style="font-size:12px;color:#8B90A0;"><?php echo ($fb_ok && $fb) ? 'Page followers' : 'not connected'; ?></div>
+                <?php echo $delta_html($fb_stats['delta'], $fb_stats['per_day'], $fb_stats['days']); ?>
             </div>
             <div style="<?php echo $card; ?>">
                 <?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?>
@@ -546,6 +736,15 @@ function lmeg_admin_social() {
             </div>
             <?php else : ?>
             <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('instagram', '#E1306C', 'Instagram'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Connect</a> to track follower growth.</p></div>
+            <?php endif; ?>
+
+            <?php if ($fb_ok) : $fbspark = lmeg_social_sparkline($fb_stats['vals']); ?>
+            <div style="<?php echo $card; ?>">
+                <?php echo lmeg_card_head('facebook', '#1877F2', 'Facebook followers'); ?>
+                <div style="font-size:22px;font-weight:700;color:#F4F5F7;margin:2px 0;"><?php echo $fb ? number_format_i18n($fb['followers']) : '—'; ?></div>
+                <?php if ($fb_stats['days'] >= 1) : ?><div style="font-size:12px;color:#8B90A0;"><?php echo ($fb_stats['delta'] >= 0 ? '+' : '') . number_format_i18n($fb_stats['delta']); ?> over <?php echo (int) $fb_stats['days']; ?> days · <?php echo $fb_stats['per_day']; ?>/day</div><?php endif; ?>
+                <?php if ($fbspark) : echo lmeg_chart_line($fb_stats['vals'], ['color' => '#1877F2', 'uid' => 'fb-follows', 'labels' => $fb_stats['labels'] ?? [], 'suffix' => 'followers']); else : ?><p class="description">Follower history starts on connect — the line fills in over the next few days.</p><?php endif; ?>
+            </div>
             <?php endif; ?>
 
             <?php if ($sp_ok) : $spark = lmeg_social_sparkline($sp_stats['vals']); ?>
@@ -610,6 +809,93 @@ function lmeg_admin_social() {
             <?php endif; ?>
         <?php endif; ?>
 
+        <h2 style="margin-top:24px;">Facebook</h2>
+        <?php if (!$fb_ok) : ?>
+            <p class="description" style="max-width:820px;">Your Facebook Page connects together with Instagram — <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">connect in Settings → Instagram</a> and Page posts, engagement, and comment sentiment light up here automatically. No separate login.</p>
+        <?php elseif (!$fb_content) : ?>
+            <p class="description" style="max-width:820px;">Connected<?php echo ($fb && $fb['name']) ? ' — <strong style="color:#F4F5F7;">' . esc_html($fb['name']) . '</strong>' : ''; ?>. No recent Page posts found yet; once the Page publishes, top posts and engagement show here.</p>
+        <?php else : ?>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;max-width:760px;margin-bottom:10px;">
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Engagement rate</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo $fb_content['eng_rate']; ?>%</div><div style="font-size:12px;color:#8B90A0;">reactions+comments+shares ÷ followers</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Avg per post</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($fb_content['avg_eng']); ?></div><div style="font-size:12px;color:#8B90A0;">engagements</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Posting cadence</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo $fb_content['cadence']; ?></div><div style="font-size:12px;color:#8B90A0;">days between posts</div></div>
+            </div>
+            <h3 style="margin:14px 0 6px;">Top Facebook posts</h3>
+            <table class="widefat striped" style="max-width:900px;">
+                <thead><tr><th>Post</th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('heart', ['size' => 14, 'sw' => 2]); ?>Reactions</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('message', ['size' => 14, 'sw' => 2]); ?>Comments</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('send', ['size' => 14, 'sw' => 2]); ?>Shares</span></th><th>When</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($fb_content['top'] as $p) :
+                    $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($p['caption'])));
+                    $cap = $cap !== '' ? mb_substr($cap, 0, 70) : '(no text)';
+                ?>
+                    <tr>
+                        <td style="max-width:360px;"><?php echo esc_html($cap); ?></td>
+                        <td><strong><?php echo number_format_i18n($p['likes']); ?></strong></td>
+                        <td><?php echo number_format_i18n($p['comments']); ?></td>
+                        <td><?php echo number_format_i18n($p['shares']); ?></td>
+                        <td style="font-size:12px;color:#8B90A0;"><?php echo $p['timestamp'] ? esc_html(date_i18n('M j', strtotime($p['timestamp']))) : '—'; ?></td>
+                        <td><?php if ($p['permalink']) : ?><a href="<?php echo esc_url($p['permalink']); ?>" target="_blank" rel="noopener">View ↗</a><?php endif; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <?php if ($sp_ok && $ov && !is_wp_error($ov)) : ?>
+        <h2 style="margin-top:24px;">Spotify</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:760px;margin-bottom:6px;">
+            <div style="<?php echo $card; ?>">
+                <?php echo lmeg_card_head('spotify', '#1DB954', 'Followers'); ?>
+                <div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($ov['followers']); ?></div>
+                <?php echo $delta_html($sp_stats['delta'], $sp_stats['per_day'], $sp_stats['days']); ?>
+            </div>
+            <div style="<?php echo $card; ?>">
+                <?php echo lmeg_card_head('sparkle', '#7C6CF6', 'Popularity'); ?>
+                <div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo (int) $ov['popularity']; ?><span style="font-size:13px;color:#8B90A0;"> /100</span></div>
+                <div style="font-size:12px;color:#8B90A0;">Spotify's recent-stream score</div>
+            </div>
+        </div>
+        <?php if (!empty($ov['genres'])) : ?><p style="max-width:760px;color:#8B90A0;margin:2px 0 10px;"><strong style="color:#F4F5F7;">Genres:</strong> <?php echo esc_html(implode(' · ', $ov['genres'])); ?></p><?php endif; ?>
+        <?php if (!empty($ov['top_tracks'])) : ?>
+        <h3 style="margin:14px 0 6px;">Top tracks</h3>
+        <table class="widefat striped" style="max-width:720px;">
+            <thead><tr><th>#</th><th>Track</th><th>Album</th><th>Popularity</th></tr></thead>
+            <tbody>
+            <?php foreach ($ov['top_tracks'] as $i => $t) : ?>
+                <tr>
+                    <td><?php echo $i + 1; ?></td>
+                    <td><?php if (!empty($t['url']) && $t['url'] !== '#') : ?><a href="<?php echo esc_url($t['url']); ?>" target="_blank" rel="noopener"><strong><?php echo esc_html($t['name']); ?></strong></a><?php else : ?><strong><?php echo esc_html($t['name']); ?></strong><?php endif; ?></td>
+                    <td style="color:#8B90A0;"><?php echo esc_html($t['album']); ?></td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="flex:1;max-width:140px;height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;"><div style="width:<?php echo (int) $t['popularity']; ?>%;height:100%;background:#1DB954;"></div></div>
+                            <span style="font-variant-numeric:tabular-nums;"><?php echo (int) $t['popularity']; ?></span>
+                        </div>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        <?php if (!empty($ov['releases'])) : ?>
+        <h3 style="margin:16px 0 6px;">Recent releases</h3>
+        <table class="widefat striped" style="max-width:720px;">
+            <thead><tr><th></th><th>Release</th><th>Type</th><th>Date</th></tr></thead>
+            <tbody>
+            <?php foreach ($ov['releases'] as $r) : ?>
+                <tr>
+                    <td><?php if (!empty($r['img'])) : ?><img src="<?php echo esc_url($r['img']); ?>" width="40" height="40" style="border-radius:6px;display:block;" alt="" /><?php endif; ?></td>
+                    <td><?php if (!empty($r['url']) && $r['url'] !== '#') : ?><a href="<?php echo esc_url($r['url']); ?>" target="_blank" rel="noopener"><strong><?php echo esc_html($r['name']); ?></strong></a><?php else : ?><strong><?php echo esc_html($r['name']); ?></strong><?php endif; ?></td>
+                    <td><?php echo esc_html(ucfirst($r['type'])); ?></td>
+                    <td style="color:#8B90A0;"><?php echo esc_html($r['date']); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        <p class="description" style="max-width:820px;margin-top:8px;">Impact analysis (how each broadcast &amp; release moved followers), daily history, and CSV backfill live on the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">full Spotify page</a>.</p>
+        <?php endif; ?>
+
         <h2 style="margin-top:24px;">Fan sentiment</h2>
         <?php if ($demo && $demo_sent) : $x = $demo_sent; ?>
             <div style="<?php echo $card; ?>margin-top:6px;max-width:820px;">
@@ -622,15 +908,15 @@ function lmeg_admin_social() {
                 <p style="margin:16px 0 6px;font-weight:600;color:#FBBF24;">Worth watching</p><ul style="margin:0 0 0 18px;line-height:1.6;"><?php foreach ($x['watch'] as $w) : ?><li><?php echo esc_html($w); ?></li><?php endforeach; ?></ul>
                 <p class="description" style="margin-top:12px;">Based on <?php echo (int) $x['_count']; ?> recent comments.</p>
             </div>
-        <?php elseif (!$ig_ok || !$ai_ok) : ?>
-            <p class="description" style="max-width:820px;">Needs <?php echo !$ig_ok ? 'Instagram connected' : ''; echo (!$ig_ok && !$ai_ok) ? ' and ' : ''; echo !$ai_ok ? 'your Anthropic API key (Settings → AI assistant)' : ''; ?>. Then Fanloop reads your recent comments and summarizes the mood, themes, standout comments, and questions worth answering.</p>
+        <?php elseif ((!$ig_ok && !$fb_ok) || !$ai_ok) : ?>
+            <p class="description" style="max-width:820px;">Needs <?php echo (!$ig_ok && !$fb_ok) ? 'Instagram or Facebook connected' : ''; echo ((!$ig_ok && !$fb_ok) && !$ai_ok) ? ' and ' : ''; echo !$ai_ok ? 'your Anthropic API key (Settings → AI assistant)' : ''; ?>. Then Fanloop reads your recent comments and summarizes the mood, themes, standout comments, and questions worth answering.</p>
         <?php else : ?>
-            <p style="max-width:820px;">Reads the comments on your recent Instagram posts and summarizes the mood — powered by your AI key. Cached ~6h.</p>
+            <p style="max-width:820px;">Reads the comments on your recent Instagram and Facebook posts and summarizes the mood — powered by your AI key. Cached ~6h.</p>
             <p><button type="button" class="button button-primary" id="lmeg-sent-btn">Analyze recent comments</button> <span id="lmeg-sent-status" style="font-size:12px;margin-left:8px;"></span></p>
             <div id="lmeg-sent-out" style="max-width:820px;"></div>
         <?php endif; ?>
 
-        <?php if ($ai_ok && ($ig_ok || $sp_ok)) : ?>
+        <?php if ($ai_ok && ($ig_ok || $fb_ok || $sp_ok)) : ?>
         <h2 style="margin-top:24px;">Listening digest</h2>
         <p style="max-width:820px;">One AI brief across everything above — how you're doing and what to do next.</p>
         <?php if ($demo && $demo_digest) : ?>
@@ -641,7 +927,7 @@ function lmeg_admin_social() {
         <?php endif; ?>
         <?php endif; ?>
 
-        <?php if (($ig_ok && $ai_ok) || ($ai_ok && ($ig_ok || $sp_ok))) : ?>
+        <?php if ($ai_ok && ($ig_ok || $fb_ok || $sp_ok)) : ?>
         <script>
         (function(){
             var ajax = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>, nonce = <?php echo wp_json_encode(wp_create_nonce('lmeg_social')); ?>;
