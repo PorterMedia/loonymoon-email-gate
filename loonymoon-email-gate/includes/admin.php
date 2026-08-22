@@ -2050,6 +2050,164 @@ function lmeg_admin_compose() {
  * Broadcast history
  * ------------------------------------------------------------------------- */
 
+/**
+ * Shared styles for the Broadcast History views (KPI grid, status pills,
+ * open/click rate bars, and the opens/clicks map legend + toggle).
+ * Echoed once per page load.
+ */
+function lmeg_broadcast_styles() {
+    static $done = false;
+    if ($done) return; $done = true;
+    ?>
+    <style>
+      .lmeg-bc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(188px,1fr));gap:14px;margin:16px 0 22px;}
+      .lmeg-bc-kpis .lmeg-stat__value{font-variant-numeric:tabular-nums;}
+      .lmeg-oc-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:22px 0 10px;}
+      .lmeg-oc-legend{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--lmegA-muted);}
+      .lmeg-oc-swatch{width:12px;height:12px;border-radius:50%;display:inline-block;}
+      .lmeg-oc-toggle{display:flex;gap:6px;margin-left:auto;}
+      .lmeg-oc-btn.is-on{border-color:#d05fa2 !important;color:#fff !important;box-shadow:inset 0 0 0 1px #d05fa2;}
+      .lmeg-pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:capitalize;}
+      .lmeg-pill--completed{background:rgba(52,211,153,.16);color:#34D399;}
+      .lmeg-pill--queued{background:rgba(124,108,246,.20);color:#b3a7ff;}
+      .lmeg-pill--scheduled{background:rgba(251,191,36,.16);color:#FBBF24;}
+      .lmeg-pill--sending{background:rgba(124,108,246,.20);color:#b3a7ff;}
+      .lmeg-pill--failed{background:rgba(248,113,113,.16);color:#F87171;}
+      .lmeg-pill--draft{background:rgba(255,255,255,.10);color:var(--lmegA-muted);}
+      .lmeg-rate{display:flex;align-items:center;gap:9px;min-width:132px;}
+      .lmeg-rate__bar{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;}
+      .lmeg-rate__fill{display:block;height:100%;border-radius:3px;}
+      .lmeg-rate__num{font-variant-numeric:tabular-nums;font-size:12px;color:var(--lmegA-text);min-width:44px;text-align:right;}
+      .lmeg-bc-tbl td{vertical-align:middle;}
+      .lmeg-bc-chan{display:inline-flex;align-items:center;gap:7px;font-weight:600;}
+      .lmeg-bc-subj{color:var(--lmegA-text);font-weight:600;}
+      .lmeg-bc-rev{font-variant-numeric:tabular-nums;}
+    </style>
+    <?php
+}
+
+/**
+ * Render an open/click rate as a tinted mini-bar + number.
+ */
+function lmeg_broadcast_rate_bar($count, $sent, $hex) {
+    $sent = max(1, (int) $sent);
+    $pct  = min(100, round(($count / $sent) * 100, 1));
+    return '<div class="lmeg-rate"><span class="lmeg-rate__bar"><span class="lmeg-rate__fill" style="width:' . $pct . '%;background:' . esc_attr($hex) . ';"></span></span>'
+         . '<span class="lmeg-rate__num">' . $pct . '%</span></div>';
+}
+
+/**
+ * Aggregate broadcast open/click events by the subscriber's city and geocode
+ * each through the permanent city-coords cache the fan map already fills.
+ * $broadcast_id = 0 → across all broadcasts. Returns [$points, $skipped].
+ * Per-event rows store no lat/lng, so location is derived from the fan's city.
+ */
+function lmeg_broadcast_event_geo($broadcast_id = 0, $limit = 200) {
+    global $wpdb;
+    if (!function_exists('lmeg_geo_city_coords')) return [[], 0];
+    $ev   = $wpdb->prefix . 'lmeg_broadcast_events';
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $where = "e.event_type IN ('open','click') AND s.city IS NOT NULL AND s.city <> ''";
+    $args  = [];
+    if ($broadcast_id > 0) { $where .= " AND e.broadcast_id = %d"; $args[] = (int) $broadcast_id; }
+    $args[] = (int) $limit;
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT s.city, s.region, s.country,
+                SUM(e.event_type = 'open')  AS opens,
+                SUM(e.event_type = 'click') AS clicks
+           FROM $ev e
+           JOIN $subs s ON s.id = e.subscriber_id
+          WHERE $where
+          GROUP BY s.city, s.region, s.country
+          ORDER BY (SUM(e.event_type = 'open') + SUM(e.event_type = 'click')) DESC
+          LIMIT %d",
+        $args
+    ));
+    $pts = []; $geo_budget = 25; $skipped = 0;
+    $geo_cache = get_option('lmeg_city_geo', []);
+    foreach ((array) $rows as $r) {
+        $ck     = md5(strtolower($r->city) . '|' . strtolower(trim((string) $r->region)) . '|' . strtoupper(trim((string) $r->country)));
+        $cached = isset($geo_cache[$ck]);
+        if (!$cached && $geo_budget <= 0) { $skipped++; continue; }
+        $c = lmeg_geo_city_coords($r->city, (string) $r->region, (string) $r->country);
+        if (!$cached) $geo_budget--;
+        if (!$c) { $skipped++; continue; }
+        $pts[] = [
+            'city'   => $r->city, 'region' => (string) $r->region,
+            'lat'    => $c['lat'], 'lng' => $c['lng'],
+            'opens'  => (int) $r->opens, 'clicks' => (int) $r->clicks,
+        ];
+    }
+    return [$pts, $skipped];
+}
+
+/**
+ * Render the opens/clicks map — same Leaflet + dark-CARTO + pink-marker recipe
+ * as the fan map, with pink = opens, purple = clicks, and an All/Opens/Clicks
+ * toggle. $pts from lmeg_broadcast_event_geo().
+ */
+function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map') {
+    if (empty($pts)) {
+        echo '<p class="description" style="max-width:960px;">The map fills in once opens or clicks have a city on file — locations are derived from your fans\' cities (the IP-city backfill fills these in automatically).</p>';
+        return;
+    }
+    ?>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <div class="lmeg-oc-bar">
+        <span class="lmeg-oc-legend"><span class="lmeg-oc-swatch" style="background:#D05FA2;"></span> Opens</span>
+        <span class="lmeg-oc-legend"><span class="lmeg-oc-swatch" style="background:#7C6CF6;"></span> Clicks</span>
+        <span class="lmeg-oc-toggle">
+            <button type="button" class="button button-small lmeg-oc-btn is-on" data-layer="all" data-map="<?php echo esc_attr($dom_id); ?>">All</button>
+            <button type="button" class="button button-small lmeg-oc-btn" data-layer="opens" data-map="<?php echo esc_attr($dom_id); ?>">Opens</button>
+            <button type="button" class="button button-small lmeg-oc-btn" data-layer="clicks" data-map="<?php echo esc_attr($dom_id); ?>">Clicks</button>
+        </span>
+    </div>
+    <div id="<?php echo esc_attr($dom_id); ?>" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
+    <p class="description" style="max-width:960px;">Dot size = events in that city. Pink = opens, purple = clicks. Click a dot for the breakdown.<?php echo $skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : ''; ?></p>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    (function () {
+        var pts = <?php echo wp_json_encode($pts); ?>, id = '<?php echo esc_js($dom_id); ?>';
+        if (!pts.length || typeof L === 'undefined') return;
+        function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+        var map = L.map(id, { scrollWheelZoom: false });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12
+        }).addTo(map);
+        var opensLayer = L.layerGroup(), clicksLayer = L.layerGroup(), all = [];
+        pts.forEach(function (p) {
+            var loc = '<strong>' + esc(p.city) + (p.region ? ', ' + esc(p.region) : '') + '</strong><br>';
+            if (p.opens > 0) {
+                var ro = Math.max(6, Math.min(28, 4 + Math.sqrt(p.opens) * 3));
+                var mo = L.circleMarker([p.lat, p.lng], { radius: ro, color: '#D05FA2', weight: 1.5, fillColor: '#D05FA2', fillOpacity: 0.32 });
+                mo.bindPopup(loc + p.opens + ' open' + (p.opens === 1 ? '' : 's') + (p.clicks ? ' · ' + p.clicks + ' click' + (p.clicks === 1 ? '' : 's') : ''));
+                mo.addTo(opensLayer); all.push(mo);
+            }
+            if (p.clicks > 0) {
+                var rc = Math.max(5, Math.min(24, 3 + Math.sqrt(p.clicks) * 3));
+                var mc = L.circleMarker([p.lat, p.lng], { radius: rc, color: '#7C6CF6', weight: 1.5, fillColor: '#7C6CF6', fillOpacity: 0.42 });
+                mc.bindPopup(loc + p.clicks + ' click' + (p.clicks === 1 ? '' : 's') + (p.opens ? ' · ' + p.opens + ' open' + (p.opens === 1 ? '' : 's') : ''));
+                mc.addTo(clicksLayer); all.push(mc);
+            }
+        });
+        opensLayer.addTo(map); clicksLayer.addTo(map);
+        if (all.length) map.fitBounds(L.featureGroup(all).getBounds().pad(0.25));
+        var btns = document.querySelectorAll('.lmeg-oc-btn[data-map="' + id + '"]');
+        btns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                btns.forEach(function (x) { x.classList.remove('is-on'); });
+                b.classList.add('is-on');
+                var v = b.getAttribute('data-layer');
+                if (v === 'opens')      { map.addLayer(opensLayer);  map.removeLayer(clicksLayer); }
+                else if (v === 'clicks'){ map.addLayer(clicksLayer); map.removeLayer(opensLayer);  }
+                else                    { map.addLayer(opensLayer);  map.addLayer(clicksLayer);    }
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
 function lmeg_admin_broadcasts() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -2119,21 +2277,41 @@ function lmeg_admin_broadcasts() {
                 <span class="description">same body, only to fans who never opened — wait ~48h after the original for best results</span>
             </form>
             <?php endif; ?>
-            <p>
-                <strong>Channel:</strong> <?php echo esc_html(strtoupper($b->channel)); ?> &nbsp;|&nbsp;
-                <strong>Status:</strong> <?php echo esc_html($b->status); ?> &nbsp;|&nbsp;
-                <strong>Sent:</strong> <?php echo (int) $b->sent; ?> / <?php echo (int) $b->total; ?>
-                &nbsp;|&nbsp; <strong>Failed:</strong> <?php echo (int) $b->failed; ?>
-                &nbsp;|&nbsp; <strong>Opens:</strong> <?php echo $opens; ?> (<?php echo $orate; ?>%)
-                &nbsp;|&nbsp; <strong>Clicks:</strong> <?php echo $clicks; ?> (<?php echo $crate; ?>%)
-                <?php
-                $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
-                if (isset($rev_map[(int) $b->id])) :
-                    $rv = $rev_map[(int) $b->id];
-                ?>
-                    &nbsp;|&nbsp; <strong>Revenue:</strong> <?php echo esc_html(lmeg_format_price($rv['cents'])); ?> (<?php echo (int) $rv['orders']; ?> order<?php echo $rv['orders'] === 1 ? '' : 's'; ?>)
+            <?php
+            $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
+            $rv    = $rev_map[(int) $b->id] ?? null;
+            $dpill = in_array($b->status, ['completed', 'queued', 'scheduled', 'sending', 'failed', 'draft'], true) ? $b->status : 'draft';
+            lmeg_broadcast_styles();
+            ?>
+            <div class="lmeg-bc-kpis" style="max-width:960px;">
+                <div class="lmeg-stat">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Channel · Status</div><?php echo lmeg_icon_badge($b->channel === 'sms' ? 'message' : 'at-sign', '#7C6CF6', 26); ?></div>
+                    <div class="lmeg-stat__value" style="font-size:20px;"><?php echo esc_html(strtoupper($b->channel)); ?></div>
+                    <div class="lmeg-stat__hint"><span class="lmeg-pill lmeg-pill--<?php echo esc_attr($dpill); ?>"><?php echo esc_html($b->status); ?></span></div>
+                </div>
+                <div class="lmeg-stat">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Delivered</div><?php echo lmeg_icon_badge('send', '#D05FA2', 26); ?></div>
+                    <div class="lmeg-stat__value"><?php echo number_format_i18n((int) $b->sent); ?></div>
+                    <div class="lmeg-stat__hint">of <?php echo number_format_i18n((int) $b->total); ?><?php echo $b->failed ? ' · <span style="color:#F87171;">' . (int) $b->failed . ' failed</span>' : ''; ?></div>
+                </div>
+                <div class="lmeg-stat">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Opens</div><?php echo lmeg_icon_badge('eye', '#7C6CF6', 26); ?></div>
+                    <div class="lmeg-stat__value"><?php echo $orate; ?>%</div>
+                    <div class="lmeg-stat__hint"><?php echo number_format_i18n($opens); ?> unique open<?php echo $opens === 1 ? '' : 's'; ?></div>
+                </div>
+                <div class="lmeg-stat">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Clicks</div><?php echo lmeg_icon_badge('trending-up', '#34D399', 26); ?></div>
+                    <div class="lmeg-stat__value"><?php echo $crate; ?>%</div>
+                    <div class="lmeg-stat__hint"><?php echo number_format_i18n($clicks); ?> unique click<?php echo $clicks === 1 ? '' : 's'; ?></div>
+                </div>
+                <?php if ($rv) : ?>
+                <div class="lmeg-stat">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Revenue</div><?php echo lmeg_icon_badge('dollar', '#34D399', 26); ?></div>
+                    <div class="lmeg-stat__value"><?php echo esc_html(lmeg_format_price($rv['cents'])); ?></div>
+                    <div class="lmeg-stat__hint"><?php echo (int) $rv['orders']; ?> order<?php echo $rv['orders'] === 1 ? '' : 's'; ?></div>
+                </div>
                 <?php endif; ?>
-            </p>
+            </div>
             <?php if ($b->subject) : ?><p><strong>Subject:</strong> <?php echo esc_html($b->subject); ?></p><?php endif; ?>
             <?php if (!empty($b->body)) : ?>
                 <h2>Email body</h2>
@@ -2143,7 +2321,15 @@ function lmeg_admin_broadcasts() {
                 <h2>SMS body</h2>
                 <pre style="background:#12141F;color:#E7E9F0;border:1px solid rgba(255,255,255,.08);padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
             <?php endif; ?>
-            <h2>Recipient log (latest 1000)</h2>
+            <?php
+            list($bmap_pts, $bmap_skipped) = lmeg_broadcast_event_geo((int) $b->id, 200);
+            if ($bmap_pts) :
+            ?>
+            <h2 style="margin-top:26px;">Where this broadcast was opened &amp; clicked</h2>
+            <?php lmeg_render_opens_clicks_map($bmap_pts, $bmap_skipped, 'lmeg-oc-map-' . (int) $b->id); ?>
+            <?php endif; ?>
+
+            <h2 style="margin-top:26px;">Recipient log (latest 1000)</h2>
             <table class="widefat striped">
                 <thead><tr><th>Channel</th><th>Recipient</th><th>Status</th><th>Sent at</th><th>Opened</th><th>Clicked</th><th>Error</th></tr></thead>
                 <tbody>
@@ -2168,33 +2354,99 @@ function lmeg_admin_broadcasts() {
     $rows    = $wpdb->get_results("SELECT * FROM $bcast_tbl ORDER BY id DESC LIMIT 100");
     $now     = current_time('mysql');
     $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
+
+    // ---- Top-level KPIs (last 30 days) ----
+    $ev_t   = $wpdb->prefix . 'lmeg_broadcast_events';
+    $since  = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
+    $sent30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log_tbl WHERE status = 'sent' AND sent_at >= %s", $since));
+    $bc30    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $bcast_tbl WHERE status = 'completed' AND completed_at >= %s", $since));
+    $opens30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'open'   AND created_at >= %s", $since));
+    $clk30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'click'  AND created_at >= %s", $since));
+    $bnc30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'bounce' AND created_at >= %s", $since));
+    $spam30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'spam'   AND created_at >= %s", $since));
+    $orate30 = $sent30 ? round($opens30 / $sent30 * 100, 1) : 0;
+    $crate30 = $sent30 ? round($clk30   / $sent30 * 100, 1) : 0;
+    $brate30 = $sent30 ? round($bnc30   / $sent30 * 100, 1) : 0;
+
+    // daily opens for the 30-day sparkline
+    $daily = array_fill(0, 30, 0);
+    $drows = $wpdb->get_results($wpdb->prepare("SELECT DATE(created_at) d, COUNT(*) n FROM $ev_t WHERE event_type = 'open' AND created_at >= %s GROUP BY DATE(created_at)", $since));
+    $today_ts = current_time('timestamp');
+    foreach ((array) $drows as $dr) {
+        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+        if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
+    }
+
+    // 30-day campaign revenue = orders attributed to broadcasts completed in the window
+    $rev30 = ['cents' => 0, 'orders' => 0];
+    foreach ((array) $rows as $b) {
+        if ($b->status === 'completed' && $b->completed_at && $b->completed_at >= $since && isset($rev_map[(int) $b->id])) {
+            $rev30['cents']  += (int) $rev_map[(int) $b->id]['cents'];
+            $rev30['orders'] += (int) $rev_map[(int) $b->id]['orders'];
+        }
+    }
+    $revfmt = function_exists('lmeg_format_price') ? lmeg_format_price($rev30['cents']) : ('$' . number_format($rev30['cents'] / 100, 2));
+
+    // per-broadcast opens/clicks for the table (one grouped query)
+    $ids   = array_map(function ($b) { return (int) $b->id; }, (array) $rows);
+    $ocmap = [];
+    if ($ids) {
+        $in  = implode(',', array_map('intval', $ids));
+        $ocr = $wpdb->get_results("SELECT broadcast_id,
+                COUNT(DISTINCT CASE WHEN event_type = 'open'  THEN subscriber_id END) opens,
+                COUNT(DISTINCT CASE WHEN event_type = 'click' THEN subscriber_id END) clicks
+              FROM $ev_t WHERE broadcast_id IN ($in) GROUP BY broadcast_id");
+        foreach ((array) $ocr as $o) { $ocmap[(int) $o->broadcast_id] = ['opens' => (int) $o->opens, 'clicks' => (int) $o->clicks]; }
+    }
+
+    // opens/clicks map points (all broadcasts)
+    list($map_pts, $map_skipped) = lmeg_broadcast_event_geo(0, 200);
+
+    lmeg_broadcast_styles();
     ?>
     <div class="wrap">
         <h1>Fanloop — Broadcast History</h1>
-        <?php
-        // List health — 30d deliverability at a glance.
-        $ev_t   = $wpdb->prefix . 'lmeg_broadcast_events';
-        $subs_t = $wpdb->prefix . LMEG_TABLE;
-        $since  = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
-        $sent30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log_tbl WHERE status = 'sent' AND channel = 'email' AND sent_at >= %s", $since));
-        $bnc30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'bounce' AND created_at >= %s", $since));
-        $spam30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'spam' AND created_at >= %s", $since));
-        $suppr  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs_t WHERE email_status <> 'ok'");
-        $pendc  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs_t WHERE confirmed_at IS NULL AND email IS NOT NULL AND email <> '' AND unsubscribed_at IS NULL");
-        $brate  = $sent30 ? round($bnc30 / $sent30 * 100, 1) : 0;
-        ?>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 20px;max-width:860px;">
-            <div class="lmeg-stat"><div class="lmeg-stat__label">Emails sent · 30d</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo number_format_i18n($sent30); ?></div></div>
-            <div class="lmeg-stat"><div class="lmeg-stat__label">Bounces · 30d</div><div class="lmeg-stat__value" style="font-size:18px;<?php echo $brate > 2 ? 'color:#f87171;' : ''; ?>"><?php echo $bnc30; ?> <span style="font-size:12px;opacity:.6;">(<?php echo $brate; ?>%)</span></div><div class="lmeg-stat__hint"><?php echo $brate > 2 ? 'high — clean the list' : 'healthy is under 2%'; ?></div></div>
-            <div class="lmeg-stat"><div class="lmeg-stat__label">Spam complaints · 30d</div><div class="lmeg-stat__value" style="font-size:18px;<?php echo $spam30 ? 'color:#f87171;' : ''; ?>"><?php echo $spam30; ?></div><div class="lmeg-stat__hint">auto-suppressed + unsubscribed</div></div>
-            <div class="lmeg-stat"><div class="lmeg-stat__label">Suppressed</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo $suppr; ?></div><div class="lmeg-stat__hint">dead addresses skipped on sends</div></div>
-            <?php if ($pendc) : ?><div class="lmeg-stat"><div class="lmeg-stat__label">Awaiting confirm</div><div class="lmeg-stat__value" style="font-size:18px;"><?php echo $pendc; ?></div><div class="lmeg-stat__hint">double opt-in pending</div></div><?php endif; ?>
+        <p class="description" style="margin:-4px 0 2px;">Opens, clicks, revenue and where your fans are engaging — across the last 30 days.</p>
+
+        <div class="lmeg-bc-kpis">
+            <div class="lmeg-stat">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Broadcasts · 30d</div><?php echo lmeg_icon_badge('send', '#D05FA2', 26); ?></div>
+                <div class="lmeg-stat__value"><?php echo number_format_i18n($bc30); ?></div>
+                <div class="lmeg-stat__hint"><?php echo number_format_i18n($sent30); ?> messages delivered</div>
+            </div>
+            <div class="lmeg-stat">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Open rate · 30d</div><?php echo lmeg_icon_badge('eye', '#7C6CF6', 26); ?></div>
+                <div class="lmeg-stat__value"><?php echo $orate30; ?>%</div>
+                <div class="lmeg-stat__hint"><?php echo number_format_i18n($opens30); ?> unique opens</div>
+                <?php echo lmeg_chart_line($daily, ['color' => '#D05FA2', 'uid' => 'bc-opens', 'h' => 46, 'suffix' => 'opens']); ?>
+            </div>
+            <div class="lmeg-stat">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Click rate · 30d</div><?php echo lmeg_icon_badge('trending-up', '#34D399', 26); ?></div>
+                <div class="lmeg-stat__value"><?php echo $crate30; ?>%</div>
+                <div class="lmeg-stat__hint"><?php echo number_format_i18n($clk30); ?> unique clicks</div>
+            </div>
+            <div class="lmeg-stat">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Campaign revenue · 30d</div><?php echo lmeg_icon_badge('dollar', '#34D399', 26); ?></div>
+                <div class="lmeg-stat__value"><?php echo esc_html($revfmt); ?></div>
+                <div class="lmeg-stat__hint"><?php echo (int) $rev30['orders']; ?> order<?php echo $rev30['orders'] === 1 ? '' : 's'; ?> from broadcasts</div>
+            </div>
+            <div class="lmeg-stat">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">Deliverability · 30d</div><?php echo lmeg_icon_badge('heart', $brate30 > 2 ? '#F87171' : '#34D399', 26); ?></div>
+                <div class="lmeg-stat__value" style="<?php echo $brate30 > 2 ? 'color:#F87171;' : ''; ?>"><?php echo $brate30; ?>%</div>
+                <div class="lmeg-stat__hint"><?php echo $bnc30; ?> bounce<?php echo $bnc30 === 1 ? '' : 's'; ?><?php echo $spam30 ? ' · ' . $spam30 . ' spam' : ''; ?> <?php echo $brate30 > 2 ? '— clean the list' : '(under 2% is healthy)'; ?></div>
+            </div>
         </div>
-        <?php if (!$bnc30 && !$spam30 && !$suppr) : ?>
-            <p class="description" style="margin:-8px 0 16px;">No bounce/spam data yet — paste the Deliverability webhook URL (Settings &rarr; Brevo) into Brevo so dead addresses start reporting in.</p>
+
+        <h2 style="margin:6px 0 2px;">Where fans open &amp; click</h2>
+        <?php lmeg_render_opens_clicks_map($map_pts, $map_skipped, 'lmeg-oc-map'); ?>
+
+        <?php if (!$bnc30 && !$spam30) : ?>
+            <p class="description" style="margin:10px 0 0;">No bounce/spam data yet — paste the Deliverability webhook URL (Settings &rarr; Brevo) into Brevo so dead addresses start reporting in.</p>
         <?php endif; ?>
-        <table class="widefat striped">
-            <thead><tr><th>#</th><th>Channel</th><th>Subject / Body</th><th>Status</th><th>Sent / Total</th><th>Failed</th><th>Revenue</th><th>Created</th><th>Send time</th><th></th></tr></thead>
+
+        <h2 style="margin:28px 0 6px;">All broadcasts</h2>
+        <table class="widefat striped lmeg-bc-tbl">
+            <thead><tr><th>#</th><th>Channel</th><th>Subject / Body</th><th>Status</th><th>Sent</th><th>Opens</th><th>Clicks</th><th>Revenue</th><th>Sent time</th><th></th></tr></thead>
             <tbody>
             <?php if (empty($rows)) : ?>
                 <tr><td colspan="10">No broadcasts yet.</td></tr>
@@ -2212,24 +2464,27 @@ function lmeg_admin_broadcasts() {
                 } else {
                     $send_time = '—';
                 }
+                $oc       = $ocmap[(int) $b->id] ?? ['opens' => 0, 'clicks' => 0];
+                $is_email = ($b->channel !== 'sms');
+                $pill     = in_array($display_status, ['completed', 'queued', 'scheduled', 'sending', 'failed', 'draft'], true) ? $display_status : 'draft';
             ?>
                 <tr>
                     <td><?php echo (int) $b->id; ?></td>
-                    <td><?php echo esc_html(strtoupper($b->channel)); ?></td>
-                    <td><?php echo esc_html($preview); ?></td>
-                    <td><?php echo esc_html($display_status); ?></td>
-                    <td><?php echo (int) $b->sent; ?> / <?php echo (int) $b->total; ?></td>
-                    <td><?php echo (int) $b->failed; ?></td>
-                    <td><?php
+                    <td><span class="lmeg-bc-chan"><?php echo lmeg_icon($is_email ? 'at-sign' : 'message', ['size' => 15]); ?><?php echo $is_email ? 'Email' : 'SMS'; ?></span></td>
+                    <td><span class="lmeg-bc-subj"><?php echo esc_html($preview); ?></span></td>
+                    <td><span class="lmeg-pill lmeg-pill--<?php echo esc_attr($pill); ?>"><?php echo esc_html($display_status); ?></span></td>
+                    <td><?php echo (int) $b->sent; ?><?php echo $b->failed ? ' <span style="color:#F87171;font-size:12px;">· ' . (int) $b->failed . ' failed</span>' : ''; ?></td>
+                    <td><?php echo $is_email ? lmeg_broadcast_rate_bar($oc['opens'], $b->sent, '#D05FA2') : '<span class="description">—</span>'; ?></td>
+                    <td><?php echo lmeg_broadcast_rate_bar($oc['clicks'], $b->sent, '#7C6CF6'); ?></td>
+                    <td class="lmeg-bc-rev"><?php
                         if (isset($rev_map[(int) $b->id])) {
                             echo '<strong>' . esc_html(lmeg_format_price($rev_map[(int) $b->id]['cents'])) . '</strong> · ' . (int) $rev_map[(int) $b->id]['orders'];
                         } else {
-                            echo '—';
+                            echo '<span class="description">—</span>';
                         }
                     ?></td>
-                    <td><?php echo esc_html($b->created_at); ?></td>
                     <td><?php echo esc_html($send_time); ?></td>
-                    <td><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . $b->id)); ?>">View</a></td>
+                    <td><a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts&view=' . $b->id)); ?>">View</a></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
