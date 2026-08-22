@@ -2170,9 +2170,9 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
         var pts = <?php echo wp_json_encode($pts); ?>, id = '<?php echo esc_js($dom_id); ?>';
         if (!pts.length || typeof L === 'undefined') return;
         function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
-        var map = L.map(id, { scrollWheelZoom: false });
+        var map = L.map(id, { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12, minZoom: 3
         }).addTo(map);
         var opensLayer = L.layerGroup(), clicksLayer = L.layerGroup(), all = [];
         pts.forEach(function (p) {
@@ -2191,7 +2191,13 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
             }
         });
         opensLayer.addTo(map); clicksLayer.addTo(map);
-        if (all.length) map.fitBounds(L.featureGroup(all).getBounds().pad(0.25));
+        // Frame the dots with a little padding, zoomed in enough to avoid the grey
+        // "whole world" view; minZoom (3) clamps far-flung outliers from zooming out too far.
+        function fit(){ if (all.length) map.fitBounds(L.featureGroup(all).getBounds(), { padding: [30, 30], maxZoom: 9 }); }
+        fit();
+        // The container can be 0-height until the admin layout settles, which leaves
+        // grey tile panels — recalc size and re-frame once after first paint.
+        setTimeout(function () { map.invalidateSize(); fit(); }, 250);
         var btns = document.querySelectorAll('.lmeg-oc-btn[data-map="' + id + '"]');
         btns.forEach(function (b) {
             b.addEventListener('click', function () {
@@ -2313,20 +2319,20 @@ function lmeg_admin_broadcasts() {
                 <?php endif; ?>
             </div>
             <?php if ($b->subject) : ?><p><strong>Subject:</strong> <?php echo esc_html($b->subject); ?></p><?php endif; ?>
+            <?php
+            list($bmap_pts, $bmap_skipped) = lmeg_broadcast_event_geo((int) $b->id, 200);
+            if ($bmap_pts) :
+            ?>
+            <h2 style="margin-top:20px;">Where this broadcast was opened &amp; clicked</h2>
+            <?php lmeg_render_opens_clicks_map($bmap_pts, $bmap_skipped, 'lmeg-oc-map-' . (int) $b->id); ?>
+            <?php endif; ?>
             <?php if (!empty($b->body)) : ?>
-                <h2>Email body</h2>
+                <h2 style="margin-top:26px;">Email body</h2>
                 <pre style="background:#12141F;color:#E7E9F0;border:1px solid rgba(255,255,255,.08);padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body); ?></pre>
             <?php endif; ?>
             <?php if (!empty($b->body_sms)) : ?>
                 <h2>SMS body</h2>
                 <pre style="background:#12141F;color:#E7E9F0;border:1px solid rgba(255,255,255,.08);padding:1em;white-space:pre-wrap;border-radius:6px;"><?php echo esc_html($b->body_sms); ?></pre>
-            <?php endif; ?>
-            <?php
-            list($bmap_pts, $bmap_skipped) = lmeg_broadcast_event_geo((int) $b->id, 200);
-            if ($bmap_pts) :
-            ?>
-            <h2 style="margin-top:26px;">Where this broadcast was opened &amp; clicked</h2>
-            <?php lmeg_render_opens_clicks_map($bmap_pts, $bmap_skipped, 'lmeg-oc-map-' . (int) $b->id); ?>
             <?php endif; ?>
 
             <h2 style="margin-top:26px;">Recipient log (latest 1000)</h2>
@@ -4930,9 +4936,9 @@ function lmeg_admin_audience() {
             var pts = <?php echo wp_json_encode($map_pts); ?>;
             if (!pts.length || typeof L === 'undefined') return;
             function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
-            var map = L.map('lmeg-fanmap', { scrollWheelZoom: false });
+            var map = L.map('lmeg-fanmap', { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12, minZoom: 3
             }).addTo(map);
             var group = [];
             pts.forEach(function (p) {
@@ -4945,7 +4951,10 @@ function lmeg_admin_audience() {
                     '<br><a href="' + encodeURI(p.url) + '">View these fans →</a>');
                 group.push(m);
             });
-            map.fitBounds(L.featureGroup(group).getBounds().pad(0.25));
+            function fit(){ map.fitBounds(L.featureGroup(group).getBounds(), { padding: [30, 30], maxZoom: 9 }); }
+            fit();
+            // Recalc size + re-frame after first paint so no grey tile panels remain.
+            setTimeout(function () { map.invalidateSize(); fit(); }, 250);
         })();
         </script>
         <?php else : ?>
