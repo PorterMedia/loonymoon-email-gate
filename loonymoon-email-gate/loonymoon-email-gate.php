@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.66.3
+ * Version:     2.66.4
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.66.3');
+define('LMEG_VERSION',     '2.66.4');
 define('LMEG_DB_VERSION',  '2.65.3');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -808,13 +808,22 @@ function lmeg_get_settings() {
 }
 
 /**
- * Whether this WordPress DB connection can store 4-byte UTF-8 (emoji).
- * True on modern utf8mb4 installs; false on legacy utf8/utf8mb3 databases.
+ * Whether this WordPress DB can actually STORE 4-byte UTF-8 (emoji).
+ *
+ * Checks the real charset of the options table's value column — NOT
+ * $wpdb->charset, which WordPress upgrades to "utf8mb4" for the connection
+ * whenever the server supports it, even when the underlying column is still
+ * utf8mb3 (a legacy DB with DB_CHARSET='utf8'). Result is cached per request.
  */
 function lmeg_db_supports_utf8mb4() {
+    static $cap = null;
+    if ($cap !== null) return $cap;
     global $wpdb;
-    $cs = isset($wpdb->charset) ? (string) $wpdb->charset : '';
-    return stripos($cs, 'utf8mb4') !== false;
+    $col = $wpdb->get_row("SHOW FULL COLUMNS FROM {$wpdb->options} WHERE Field = 'option_value'");
+    // Default to true (assume emoji-capable) if we can't determine it, so healthy
+    // utf8mb4 sites never strip; only strip when the column is provably not mb4.
+    $cap = ($col && !empty($col->Collation)) ? (stripos((string) $col->Collation, 'utf8mb4') !== false) : true;
+    return $cap;
 }
 
 /**
