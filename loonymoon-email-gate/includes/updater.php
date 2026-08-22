@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 
 add_filter('pre_set_site_transient_update_plugins', 'lmeg_updater_check', 20);
 add_filter('plugins_api',                            'lmeg_updater_info',  20, 3);
-add_filter('upgrader_source_selection',              'lmeg_updater_rename_folder', 10, 3);
+add_filter('upgrader_source_selection',              'lmeg_updater_rename_folder', 10, 4);
 
 const LMEG_UPDATER_CACHE_KEY = 'lmeg_github_release';
 
@@ -205,15 +205,35 @@ function lmeg_updater_info($result, $action, $args) {
  * WordPress extracts the update zip into a folder named after the zip.
  * GitHub source zips extract as "owner-repo-abcd1234/" — WP needs the
  * folder to be named exactly "loonymoon-email-gate/" or it can't swap
- * the plugin in place. Rename post-extraction if needed. Only touches
- * upgrades of THIS plugin.
+ * the plugin in place. Rename post-extraction if needed.
+ *
+ * CRITICAL: this must ONLY ever touch Fanloop's own update. `upgrader_source_selection`
+ * fires for EVERY plugin/theme update on the site, so we identify the target from
+ * the authoritative `$hook_extra['plugin']` (the 4th arg WP passes) and bail for
+ * anything else — including any context where we can't positively confirm it's us.
+ *
+ * (Earlier versions keyed off `$upgrader->skin->plugin`, which the classic updater
+ * sets but the AJAX "update now" skin does NOT. That made this filter mis-fire on
+ * AJAX updates of OTHER plugins — it moved their unpacked folder into a
+ * "loonymoon-email-gate/" folder, nesting the real plugin a level too deep, so WP
+ * reported "incompatible_archive_no_plugins / The package could not be installed."
+ * Classic updates worked; every AJAX plugin update on a Fanloop site broke.)
  */
-function lmeg_updater_rename_folder($source, $remote_source, $upgrader) {
-    if (!isset($upgrader->skin->plugin_info['Name'])) return $source;
-    // Only intervene when the upgrader is upgrading THIS plugin.
+function lmeg_updater_rename_folder($source, $remote_source, $upgrader, $hook_extra = null) {
     $plugin_file = plugin_basename(LMEG_PLUGIN_FILE);
-    $upgrading   = isset($upgrader->skin->plugin) ? $upgrader->skin->plugin : '';
-    if ($upgrading && $upgrading !== $plugin_file) return $source;
+
+    // Which plugin is being upgraded? Prefer WP's authoritative hook_extra;
+    // fall back to the classic skin's ->plugin only as a secondary signal.
+    $target = '';
+    if (is_array($hook_extra) && !empty($hook_extra['plugin'])) {
+        $target = (string) $hook_extra['plugin'];
+    } elseif (isset($upgrader->skin->plugin) && $upgrader->skin->plugin) {
+        $target = (string) $upgrader->skin->plugin;
+    }
+
+    // Only act when we can POSITIVELY confirm this is Fanloop's own update.
+    // Never rename another plugin's folder, and never guess.
+    if ($target !== $plugin_file) return $source;
 
     $desired = trailingslashit($remote_source) . dirname($plugin_file);
     if ($source === $desired) return $source;
