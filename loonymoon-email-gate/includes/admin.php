@@ -2193,7 +2193,14 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
         opensLayer.addTo(map); clicksLayer.addTo(map);
         // Frame the dots with a little padding, zoomed in enough to avoid the grey
         // "whole world" view; minZoom (3) clamps far-flung outliers from zooming out too far.
-        function fit(){ if (all.length) map.fitBounds(L.featureGroup(all).getBounds(), { padding: [30, 30], maxZoom: 9 }); }
+        // Center on North America when there are NA dots (most fanbases are NA-heavy),
+        // so the continent sits centered rather than the mid-Atlantic; far-flung dots
+        // stay reachable by panning. Falls back to framing everything if there are no NA dots.
+        function fit(){
+            if (!all.length) return;
+            var na = all.filter(function (m) { var ll = m.getLatLng(); return ll.lng >= -170 && ll.lng <= -52 && ll.lat >= 7 && ll.lat <= 75; });
+            map.fitBounds(L.featureGroup(na.length ? na : all).getBounds(), { padding: [30, 30], maxZoom: 9 });
+        }
         fit();
         // The container can be 0-height until the admin layout settles, which leaves
         // grey tile panels — recalc size and re-frame once after first paint.
@@ -4951,7 +4958,13 @@ function lmeg_admin_audience() {
                     '<br><a href="' + encodeURI(p.url) + '">View these fans →</a>');
                 group.push(m);
             });
-            function fit(){ map.fitBounds(L.featureGroup(group).getBounds(), { padding: [30, 30], maxZoom: 9 }); }
+            // Center on North America when there are NA fans, so the continent sits
+            // centered rather than the mid-Atlantic; other cities stay reachable by panning.
+            function fit(){
+                if (!group.length) return;
+                var na = group.filter(function (m) { var ll = m.getLatLng(); return ll.lng >= -170 && ll.lng <= -52 && ll.lat >= 7 && ll.lat <= 75; });
+                map.fitBounds(L.featureGroup(na.length ? na : group).getBounds(), { padding: [30, 30], maxZoom: 9 });
+            }
             fit();
             // Recalc size + re-frame after first paint so no grey tile panels remain.
             setTimeout(function () { map.invalidateSize(); fit(); }, 250);
