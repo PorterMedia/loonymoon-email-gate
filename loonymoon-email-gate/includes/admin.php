@@ -2372,8 +2372,18 @@ function lmeg_admin_settings() {
                 }
             }
         }
+        // Strip 4-byte characters (emoji) on legacy utf8mb3 databases that can't
+        // store them — otherwise the entire option write is silently rejected.
+        $new = function_exists('lmeg_db_safe_deep') ? lmeg_db_safe_deep($new) : $new;
+        global $wpdb;
+        if (isset($wpdb)) { $wpdb->last_error = ''; }
         update_option(LMEG_OPTION, $new);
-        echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
+        if (isset($wpdb) && !empty($wpdb->last_error)) {
+            echo '<div class="notice notice-error"><p><strong>Settings could not be saved.</strong> The database rejected the data: '
+                . esc_html($wpdb->last_error) . '</p></div>';
+        } else {
+            echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
+        }
 
         // Verify-connection buttons piggyback on the same form so the user
         // doesn't have to save settings before testing.

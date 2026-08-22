@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.66.2
+ * Version:     2.66.3
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.66.2');
+define('LMEG_VERSION',     '2.66.3');
 define('LMEG_DB_VERSION',  '2.65.3');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -805,6 +805,40 @@ function lmeg_get_settings() {
         if ($v !== null) $opts[$key] = $v;
     }
     return $opts;
+}
+
+/**
+ * Whether this WordPress DB connection can store 4-byte UTF-8 (emoji).
+ * True on modern utf8mb4 installs; false on legacy utf8/utf8mb3 databases.
+ */
+function lmeg_db_supports_utf8mb4() {
+    global $wpdb;
+    $cs = isset($wpdb->charset) ? (string) $wpdb->charset : '';
+    return stripos($cs, 'utf8mb4') !== false;
+}
+
+/**
+ * Make a value safe to persist on databases that can't hold 4-byte UTF-8.
+ *
+ * On a utf8/utf8mb3 database, WordPress silently refuses to write any string
+ * containing a 4-byte character ("Could not perform query because it contains
+ * invalid data") — so a single emoji anywhere in a saved option/array makes the
+ * WHOLE write fail, with no visible error. That's what broke settings saves on
+ * hosts still using utf8mb3. This strips astral-plane characters (emoji, etc.)
+ * ONLY when the DB can't store them; on utf8mb4 installs the value is returned
+ * unchanged so emoji are preserved. Recurses into arrays.
+ */
+function lmeg_db_safe_deep($value) {
+    if (lmeg_db_supports_utf8mb4()) return $value;
+    if (is_array($value)) {
+        foreach ($value as $k => $v) { $value[$k] = lmeg_db_safe_deep($v); }
+        return $value;
+    }
+    if (is_string($value) && $value !== '') {
+        $stripped = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $value);
+        return ($stripped === null) ? $value : $stripped; // null = invalid UTF-8; keep original
+    }
+    return $value;
 }
 
 /* ---------------------------------------------------------------------------
