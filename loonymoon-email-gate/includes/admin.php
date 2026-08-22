@@ -2230,6 +2230,29 @@ function lmeg_admin_settings() {
             </div>
         <?php endif; ?>
 
+        <?php
+        // Instagram account chooser — MUST render OUTSIDE the settings <form> below.
+        // Nested <form> tags are dropped by the browser, which silently re-parents the
+        // chooser's controls onto the settings form (posting to admin.php, not admin-post.php),
+        // so "Connect this account" would do nothing. Rendering it here fixes that.
+        $ig_choices = (!empty($_GET['ig_choose']) && current_user_can('manage_options'))
+            ? get_transient('lmeg_ig_oauth_choices_' . get_current_user_id()) : null;
+        if (is_array($ig_choices) && $ig_choices) : ?>
+            <div class="notice notice-info" style="max-width:760px;"><p><strong>You manage several Instagram accounts.</strong> Pick the one to connect to <em>this</em> site (<?php echo esc_html(wp_parse_url(home_url(), PHP_URL_HOST)); ?>).</p></div>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#161826;border:1px solid #2A2E42;border-radius:12px;padding:16px;max-width:760px;margin-bottom:14px;">
+                <?php wp_nonce_field('lmeg_ig_choose'); ?>
+                <input type="hidden" name="action" value="lmeg_ig_oauth_choose" />
+                <?php foreach ($ig_choices as $ci => $cand) : ?>
+                    <label style="display:block;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;">
+                        <input type="radio" name="ig_choice" value="<?php echo (int) $ci; ?>" <?php checked($ci, 0); ?> />
+                        <strong style="color:#F4F5F7;">@<?php echo esc_html($cand['ig_user'] ?: $cand['ig_id']); ?></strong>
+                        <span style="color:#8B90A0;font-size:12px;"> — Facebook Page: <?php echo esc_html($cand['page_name'] ?: '—'); ?></span>
+                    </label>
+                <?php endforeach; ?>
+                <p style="margin-top:12px;"><button type="submit" class="button button-primary">Connect this account</button></p>
+            </form>
+        <?php endif; ?>
+
         <form method="post">
             <?php wp_nonce_field('lmeg_settings', 'lmeg_settings_nonce'); ?>
 
@@ -2546,24 +2569,7 @@ function lmeg_admin_settings() {
                 ];
                 echo '<div class="notice notice-error"><p>' . esc_html($map[$err] ?? 'Instagram connection failed.') . '</p></div>';
             }
-            $ig_choices = (!empty($_GET['ig_choose']) && current_user_can('manage_options'))
-                ? get_transient('lmeg_ig_oauth_choices_' . get_current_user_id()) : null;
             ?>
-            <?php if (is_array($ig_choices) && $ig_choices) : ?>
-            <div class="notice notice-info" style="max-width:760px;"><p><strong>You manage several Instagram accounts.</strong> Pick the one to connect to <em>this</em> site (<?php echo esc_html(wp_parse_url(home_url(), PHP_URL_HOST)); ?>).</p></div>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
-                <?php wp_nonce_field('lmeg_ig_choose'); ?>
-                <input type="hidden" name="action" value="lmeg_ig_oauth_choose" />
-                <?php foreach ($ig_choices as $ci => $cand) : ?>
-                    <label style="display:block;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;">
-                        <input type="radio" name="ig_choice" value="<?php echo (int) $ci; ?>" <?php checked($ci, 0); ?> />
-                        <strong style="color:#F4F5F7;">@<?php echo esc_html($cand['ig_user'] ?: $cand['ig_id']); ?></strong>
-                        <span style="color:#8B90A0;font-size:12px;"> — Facebook Page: <?php echo esc_html($cand['page_name'] ?: '—'); ?></span>
-                    </label>
-                <?php endforeach; ?>
-                <p style="margin-top:12px;"><button type="submit" class="button button-primary">Connect this account</button></p>
-            </form>
-            <?php endif; ?>
             <div style="background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px;max-width:760px;margin-bottom:14px;">
                 <p style="margin:0 0 10px;font-size:14px;">
                     <?php if ($ig_ok) : $ig_handle = get_option('lmeg_ig_username', ''); ?>
