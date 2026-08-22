@@ -253,7 +253,7 @@ function lmeg_admin_app_bar() {
         'lmeg-broadcasts' => 'Broadcasts',
         'lmeg-shop'       => 'Revenue',
         'lmeg-members'    => 'Members',
-        'lmeg-spotify'    => 'Spotify',
+        'lmeg-social'     => 'Social Listening',
         'lmeg-ai'         => 'Ask AI',
         'lmeg-settings'   => 'Settings',
     ];
@@ -264,8 +264,11 @@ function lmeg_admin_app_bar() {
             <?php echo esc_html(lmeg_product()); ?>
         </a>
         <nav class="lmeg-appbar__nav" aria-label="Fanloop sections">
-            <?php foreach ($items as $slug => $label) : ?>
-                <a class="lmeg-appbar__link<?php echo $current === $slug ? ' is-active' : ''; ?>"
+            <?php foreach ($items as $slug => $label) :
+                // Spotify now lives under Social Listening — keep that pill active on the Spotify sub-page.
+                $active = ($current === $slug) || ($slug === 'lmeg-social' && $current === 'lmeg-spotify');
+            ?>
+                <a class="lmeg-appbar__link<?php echo $active ? ' is-active' : ''; ?>"
                    href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>"><?php echo esc_html($label); ?></a>
             <?php endforeach; ?>
         </nav>
@@ -719,8 +722,202 @@ function lmeg_admin_tags() {
  * Subscribers
  * ------------------------------------------------------------------------- */
 
+/**
+ * Demo-data banner shown atop any ?demo=1 preview page, with a link back to live.
+ */
+function lmeg_demo_banner($page) {
+    return '<div class="notice notice-warning" style="max-width:900px;"><p><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;">'
+        . lmeg_icon('eye', ['size' => 15, 'sw' => 2]) . '<strong>Demo data</strong></span> — a preview with sample numbers so you can see the layout before your fans roll in. <a href="'
+        . esc_url(admin_url('admin.php?page=' . $page)) . '">Switch to live data →</a></p></div>';
+}
+
+/**
+ * A "Preview with demo data" button for the live Fans/Audience pages.
+ */
+function lmeg_demo_preview_button($page) {
+    return '<p><a class="button" href="' . esc_url(admin_url('admin.php?page=' . $page . '&demo=1')) . '">'
+        . '<span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;">'
+        . lmeg_icon('eye', ['size' => 15, 'sw' => 2]) . 'Preview with demo data</span></a></p>';
+}
+
+/** Build a lightweight tag object for demo chips. */
+function lmeg_demo_tag($slug, $name, $color, $auto = true) {
+    return (object) ['slug' => $slug, 'name' => $name, 'color' => $color, 'is_auto' => $auto ? 1 : 0];
+}
+
+/**
+ * Fans (Subscribers) page — sample preview. Read-only, no DB/bulk machinery.
+ */
+function lmeg_render_demo_fans() {
+    $sf = fn($s, $n) => lmeg_demo_tag('fan-type:' . $s, 'Fan type: ' . $n, [
+        'superfan' => '#F59E0B', 'engaged' => '#34D399', 'casual' => '#7C6CF6', 'dormant' => '#8B90A0',
+    ][$s]);
+    $city = fn($slug, $name) => lmeg_demo_tag('city:' . $slug, 'City: ' . $name, '#7C6CF6');
+    $src  = fn($slug) => lmeg_demo_tag($slug, $slug, '#D05FA2', false);
+
+    $fans = [
+        ['c' => 'maya.okafor@gmail.com',   't' => 'email', 'active' => true,  'tags' => [$sf('superfan','Superfan'), $city('toronto','Toronto'), $src('instagram')], 'post' => 'The vinyl is here', 'when' => 'Aug 20, 2026'],
+        ['c' => '+14165550142',            't' => 'phone', 'active' => true,  'tags' => [$sf('engaged','Engaged'), $city('toronto','Toronto')],                       'post' => '—',                'when' => 'Aug 20, 2026'],
+        ['c' => 'liam.tremblay@outlook.com','t'=> 'email', 'active' => true,  'tags' => [$sf('engaged','Engaged'), $city('montreal','Montreal'), $src('drop:soft-thing')], 'post' => 'SOFT THING is out', 'when' => 'Aug 19, 2026'],
+        ['c' => 'aria.singh@gmail.com',    't' => 'email', 'active' => true,  'tags' => [$sf('superfan','Superfan'), $city('vancouver','Vancouver'), $src('bio')],   'post' => '—',                'when' => 'Aug 19, 2026'],
+        ['c' => '+447700900461',           't' => 'phone', 'active' => true,  'tags' => [$sf('casual','Casual'), $city('london','London')],                          'post' => '—',                'when' => 'Aug 18, 2026'],
+        ['c' => 'noah.becker@icloud.com',  't' => 'email', 'active' => true,  'tags' => [$sf('engaged','Engaged'), $city('berlin','Berlin'), $src('instagram')],    'post' => 'Tour dates',       'when' => 'Aug 18, 2026'],
+        ['c' => 'sofia.rossi@gmail.com',   't' => 'email', 'active' => true,  'tags' => [$sf('casual','Casual'), $city('new-york','New York')],                      'post' => '—',                'when' => 'Aug 17, 2026'],
+        ['c' => 'emma.dubois@gmail.com',   't' => 'email', 'active' => true,  'tags' => [$sf('superfan','Superfan'), $city('paris','Paris'), $src('presale-2026')], 'post' => 'Presale is live',  'when' => 'Aug 16, 2026'],
+        ['c' => '+13105550198',            't' => 'phone', 'active' => true,  'tags' => [$sf('engaged','Engaged'), $city('los-angeles','Los Angeles')],              'post' => '—',                'when' => 'Aug 16, 2026'],
+        ['c' => 'kai.nakamura@gmail.com',  't' => 'email', 'active' => true,  'tags' => [$sf('casual','Casual'), $city('chicago','Chicago'), $src('instagram')],    'post' => '—',                'when' => 'Aug 15, 2026'],
+        ['c' => 'olivia.murphy@gmail.com', 't' => 'email', 'active' => true,  'tags' => [$sf('dormant','Dormant'), $city('dublin','Dublin')],                        'post' => '—',                'when' => 'Aug 12, 2026'],
+        ['c' => 'ex.fan@gmail.com',        't' => 'email', 'active' => false, 'tags' => [$sf('dormant','Dormant')],                                                  'post' => '—',                'when' => 'Jul 28, 2026'],
+    ];
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Subscribers</h1>
+        <?php echo lmeg_demo_banner('lmeg'); ?>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0 10px;max-width:860px;">
+            <div class="lmeg-stat"><div class="lmeg-stat__label">New fans today</div>
+                <div class="lmeg-stat__value">14 <span style="font-size:12px;font-weight:600;color:#34d399;">▲ 6</span></div>
+                <div class="lmeg-stat__hint">vs yesterday</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">New fans yesterday</div>
+                <div class="lmeg-stat__value">8</div>
+                <div class="lmeg-stat__hint">63 in the last 7 days</div></div>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Total fans</div>
+                <div class="lmeg-stat__value">3,412</div>
+                <div class="lmeg-stat__hint">2,180 email · 1,232 SMS · 47 unsubscribed</div></div>
+        </div>
+
+        <ul class="subsubsub">
+            <li><a href="#" class="current" onclick="return false;">All</a> |</li>
+            <li><a href="#" onclick="return false;">Free</a> |</li>
+            <li><a href="#" onclick="return false;">Paid</a> |</li>
+            <li><a href="#" onclick="return false;">Unsubscribed</a></li>
+        </ul>
+        <div style="clear:both;"></div>
+
+        <table class="widefat striped">
+            <thead><tr><th>Status</th><th>Type</th><th>Contact</th><th>Tags</th><th>Post</th><th>Captured</th></tr></thead>
+            <tbody>
+            <?php foreach ($fans as $r) :
+                $is_sms = $r['t'] === 'phone';
+                $ico = $is_sms
+                    ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>'
+                    : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
+            ?>
+                <tr<?php echo $r['active'] ? '' : ' style="opacity:.55;"'; ?>>
+                    <td><?php echo $r['active'] ? '<span style="color:#34D399;">● Active</span>' : '<span style="color:#F87171;">● Unsubscribed</span>'; ?></td>
+                    <td><span class="lmeg-type"><?php echo $ico; ?><span><?php echo $is_sms ? 'SMS' : 'Email'; ?></span></span></td>
+                    <td><strong><?php echo esc_html($r['c']); ?></strong></td>
+                    <td><div class="lmeg-chips"><?php foreach ($r['tags'] as $t) echo lmeg_render_tag_chip($t); ?></div></td>
+                    <td><?php echo $r['post'] === '—' ? '—' : esc_html($r['post']); ?></td>
+                    <td><?php echo esc_html($r['when']); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p class="description" style="margin-top:10px;">Sample fans. Real signups, tags, fan-types and locations appear here as people join — from your forms, Instagram/Facebook DMs, drops, and the smart bio.</p>
+    </div>
+    <?php
+}
+
+/**
+ * Audience page — sample preview. Read-only aggregates (no map/geocoding).
+ */
+function lmeg_render_demo_audience() {
+    $types = [
+        ['name' => 'Superfan', 'color' => '#F59E0B', 'n' => 214],
+        ['name' => 'Engaged',  'color' => '#34D399', 'n' => 1180],
+        ['name' => 'Casual',   'color' => '#7C6CF6', 'n' => 1290],
+        ['name' => 'Dormant',  'color' => '#8B90A0', 'n' => 728],
+    ];
+    $ttotal = array_sum(array_column($types, 'n'));
+    $countries = [['CA',1520],['US',980],['GB',410],['FR',220],['DE',130],['AU',95],['NL',57]];
+    $cmax = 1520; $known = array_sum(array_column($countries, 1));
+    $top = [
+        ['c' => 'emma.dubois@gmail.com',  'shop' => 42000, 'memb' => 9600,  'orders' => 4],
+        ['c' => 'aria.singh@gmail.com',   'shop' => 28500, 'memb' => 12000, 'orders' => 3],
+        ['c' => 'maya.okafor@gmail.com',  'shop' => 31000, 'memb' => 0,     'orders' => 5],
+        ['c' => 'noah.becker@icloud.com', 'shop' => 9800,  'memb' => 14400, 'orders' => 1],
+        ['c' => '+13105550198',           'shop' => 0,     'memb' => 14400, 'orders' => 0],
+        ['c' => 'liam.tremblay@outlook.com','shop'=> 15600, 'memb' => 0,    'orders' => 2],
+    ];
+    $cities = [
+        ['Toronto','ON',412,58],['Montréal','QC',268,31],['Vancouver','BC',190,22],
+        ['New York','NY',176,14],['London','',154,12],['Los Angeles','CA',121,9],['Chicago','IL',98,6],
+    ];
+    $city_max = 412;
+    $refs = [['maya.okafor@gmail.com',23],['aria.singh@gmail.com',17],['emma.dubois@gmail.com',11],['kai.nakamura@gmail.com',8],['noah.becker@icloud.com',5]];
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Audience</h1>
+        <?php echo lmeg_demo_banner('lmeg-audience'); ?>
+
+        <h2>Fan types</h2>
+        <div style="max-width:640px;">
+            <?php foreach ($types as $t) : $pct = round(100 * $t['n'] / $ttotal); ?>
+                <div style="display:flex;align-items:center;gap:10px;margin:6px 0;">
+                    <span style="flex:0 0 140px;"><?php echo esc_html($t['name']); ?></span>
+                    <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:22px;overflow:hidden;"><div style="width:<?php echo $pct; ?>%;min-width:2px;height:100%;background:<?php echo esc_attr($t['color']); ?>;"></div></div>
+                    <span style="flex:0 0 90px;text-align:right;"><strong><?php echo number_format_i18n($t['n']); ?></strong> (<?php echo $pct; ?>%)</span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="description">Superfan = purchased or paying member (90d) · Engaged = 2+ clicks or 5+ opens · Casual = any open/click · Dormant = silent. Each fan gets a <code>fan-type:*</code> tag.</p>
+
+        <h2 style="margin-top:28px;">Where your fans are</h2>
+        <div style="max-width:640px;">
+            <?php foreach ($countries as $c) : $pct = round(100 * $c[1] / $known); ?>
+                <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                    <span style="flex:0 0 140px;"><?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[0]); ?></span>
+                    <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo round(100 * $c[1] / $cmax); ?>%;min-width:2px;height:100%;background:#3b82f6;"></div></div>
+                    <span style="flex:0 0 90px;text-align:right;"><strong><?php echo number_format_i18n($c[1]); ?></strong> (<?php echo $pct; ?>%)</span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <h2 style="margin-top:28px;">Top fans by lifetime value</h2>
+        <table class="widefat striped" style="max-width:720px;">
+            <thead><tr><th>Fan</th><th>Shop</th><th>Membership</th><th>Lifetime value</th></tr></thead>
+            <tbody>
+            <?php foreach ($top as $f) : $ltv = $f['shop'] + $f['memb']; ?>
+                <tr>
+                    <td><strong><?php echo esc_html($f['c']); ?></strong></td>
+                    <td><?php echo esc_html(lmeg_format_price($f['shop'])); ?><?php if ($f['orders']) : ?> <span style="opacity:.5;">(<?php echo (int) $f['orders']; ?>)</span><?php endif; ?></td>
+                    <td><?php echo esc_html(lmeg_format_price($f['memb'])); ?></td>
+                    <td><strong><?php echo esc_html(lmeg_format_price($ltv)); ?></strong></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p class="description" style="max-width:720px;">Lifetime value = attributed Shopify orders + subscription payments.</p>
+
+        <h2 style="margin-top:28px;">Tour routing — your top cities</h2>
+        <div style="max-width:640px;">
+            <?php foreach ($cities as $c) : $pct = round(100 * $c[2] / $city_max); $sfpct = round(100 * $c[3] / $c[2]); ?>
+                <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                    <span style="flex:0 0 170px;"><?php echo esc_html($c[0] . ($c[1] ? ', ' . $c[1] : '')); ?></span>
+                    <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo $pct; ?>%;min-width:2px;height:100%;background:#D05FA2;"></div></div>
+                    <span style="flex:0 0 150px;text-align:right;"><strong><?php echo (int) $c[2]; ?></strong> fans · <?php echo $sfpct; ?>% superfan</span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="description">Where to route a tour — fan density by city, with each city's superfan share.</p>
+
+        <h2 style="margin-top:28px;">Referral leaderboard</h2>
+        <table class="widefat striped" style="max-width:520px;">
+            <thead><tr><th>Fan</th><th>Referrals</th></tr></thead>
+            <tbody>
+            <?php foreach ($refs as $r) : ?>
+                <tr><td><strong><?php echo esc_html($r[0]); ?></strong></td><td><?php echo (int) $r[1]; ?></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
 function lmeg_admin_subscribers() {
     if (!current_user_can('manage_options')) return;
+    if (!empty($_GET['demo'])) { lmeg_render_demo_fans(); return; }
     global $wpdb;
     $table = $wpdb->prefix . LMEG_TABLE;
     $notice = '';
@@ -974,7 +1171,8 @@ function lmeg_admin_subscribers() {
                 <div class="lmeg-stat__value"><?php echo number_format_i18n($total - $unsub_n); ?></div>
                 <div class="lmeg-stat__hint"><?php echo number_format_i18n($active_em); ?> email · <?php echo number_format_i18n($active_ph); ?> SMS · <?php echo number_format_i18n($unsub_n); ?> unsubscribed</div></div>
         </div>
-        <p><a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a></p>
+        <p><a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a>
+           <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg&demo=1')); ?>"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;"><?php echo lmeg_icon('eye', ['size' => 15, 'sw' => 2]); ?>Preview with demo data</span></a></p>
 
         <?php $rejects = function_exists('lmeg_recent_signup_rejects') ? lmeg_recent_signup_rejects(30) : []; ?>
         <?php if ($rejects) : ?>
@@ -4276,6 +4474,7 @@ function lmeg_admin_fan_profile($fan_id) {
 
 function lmeg_admin_audience() {
     if (!current_user_can('manage_options')) return;
+    if (!empty($_GET['demo'])) { lmeg_render_demo_audience(); return; }
     global $wpdb;
     $subs = $wpdb->prefix . LMEG_TABLE;
     $notice = '';
@@ -4368,6 +4567,7 @@ function lmeg_admin_audience() {
             <button type="submit" class="button button-primary">Recalculate fan types now</button>
             <span style="margin-left:10px;opacity:.65;">Last run: <?php echo $last_run ? esc_html($last_run) : 'never'; ?> · auto-runs daily</span>
         </form>
+        <?php echo lmeg_demo_preview_button('lmeg-audience'); ?>
 
         <h2>Fan types</h2>
         <?php if (empty($types)) : ?>
