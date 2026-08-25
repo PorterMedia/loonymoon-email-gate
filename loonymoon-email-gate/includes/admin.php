@@ -954,6 +954,21 @@ function lmeg_admin_subscribers() {
         }
     }
 
+    // On-demand burst geocoding so a big import maps to the fan map fast.
+    if (($_POST['lmeg_action'] ?? '') === 'geolocate_now' && check_admin_referer('lmeg_geo_now', 'lmeg_geo_now_nonce')) {
+        if (function_exists('lmeg_geo_city_burst')) {
+            @set_time_limit(30);
+            $g = lmeg_geo_city_burst(400, 18);
+            $msg = 'Mapped <strong>' . number_format_i18n($g['located']) . '</strong> more fan' . ($g['located'] === 1 ? '' : 's') . ' to a city. ';
+            if ($g['remaining'] > 0) {
+                $msg .= number_format_i18n($g['remaining']) . ' still waiting — click <em>Geolocate now</em> again to keep going. (Some IPs are private or mobile and have no city, so a few will always stay blank.)';
+            } else {
+                $msg .= 'Everything with a usable IP is now on the map. 🎉';
+            }
+            $notice .= '<div class="notice notice-success"><p>' . $msg . '</p></div>';
+        }
+    }
+
     // Handle bulk actions — tag ops and manual tier grants.
     if (isset($_POST['lmeg_subs_nonce']) && wp_verify_nonce($_POST['lmeg_subs_nonce'], 'lmeg_subs')) {
         $action = sanitize_text_field($_POST['bulk_action'] ?? '');
@@ -1211,6 +1226,20 @@ function lmeg_admin_subscribers() {
                 </form>
             </div>
         </details>
+
+        <?php
+        // After a big import, most fans have an IP but no city yet. This lets the
+        // operator blast through the geocoding backlog instead of waiting on the
+        // slow background cron. Only shown while there's a backlog.
+        $geo_pending = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE ip IS NOT NULL AND ip <> '' AND (city IS NULL OR city = '')");
+        if ($geo_pending > 0) : ?>
+        <form method="post" style="margin:-4px 0 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:860px;">
+            <?php wp_nonce_field('lmeg_geo_now', 'lmeg_geo_now_nonce'); ?>
+            <input type="hidden" name="lmeg_action" value="geolocate_now" />
+            <button type="submit" class="button">📍 Geolocate now</button>
+            <span class="description"><strong><?php echo number_format_i18n($geo_pending); ?></strong> fan<?php echo $geo_pending === 1 ? '' : 's'; ?> with an IP still waiting for a city and map spot. Click to map several hundred at a time (the rest also fill in automatically in the background).</span>
+        </form>
+        <?php endif; ?>
         <p><a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a>
            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg&demo=1')); ?>"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;"><?php echo lmeg_icon('eye', ['size' => 15, 'sw' => 2]); ?>Preview with demo data</span></a></p>
 

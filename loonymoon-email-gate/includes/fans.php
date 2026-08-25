@@ -62,14 +62,14 @@ function lmeg_geo_country_current_request() {
 add_action('lmeg_broadcast_tick', 'lmeg_geo_backfill', 60);
 function lmeg_geo_backfill() {
     if (get_site_transient('lmeg_geo_bf_lock')) return;
-    set_site_transient('lmeg_geo_bf_lock', 1, 5 * MINUTE_IN_SECONDS);
+    set_site_transient('lmeg_geo_bf_lock', 1, MINUTE_IN_SECONDS);
 
     global $wpdb;
     $subs = $wpdb->prefix . LMEG_TABLE;
     $rows = $wpdb->get_results(
         "SELECT id, ip FROM $subs
          WHERE (country IS NULL OR country = '') AND ip IS NOT NULL AND ip <> ''
-         ORDER BY id ASC LIMIT 15"
+         ORDER BY id ASC LIMIT 40"
     );
     foreach ((array) $rows as $r) {
         $cc = lmeg_geo_country_from_ip($r->ip);
@@ -129,7 +129,7 @@ function lmeg_geo_city_from_ip($ip) {
 add_action('lmeg_broadcast_tick', 'lmeg_geo_city_backfill', 62);
 function lmeg_geo_city_backfill() {
     if (get_site_transient('lmeg_geocity_bf_lock')) return;
-    set_site_transient('lmeg_geocity_bf_lock', 1, 5 * MINUTE_IN_SECONDS);
+    set_site_transient('lmeg_geocity_bf_lock', 1, MINUTE_IN_SECONDS);
 
     global $wpdb;
     $subs   = $wpdb->prefix . LMEG_TABLE;
@@ -138,7 +138,7 @@ function lmeg_geo_city_backfill() {
         "SELECT id, ip FROM $subs
           WHERE id > %d AND ip IS NOT NULL AND ip <> ''
             AND (city IS NULL OR city = '')
-          ORDER BY id ASC LIMIT 10",
+          ORDER BY id ASC LIMIT 40",
         $cursor
     ));
     if (!$rows) {
@@ -162,6 +162,53 @@ function lmeg_geo_city_backfill() {
         }
         update_option('lmeg_geo_city_cursor', (int) $r->id, false);
     }
+}
+
+/**
+ * On-demand burst geocoder for big imports. Walks the same cursor as the
+ * background backfill but processes as many un-citied IPs as it can inside a
+ * time budget, so the fan map fills in minutes instead of over days. Safe to
+ * call repeatedly; stops early if the geo API starts erroring (rate limit /
+ * outage). Returns ['located','processed','remaining'].
+ */
+function lmeg_geo_city_burst($max = 400, $seconds = 18) {
+    global $wpdb;
+    $subs      = $wpdb->prefix . LMEG_TABLE;
+    $started   = time();
+    $located   = 0;
+    $processed = 0;
+    $stop      = false;
+    $cursor    = (int) get_option('lmeg_geo_city_cursor', 0);
+
+    while (!$stop && $processed < $max && (time() - $started) < $seconds) {
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, ip FROM $subs
+              WHERE id > %d AND ip IS NOT NULL AND ip <> '' AND (city IS NULL OR city = '')
+              ORDER BY id ASC LIMIT 25",
+            $cursor
+        ));
+        if (!$rows) { $cursor = 0; break; } // reached the end of the list — rewind
+        foreach ($rows as $r) {
+            if ($processed >= $max || (time() - $started) >= $seconds) { $stop = true; break; }
+            $g = lmeg_geo_city_from_ip($r->ip);
+            if ($g === false) { $stop = true; break; } // API blip/limit — stop, keep cursor so we resume here
+            if (is_array($g)) {
+                $upd = ['city' => $g['city']];
+                if (!empty($g['region'])) $upd['region'] = $g['region'];
+                $has_cc = $wpdb->get_var($wpdb->prepare("SELECT country FROM $subs WHERE id = %d", (int) $r->id));
+                if (!$has_cc && !empty($g['country'])) $upd['country'] = $g['country'];
+                $wpdb->update($subs, $upd, ['id' => (int) $r->id]);
+                $fresh = $wpdb->get_row($wpdb->prepare("SELECT * FROM $subs WHERE id = %d", (int) $r->id));
+                if ($fresh && function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($fresh);
+                $located++;
+            }
+            $processed++;
+            $cursor = (int) $r->id;
+        }
+    }
+    update_option('lmeg_geo_city_cursor', $cursor, false);
+    $remaining = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE ip IS NOT NULL AND ip <> '' AND (city IS NULL OR city = '')");
+    return ['located' => $located, 'processed' => $processed, 'remaining' => $remaining];
 }
 
 /**
