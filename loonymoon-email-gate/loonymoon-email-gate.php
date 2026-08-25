@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.67.2
+ * Version:     2.67.3
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.67.2');
+define('LMEG_VERSION',     '2.67.3');
 define('LMEG_DB_VERSION',  '2.65.3');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1761,6 +1761,154 @@ function lmeg_store_subscriber($data) {
         }
     }
     return $row_id ? (int) $row_id : 0;
+}
+
+/**
+ * Import a subscriber/fan CSV migrated from another platform.
+ *
+ * Unlike lmeg_store_subscriber(), this PRESERVES the original `ip` and
+ * `created_at` from the file, so historical rows look exactly like natively
+ * captured ones: the geo backfill cron then derives country/city/region from
+ * the IP and the fan map / geography fill in on their own. It is SILENT — no
+ * welcome emails and no sequence enrollments fire on import (a bulk import of
+ * an existing list must never blast that list).
+ *
+ * A header row is required; columns are matched by common aliases. Minimum is
+ * an email (or phone) column. Recognised: email, phone, first_name, ip,
+ * created_at, country (2-letter ISO), city, region, postal_code,
+ * unsubscribed_at. Dedupes by email then phone; existing rows only get their
+ * empty ip/location backfilled. Optional $source_tag tags the whole batch
+ * (e.g. "Halluci Nation") so it is easy to segment later.
+ *
+ * @return array ['imported','updated','skipped','errors'(array),'total','geo_pending']
+ */
+function lmeg_subscribers_import_csv($file, $source_tag = '') {
+    global $wpdb;
+    $table = $wpdb->prefix . LMEG_TABLE;
+    $out = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => [], 'total' => 0, 'geo_pending' => 0];
+
+    // SILENCE the import: a tag attach normally enrolls the fan into sequences
+    // (lmeg_enroll_on_tag on lmeg_tag_attached). We never fire the welcome hook
+    // either. So importing a list sends nothing.
+    remove_action('lmeg_tag_attached', 'lmeg_enroll_on_tag', 10);
+
+    $fh = @fopen($file, 'r');
+    if (!$fh) { $out['errors'][] = 'Could not open the uploaded file.'; return $out; }
+
+    $header = fgetcsv($fh, 0, ',', '"', '\\');
+    if (!$header) { $out['errors'][] = 'The file looks empty.'; fclose($fh); return $out; }
+
+    $alias = [
+        'email'           => ['email', 'e-mail', 'email_address', 'emailaddress', 'mail', 'contact_email'],
+        'phone'           => ['phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_phone', 'sms', 'cell', 'telephone'],
+        'first_name'      => ['first_name', 'firstname', 'first', 'name', 'full_name', 'fullname'],
+        'ip'              => ['ip', 'ip_address', 'ipaddress', 'ip_addr', 'remote_ip', 'client_ip', 'ipv4'],
+        'created_at'      => ['created_at', 'created', 'created_on', 'createdon', 'signup_date', 'subscribed_at', 'date', 'date_added', 'date_created', 'timestamp', 'opt_in_date', 'optin_date', 'joined', 'joined_at', 'subscribe_date'],
+        'country'         => ['country', 'country_code', 'country_iso'],
+        'city'            => ['city', 'town'],
+        'region'          => ['region', 'state', 'province', 'state_province'],
+        'postal_code'     => ['postal_code', 'postal', 'zip', 'zip_code', 'zipcode', 'postcode'],
+        'unsubscribed_at' => ['unsubscribed_at', 'unsubscribed', 'opt_out', 'optout', 'opted_out_at'],
+    ];
+    $normh = function ($h) { return strtolower(trim(str_replace("\xEF\xBB\xBF", '', (string) $h))); };
+    $col = [];
+    foreach ($header as $i => $h) {
+        $hn = $normh($h);
+        foreach ($alias as $field => $names) {
+            if (!isset($col[$field]) && in_array($hn, $names, true)) { $col[$field] = $i; break; }
+        }
+    }
+    if (!isset($col['email']) && !isset($col['phone'])) {
+        $out['errors'][] = 'No "email" (or "phone") column found. Columns seen: ' . implode(', ', array_map($normh, $header));
+        fclose($fh);
+        return $out;
+    }
+
+    $tag = null;
+    if (trim((string) $source_tag) !== '' && function_exists('lmeg_get_or_create_tag')) {
+        $src = trim((string) $source_tag);
+        $tag = lmeg_get_or_create_tag('source:' . sanitize_title($src), 'Source: ' . $src, false);
+    }
+
+    $get = function ($row, $field) use ($col) {
+        return isset($col[$field], $row[$col[$field]]) ? trim((string) $row[$col[$field]]) : '';
+    };
+    $to_mysql = function ($v) {
+        $v = trim((string) $v);
+        if ($v === '') return null;
+        if (ctype_digit($v)) { $ts = (int) $v; if ($ts > 20000000000) $ts = (int) round($ts / 1000); } // sec / ms epoch
+        else { $ts = strtotime($v); }
+        return $ts ? gmdate('Y-m-d H:i:s', $ts) : null;
+    };
+
+    while (($row = fgetcsv($fh, 0, ',', '"', '\\')) !== false) {
+        if ($out['total'] >= 200000) { $out['errors'][] = 'Stopped at 200,000 rows (safety cap).'; break; }
+        if (count(array_filter($row, function ($c) { return trim((string) $c) !== ''; })) === 0) continue;
+        $out['total']++;
+
+        $email = strtolower($get($row, 'email'));
+        $phone = preg_replace('/[^0-9+]/', '', $get($row, 'phone'));
+        if ($email !== '' && !is_email($email)) { $out['skipped']++; continue; }
+        if ($email === '' && $phone === '')       { $out['skipped']++; continue; }
+
+        $ip = $get($row, 'ip');
+        if ($ip !== '' && !filter_var($ip, FILTER_VALIDATE_IP)) $ip = '';
+        $created = $to_mysql($get($row, 'created_at')) ?: current_time('mysql');
+        $unsub   = $to_mysql($get($row, 'unsubscribed_at'));
+        $cc      = $get($row, 'country');
+        $country = strlen($cc) === 2 ? strtoupper($cc) : null;
+        $city    = $get($row, 'city');
+        $region  = $get($row, 'region');
+        $postal  = $get($row, 'postal_code');
+
+        // Dedupe by email then phone.
+        $existing = 0;
+        if ($email !== '') $existing = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE email = %s", $email));
+        if (!$existing && $phone !== '') $existing = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE phone = %s", $phone));
+
+        if ($existing) {
+            $cur = $wpdb->get_row($wpdb->prepare("SELECT ip, created_at FROM $table WHERE id = %d", $existing));
+            $upd = [];
+            if ($ip !== '' && empty($cur->ip)) $upd['ip'] = substr($ip, 0, 45);
+            if ($country) $upd['country'] = $country;
+            if ($city !== '')   $upd['city']        = substr($city, 0, 120);
+            if ($region !== '') $upd['region']      = substr($region, 0, 120);
+            if ($postal !== '') $upd['postal_code'] = substr($postal, 0, 20);
+            if ($upd) $wpdb->update($table, $upd, ['id' => $existing]);
+            if ($tag) lmeg_attach_tag($existing, $tag->id);
+            $out['updated']++;
+            continue;
+        }
+
+        $wpdb->insert($table, [
+            'contact_type'    => ($email === '' && $phone !== '') ? 'phone' : 'email',
+            'email'           => $email ?: null,
+            'phone'           => $phone ?: null,
+            'first_name'      => ($fn = $get($row, 'first_name')) !== '' ? substr($fn, 0, 80) : null,
+            'country'         => $country,
+            'city'            => $city !== '' ? substr($city, 0, 120) : null,
+            'region'          => $region !== '' ? substr($region, 0, 120) : null,
+            'postal_code'     => $postal !== '' ? substr($postal, 0, 20) : null,
+            'ip'              => $ip !== '' ? substr($ip, 0, 45) : null,
+            'email_status'    => 'ok',
+            'welcome_sent_at' => $created,   // block any welcome; this is an existing list, not a new opt-in
+            'confirmed_at'    => $created,   // treat a migrated list as already confirmed
+            'unsubscribed_at' => $unsub,     // preserve prior opt-outs
+            'created_at'      => $created,
+        ]);
+        $id = (int) $wpdb->insert_id;
+        if ($id) {
+            if ($ip !== '' && $city === '' && !$country) $out['geo_pending']++;
+            $rowobj = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
+            if ($rowobj && function_exists('lmeg_apply_auto_tags')) lmeg_apply_auto_tags($rowobj);
+            if ($tag) lmeg_attach_tag($id, $tag->id);
+            $out['imported']++;
+        } else {
+            $out['skipped']++;
+        }
+    }
+    fclose($fh);
+    return $out;
 }
 
 function lmeg_set_cookie() {

@@ -928,6 +928,32 @@ function lmeg_admin_subscribers() {
         return;
     }
 
+    // Import a fan list migrated from another platform. Keeps the original IP +
+    // sign-up date so rows match natively-captured fans; silent (no sends).
+    if (($_POST['lmeg_action'] ?? '') === 'import_subs' && check_admin_referer('lmeg_import_subs', 'lmeg_import_subs_nonce')) {
+        if (empty($_FILES['lmeg_subs_csv']['tmp_name']) || !is_uploaded_file($_FILES['lmeg_subs_csv']['tmp_name'])
+            || ($_FILES['lmeg_subs_csv']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $notice .= '<div class="notice notice-error"><p>No file received (or it was too large for the server). Try again with the CSV.</p></div>';
+        } else {
+            $src = sanitize_text_field(wp_unslash($_POST['lmeg_subs_source'] ?? ''));
+            $r   = lmeg_subscribers_import_csv($_FILES['lmeg_subs_csv']['tmp_name'], $src);
+            if (!empty($r['errors'])) {
+                $notice .= '<div class="notice notice-error"><p><strong>Import problem:</strong> ' . esc_html(implode(' ', $r['errors'])) . '</p></div>';
+            }
+            if ($r['imported'] || $r['updated']) {
+                $geo = $r['geo_pending']
+                    ? ' ' . number_format_i18n($r['geo_pending']) . ' have an IP and will get their city and map spot filled in automatically over the next little while.'
+                    : '';
+                $notice .= '<div class="notice notice-success"><p><strong>Imported ' . number_format_i18n($r['imported']) . '</strong> new fan' . ($r['imported'] === 1 ? '' : 's')
+                    . ($r['updated'] ? ', updated ' . number_format_i18n($r['updated']) : '')
+                    . ($r['skipped'] ? ', skipped ' . number_format_i18n($r['skipped']) . ' (no valid email or phone)' : '')
+                    . '. No emails were sent.' . $geo . '</p></div>';
+            } elseif (empty($r['errors'])) {
+                $notice .= '<div class="notice notice-warning"><p>Nothing imported — ' . number_format_i18n($r['skipped']) . ' row(s) had no valid email or phone.</p></div>';
+            }
+        }
+    }
+
     // Handle bulk actions — tag ops and manual tier grants.
     if (isset($_POST['lmeg_subs_nonce']) && wp_verify_nonce($_POST['lmeg_subs_nonce'], 'lmeg_subs')) {
         $action = sanitize_text_field($_POST['bulk_action'] ?? '');
@@ -1171,6 +1197,20 @@ function lmeg_admin_subscribers() {
                 <div class="lmeg-stat__value"><?php echo number_format_i18n($total - $unsub_n); ?></div>
                 <div class="lmeg-stat__hint"><?php echo number_format_i18n($active_em); ?> email · <?php echo number_format_i18n($active_ph); ?> SMS · <?php echo number_format_i18n($unsub_n); ?> unsubscribed</div></div>
         </div>
+
+        <details style="margin:6px 0 18px;max-width:860px;">
+            <summary style="cursor:pointer;font-weight:600;padding:8px 0;">Import subscribers (CSV)</summary>
+            <div style="background:linear-gradient(160deg,var(--lmegA-card),var(--lmegA-card2));border:1px solid var(--lmegA-border);border-radius:12px;padding:16px 18px;">
+                <p class="description" style="margin:0 0 12px;max-width:700px;">Bring in a fan list exported from another platform. The file needs a header row and at minimum an <code>email</code> column; it also reads <code>ip</code>, <code>created_at</code>, <code>first_name</code>, <code>phone</code>, <code>country</code>, <code>city</code>, <code>region</code>, <code>postal_code</code> and <code>unsubscribed_at</code> (column names are matched loosely, so <code>ip_address</code>, <code>signup_date</code>, etc. all work). The original <strong>IP</strong> and <strong>sign-up date</strong> are kept, and each fan's city and map location fill in automatically from the IP over the next little while — exactly like fans who sign up on your site. <strong>Nothing is emailed</strong> — no welcome, no sequences.</p>
+                <form method="post" enctype="multipart/form-data" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <?php wp_nonce_field('lmeg_import_subs', 'lmeg_import_subs_nonce'); ?>
+                    <input type="hidden" name="lmeg_action" value="import_subs" />
+                    <input type="file" name="lmeg_subs_csv" accept=".csv,text/csv,text/plain" required />
+                    <input type="text" name="lmeg_subs_source" class="regular-text" placeholder="Tag this batch (e.g. Halluci Nation)" style="max-width:260px;" />
+                    <button type="submit" class="button button-primary">Import CSV</button>
+                </form>
+            </div>
+        </details>
         <p><a href="<?php echo esc_url($export_url); ?>" class="button button-primary">Export all as CSV</a>
            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg&demo=1')); ?>"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle;"><?php echo lmeg_icon('eye', ['size' => 15, 'sw' => 2]); ?>Preview with demo data</span></a></p>
 

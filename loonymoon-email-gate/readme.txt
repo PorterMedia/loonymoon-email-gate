@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.67.2
+Stable tag: 2.67.3
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.67.3 =
+* New: Import subscribers from a CSV (Subscribers → "Import subscribers"). Bring a fan list over from another platform keeping the original IP address and sign-up date, so imported fans behave exactly like fans captured on your site — their city and fan-map location fill in automatically from the IP over the next little while. The import is silent: no welcome emails and no sequences ever fire. Column names are matched loosely (only email is required; ip, created_at, first_name, phone, country, city, region, postal_code and unsubscribed_at are all recognised), and you can tag the whole batch to segment it later.
+
 = 2.67.2 =
 * Maps now center on North America when you have fans there, so the continent sits centered instead of the mid-Atlantic (applies to the broadcast maps and the fan map). Cities elsewhere stay reachable by panning.
 
