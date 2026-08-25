@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.67.3
+ * Version:     2.67.4
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.67.3');
+define('LMEG_VERSION',     '2.67.4');
 define('LMEG_DB_VERSION',  '2.65.3');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1810,16 +1810,37 @@ function lmeg_subscribers_import_csv($file, $source_tag = '') {
         'postal_code'     => ['postal_code', 'postal', 'zip', 'zip_code', 'zipcode', 'postcode'],
         'unsubscribed_at' => ['unsubscribed_at', 'unsubscribed', 'opt_out', 'optout', 'opted_out_at'],
     ];
-    $normh = function ($h) { return strtolower(trim(str_replace("\xEF\xBB\xBF", '', (string) $h))); };
+    // Normalise headers to snake form so "Created At", "user ip", "E-Mail" and
+    // "Enter your email" all reduce to created_at / user_ip / e_mail / enter_your_email.
+    $normh = function ($h) {
+        $h = strtolower(trim(str_replace("\xEF\xBB\xBF", '', (string) $h)));
+        return trim(preg_replace('/[^a-z0-9]+/', '_', $h), '_');
+    };
     $col = [];
     foreach ($header as $i => $h) {
         $hn = $normh($h);
-        foreach ($alias as $field => $names) {
-            if (!isset($col[$field]) && in_array($hn, $names, true)) { $col[$field] = $i; break; }
+        if ($hn === '') continue;
+        $field = null;
+        // 1) exact alias match
+        foreach ($alias as $f => $names) { if (in_array($hn, $names, true)) { $field = $f; break; } }
+        // 2) fuzzy fallback for real-world headers like "enter your email" / "user ip".
+        //    IP matches only a whole "ip" token so "zip"/"recipient" don't get grabbed.
+        if ($field === null) {
+            $tok = explode('_', $hn);
+            if (strpos($hn, 'email') !== false || strpos($hn, 'e_mail') !== false) {
+                $field = 'email';
+            } elseif (strpos($hn, 'phone') !== false || strpos($hn, 'mobile') !== false || in_array('sms', $tok, true) || in_array('cell', $tok, true)) {
+                $field = 'phone';
+            } elseif (in_array('ip', $tok, true) || strpos($hn, 'ip_address') !== false || strpos($hn, 'ipaddress') !== false || strpos($hn, 'ipv4') !== false) {
+                $field = 'ip';
+            } elseif (strpos($hn, 'created') !== false || strpos($hn, 'signup') !== false || strpos($hn, 'sign_up') !== false || strpos($hn, 'subscrib') !== false || strpos($hn, 'opt_in') !== false || strpos($hn, 'optin') !== false || strpos($hn, 'join') !== false || strpos($hn, 'register') !== false || strpos($hn, 'timestamp') !== false || in_array('date', $tok, true)) {
+                $field = 'created_at';
+            }
         }
+        if ($field !== null && !isset($col[$field])) $col[$field] = $i;
     }
     if (!isset($col['email']) && !isset($col['phone'])) {
-        $out['errors'][] = 'No "email" (or "phone") column found. Columns seen: ' . implode(', ', array_map($normh, $header));
+        $out['errors'][] = 'No email (or phone) column found. Columns seen: ' . implode(', ', array_map(function ($h) { return trim((string) $h); }, $header));
         fclose($fh);
         return $out;
     }
