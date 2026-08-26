@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.67.5
+ * Version:     2.68.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.67.5');
-define('LMEG_DB_VERSION',  '2.65.3');
+define('LMEG_VERSION',     '2.68.0');
+define('LMEG_DB_VERSION',  '2.68.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -82,6 +82,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
 require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
 require_once LMEG_PLUGIN_DIR . 'includes/biopage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/drops.php';
+require_once LMEG_PLUGIN_DIR . 'includes/products.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
 require_once LMEG_PLUGIN_DIR . 'includes/spotify.php';
@@ -618,6 +619,50 @@ function lmeg_create_tables() {
         KEY idx_subscriber (subscriber_id),
         KEY idx_email (email),
         KEY idx_recovered (recovered)
+    ) $charset;");
+
+    // Native digital products / "drops" (BETA) — one-off Stripe sales.
+    $products = $wpdb->prefix . 'lmeg_products';
+    dbDelta("CREATE TABLE $products (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title VARCHAR(190) NOT NULL,
+        slug VARCHAR(190) NOT NULL,
+        description TEXT,
+        cover_url VARCHAR(500) DEFAULT NULL,
+        price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        min_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        deliver_url VARCHAR(500) DEFAULT NULL,
+        deliver_note TEXT,
+        stock INT NOT NULL DEFAULT -1,
+        sold INT UNSIGNED NOT NULL DEFAULT 0,
+        status VARCHAR(12) NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_slug (slug),
+        KEY idx_status (status)
+    ) $charset;");
+
+    $purchases = $wpdb->prefix . 'lmeg_product_purchases';
+    dbDelta("CREATE TABLE $purchases (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        product_id BIGINT(20) UNSIGNED NOT NULL,
+        subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        email VARCHAR(190) DEFAULT NULL,
+        amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        stripe_session_id VARCHAR(120) DEFAULT NULL,
+        status VARCHAR(12) NOT NULL DEFAULT 'pending',
+        access_token VARCHAR(64) DEFAULT NULL,
+        access_count INT UNSIGNED NOT NULL DEFAULT 0,
+        access_limit INT UNSIGNED NOT NULL DEFAULT 15,
+        created_at DATETIME NOT NULL,
+        paid_at DATETIME DEFAULT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_session (stripe_session_id),
+        KEY idx_product (product_id),
+        KEY idx_sub (subscriber_id),
+        KEY idx_token (access_token)
     ) $charset;");
 }
 

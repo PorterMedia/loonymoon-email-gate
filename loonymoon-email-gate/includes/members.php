@@ -378,6 +378,10 @@ function lmeg_stripe_handle_event($event) {
     $sub_id = null;
 
     if ($type === 'checkout.session.completed') {
+        if (!empty($obj['metadata']['product_id']) && function_exists('lmeg_product_fulfill_checkout')) {
+            // Native one-off digital product purchase (mode:payment).
+            $sub_id = (int) lmeg_product_fulfill_checkout($obj);
+        } else {
         $sub_id       = (int) ($obj['metadata']['sub_id']  ?? 0);
         $tier_id      = (int) ($obj['metadata']['tier_id'] ?? 0);
         $interval     = $obj['metadata']['interval'] ?? 'monthly';
@@ -399,6 +403,7 @@ function lmeg_stripe_handle_event($event) {
             // Refresh channel:paid + tier:<slug> auto-tags.
             $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
             if ($row) lmeg_apply_auto_tags($row);
+        }
         }
     } elseif ($type === 'invoice.payment_succeeded' || $type === 'invoice.paid') {
         // Accumulate real subscription revenue for lifetime-value. Match the

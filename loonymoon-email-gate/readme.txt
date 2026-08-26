@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.67.5
+Stable tag: 2.68.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.68.0 =
+* New (BETA): Fanloop Store — sell digital drops straight to your fan list. Create a product (fixed price or pay-what-you-want), embed it anywhere with [fanloop_product id=..] or share a direct buy link, and fans check out with card / Apple Pay / Google Pay via Stripe — the money lands in your OWN Stripe. Every buyer is automatically captured as a fan, tagged, and the sale shows up in your revenue, fan timelines and campaign attribution right alongside Shopify. Fans get the goods through a private, per-buyer access link plus an emailed receipt. Digital + direct only by design — physical merch and fulfilment stay on Shopify. Find it under Fanloop → Store (Beta). (Direct file upload/hosting lands in the next update; for now, deliver via an unlisted link.)
+
 = 2.67.5 =
 * Faster fan-map geocoding, especially after a big import. The background job now maps ~40 fans a minute (was 10 every 5 minutes), and Subscribers has a new "Geolocate now" button that maps several hundred imported fans per click — so a large imported list lands on the fan map in minutes instead of over a day. (An imported fan's city and map spot always come from their IP; nothing about this sends email.)
 

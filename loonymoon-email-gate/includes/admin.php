@@ -21,6 +21,7 @@ function lmeg_admin_menu() {
     add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
     add_submenu_page('lmeg', 'Release Drops',     'Release Drops',     $cap, 'lmeg-drops',           'lmeg_admin_drops');
+    add_submenu_page('lmeg', 'Store (Beta)',      'Store (Beta)',      $cap, 'lmeg-products',        'lmeg_admin_products');
     add_submenu_page('lmeg', 'Smart Bio',         'Smart Bio',         $cap, 'lmeg-bio',             'lmeg_admin_bio');
     add_submenu_page('lmeg', 'Shortcodes',        'Shortcodes',        $cap, 'lmeg-shortcodes',      'lmeg_admin_shortcodes');
     add_submenu_page('lmeg', 'Members (Paid)',    'Members (Paid)',    $cap, 'lmeg-members',         'lmeg_admin_members');
