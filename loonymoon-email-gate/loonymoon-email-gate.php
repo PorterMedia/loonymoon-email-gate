@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.76.0
+ * Version:     2.77.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.76.0');
-define('LMEG_DB_VERSION',  '2.72.0');
+define('LMEG_VERSION',     '2.77.0');
+define('LMEG_DB_VERSION',  '2.77.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -86,6 +86,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/drops.php';
 require_once LMEG_PLUGIN_DIR . 'includes/square.php';
 require_once LMEG_PLUGIN_DIR . 'includes/products.php';
 require_once LMEG_PLUGIN_DIR . 'includes/cart.php';
+require_once LMEG_PLUGIN_DIR . 'includes/discounts.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -684,6 +685,24 @@ function lmeg_create_tables() {
         KEY idx_sub (subscriber_id),
         KEY idx_fulfil (fulfillment),
         KEY idx_token (access_token)
+    ) $charset;");
+
+    $discounts = $wpdb->prefix . 'lmeg_discounts';
+    dbDelta("CREATE TABLE $discounts (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        code VARCHAR(60) NOT NULL,
+        kind VARCHAR(10) NOT NULL DEFAULT 'percent',
+        value INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        min_subtotal_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        max_uses INT UNSIGNED NOT NULL DEFAULT 0,
+        used INT UNSIGNED NOT NULL DEFAULT 0,
+        expires_at DATETIME DEFAULT NULL,
+        status VARCHAR(10) NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_code (code),
+        KEY idx_status (status)
     ) $charset;");
 }
 

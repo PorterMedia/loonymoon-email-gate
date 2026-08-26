@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.76.0
+Stable tag: 2.77.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.77.0 =
+* Store (Beta): native discount codes. Create percent-off or fixed-amount codes under Fanloop → Store (with an optional minimum order, usage limit and expiry). Fans type the code at checkout, see the discount and new total instantly, and it carries through to the receipt and your sale notification. Works in demo and live checkout, applies to the item subtotal (not shipping), and the use-count ticks up once per completed order. (For single Buy-now on card, Stripe's own promo codes still work too.)
+
 = 2.76.0 =
 * Store (Beta) fix: product titles were invisible on themes with light-coloured text (the titles inherited the theme colour and disappeared on the white product card). Product cards now set their own dark text colour, so titles, descriptions and options are always readable on any theme.
 

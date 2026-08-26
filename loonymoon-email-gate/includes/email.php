@@ -84,15 +84,21 @@ function lmeg_email_label($text) {
 
 /**
  * Order summary card. $items = [['name'=>,'meta'=>,'amount'=>], ...];
- * pass $total to append a bold Total row.
+ * $total appends a bold Total row; $extra = [['label'=>,'amount'=>,'accent'=>bool]]
+ * renders adjustment rows (e.g. a discount) between the items and the total.
  */
-function lmeg_email_order_table($items, $total = null) {
+function lmeg_email_order_table($items, $total = null, $extra = []) {
     $rows = '';
     foreach ($items as $it) {
         $rows .= '<tr><td style="padding:10px 0;border-bottom:1px solid #f0eef4;vertical-align:top">'
             . '<div style="font-weight:650;font-size:15px;color:#1a1622">' . esc_html($it['name']) . '</div>'
             . (!empty($it['meta']) ? '<div style="font-size:13px;color:#9a94a8;margin-top:2px">' . esc_html($it['meta']) . '</div>' : '')
             . '</td><td align="right" style="padding:10px 0;border-bottom:1px solid #f0eef4;font-weight:700;color:#1a1622;white-space:nowrap;vertical-align:top">' . esc_html($it['amount']) . '</td></tr>';
+    }
+    foreach ((array) $extra as $ex) {
+        $col = !empty($ex['accent']) ? '#1a8a4a' : '#514b5e';
+        $rows .= '<tr><td style="padding:9px 0 0;font-size:14px;color:' . $col . '">' . esc_html($ex['label']) . '</td>'
+            . '<td align="right" style="padding:9px 0 0;font-size:14px;font-weight:700;color:' . $col . ';white-space:nowrap">' . esc_html($ex['amount']) . '</td></tr>';
     }
     $totalrow = ($total !== null)
         ? '<tr><td style="padding:12px 0 2px;font-weight:800;font-size:16px;color:#1a1622">Total</td><td align="right" style="padding:12px 0 2px;font-weight:800;font-size:16px;color:#1a1622">' . esc_html($total) . '</td></tr>'

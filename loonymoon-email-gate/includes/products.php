@@ -1034,5 +1034,7 @@ function lmeg_admin_products() {
             <?php endforeach; ?></tbody>
         </table>
     <?php endif;
+
+    if (function_exists('lmeg_discounts_admin_section')) lmeg_discounts_admin_section();
     echo '</div>';
 }

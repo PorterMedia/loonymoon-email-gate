@@ -1,0 +1,184 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+/* ============================================================================
+ * Fanloop Store — native discount / promo codes  (BETA)
+ * ----------------------------------------------------------------------------
+ * Codes the artist creates (percent-off or fixed-amount) that fans enter on the
+ * cart checkout page. Works in demo AND live checkout: the discount is applied
+ * to the item subtotal (not shipping), distributed proportionally across the
+ * order's lines so per-line revenue stays exact, and the code's use count ticks
+ * up once per completed order. Table: lmeg_discounts.
+ * ========================================================================== */
+
+function lmeg_discount_norm($code) {
+    return strtoupper(preg_replace('/\s+/', '', (string) $code));
+}
+
+function lmeg_discount_get($code) {
+    global $wpdb;
+    $c = lmeg_discount_norm($code);
+    return $c ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_discounts WHERE code = %s", $c)) : null;
+}
+
+/**
+ * Validate a code against an order subtotal (cents) + currency.
+ * Returns ['ok'=>true,'discount'=>row,'amount_off'=>cents,'code'=>CODE] or
+ * ['ok'=>false,'error'=>message].
+ */
+function lmeg_discount_validate($code, $subtotal_cents, $currency) {
+    $money = function ($c) use ($currency) { return function_exists('lmeg_cart_money') ? lmeg_cart_money($c, $currency) : ('$' . number_format($c / 100, 2)); };
+    $d = lmeg_discount_get($code);
+    if (!$d)                        return ['ok' => false, 'error' => 'That code isn’t valid.'];
+    if ($d->status !== 'active')    return ['ok' => false, 'error' => 'That code is no longer active.'];
+    if ($d->expires_at && strtotime($d->expires_at) < current_time('timestamp')) return ['ok' => false, 'error' => 'That code has expired.'];
+    if ((int) $d->max_uses > 0 && (int) $d->used >= (int) $d->max_uses)           return ['ok' => false, 'error' => 'That code has reached its limit.'];
+    if ((int) $d->min_subtotal_cents > 0 && $subtotal_cents < (int) $d->min_subtotal_cents) {
+        return ['ok' => false, 'error' => 'This code needs a minimum of ' . $money((int) $d->min_subtotal_cents) . '.'];
+    }
+    if ($d->kind === 'amount' && strtoupper($d->currency) !== strtoupper($currency)) {
+        return ['ok' => false, 'error' => 'That code can’t be used in this currency.'];
+    }
+    $off = ($d->kind === 'percent')
+        ? (int) round($subtotal_cents * min(100, max(1, (int) $d->value)) / 100)
+        : min((int) $d->value, $subtotal_cents);
+    $off = max(0, min($off, $subtotal_cents));
+    return ['ok' => true, 'discount' => $d, 'amount_off' => $off, 'code' => $d->code, 'kind' => $d->kind, 'value' => (int) $d->value];
+}
+
+/** Distribute an order-level discount across lines by item subtotal. */
+function lmeg_discount_split($lines, $off, $items_total) {
+    $out = array_fill(0, count($lines), 0);
+    if ($off <= 0 || $items_total <= 0) return $out;
+    $acc = 0; $last = count($lines) - 1;
+    foreach ($lines as $i => $ln) {
+        $si = (int) $ln['unit'] * (int) $ln['qty'];
+        $out[$i] = ($i === $last) ? ($off - $acc) : (int) floor($off * $si / $items_total);
+        $acc += $out[$i];
+    }
+    return $out;
+}
+
+function lmeg_discount_increment($code) {
+    global $wpdb;
+    $c = lmeg_discount_norm($code);
+    if ($c) $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_discounts SET used = used + 1 WHERE code = %s", $c));
+}
+
+/** Short human label like "20% off" / "$5 off". */
+function lmeg_discount_desc($d, $currency = null) {
+    if ($d->kind === 'percent') return ((int) $d->value) . '% off';
+    $cur = $currency ?: ($d->currency ?: 'USD');
+    return (function_exists('lmeg_cart_money') ? lmeg_cart_money((int) $d->value, $cur) : ('$' . number_format($d->value / 100, 2))) . ' off';
+}
+
+/* ---------------------------------------------------------------------------
+ * Admin — save / delete handlers
+ * ------------------------------------------------------------------------- */
+add_action('admin_post_lmeg_save_discount', 'lmeg_handle_save_discount');
+function lmeg_handle_save_discount() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_save_discount', 'lmeg_discount_nonce');
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_discounts';
+
+    $code = lmeg_discount_norm($_POST['code'] ?? '');
+    if ($code === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-products&derr=code#discounts')); exit; }
+    $kind = ($_POST['kind'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
+    $to_cents = function ($v) { return (int) round(((float) preg_replace('/[^0-9.]/', '', (string) $v)) * 100); };
+    $value = ($kind === 'percent') ? max(1, min(100, (int) $_POST['value'])) : max(0, $to_cents($_POST['value'] ?? 0));
+    $data = [
+        'code'               => $code,
+        'kind'               => $kind,
+        'value'              => $value,
+        'currency'           => strtoupper(substr(sanitize_text_field($_POST['currency'] ?? 'USD'), 0, 3)) ?: 'USD',
+        'min_subtotal_cents' => max(0, $to_cents($_POST['min_subtotal'] ?? 0)),
+        'max_uses'           => max(0, (int) ($_POST['max_uses'] ?? 0)),
+        'expires_at'         => !empty($_POST['expires_at']) ? (sanitize_text_field($_POST['expires_at']) . ' 23:59:59') : null,
+        'status'             => (($_POST['status'] ?? 'active') === 'disabled') ? 'disabled' : 'active',
+    ];
+    $existing = lmeg_discount_get($code);
+    if ($existing) {
+        $wpdb->update($tbl, $data, ['id' => (int) $existing->id]);
+    } else {
+        $data['created_at'] = current_time('mysql');
+        $wpdb->insert($tbl, $data);
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&dsaved=1#discounts')); exit;
+}
+
+add_action('admin_post_lmeg_delete_discount', 'lmeg_handle_delete_discount');
+function lmeg_handle_delete_discount() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_delete_discount', 'lmeg_discount_del_nonce');
+    global $wpdb;
+    $id = (int) ($_POST['discount_id'] ?? 0);
+    if ($id) $wpdb->delete($wpdb->prefix . 'lmeg_discounts', ['id' => $id]);
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&ddeleted=1#discounts')); exit;
+}
+
+/* ---------------------------------------------------------------------------
+ * Admin — the "Discount codes" section, embedded on the Store page.
+ * ------------------------------------------------------------------------- */
+function lmeg_discounts_admin_section() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_discounts ORDER BY id DESC");
+    $save = admin_url('admin-post.php');
+    ?>
+    <h2 id="discounts" style="margin-top:30px">Discount codes</h2>
+    <?php if (isset($_GET['dsaved'])) echo '<div class="notice notice-success is-dismissible"><p>Code saved.</p></div>';
+    if (isset($_GET['ddeleted'])) echo '<div class="notice notice-success is-dismissible"><p>Code deleted.</p></div>';
+    if (isset($_GET['derr'])) echo '<div class="notice notice-error"><p>Please enter a code.</p></div>'; ?>
+    <p class="description" style="margin:0 0 12px;max-width:780px">Create a code fans type at checkout — percent-off or a fixed amount off the item subtotal (shipping isn’t discounted). Works in demo and live checkout. Great for launches (<code>LAUNCH20</code>), superfans, or a mailing-list perk.</p>
+
+    <table class="widefat striped" style="max-width:900px;margin-bottom:14px">
+        <thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        <?php if (!$rows) : ?><tr><td colspan="7">No codes yet.</td></tr>
+        <?php else : foreach ($rows as $d) :
+            $money = function ($c) use ($d) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $d->currency ?: 'USD') : ('$' . number_format($c / 100, 2)); };
+            $expired = ($d->expires_at && strtotime($d->expires_at) < current_time('timestamp'));
+        ?>
+            <tr>
+                <td><strong style="font-family:ui-monospace,Menlo,monospace"><?php echo esc_html($d->code); ?></strong></td>
+                <td><?php echo esc_html(lmeg_discount_desc($d)); ?></td>
+                <td><?php echo (int) $d->min_subtotal_cents > 0 ? esc_html($money($d->min_subtotal_cents)) : '—'; ?></td>
+                <td><?php echo (int) $d->used; ?><?php echo (int) $d->max_uses > 0 ? ' / ' . (int) $d->max_uses : ''; ?></td>
+                <td><?php echo $d->expires_at ? esc_html(date_i18n(get_option('date_format'), strtotime($d->expires_at))) . ($expired ? ' <span style="color:#b32d2e">(expired)</span>' : '') : '—'; ?></td>
+                <td><?php echo $d->status === 'active' && !$expired ? '<span style="color:#1a8a4a">● Active</span>' : '<span style="color:#9A9DB0">Off</span>'; ?></td>
+                <td>
+                    <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline" onsubmit="return confirm('Delete code <?php echo esc_js($d->code); ?>?');">
+                        <?php wp_nonce_field('lmeg_delete_discount', 'lmeg_discount_del_nonce'); ?>
+                        <input type="hidden" name="action" value="lmeg_delete_discount">
+                        <input type="hidden" name="discount_id" value="<?php echo (int) $d->id; ?>">
+                        <button class="button button-small link-delete" type="submit">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+    </table>
+
+    <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px">
+        <?php wp_nonce_field('lmeg_save_discount', 'lmeg_discount_nonce'); ?>
+        <input type="hidden" name="action" value="lmeg_save_discount">
+        <strong>New code</strong> <span class="description">(saving an existing code updates it)</span>
+        <table class="form-table" role="presentation">
+            <tr><th><label>Code</label></th><td><input type="text" name="code" class="regular-text" style="text-transform:uppercase;font-family:ui-monospace,Menlo,monospace" placeholder="LAUNCH20" required></td></tr>
+            <tr><th><label>Type</label></th><td>
+                <label><input type="radio" name="kind" value="percent" checked> Percent off</label> &nbsp;&nbsp;
+                <label><input type="radio" name="kind" value="amount"> Fixed amount off</label>
+                &nbsp;&nbsp; value <input type="number" name="value" step="0.01" min="0" style="width:100px" placeholder="20">
+                <span class="description">percent = 1–100, amount = e.g. 5.00</span>
+            </td></tr>
+            <tr><th><label>Currency <span style="color:#888;font-weight:400">(amount)</span></label></th><td><input type="text" name="currency" maxlength="3" style="width:64px" value="USD"></td></tr>
+            <tr><th><label>Minimum order</label></th><td><input type="number" name="min_subtotal" step="0.01" min="0" style="width:110px" placeholder="0"> <span class="description">optional — item subtotal required to use the code</span></td></tr>
+            <tr><th><label>Usage limit</label></th><td><input type="number" name="max_uses" min="0" style="width:110px" placeholder="unlimited"> <span class="description">0 / blank = unlimited</span></td></tr>
+            <tr><th><label>Expires</label></th><td><input type="date" name="expires_at"> <span class="description">optional — valid through this day</span></td></tr>
+            <tr><th><label>Status</label></th><td><select name="status"><option value="active">Active</option><option value="disabled">Off</option></select></td></tr>
+        </table>
+        <p><button type="submit" class="button button-primary">Save code</button></p>
+    </form>
+    <?php
+}
