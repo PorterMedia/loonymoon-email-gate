@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.68.0
+Stable tag: 2.69.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.69.0 =
+* Store (Beta) now sells PHYSICAL products too, and lets you choose Square OR Stripe per product. Physical items collect a shipping address at checkout, take an optional flat shipping fee and size/variant options, and drop into an "Orders to ship" list where you mark each shipped (the buyer gets a confirmation email and is still captured as a fan with the sale attributed alongside your other revenue). Pick the processor per product under Store; add Square keys (sandbox + production, plus an optional webhook) under Settings → Payments.
+
 = 2.68.0 =
 * New (BETA): Fanloop Store — sell digital drops straight to your fan list. Create a product (fixed price or pay-what-you-want), embed it anywhere with [fanloop_product id=..] or share a direct buy link, and fans check out with card / Apple Pay / Google Pay via Stripe — the money lands in your OWN Stripe. Every buyer is automatically captured as a fan, tagged, and the sale shows up in your revenue, fan timelines and campaign attribution right alongside Shopify. Fans get the goods through a private, per-buyer access link plus an emailed receipt. Digital + direct only by design — physical merch and fulfilment stay on Shopify. Find it under Fanloop → Store (Beta). (Direct file upload/hosting lands in the next update; for now, deliver via an unlisted link.)
 

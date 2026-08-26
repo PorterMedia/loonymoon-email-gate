@@ -2636,6 +2636,13 @@ function lmeg_admin_settings() {
             'stripe_live_pk'          => sanitize_text_field(wp_unslash($_POST['stripe_live_pk'] ?? '')),
             'stripe_live_sk'          => sanitize_text_field(wp_unslash($_POST['stripe_live_sk'] ?? '')),
             'stripe_live_webhook_sec' => sanitize_text_field(wp_unslash($_POST['stripe_live_webhook_sec'] ?? '')),
+            // Square (Store)
+            'square_mode'             => ($_POST['square_mode'] ?? 'sandbox') === 'production' ? 'production' : 'sandbox',
+            'square_sandbox_token'    => sanitize_text_field(wp_unslash($_POST['square_sandbox_token'] ?? '')),
+            'square_sandbox_location' => sanitize_text_field(wp_unslash($_POST['square_sandbox_location'] ?? '')),
+            'square_prod_token'       => sanitize_text_field(wp_unslash($_POST['square_prod_token'] ?? '')),
+            'square_prod_location'    => sanitize_text_field(wp_unslash($_POST['square_prod_location'] ?? '')),
+            'square_webhook_key'      => sanitize_text_field(wp_unslash($_POST['square_webhook_key'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3262,6 +3269,24 @@ function lmeg_admin_settings() {
                 <tr><th>Webhook endpoint URL</th><td>
                     <input type="text" readonly class="regular-text" value="<?php echo esc_attr(add_query_arg('lmeg_member','webhook', home_url('/'))); ?>" onclick="this.select();" />
                     <p class="description">Paste this into Stripe → Developers → Webhooks. Listen for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>.</p>
+                </td></tr>
+            </table>
+
+            <h2>Square (Store payments)</h2>
+            <p class="description" style="max-width:660px;">Alternate processor for the <strong>Store (Beta)</strong> — used by any product you set to "Square" (great for physical merch if you already use Square). Money lands in your Square account. Get an access token + location id from Square → Developer dashboard.</p>
+            <table class="form-table" role="presentation">
+                <tr><th scope="row">Mode</th><td>
+                    <label><input type="radio" name="square_mode" value="sandbox" <?php checked($s['square_mode'] ?? 'sandbox', 'sandbox'); ?> /> Sandbox (test)</label> &nbsp;&nbsp;
+                    <label><input type="radio" name="square_mode" value="production" <?php checked($s['square_mode'] ?? 'sandbox', 'production'); ?> /> Production (live)</label>
+                </td></tr>
+                <tr><th>Sandbox access token</th><td><input type="password" name="square_sandbox_token" class="regular-text" value="<?php echo esc_attr($s['square_sandbox_token'] ?? ''); ?>" placeholder="EAAA… (sandbox)" autocomplete="off" /></td></tr>
+                <tr><th>Sandbox location id</th><td><input type="text" name="square_sandbox_location" class="regular-text" value="<?php echo esc_attr($s['square_sandbox_location'] ?? ''); ?>" placeholder="L…" autocomplete="off" /></td></tr>
+                <tr><th>Production access token</th><td><input type="password" name="square_prod_token" class="regular-text" value="<?php echo esc_attr($s['square_prod_token'] ?? ''); ?>" placeholder="EAAA… (production)" autocomplete="off" /></td></tr>
+                <tr><th>Production location id</th><td><input type="text" name="square_prod_location" class="regular-text" value="<?php echo esc_attr($s['square_prod_location'] ?? ''); ?>" placeholder="L…" autocomplete="off" /></td></tr>
+                <tr><th>Webhook signature key</th><td><input type="password" name="square_webhook_key" class="regular-text" value="<?php echo esc_attr($s['square_webhook_key'] ?? ''); ?>" placeholder="optional but recommended" autocomplete="off" /></td></tr>
+                <tr><th>Webhook endpoint URL</th><td>
+                    <input type="text" readonly class="regular-text" value="<?php echo esc_attr(add_query_arg('lmeg_square', 'webhook', home_url('/'))); ?>" onclick="this.select();" />
+                    <p class="description">Recommended: add this in Square → Developer → Webhooks (subscribe to <code>payment.updated</code>), then paste the signature key above. Without a webhook, orders still confirm when the buyer returns from checkout.</p>
                 </td></tr>
             </table>
 

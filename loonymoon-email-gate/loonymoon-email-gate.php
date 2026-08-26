@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.68.0
+ * Version:     2.69.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.68.0');
-define('LMEG_DB_VERSION',  '2.68.0');
+define('LMEG_VERSION',     '2.69.0');
+define('LMEG_DB_VERSION',  '2.69.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -82,6 +82,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
 require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
 require_once LMEG_PLUGIN_DIR . 'includes/biopage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/drops.php';
+require_once LMEG_PLUGIN_DIR . 'includes/square.php';
 require_once LMEG_PLUGIN_DIR . 'includes/products.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -632,6 +633,10 @@ function lmeg_create_tables() {
         price_cents INT UNSIGNED NOT NULL DEFAULT 0,
         min_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
         currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        type VARCHAR(10) NOT NULL DEFAULT 'digital',
+        processor VARCHAR(10) NOT NULL DEFAULT 'stripe',
+        shipping_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        variants VARCHAR(255) DEFAULT NULL,
         deliver_url VARCHAR(500) DEFAULT NULL,
         deliver_note TEXT,
         stock INT NOT NULL DEFAULT -1,
@@ -651,7 +656,13 @@ function lmeg_create_tables() {
         email VARCHAR(190) DEFAULT NULL,
         amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
         currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        processor VARCHAR(10) NOT NULL DEFAULT 'stripe',
         stripe_session_id VARCHAR(120) DEFAULT NULL,
+        provider_ref VARCHAR(120) DEFAULT NULL,
+        variant VARCHAR(120) DEFAULT NULL,
+        ship_name VARCHAR(190) DEFAULT NULL,
+        ship_address TEXT,
+        fulfillment VARCHAR(12) NOT NULL DEFAULT 'none',
         status VARCHAR(12) NOT NULL DEFAULT 'pending',
         access_token VARCHAR(64) DEFAULT NULL,
         access_count INT UNSIGNED NOT NULL DEFAULT 0,
@@ -660,8 +671,10 @@ function lmeg_create_tables() {
         paid_at DATETIME DEFAULT NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_session (stripe_session_id),
+        KEY idx_provider (provider_ref),
         KEY idx_product (product_id),
         KEY idx_sub (subscriber_id),
+        KEY idx_fulfil (fulfillment),
         KEY idx_token (access_token)
     ) $charset;");
 }
@@ -723,6 +736,13 @@ function lmeg_default_settings() {
         'stripe_live_pk'           => '',
         'stripe_live_sk'           => '',
         'stripe_live_webhook_sec'  => '',
+        // Square (alternate processor for the Store)
+        'square_mode'              => 'sandbox',
+        'square_sandbox_token'     => '',
+        'square_sandbox_location'  => '',
+        'square_prod_token'        => '',
+        'square_prod_location'     => '',
+        'square_webhook_key'       => '',
         'member_cookie_days'       => 30,
         'magic_link_ttl_hours'     => 24,
         'default_post_access'      => 'free', // 'public' | 'free' | 'paid'
@@ -808,6 +828,9 @@ function lmeg_env_map() {
         'stripe_live_sk'          => ['LMEG_STRIPE_LIVE_SK'],
         'stripe_live_pk'          => ['LMEG_STRIPE_LIVE_PK'],
         'stripe_live_webhook_sec' => ['LMEG_STRIPE_LIVE_WEBHOOK_SEC'],
+        'square_sandbox_token'    => ['LMEG_SQUARE_SANDBOX_TOKEN'],
+        'square_prod_token'       => ['LMEG_SQUARE_PROD_TOKEN'],
+        'square_webhook_key'      => ['LMEG_SQUARE_WEBHOOK_KEY'],
         'ig_app_secret'           => ['LMEG_IG_APP_SECRET'],
         'ig_page_token'           => ['LMEG_IG_PAGE_TOKEN'],
         'shopify_admin_token'     => ['LMEG_SHOPIFY_ADMIN_TOKEN'],

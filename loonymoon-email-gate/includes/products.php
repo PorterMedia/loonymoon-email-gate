@@ -27,39 +27,86 @@ function lmeg_products_router() {
 }
 
 function lmeg_product_start_checkout() {
+    global $wpdb;
     $p = lmeg_product_get((int) $_GET['lmeg_buy']);
     if (!$p || $p->status !== 'active')          { wp_die('This item is not available.'); }
-    if ($p->stock >= 0 && $p->sold >= $p->stock) { wp_die('Sorry — this drop has sold out.'); }
-    $keys = lmeg_stripe_keys();
-    if (empty($keys['sk']))                      { wp_die('Payments are not set up yet.'); }
+    if ($p->stock >= 0 && $p->sold >= $p->stock) { wp_die('Sorry — this has sold out.'); }
 
-    // Fixed price, or pay-what-you-want clamped to the minimum.
-    $amount = (int) $p->price_cents;
+    $physical = ($p->type === 'physical');
+
+    // Optional variant (e.g. a size), validated against the product's list.
+    $variant = '';
+    if (!empty($p->variants) && isset($_GET['variant'])) {
+        $opts = array_filter(array_map('trim', explode(',', $p->variants)));
+        $sel  = sanitize_text_field(wp_unslash($_GET['variant']));
+        if (in_array($sel, $opts, true)) $variant = $sel;
+    }
+
+    // Item (fixed or pay-what-you-want) + flat shipping for physical.
+    $item = (int) $p->price_cents;
     if (lmeg_product_is_pwyw($p)) {
         $chosen = isset($_GET['amount']) ? (int) round(((float) $_GET['amount']) * 100) : (int) $p->price_cents;
-        $amount = max((int) $p->min_price_cents, $chosen);
+        $item = max((int) $p->min_price_cents, $chosen);
     }
-    if ($amount < 50) { wp_die('That amount is too low for card payment.'); }
+    $ship  = $physical ? (int) $p->shipping_cents : 0;
+    $total = $item + $ship;
+    if ($total < 50) { wp_die('That amount is too low for card payment.'); }
 
+    $ret = ['lmeg_buy_done' => $p->id];
+    if ($variant !== '') $ret['v'] = $variant;
+
+    /* ---------- Square ---------- */
+    if ($p->processor === 'square') {
+        if (!function_exists('lmeg_square_ready') || !lmeg_square_ready()) { wp_die('Square is not set up yet.'); }
+        $link = lmeg_square_create_link($p, $total, $variant, $physical, add_query_arg($ret, home_url('/')));
+        if (is_wp_error($link) || empty($link['url']) || empty($link['order_id'])) {
+            wp_die('Could not start Square checkout: ' . (is_wp_error($link) ? esc_html($link->get_error_message()) : 'unknown error'));
+        }
+        // Pre-create a pending row keyed by the Square order id so fulfilment
+        // (on return or webhook) knows the product + variant.
+        $wpdb->insert($wpdb->prefix . 'lmeg_product_purchases', [
+            'product_id' => $p->id, 'processor' => 'square', 'provider_ref' => $link['order_id'],
+            'variant' => $variant ?: null, 'amount_cents' => $total, 'currency' => strtoupper($p->currency ?: 'USD'),
+            'status' => 'pending', 'fulfillment' => 'none', 'access_count' => 0, 'access_limit' => 15,
+            'created_at' => current_time('mysql'),
+        ]);
+        wp_redirect(esc_url_raw($link['url']));
+        exit;
+    }
+
+    /* ---------- Stripe ---------- */
+    $keys = lmeg_stripe_keys();
+    if (empty($keys['sk'])) { wp_die('Stripe is not set up yet.'); }
     $cur     = strtolower($p->currency ?: 'usd');
-    $success = add_query_arg(['lmeg_buy_done' => $p->id, 'session_id' => '{CHECKOUT_SESSION_ID}'], home_url('/'));
+    $success = add_query_arg(array_merge($ret, ['session_id' => '{CHECKOUT_SESSION_ID}']), home_url('/'));
     $cancel  = add_query_arg(['lmeg_product' => $p->slug], home_url('/'));
-
-    $params = [
+    $params  = [
         'mode'        => 'payment',
         'success_url' => $success,
         'cancel_url'  => $cancel,
         'line_items[0][price_data][currency]'           => $cur,
-        'line_items[0][price_data][unit_amount]'        => $amount,
-        'line_items[0][price_data][product_data][name]' => $p->title,
+        'line_items[0][price_data][unit_amount]'        => $item,
+        'line_items[0][price_data][product_data][name]' => $p->title . ($variant ? ' — ' . $variant : ''),
         'line_items[0][quantity]'                       => 1,
         'metadata[product_id]'                          => $p->id,
+        'metadata[variant]'                             => $variant,
         'allow_promotion_codes'                         => 'true',
     ];
+    if ($physical) {
+        foreach (['US', 'CA', 'GB', 'AU', 'DE', 'FR'] as $i => $cc) {
+            $params["shipping_address_collection[allowed_countries][$i]"] = $cc;
+        }
+        $params['phone_number_collection[enabled]'] = 'true';
+        if ($ship > 0) {
+            $params['shipping_options[0][shipping_rate_data][type]']                  = 'fixed_amount';
+            $params['shipping_options[0][shipping_rate_data][fixed_amount][amount]']  = $ship;
+            $params['shipping_options[0][shipping_rate_data][fixed_amount][currency]'] = $cur;
+            $params['shipping_options[0][shipping_rate_data][display_name]']          = 'Shipping';
+        }
+    }
     if (!empty($p->cover_url) && filter_var($p->cover_url, FILTER_VALIDATE_URL)) {
         $params['line_items[0][price_data][product_data][images][0]'] = $p->cover_url;
     }
-
     $session = lmeg_stripe_request('POST', '/checkout/sessions', $params);
     if (is_wp_error($session) || empty($session['url'])) {
         wp_die('Could not start checkout: ' . (is_wp_error($session) ? esc_html($session->get_error_message()) : 'unknown error'));
@@ -72,6 +119,54 @@ function lmeg_product_start_checkout() {
  * Fulfil a PAID product checkout session. Idempotent (keyed on the session id).
  * Called by the Stripe webhook and, as a fallback for webhook lag, by the
  * return page. Returns the buyer's subscriber id (0 if none).
+ */
+function lmeg_product_fmt_addr($a) {
+    if (!is_array($a) || !$a) return '';
+    return trim(implode("\n", array_filter([
+        trim(($a['line1'] ?? '') . ' ' . ($a['line2'] ?? '')),
+        trim(($a['city'] ?? '') . ', ' . ($a['state'] ?? '') . ' ' . ($a['postal_code'] ?? '')),
+        $a['country'] ?? '',
+    ])));
+}
+
+/**
+ * Shared: capture the buyer as a fan (silently) + tag them for a product.
+ */
+function lmeg_product_capture_fan($email, $p) {
+    if (!$email) return 0;
+    remove_action('lmeg_subscriber_created', 'lmeg_maybe_send_welcome', 10);
+    $sub_id = (int) lmeg_store_subscriber([
+        'contact_type' => 'email', 'email' => $email, 'phone' => null,
+        'country' => null, 'street' => null, 'city' => null, 'region' => null,
+        'postal_code' => null, 'post_id' => null,
+    ]);
+    if ($sub_id && function_exists('lmeg_get_or_create_tag')) {
+        $t = lmeg_get_or_create_tag('product:' . $p->slug, 'Bought: ' . $p->title, false, '#E15FA8');
+        if ($t) lmeg_attach_tag($sub_id, $t->id);
+    }
+    return $sub_id;
+}
+
+/**
+ * Shared: record the sale into lmeg_shop_orders (so it shows in every revenue /
+ * fan / attribution surface) using a synthetic id below Shopify's range.
+ */
+function lmeg_product_record_revenue($p, $pur_id, $email, $amount, $cur) {
+    if (!function_exists('lmeg_shop_record_order') || !$email) return;
+    lmeg_shop_record_order([
+        'id'           => 800000000000 + (int) $pur_id,
+        'email'        => $email,
+        'total_price'  => $amount / 100,
+        'currency'     => $cur,
+        'created_at'   => gmdate('c'),
+        'order_number' => 'DROP-' . $p->id . '-' . $pur_id,
+        'name'         => 'DROP-' . $p->id,
+    ]);
+}
+
+/**
+ * Fulfil a PAID Stripe checkout session. Idempotent (keyed on the session id).
+ * Called by the webhook and, as a fallback for webhook lag, the return page.
  */
 function lmeg_product_fulfill_checkout($session) {
     global $wpdb;
@@ -86,63 +181,77 @@ function lmeg_product_fulfill_checkout($session) {
 
     $p = lmeg_product_get($prod_id);
     if (!$p) return 0;
+    $physical = ($p->type === 'physical');
 
-    $email  = sanitize_email($session['customer_details']['email'] ?? ($session['customer_email'] ?? ''));
-    $amount = (int) ($session['amount_total'] ?? $p->price_cents);
-    $cur    = strtoupper($session['currency'] ?? ($p->currency ?: 'USD'));
-    $token  = wp_generate_password(40, false, false);
+    $email   = sanitize_email($session['customer_details']['email'] ?? ($session['customer_email'] ?? ''));
+    $amount  = (int) ($session['amount_total'] ?? $p->price_cents);
+    $cur     = strtoupper($session['currency'] ?? ($p->currency ?: 'USD'));
+    $variant = sanitize_text_field($session['metadata']['variant'] ?? '');
+    $token   = wp_generate_password(40, false, false);
 
-    // Capture the buyer as a fan — SILENTLY (they get a purchase receipt, not
-    // the generic signup welcome).
-    $sub_id = 0;
-    if ($email) {
-        remove_action('lmeg_subscriber_created', 'lmeg_maybe_send_welcome', 10);
-        $sub_id = (int) lmeg_store_subscriber([
-            'contact_type' => 'email', 'email' => $email, 'phone' => null,
-            'country' => null, 'street' => null, 'city' => null, 'region' => null,
-            'postal_code' => null, 'post_id' => null,
-        ]);
-    }
-    if ($sub_id && function_exists('lmeg_get_or_create_tag')) {
-        $t = lmeg_get_or_create_tag('product:' . $p->slug, 'Bought: ' . $p->title, false, '#E15FA8');
-        if ($t) lmeg_attach_tag($sub_id, $t->id);
+    $ship_name = ''; $ship_addr = '';
+    if ($physical) {
+        $sd = $session['shipping_details'] ?? ($session['shipping'] ?? []);
+        $ship_name = sanitize_text_field($sd['name'] ?? ($session['customer_details']['name'] ?? ''));
+        $ship_addr = lmeg_product_fmt_addr($sd['address'] ?? ($session['customer_details']['address'] ?? []));
     }
 
-    // Upsert the purchase row (drives delivery + the sales list).
+    $sub_id = lmeg_product_capture_fan($email, $p);
+    $fulfil = $physical ? 'unshipped' : 'none';
+    $fields = [
+        'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
+        'amount_cents' => $amount, 'currency' => $cur, 'processor' => 'stripe', 'provider_ref' => $sess_id,
+        'variant' => $variant ?: null, 'ship_name' => $ship_name ?: null, 'ship_address' => $ship_addr ?: null,
+        'fulfillment' => $fulfil, 'status' => 'paid', 'access_token' => $token, 'paid_at' => current_time('mysql'),
+    ];
     if ($existing) {
-        $wpdb->update($ptbl, [
-            'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
-            'amount_cents' => $amount, 'currency' => $cur, 'status' => 'paid',
-            'access_token' => $token, 'paid_at' => current_time('mysql'),
-        ], ['id' => (int) $existing->id]);
+        $wpdb->update($ptbl, $fields, ['id' => (int) $existing->id]);
         $pur_id = (int) $existing->id;
     } else {
-        $wpdb->insert($ptbl, [
-            'product_id' => $prod_id, 'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
-            'amount_cents' => $amount, 'currency' => $cur, 'stripe_session_id' => $sess_id,
-            'status' => 'paid', 'access_token' => $token, 'access_count' => 0, 'access_limit' => 15,
-            'created_at' => current_time('mysql'), 'paid_at' => current_time('mysql'),
-        ]);
+        $wpdb->insert($ptbl, array_merge($fields, [
+            'product_id' => $prod_id, 'stripe_session_id' => $sess_id,
+            'access_count' => 0, 'access_limit' => 15, 'created_at' => current_time('mysql'),
+        ]));
         $pur_id = (int) $wpdb->insert_id;
     }
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $prod_id));
+    lmeg_product_record_revenue($p, $pur_id, $email, $amount, $cur);
+    if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $ship_name);
+    return $sub_id;
+}
 
-    // Record revenue into lmeg_shop_orders so it appears everywhere Shopify
-    // revenue does (fan timeline, totals, broadcast attribution, LTV). The
-    // synthetic id sits far below real Shopify order ids so it can't collide.
-    if (function_exists('lmeg_shop_record_order') && $email) {
-        lmeg_shop_record_order([
-            'id'           => 800000000000 + $pur_id,
-            'email'        => $email,
-            'total_price'  => $amount / 100,
-            'currency'     => $cur,
-            'created_at'   => gmdate('c'),
-            'order_number' => 'DROP-' . $p->id . '-' . $pur_id,
-            'name'         => 'DROP-' . $p->id,
-        ]);
-    }
+/**
+ * Fulfil a PAID Square order (from the return page or the Square webhook).
+ * The pending purchase row was pre-created at checkout, keyed by the order id.
+ */
+function lmeg_product_fulfill_square($order_id) {
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $pur  = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE provider_ref = %s AND processor = 'square'", (string) $order_id));
+    if (!$pur) return 0;
+    if ($pur->status === 'paid') return (int) $pur->subscriber_id;
 
-    if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur);
+    $info = function_exists('lmeg_square_order_info') ? lmeg_square_order_info($order_id) : null;
+    if (!$info || empty($info['paid'])) return 0;
+
+    $p = lmeg_product_get($pur->product_id);
+    if (!$p) return 0;
+    $physical = ($p->type === 'physical');
+    $email  = $info['email'];
+    $amount = $info['amount'] ?: (int) $pur->amount_cents;
+    $cur    = $info['cur'] ?: $pur->currency;
+    $token  = wp_generate_password(40, false, false);
+
+    $sub_id = lmeg_product_capture_fan($email, $p);
+    $wpdb->update($ptbl, [
+        'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
+        'amount_cents' => $amount, 'currency' => $cur, 'status' => 'paid', 'access_token' => $token,
+        'ship_name' => $info['ship_name'] ?: null, 'ship_address' => $info['ship_addr'] ?: null,
+        'fulfillment' => $physical ? 'unshipped' : 'none', 'paid_at' => current_time('mysql'),
+    ], ['id' => (int) $pur->id]);
+    $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $pur->product_id));
+    lmeg_product_record_revenue($p, (int) $pur->id, $email, $amount, $cur);
+    if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $info['ship_name']);
     return $sub_id;
 }
 
@@ -150,18 +259,24 @@ function lmeg_product_access_url($token) {
     return add_query_arg(['lmeg_access' => $token], home_url('/'));
 }
 
-function lmeg_product_send_receipt($p, $email, $token, $amount, $cur) {
-    $s        = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
-    $artist   = $s['community_name'] ?? ($s['artist_name'] ?? get_bloginfo('name'));
-    $access   = lmeg_product_access_url($token);
-    $price    = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
-    $subject  = 'Your download: ' . $p->title;
-    $body     = '<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">'
-        . '<h2 style="margin:0 0 6px">Thanks for supporting ' . esc_html($artist) . ' 💜</h2>'
-        . '<p style="color:#444;margin:0 0 18px">You bought <strong>' . esc_html($p->title) . '</strong> for ' . esc_html($price) . '.</p>'
-        . '<p style="margin:0 0 22px"><a href="' . esc_url($access) . '" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px">Get your download →</a></p>'
-        . '<p style="color:#888;font-size:13px">Or paste this link into your browser:<br>' . esc_html($access) . '</p>'
-        . '</div>';
+function lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical = false, $ship_name = '') {
+    $s      = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $artist = $s['community_name'] ?? ($s['artist_name'] ?? get_bloginfo('name'));
+    $price  = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
+    if ($physical) {
+        $subject = 'Order confirmed: ' . $p->title;
+        $cta = '<p style="color:#444;margin:0 0 18px">Thanks for your order of <strong>' . esc_html($p->title) . '</strong> (' . esc_html($price) . ')'
+             . ($ship_name ? ', shipping to <strong>' . esc_html($ship_name) . '</strong>' : '')
+             . '. We\'ll get it on its way and be in touch if we need anything.</p>';
+    } else {
+        $access  = lmeg_product_access_url($token);
+        $subject = 'Your download: ' . $p->title;
+        $cta = '<p style="color:#444;margin:0 0 18px">You bought <strong>' . esc_html($p->title) . '</strong> for ' . esc_html($price) . '.</p>'
+             . '<p style="margin:0 0 22px"><a href="' . esc_url($access) . '" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px">Get your download →</a></p>'
+             . '<p style="color:#888;font-size:13px">Or paste this link into your browser:<br>' . esc_html($access) . '</p>';
+    }
+    $body = '<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">'
+        . '<h2 style="margin:0 0 6px">Thanks for supporting ' . esc_html($artist) . ' 💜</h2>' . $cta . '</div>';
     add_filter('wp_mail_content_type', function () { return 'text/html'; });
     wp_mail($email, $subject, $body);
     remove_all_filters('wp_mail_content_type');
@@ -182,26 +297,35 @@ function lmeg_product_serve_access() {
 }
 
 /**
- * Return page after Stripe. Fulfils inline if the webhook hasn't landed yet,
- * then shows a clean, self-contained confirmation with the download button.
+ * Return page after Stripe or Square. Fulfils inline if the webhook hasn't
+ * landed yet, then shows a self-contained confirmation.
  */
 function lmeg_product_checkout_return() {
     global $wpdb;
-    $p       = lmeg_product_get((int) $_GET['lmeg_buy_done']);
-    $sess_id = sanitize_text_field($_GET['session_id'] ?? '');
-    $ptbl    = $wpdb->prefix . 'lmeg_product_purchases';
-    $pur     = $sess_id ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE stripe_session_id = %s", $sess_id)) : null;
+    $p        = lmeg_product_get((int) $_GET['lmeg_buy_done']);
+    $ptbl     = $wpdb->prefix . 'lmeg_product_purchases';
+    $sess_id  = sanitize_text_field($_GET['session_id'] ?? '');
+    $sq_order = sanitize_text_field($_GET['orderId'] ?? ($_GET['order_id'] ?? ''));
+    $pur      = null;
 
-    if ((!$pur || $pur->status !== 'paid') && $sess_id) {
-        $s = lmeg_stripe_request('GET', '/checkout/sessions/' . rawurlencode($sess_id));
-        if (!is_wp_error($s) && ($s['payment_status'] ?? '') === 'paid') {
-            lmeg_product_fulfill_checkout($s);
-            $pur = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE stripe_session_id = %s", $sess_id));
+    if ($sess_id) {
+        $pur = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE stripe_session_id = %s", $sess_id));
+        if (!$pur || $pur->status !== 'paid') {
+            $s = lmeg_stripe_request('GET', '/checkout/sessions/' . rawurlencode($sess_id));
+            if (!is_wp_error($s) && ($s['payment_status'] ?? '') === 'paid') {
+                lmeg_product_fulfill_checkout($s);
+                $pur = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE stripe_session_id = %s", $sess_id));
+            }
         }
+    } elseif ($sq_order && function_exists('lmeg_product_fulfill_square')) {
+        lmeg_product_fulfill_square($sq_order);
+        $pur = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE provider_ref = %s AND processor = 'square'", $sq_order));
     }
-    $paid   = ($pur && $pur->status === 'paid');
-    $access = $paid ? lmeg_product_access_url($pur->access_token) : '';
-    $title  = $p ? $p->title : 'your order';
+
+    $paid     = ($pur && $pur->status === 'paid');
+    $physical = ($p && $p->type === 'physical');
+    $access   = ($paid && !$physical && $pur->access_token) ? lmeg_product_access_url($pur->access_token) : '';
+    $title    = $p ? $p->title : 'your order';
 
     nocache_headers();
     header('Content-Type: text/html; charset=utf-8');
@@ -219,7 +343,11 @@ function lmeg_product_checkout_return() {
       .lnk{color:#8B90A0;font-size:12px;word-break:break-all;margin-top:16px}
     </style></head><body>
     <div class="card">
-      <?php if ($paid) : ?>
+      <?php if ($paid && $physical) : ?>
+        <div class="dot">✓</div>
+        <h1>Order confirmed. Thank you!</h1>
+        <p>Your order of <strong><?php echo esc_html($title); ?></strong> is in — we'll get it shipped to you. A receipt is on its way to your inbox.</p>
+      <?php elseif ($paid) : ?>
         <div class="dot">✓</div>
         <h1>You're in. Thank you!</h1>
         <p>Your purchase of <strong><?php echo esc_html($title); ?></strong> is complete, and it's on its way to your inbox too.</p>
@@ -227,7 +355,7 @@ function lmeg_product_checkout_return() {
       <?php else : ?>
         <div class="dot">…</div>
         <h1>Payment processing</h1>
-        <p>Hang tight — your payment is being confirmed. Check your email in a moment for your download link. You can safely close this page.</p>
+        <p>Hang tight — your payment is being confirmed. Check your email in a moment for your receipt. You can safely close this page.</p>
       <?php endif; ?>
       <a class="home" href="<?php echo esc_url(home_url('/')); ?>">← Back to site</a>
     </div></body></html><?php
@@ -245,27 +373,37 @@ function lmeg_shortcode_product($atts) {
     if (!$p) return '';
     $sold_out = ($p->status !== 'active') || ($p->stock >= 0 && $p->sold >= $p->stock);
     $cur      = $p->currency ?: 'USD';
-    $price    = function_exists('lmeg_format_price') ? lmeg_format_price((int) $p->price_cents, $cur) : ('$' . number_format($p->price_cents / 100, 2));
+    $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
+    $price    = $fmt($p->price_cents);
     $pwyw     = lmeg_product_is_pwyw($p);
-    $buy_base = esc_url(add_query_arg(['lmeg_buy' => $p->id], home_url('/')));
+    $physical = ($p->type === 'physical');
+    $variants = array_filter(array_map('trim', explode(',', (string) $p->variants)));
+    $ship     = ($physical && (int) $p->shipping_cents > 0) ? $fmt($p->shipping_cents) : '';
+    $needs_form = $pwyw || !empty($variants);
     ob_start(); ?>
     <div class="flp-prod" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php if (!empty($p->cover_url)) : ?><img src="<?php echo esc_url($p->cover_url); ?>" alt="<?php echo esc_attr($p->title); ?>" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover"><?php endif; ?>
       <div style="padding:18px 20px">
-        <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo esc_html($p->title); ?></div>
+        <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#888;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#555;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#999">Sold out</div>
-        <?php elseif ($pwyw) : ?>
+        <?php elseif ($needs_form) : ?>
           <form method="get" action="<?php echo esc_url(home_url('/')); ?>" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="hidden" name="lmeg_buy" value="<?php echo (int) $p->id; ?>">
-            <span style="color:#555">Name your price:</span>
-            <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:90px;padding:9px;border:1px solid #ccc;border-radius:8px">
-            <button type="submit" style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 20px;border-radius:10px;cursor:pointer">Buy</button>
+            <?php if (!empty($variants)) : ?>
+              <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($variants as $v) : ?><option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($v); ?></option><?php endforeach; ?></select>
+            <?php endif; ?>
+            <?php if ($pwyw) : ?>
+              <span style="color:#555">Name your price:</span>
+              <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:90px;padding:9px;border:1px solid #ccc;border-radius:8px">
+            <?php endif; ?>
+            <button type="submit" style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 20px;border-radius:10px;cursor:pointer"><?php echo $pwyw ? 'Buy' : esc_html($price . ' · Buy'); ?></button>
           </form>
-          <div style="font-size:12px;color:#999;margin-top:6px">Minimum <?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int) $p->min_price_cents, $cur) : ''); ?></div>
+          <div style="font-size:12px;color:#999;margin-top:6px"><?php echo $pwyw ? 'Minimum ' . esc_html($fmt($p->min_price_cents)) : ''; ?><?php echo $ship ? ($pwyw ? ' · ' : '') . '+ ' . esc_html($ship) . ' shipping' : ''; ?></div>
         <?php else : ?>
-          <a href="<?php echo $buy_base; ?>" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px"><?php echo esc_html($price); ?> · Buy now</a>
+          <a href="<?php echo esc_url(add_query_arg(['lmeg_buy' => $p->id], home_url('/'))); ?>" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px"><?php echo esc_html($price); ?> · Buy now</a>
+          <?php if ($ship) : ?><div style="font-size:12px;color:#999;margin-top:6px">+ <?php echo esc_html($ship); ?> shipping</div><?php endif; ?>
         <?php endif; ?>
       </div>
     </div>
@@ -305,6 +443,10 @@ function lmeg_handle_save_product() {
         'price_cents'     => max(0, $to_cents($_POST['price'] ?? 0)),
         'min_price_cents' => !empty($_POST['pwyw']) ? max(0, $to_cents($_POST['min_price'] ?? 0)) : 0,
         'currency'        => strtoupper(substr(sanitize_text_field($_POST['currency'] ?? 'USD'), 0, 3)) ?: 'USD',
+        'type'            => in_array($_POST['type'] ?? 'digital', ['digital', 'physical'], true) ? $_POST['type'] : 'digital',
+        'processor'       => in_array($_POST['processor'] ?? 'stripe', ['stripe', 'square'], true) ? $_POST['processor'] : 'stripe',
+        'shipping_cents'  => max(0, $to_cents($_POST['shipping'] ?? 0)),
+        'variants'        => sanitize_text_field(wp_unslash($_POST['variants'] ?? '')),
         'deliver_url'     => esc_url_raw($_POST['deliver_url'] ?? ''),
         'deliver_note'    => sanitize_textarea_field(wp_unslash($_POST['deliver_note'] ?? '')),
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
@@ -313,6 +455,17 @@ function lmeg_handle_save_product() {
     if ($id) { $wpdb->update($tbl, $data, ['id' => $id]); }
     else     { $data['sold'] = 0; $data['created_at'] = current_time('mysql'); $wpdb->insert($tbl, $data); $id = (int) $wpdb->insert_id; }
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&saved=' . $id)); exit;
+}
+
+add_action('admin_post_lmeg_ship_order', 'lmeg_handle_ship_order');
+function lmeg_handle_ship_order() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_ship_order', 'lmeg_ship_nonce');
+    global $wpdb;
+    $pid = (int) ($_POST['purchase_id'] ?? 0);
+    $to  = (($_POST['to'] ?? 'shipped') === 'unshipped') ? 'unshipped' : 'shipped';
+    if ($pid) $wpdb->update($wpdb->prefix . 'lmeg_product_purchases', ['fulfillment' => $to], ['id' => $pid]);
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&shipped=1#orders')); exit;
 }
 
 function lmeg_admin_products() {
@@ -325,16 +478,18 @@ function lmeg_admin_products() {
     $keys = lmeg_stripe_keys();
     $save = admin_url('admin-post.php');
 
-    echo '<div class="wrap"><h1>Fanloop — Store <span style="font-size:12px;vertical-align:middle;background:rgba(225,95,168,.16);color:#E15FA8;padding:3px 10px;border-radius:999px;">BETA · digital drops</span></h1>';
-    if (empty($keys['sk'])) {
-        echo '<div class="notice notice-warning"><p>Connect Stripe first (Settings → Payments) — that\'s where the money lands. You can create products now, but buyers can\'t check out until Stripe keys are saved.</p></div>';
+    $sq_ready = function_exists('lmeg_square_ready') && lmeg_square_ready();
+    echo '<div class="wrap"><h1>Fanloop — Store <span style="font-size:12px;vertical-align:middle;background:rgba(225,95,168,.16);color:#E15FA8;padding:3px 10px;border-radius:999px;">BETA · digital + physical</span></h1>';
+    if (empty($keys['sk']) && !$sq_ready) {
+        echo '<div class="notice notice-warning"><p>Connect a payment processor first (Settings → Payments) — that\'s where the money lands. You can create products now, but buyers can\'t check out until <strong>Stripe</strong> or <strong>Square</strong> keys are saved.</p></div>';
     }
     if (isset($_GET['saved']))   echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
     if (isset($_GET['deleted'])) echo '<div class="notice notice-success is-dismissible"><p>Deleted.</p></div>';
+    if (isset($_GET['shipped'])) echo '<div class="notice notice-success is-dismissible"><p>Order updated.</p></div>';
 
     /* ----- create / edit form ----- */
     if ($new || $edit) {
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','deliver_url'=>'','deliver_note'=>'','stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','deliver_url'=>'','deliver_note'=>'','stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         ?>
         <p><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products')); ?>">← All products</a></p>
@@ -348,7 +503,17 @@ function lmeg_admin_products() {
                 <tr><th><label>Cover image URL</label></th><td><input type="url" name="cover_url" class="regular-text" value="<?php echo esc_attr($p->cover_url); ?>" placeholder="https://…"><p class="description">Paste a Media Library image URL (optional).</p></td></tr>
                 <tr><th><label>Price</label></th><td><input type="number" name="price" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->price_cents)); ?>"> <input type="text" name="currency" style="width:64px" maxlength="3" value="<?php echo esc_attr($p->currency ?: 'USD'); ?>"></td></tr>
                 <tr><th><label>Pay what you want</label></th><td><label><input type="checkbox" name="pwyw" value="1" <?php checked((int) $p->min_price_cents > 0); ?>> Let fans choose the price</label> &nbsp; minimum <input type="number" name="min_price" step="0.01" min="0" style="width:110px" value="<?php echo esc_attr($money($p->min_price_cents)); ?>"><p class="description">When on, the price above is the suggested amount and fans can pay the minimum or more.</p></td></tr>
-                <tr><th><label>Deliver (unlock link)</label></th><td><input type="url" name="deliver_url" class="regular-text" value="<?php echo esc_attr($p->deliver_url); ?>" placeholder="https://… private download / stream / Drive / Discord invite"><p class="description">After paying, the fan is sent to this link through a private, per-buyer access URL. <em>(Direct file upload &amp; hosting is coming in the next beta update — for now use an unlisted link.)</em></p></td></tr>
+                <tr><th><label>Type</label></th><td>
+                    <label><input type="radio" name="type" value="digital" <?php checked($p->type ?? 'digital', 'digital'); ?>> Digital (download / unlock link)</label> &nbsp;&nbsp;
+                    <label><input type="radio" name="type" value="physical" <?php checked($p->type ?? 'digital', 'physical'); ?>> Physical (ship it)</label>
+                    <p class="description">Physical collects a shipping address at checkout and creates an order for you to ship. Digital delivers the unlock link below.</p></td></tr>
+                <tr><th><label>Payment</label></th><td>
+                    <label><input type="radio" name="processor" value="stripe" <?php checked($p->processor ?? 'stripe', 'stripe'); ?>> Stripe</label> &nbsp;&nbsp;
+                    <label><input type="radio" name="processor" value="square" <?php checked($p->processor ?? 'stripe', 'square'); ?>> Square</label>
+                    <p class="description">Which processor collects the payment — the money lands in that account. Set keys under Settings → Payments.</p></td></tr>
+                <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping.</p></td></tr>
+                <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr($p->variants ?? ''); ?>" placeholder="S, M, L, XL"><p class="description">Optional comma-separated options the buyer picks (e.g. sizes). Leave blank for none.</p></td></tr>
+                <tr><th><label>Deliver (unlock link) <span style="color:#888;font-weight:400">(digital)</span></label></th><td><input type="url" name="deliver_url" class="regular-text" value="<?php echo esc_attr($p->deliver_url); ?>" placeholder="https://… private download / stream / Drive / Discord invite"><p class="description">Digital only: after paying, the fan is sent to this link through a private, per-buyer access URL. <em>(Direct file upload &amp; hosting is coming next — for now use an unlisted link.)</em></p></td></tr>
                 <tr><th><label>Limit (stock)</label></th><td><input type="number" name="stock" min="0" style="width:120px" value="<?php echo $p->stock < 0 ? '' : (int) $p->stock; ?>" placeholder="unlimited"><p class="description">Leave blank for unlimited; set a number for a limited drop.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
@@ -368,12 +533,12 @@ function lmeg_admin_products() {
     <p style="margin:10px 0 18px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a></p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:620px;margin-bottom:20px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Units sold</div><div class="lmeg-stat__value"><?php echo number_format_i18n($units); ?></div></div>
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price($rev, 'USD') : '$' . number_format($rev/100,2)); ?></div><div class="lmeg-stat__hint">before Stripe fees · lands in your Stripe</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price($rev, 'USD') : '$' . number_format($rev/100,2)); ?></div><div class="lmeg-stat__hint">before processor fees · lands in your Stripe / Square</div></div>
     </div>
     <table class="widefat striped">
-        <thead><tr><th>Product</th><th>Price</th><th>Sold</th><th>Status</th><th>Embed</th><th></th></tr></thead>
+        <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Status</th><th></th></tr></thead>
         <tbody>
-        <?php if (!$rows) : ?><tr><td colspan="6">No products yet. Create your first digital drop.</td></tr>
+        <?php if (!$rows) : ?><tr><td colspan="7">No products yet. Create your first drop.</td></tr>
         <?php else : foreach ($rows as $p) :
             $cur = $p->currency ?: 'USD';
             $price = lmeg_product_is_pwyw($p)
@@ -382,16 +547,35 @@ function lmeg_admin_products() {
         ?>
             <tr>
                 <td><strong><?php echo esc_html($p->title); ?></strong></td>
-                <td><?php echo esc_html($price); ?></td>
+                <td><?php echo ($p->type === 'physical') ? '📦 Physical' : '⬇ Digital'; ?></td>
+                <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
+                <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
                 <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?></td>
                 <td><?php echo $p->status === 'active' ? '<span style="color:#34D399">● Active</span>' : '<span style="color:#9A9DB0">Draft</span>'; ?></td>
-                <td><code>[fanloop_product id=<?php echo (int) $p->id; ?>]</code></td>
                 <td><a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&edit=' . $p->id)); ?>">Edit</a></td>
             </tr>
         <?php endforeach; endif; ?>
         </tbody>
     </table>
     <?php
+    // Physical orders awaiting shipment.
+    $orders = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY pp.id ASC LIMIT 100");
+    if ($orders) : ?>
+        <h2 id="orders" style="margin-top:26px">Orders to ship (<?php echo count($orders); ?>)</h2>
+        <table class="widefat striped" style="max-width:980px">
+            <thead><tr><th>When</th><th>Item</th><th>Ship to</th><th>Amount</th><th></th></tr></thead>
+            <tbody><?php foreach ($orders as $o) : ?>
+                <tr>
+                    <td><?php echo esc_html($o->paid_at); ?></td>
+                    <td><?php echo esc_html($o->title); ?><?php echo $o->variant ? ' · <strong>' . esc_html($o->variant) . '</strong>' : ''; ?></td>
+                    <td><?php echo esc_html($o->ship_name ?: '—'); ?><?php echo $o->email ? ' · ' . esc_html($o->email) : ''; ?><?php echo $o->ship_address ? '<br><span style="white-space:pre-line;color:#666;font-size:12px">' . esc_html($o->ship_address) . '</span>' : ''; ?></td>
+                    <td><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int)$o->amount_cents, $o->currency) : '$'.number_format($o->amount_cents/100,2)); ?></td>
+                    <td><form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>"><?php wp_nonce_field('lmeg_ship_order', 'lmeg_ship_nonce'); ?><input type="hidden" name="action" value="lmeg_ship_order"><input type="hidden" name="purchase_id" value="<?php echo (int) $o->id; ?>"><button class="button button-small" type="submit">Mark shipped</button></form></td>
+                </tr>
+            <?php endforeach; ?></tbody>
+        </table>
+    <?php endif;
+
     $recent = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' ORDER BY pp.id DESC LIMIT 15");
     if ($recent) : ?>
         <h2 style="margin-top:26px">Recent sales</h2>
