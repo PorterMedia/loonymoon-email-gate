@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.83.0
+ * Version:     2.84.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.83.0');
-define('LMEG_DB_VERSION',  '2.82.0');
+define('LMEG_VERSION',     '2.84.0');
+define('LMEG_DB_VERSION',  '2.84.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -87,6 +87,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/square.php';
 require_once LMEG_PLUGIN_DIR . 'includes/products.php';
 require_once LMEG_PLUGIN_DIR . 'includes/cart.php';
 require_once LMEG_PLUGIN_DIR . 'includes/discounts.php';
+require_once LMEG_PLUGIN_DIR . 'includes/abandoned.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -690,6 +691,25 @@ function lmeg_create_tables() {
         KEY idx_sub (subscriber_id),
         KEY idx_fulfil (fulfillment),
         KEY idx_token (access_token)
+    ) $charset;");
+
+    $abandoned = $wpdb->prefix . 'lmeg_abandoned';
+    dbDelta("CREATE TABLE $abandoned (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        email VARCHAR(190) NOT NULL,
+        token VARCHAR(64) NOT NULL,
+        cart TEXT,
+        total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        recovered TINYINT(1) NOT NULL DEFAULT 0,
+        nudged TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL,
+        recovered_at DATETIME DEFAULT NULL,
+        nudged_at DATETIME DEFAULT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY uniq_token (token),
+        KEY idx_email (email),
+        KEY idx_recovered (recovered)
     ) $charset;");
 
     $discounts = $wpdb->prefix . 'lmeg_discounts';

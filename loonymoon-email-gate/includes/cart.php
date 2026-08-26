@@ -254,6 +254,7 @@ function lmeg_cart_fulfill_from_session($session) {
     $discount  = !empty($stash['discount']) ? $stash['discount'] : null;
 
     lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount);
+    if (function_exists('lmeg_abandoned_mark_recovered')) lmeg_abandoned_mark_recovered($email);
     delete_transient('lmeg_cart_' . $token);
 }
 
@@ -264,9 +265,10 @@ add_action('init', 'lmeg_cart_router');
 function lmeg_cart_router() {
     if (!isset($_GET['lmeg_cart'])) return;
     $action = sanitize_key($_GET['lmeg_cart']);
-    if ($action === 'checkout')   lmeg_cart_checkout_page();
-    elseif ($action === 'place')  lmeg_cart_place();
-    elseif ($action === 'done')   lmeg_cart_done();
+    if ($action === 'checkout')     lmeg_cart_checkout_page();
+    elseif ($action === 'place')    lmeg_cart_place();
+    elseif ($action === 'done')     lmeg_cart_done();
+    elseif ($action === 'resume' && function_exists('lmeg_abandoned_resume')) lmeg_abandoned_resume();
 }
 
 /** Read the posted cart JSON into a PHP array. */
@@ -278,10 +280,11 @@ function lmeg_cart_posted() {
 /* ---------------------------------------------------------------------------
  * Step 1 — review page (order summary + email / shipping form)
  * ------------------------------------------------------------------------- */
-function lmeg_cart_checkout_page($v = null, $raw = null, $err = '') {
+function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_email = '') {
     if ($raw === null) $raw = lmeg_cart_posted();
     if ($v === null)   $v   = lmeg_cart_validate($raw);
     $demo = lmeg_store_demo_on();
+    if ($prefill_email === '' && isset($_POST['email'])) $prefill_email = sanitize_email(wp_unslash($_POST['email']));
 
     if (empty($v['lines'])) {
         lmeg_store_page(__('Your cart is empty', 'lmeg'), '<div class="dot">🛒</div><h1>Your cart is empty</h1>'
@@ -371,7 +374,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '') {
         . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
         . '<input type="hidden" name="code" value="' . esc_attr($disc ? $disc['code'] : '') . '">'
         . '<label style="display:block;font-size:13px;color:#B9BCC9;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
-        . '<input type="email" name="email" required placeholder="you@email.com" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
+        . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
         . $shipfields
         . '<button type="submit" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
         . $note
@@ -453,6 +456,9 @@ function lmeg_cart_place() {
     set_transient('lmeg_cart_' . $token, [
         'raw' => $raw, 'email' => $email, 'ship_name' => $ship_name, 'ship_addr' => $ship_addr, 'discount' => $disc,
     ], 2 * HOUR_IN_SECONDS);
+
+    // Save the cart so it can be recovered if they don't complete payment.
+    if (function_exists('lmeg_abandoned_capture')) lmeg_abandoned_capture($email, $raw, $v);
 
     $cur     = strtolower($v['currency']);
     $success = add_query_arg(['lmeg_cart' => 'done', 'token' => $token, 'session_id' => '{CHECKOUT_SESSION_ID}'], home_url('/'));
