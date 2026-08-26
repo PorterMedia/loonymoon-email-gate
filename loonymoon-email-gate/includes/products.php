@@ -17,6 +17,15 @@ function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
 
+/** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
+function lmeg_product_gallery($p) {
+    $g = [];
+    if (!empty($p->gallery)) { $d = json_decode($p->gallery, true); if (is_array($d)) $g = $d; }
+    $out = [];
+    foreach ($g as $u) { $u = trim((string) $u); if ($u !== '' && filter_var($u, FILTER_VALIDATE_URL)) $out[] = $u; }
+    return $out;
+}
+
 /**
  * Parse variants (+ optional per-variant stock JSON) into a list of
  * ['name','stock'(int|null),'available'(bool)]. stock null = untracked/unlimited.
@@ -578,7 +587,7 @@ function lmeg_shortcode_product($atts) {
     $atts = shortcode_atts(['id' => 0, 'slug' => ''], $atts, 'fanloop_product');
     $p = $atts['id'] ? lmeg_product_get((int) $atts['id']) : ($atts['slug'] ? lmeg_product_by_slug($atts['slug']) : null);
     if (!$p) return '';
-    return '<div class="flp-prod-wrap" style="max-width:420px">' . lmeg_product_card_html($p) . '</div>';
+    return '<div class="flp-prod-wrap" style="max-width:420px">' . lmeg_product_card_html($p, true, true) . '</div>';
 }
 
 /* Storefront — [fanloop_store] / [loony_store] lists all active products. */
@@ -638,9 +647,10 @@ function lmeg_shortcode_store($atts) {
 
 /**
  * Render a single product card (fills its container's width/height, so it works
- * standalone or inside the storefront grid).
+ * standalone or inside the storefront grid). $solo = a single-product context
+ * (product page / [fanloop_product]) where the full gallery viewer is shown.
  */
-function lmeg_product_card_html($p, $link = true) {
+function lmeg_product_card_html($p, $link = true, $solo = false) {
     $cur      = $p->currency ?: 'USD';
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
     $price    = $fmt($p->price_cents);
@@ -669,8 +679,25 @@ function lmeg_product_card_html($p, $link = true) {
     $buy_sec = 'style="background:#fff;color:#E15FA8;border:1px solid #E15FA8;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none;font-size:14px;white-space:nowrap"';
     ob_start(); ?>
     <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
-      <?php if (!empty($p->cover_url)) : $img = '<img src="' . esc_url($p->cover_url) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
-        echo $link ? '<a href="' . $url . '" style="display:block">' . $img . '</a>' : $img; ?>
+      <?php
+      $gallery = lmeg_product_gallery($p);
+      $imgs = [];
+      foreach (array_merge([$p->cover_url], $gallery) as $u) { $u = trim((string) $u); if ($u !== '' && !in_array($u, $imgs, true)) $imgs[] = $u; }
+      if ($solo && count($imgs) > 1) :
+        $mid = 'flpmain' . (int) $p->id; ?>
+        <div>
+          <img id="<?php echo esc_attr($mid); ?>" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">
+          <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
+            <?php foreach ($imgs as $i => $u) : ?>
+              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? '#E15FA8' : 'rgba(0,0,0,.12)'; ?>">
+            <?php endforeach; ?>
+          </div>
+        </div>
+        <script>(function(){var t=document.currentScript.previousElementSibling.querySelectorAll('.flp-thumb');for(var i=0;i<t.length;i++){t[i].addEventListener('click',function(){var m=document.getElementById(this.getAttribute('data-main'));if(m)m.src=this.src;for(var j=0;j<t.length;j++)t[j].style.borderColor='rgba(0,0,0,.12)';this.style.borderColor='#E15FA8';});}})();</script>
+      <?php elseif (!empty($imgs)) : $img = '<img src="' . esc_url($imgs[0]) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
+        $badge = (count($imgs) > 1) ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(11,12,18,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">▦ ' . count($imgs) . '</span>' : '';
+        $wrapped = '<div style="position:relative;display:block">' . $img . $badge . '</div>';
+        echo $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped; ?>
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
         <div style="font-weight:750;font-size:19px;margin-bottom:4px;color:#17141f"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
@@ -735,7 +762,7 @@ function lmeg_product_page() {
       .sig{margin-top:10px;text-align:center;color:#6C6F82;font-size:12px}
     </style></head><body>
     <div class="wrap">
-      <?php echo lmeg_product_card_html($p, false); ?>
+      <?php echo lmeg_product_card_html($p, false, true); ?>
       <a class="back" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
     </div>
     <?php if (function_exists('lmeg_cart_assets_html')) echo lmeg_cart_assets_html(); ?>
@@ -793,11 +820,19 @@ function lmeg_handle_save_product() {
         }
     }
 
+    // Gallery images (JSON array of URLs from the media picker).
+    $gal = [];
+    if (!empty($_POST['gallery'])) {
+        $dec = json_decode(wp_unslash($_POST['gallery']), true);
+        if (is_array($dec)) foreach ($dec as $u) { $u = esc_url_raw((string) $u); if ($u && !in_array($u, $gal, true)) $gal[] = $u; }
+    }
+
     $data = [
         'title'           => $title,
         'slug'            => $slug,
         'description'     => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
+        'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'price_cents'     => max(0, $to_cents($_POST['price'] ?? 0)),
         'min_price_cents' => !empty($_POST['pwyw']) ? max(0, $to_cents($_POST['min_price'] ?? 0)) : 0,
         'currency'        => strtoupper(substr(sanitize_text_field($_POST['currency'] ?? 'USD'), 0, 3)) ?: 'USD',
@@ -956,7 +991,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -989,6 +1024,37 @@ function lmeg_admin_products() {
                             frame.open();
                         });
                         $('#lmeg-cover-clear').on('click', function(e){ e.preventDefault(); $('#lmeg-cover-url').val(''); $('#lmeg-cover-prev').hide().empty(); $(this).hide(); });
+                    });
+                    </script>
+                </td></tr>
+                <tr><th><label>Gallery images</label></th><td>
+                    <div id="lmeg-gallery-prev" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px"></div>
+                    <input type="hidden" id="lmeg-gallery" name="gallery" value="<?php echo esc_attr(wp_json_encode(lmeg_product_gallery($p))); ?>">
+                    <button type="button" class="button" id="lmeg-gallery-add">Add images</button>
+                    <p class="description">Extra photos shown on the product page (front &amp; back, details, lifestyle). The cover above stays the main image. Up to 12.</p>
+                    <script>
+                    jQuery(function($){
+                        var frame, urls = [];
+                        try { urls = JSON.parse($('#lmeg-gallery').val() || '[]') || []; } catch(e) { urls = []; }
+                        function sync(){ $('#lmeg-gallery').val(JSON.stringify(urls)); render(); }
+                        function render(){
+                            var h = '';
+                            urls.forEach(function(u, i){
+                                h += '<span style="position:relative;display:inline-block"><img src="'+u+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #ddd">'
+                                   + '<button type="button" data-i="'+i+'" class="lmeg-gal-rm" style="position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;border:0;background:#b32d2e;color:#fff;cursor:pointer;line-height:1;font-size:12px">×</button></span>';
+                            });
+                            $('#lmeg-gallery-prev').html(h);
+                        }
+                        $('#lmeg-gallery-add').on('click', function(e){ e.preventDefault();
+                            frame = wp.media({ title:'Add gallery images', button:{text:'Add to gallery'}, multiple:true, library:{type:'image'} });
+                            frame.on('select', function(){
+                                frame.state().get('selection').toJSON().forEach(function(a){ if(a.url && urls.indexOf(a.url)<0 && urls.length<12) urls.push(a.url); });
+                                sync();
+                            });
+                            frame.open();
+                        });
+                        $('#lmeg-gallery-prev').on('click', '.lmeg-gal-rm', function(e){ e.preventDefault(); urls.splice(parseInt($(this).data('i'),10),1); sync(); });
+                        render();
                     });
                     </script>
                 </td></tr>

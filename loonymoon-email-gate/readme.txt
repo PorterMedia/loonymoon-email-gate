@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.80.0
+Stable tag: 2.81.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.81.0 =
+* Store (Beta): product image galleries. Add multiple photos to a product (front & back, details, lifestyle) straight from your WordPress Media Library — up to 12. The product page and single-product embed show a big main image with a clickable thumbnail strip that swaps it; storefront grid cards get a small "▦ N" photo-count badge on the cover. The cover image stays the main/first shot.
+
 = 2.80.0 =
 * Store (Beta): order tracking for physical orders. When you mark an order shipped you can now add a carrier (USPS, UPS, FedEx, Canada Post, DHL, or Other) and a tracking number — or just paste a tracking link. The buyer gets a branded "your order shipped 📦" email with a one-tap Track button, and their find-my-purchases page shows "Shipped · Track →". Leave the fields blank to mark shipped without tracking, exactly like before.
 
