@@ -17,6 +17,16 @@ function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
 
+/** Up to $limit other active products (best-sellers first) for a "more from the shop" strip. */
+function lmeg_product_related($p, $limit = 4) {
+    global $wpdb;
+    $limit = max(1, min(8, (int) $limit));
+    return $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}lmeg_products WHERE status = 'active' AND id <> %d ORDER BY sold DESC, id DESC LIMIT %d",
+        (int) $p->id, $limit
+    ));
+}
+
 /** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
 function lmeg_product_gallery($p) {
     $g = [];
@@ -765,6 +775,22 @@ function lmeg_product_page() {
       <?php echo lmeg_product_card_html($p, false, true); ?>
       <a class="back" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
     </div>
+    <?php $rel = lmeg_product_related($p, 4); if ($rel) : ?>
+    <div style="width:100%;max-width:720px;margin-top:36px">
+      <div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">More from the shop</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
+        <?php foreach ($rel as $r) : $rurl = esc_url(lmeg_product_url($r)); ?>
+        <a href="<?php echo $rurl; ?>" style="text-decoration:none;color:inherit;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">
+          <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
+          <div style="padding:9px 11px">
+            <div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html($r->title); ?></div>
+            <div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px"><?php echo esc_html(lmeg_product_is_pwyw($r) ? 'Name your price' : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2))); ?></div>
+          </div>
+        </a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
     <?php if (function_exists('lmeg_cart_assets_html')) echo lmeg_cart_assets_html(); ?>
     </body></html><?php
     exit;
