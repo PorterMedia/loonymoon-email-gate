@@ -80,17 +80,14 @@ function lmeg_purchases_request() {
 
 /** Email the magic link. */
 function lmeg_purchases_send_link($email, $token) {
-    $s      = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
-    $artist = $s['community_name'] ?? ($s['artist_name'] ?? get_bloginfo('name'));
+    $artist = function_exists('lmeg_email_artist') ? lmeg_email_artist() : get_bloginfo('name');
     $url    = add_query_arg(['lmeg_purchases' => 'view', 'token' => $token], home_url('/'));
-    $body   = '<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">'
-        . '<h2 style="margin:0 0 10px">Your purchases</h2>'
-        . '<p style="color:#444;margin:0 0 18px">Here\'s your link to view and re-download everything you\'ve bought from ' . esc_html($artist) . '. It works for 30 minutes.</p>'
-        . '<p style="margin:0 0 22px"><a href="' . esc_url($url) . '" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px">View my purchases →</a></p>'
-        . '<p style="color:#888;font-size:13px">Or paste this into your browser:<br>' . esc_html($url) . '</p></div>';
-    add_filter('wp_mail_content_type', function () { return 'text/html'; });
-    wp_mail($email, 'Your purchases from ' . $artist, $body);
-    remove_all_filters('wp_mail_content_type');
+    if (!function_exists('lmeg_email_send')) return;
+    $inner  = lmeg_email_h('Your purchases')
+            . lmeg_email_p('Here\'s your link to view and re-download everything you\'ve bought from <strong>' . esc_html($artist) . '</strong>.')
+            . lmeg_email_button('View my purchases →', $url)
+            . lmeg_email_note('This link works for 30 minutes. If you didn\'t request it, you can safely ignore this email.');
+    lmeg_email_send($email, 'Your purchases from ' . $artist, $inner, 'Your link to view and re-download your purchases.');
 }
 
 /** Render the verified purchases list behind the magic link. */

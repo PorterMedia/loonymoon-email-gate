@@ -365,30 +365,34 @@ function lmeg_product_access_url($token) {
 }
 
 function lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical = false, $ship_name = '') {
-    $s      = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
-    $artist = $s['community_name'] ?? ($s['artist_name'] ?? get_bloginfo('name'));
+    if (!$email || !function_exists('lmeg_email_send')) return;
+    $artist = lmeg_email_artist();
     $price  = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
+    $table  = lmeg_email_order_table([['name' => $p->title, 'meta' => '', 'amount' => $price]], $price);
+
     if ($physical) {
         $subject = 'Order confirmed: ' . $p->title;
-        $cta = '<p style="color:#444;margin:0 0 18px">Thanks for your order of <strong>' . esc_html($p->title) . '</strong> (' . esc_html($price) . ')'
-             . ($ship_name ? ', shipping to <strong>' . esc_html($ship_name) . '</strong>' : '')
-             . '. We\'ll get it on its way and be in touch if we need anything.</p>';
+        $inner   = lmeg_email_h('Order confirmed 🎉')
+                 . lmeg_email_p('Thanks for your order — we\'re on it. Here\'s what\'s coming your way:')
+                 . $table
+                 . ($ship_name ? lmeg_email_ship_block($ship_name, '') : '')
+                 . lmeg_email_note('We\'ll get it on its way and email you if we need anything.');
+        $pre = 'Your order of ' . $p->title . ' is confirmed.';
     } else {
         $access  = lmeg_product_access_url($token);
         $subject = 'Your download: ' . $p->title;
-        $cta = '<p style="color:#444;margin:0 0 18px">You bought <strong>' . esc_html($p->title) . '</strong> for ' . esc_html($price) . '.</p>'
-             . '<p style="margin:0 0 22px"><a href="' . esc_url($access) . '" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:10px">Get your download →</a></p>'
-             . '<p style="color:#888;font-size:13px">Or paste this link into your browser:<br>' . esc_html($access) . '</p>';
+        $inner   = lmeg_email_h('Thanks for your purchase 💜')
+                 . lmeg_email_p('You just picked up <strong>' . esc_html($p->title) . '</strong> — your download\'s ready below.')
+                 . $table
+                 . lmeg_email_download_block([['name' => $p->title, 'url' => $access]])
+                 . lmeg_email_note('Trouble with the link? Just reply to this email and ' . esc_html($artist) . ' can help.');
+        $pre = 'Your download of ' . $p->title . ' is ready.';
     }
-    $body = '<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111">'
-        . '<h2 style="margin:0 0 6px">Thanks for supporting ' . esc_html($artist) . ' 💜</h2>' . $cta . '</div>';
-    add_filter('wp_mail_content_type', function () { return 'text/html'; });
-    wp_mail($email, $subject, $body);
-    remove_all_filters('wp_mail_content_type');
+    lmeg_email_send($email, $subject, $inner, $pre);
 }
 
 /**
- * Notify the artist/admin of a new sale (plain text). Off if the Store
+ * Notify the artist/admin of a new sale (branded HTML). Off if the Store
  * notification toggle is disabled; sends to the configured address, or the site
  * admin email by default. Fires for both processors, digital and physical.
  */
@@ -396,29 +400,22 @@ function lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $varian
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     if (isset($s['store_notify']) && !$s['store_notify']) return;         // explicitly disabled
     $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
-    if (!$to || !is_email($to)) return;
+    if (!$to || !is_email($to) || !function_exists('lmeg_email_send')) return;
 
     $price   = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
     $subject = ($physical ? '🛍️ New order: ' : '💿 New sale: ') . $p->title . ' — ' . $price;
-    $lines   = [
-        'A new ' . ($physical ? 'order' : 'sale') . ' just came in on your Fanloop store.',
-        '',
-        'Item:   ' . $p->title . ($variant ? '  (' . $variant . ')' : ''),
-        'Amount: ' . $price,
-        'Buyer:  ' . ($email ?: 'unknown'),
-    ];
+    $name    = $p->title . ($variant ? ' · ' . $variant : '');
+    $inner   = lmeg_email_h($physical ? 'New order 🛍️' : 'New sale 💿')
+             . lmeg_email_p('A new ' . ($physical ? 'order' : 'sale') . ' just landed in your store.')
+             . lmeg_email_order_table([['name' => $name, 'meta' => 'Buyer: ' . ($email ?: 'unknown'), 'amount' => $price]], $price);
     if ($physical) {
-        $lines[] = '';
-        $lines[] = 'SHIP TO:';
-        $lines[] = '  ' . ($ship_name ?: '(no name given)');
-        if ($ship_addr) foreach (explode("\n", $ship_addr) as $ln) $lines[] = '  ' . $ln;
-        $lines[] = '';
-        $lines[] = 'Mark it shipped: ' . admin_url('admin.php?page=lmeg-products#orders');
+        $inner .= lmeg_email_ship_block($ship_name ?: '(no name given)', $ship_addr)
+                . lmeg_email_button('Orders to ship →', admin_url('admin.php?page=lmeg-products#orders'));
     } else {
-        $lines[] = '';
-        $lines[] = 'The buyer got their download automatically. Your Store: ' . admin_url('admin.php?page=lmeg-products');
+        $inner .= lmeg_email_p('The buyer got their download automatically.')
+                . lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products'));
     }
-    wp_mail($to, $subject, implode("\n", $lines));
+    lmeg_email_send($to, $subject, $inner, ($physical ? 'New order' : 'New sale') . ': ' . $p->title . ' — ' . $price);
 }
 
 function lmeg_product_serve_access() {

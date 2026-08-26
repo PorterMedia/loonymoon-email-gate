@@ -86,18 +86,26 @@ function lmeg_cart_money($cents, $cur) {
 
 /**
  * Fulfil ONE cart line. Idempotent, keyed on $ref (unique per line, e.g.
- * "demo_ab12…#0" or "<stripe_session>#0"). Mirrors lmeg_product_fulfill_checkout
- * for a single item but supports quantity and an arbitrary processor label.
- * Returns the purchase id.
+ * "demo_ab12…#0" or "<stripe_session>#0"). Records the sale but does NOT email —
+ * the whole order gets one combined receipt from lmeg_cart_fulfill_all. Returns
+ * a struct describing the line (incl. 'new' = whether it was fulfilled just now).
  */
 function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $ref) {
     global $wpdb;
     $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $p    = $line['p'];
 
     $existing = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE provider_ref = %s", $ref));
-    if ($existing && $existing->status === 'paid') return (int) $existing->id;
+    if ($existing && $existing->status === 'paid') {
+        return [
+            'new' => false, 'id' => (int) $existing->id, 'physical' => ($p->type === 'physical'),
+            'title' => $p->title, 'variant' => (string) $existing->variant, 'type' => $p->type,
+            'amount' => (int) $existing->amount_cents, 'unit' => (int) $line['unit'],
+            'qty' => (int) $existing->qty ?: 1, 'cur' => strtoupper($existing->currency ?: 'USD'),
+            'token' => (string) $existing->access_token,
+        ];
+    }
 
-    $p        = $line['p'];
     $physical = !empty($line['physical']);
     $variant  = (string) $line['variant'];
     $qty      = max(1, (int) $line['qty']);
@@ -125,21 +133,81 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + %d WHERE id = %d", $qty, (int) $p->id));
     for ($k = 0; $k < $qty; $k++) lmeg_product_decrement_variant((int) $p->id, $variant);
     lmeg_product_record_revenue($p, $pur_id, $email, $amount, $cur);
-    if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $ship_name);
-    lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $variant, $ship_name, $ship_addr);
-    return $pur_id;
+    return [
+        'new' => true, 'id' => $pur_id, 'physical' => $physical, 'title' => $p->title,
+        'variant' => $variant, 'type' => $p->type, 'amount' => $amount, 'unit' => (int) $line['unit'],
+        'qty' => $qty, 'cur' => $cur, 'token' => $token,
+    ];
 }
 
 /**
  * Fulfil an entire validated cart against one reference stem ($stem). Each line
- * i is fulfilled with "$stem#i". Returns the ref stem so the success page can
- * look the lines back up.
+ * i is fulfilled with "$stem#i". When any line is newly fulfilled, sends ONE
+ * combined receipt to the buyer and ONE notification to the artist (guarded so
+ * a webhook + return race can't double-send). Returns the ref stem.
  */
 function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $stem) {
+    $results = [];
     foreach ($v['lines'] as $i => $line) {
-        lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $stem . '#' . $i);
+        $results[] = lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $stem . '#' . $i);
+    }
+    $new_any  = false;
+    foreach ($results as $r) if (!empty($r['new'])) { $new_any = true; break; }
+
+    $guard = 'lmeg_cart_mailed_' . md5($stem);
+    if ($new_any && !get_transient($guard)) {
+        set_transient($guard, 1, DAY_IN_SECONDS);
+        if ($email) lmeg_cart_send_receipt($results, $email, $ship_name, $ship_addr);
+        lmeg_cart_notify_admin($results, $email, $ship_name, $ship_addr);
     }
     return $stem;
+}
+
+/** One branded receipt for a whole cart order. */
+function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr) {
+    if (!function_exists('lmeg_email_send')) return;
+    $artist = lmeg_email_artist();
+    $items = []; $dls = []; $total = 0; $cur = 'USD'; $has_phys = false; $n = 0;
+    foreach ($lines as $ln) {
+        $cur = $ln['cur']; $total += (int) $ln['amount']; $n++;
+        $meta = ((int) $ln['qty'] > 1 ? (int) $ln['qty'] . ' × ' . lmeg_cart_money($ln['unit'], $ln['cur']) : '')
+              . ((int) $ln['qty'] > 1 && $ln['variant'] ? ' · ' : '') . ($ln['variant'] ? $ln['variant'] : '');
+        $items[] = ['name' => $ln['title'], 'meta' => trim($meta, ' ·'), 'amount' => lmeg_cart_money($ln['amount'], $ln['cur'])];
+        if ($ln['type'] !== 'physical' && $ln['token']) {
+            $dls[] = ['name' => $ln['title'], 'url' => lmeg_product_access_url($ln['token'])];
+        } else { $has_phys = true; }
+    }
+    $inner = lmeg_email_h('Thanks for your order 💜')
+        . lmeg_email_p('Here\'s everything from your order with <strong>' . esc_html($artist) . '</strong>.')
+        . lmeg_email_order_table($items, lmeg_cart_money($total, $cur))
+        . lmeg_email_download_block($dls)
+        . ($has_phys ? lmeg_email_ship_block($ship_name, $ship_addr) . lmeg_email_note('We\'ll get your item' . (count($lines) > 1 ? 's' : '') . ' on the way and email you if we need anything.') : '')
+        . (empty($dls) && !$has_phys ? '' : ($dls ? lmeg_email_note('Trouble with a link? Just reply and ' . esc_html($artist) . ' can help.') : ''));
+    lmeg_email_send($email, 'Your order from ' . $artist, $inner, 'Your order from ' . $artist . ' — receipt & downloads.');
+}
+
+/** One notification to the artist for a whole cart order. */
+function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr) {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (isset($s['store_notify']) && !$s['store_notify']) return;
+    $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
+    if (!$to || !is_email($to) || !function_exists('lmeg_email_send')) return;
+
+    $items = []; $total = 0; $cur = 'USD'; $has_phys = false;
+    foreach ($lines as $ln) {
+        $cur = $ln['cur']; $total += (int) $ln['amount'];
+        $items[] = ['name' => $ln['title'] . ($ln['variant'] ? ' · ' . $ln['variant'] : ''),
+                    'meta' => (int) $ln['qty'] > 1 ? 'Qty ' . (int) $ln['qty'] : '',
+                    'amount' => lmeg_cart_money($ln['amount'], $ln['cur'])];
+        if ($ln['physical']) $has_phys = true;
+    }
+    $price = lmeg_cart_money($total, $cur);
+    $inner = lmeg_email_h($has_phys ? 'New order 🛍️' : 'New sale 💿')
+        . lmeg_email_p('A new order just landed — <strong>' . count($lines) . '</strong> item' . (count($lines) === 1 ? '' : 's') . ' from <strong>' . esc_html($email ?: 'unknown') . '</strong>.')
+        . lmeg_email_order_table($items, $price)
+        . ($has_phys ? lmeg_email_ship_block($ship_name ?: '(no name given)', $ship_addr) . lmeg_email_button('Orders to ship →', admin_url('admin.php?page=lmeg-products#orders'))
+                     : lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products')));
+    lmeg_email_send($to, ($has_phys ? '🛍️ New order' : '💿 New sale') . ' — ' . $price, $inner, 'New order in your store — ' . $price);
 }
 
 /**
