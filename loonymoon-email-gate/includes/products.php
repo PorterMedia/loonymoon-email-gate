@@ -442,6 +442,31 @@ function lmeg_shortcode_product($atts) {
     $atts = shortcode_atts(['id' => 0, 'slug' => ''], $atts, 'fanloop_product');
     $p = $atts['id'] ? lmeg_product_get((int) $atts['id']) : ($atts['slug'] ? lmeg_product_by_slug($atts['slug']) : null);
     if (!$p) return '';
+    return '<div class="flp-prod-wrap" style="max-width:420px">' . lmeg_product_card_html($p) . '</div>';
+}
+
+/* Storefront — [fanloop_store] / [loony_store] lists all active products. */
+add_shortcode('fanloop_store', 'lmeg_shortcode_store');
+add_shortcode('loony_store', 'lmeg_shortcode_store');
+function lmeg_shortcode_store($atts) {
+    $atts = shortcode_atts(['type' => 'all', 'min' => 240], $atts, 'fanloop_store');
+    global $wpdb;
+    $where = "status = 'active'";
+    if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY id DESC");
+    if (!$rows) return '<p style="opacity:.7">Nothing in the shop yet — check back soon.</p>';
+    $min = max(160, min(360, (int) $atts['min']));
+    $out = '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
+    foreach ($rows as $p) $out .= lmeg_product_card_html($p);
+    $out .= '</div>';
+    return $out;
+}
+
+/**
+ * Render a single product card (fills its container's width/height, so it works
+ * standalone or inside the storefront grid).
+ */
+function lmeg_product_card_html($p) {
     $sold_out = ($p->status !== 'active') || ($p->stock >= 0 && $p->sold >= $p->stock);
     $cur      = $p->currency ?: 'USD';
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
@@ -452,11 +477,12 @@ function lmeg_shortcode_product($atts) {
     $ship     = ($physical && (int) $p->shipping_cents > 0) ? $fmt($p->shipping_cents) : '';
     $needs_form = $pwyw || !empty($variants);
     ob_start(); ?>
-    <div class="flp-prod" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.08)">
+    <div class="flp-prod" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php if (!empty($p->cover_url)) : ?><img src="<?php echo esc_url($p->cover_url); ?>" alt="<?php echo esc_attr($p->title); ?>" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover"><?php endif; ?>
-      <div style="padding:18px 20px">
+      <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
         <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#888;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#555;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
+        <div style="margin-top:auto">
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#999">Sold out</div>
         <?php elseif ($needs_form) : ?>
@@ -466,16 +492,16 @@ function lmeg_shortcode_product($atts) {
               <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($variants as $v) : ?><option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($v); ?></option><?php endforeach; ?></select>
             <?php endif; ?>
             <?php if ($pwyw) : ?>
-              <span style="color:#555">Name your price:</span>
-              <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:90px;padding:9px;border:1px solid #ccc;border-radius:8px">
+              <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:90px;padding:9px;border:1px solid #ccc;border-radius:8px" aria-label="Name your price">
             <?php endif; ?>
             <button type="submit" style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 20px;border-radius:10px;cursor:pointer"><?php echo $pwyw ? 'Buy' : esc_html($price . ' · Buy'); ?></button>
           </form>
-          <div style="font-size:12px;color:#999;margin-top:6px"><?php echo $pwyw ? 'Minimum ' . esc_html($fmt($p->min_price_cents)) : ''; ?><?php echo $ship ? ($pwyw ? ' · ' : '') . '+ ' . esc_html($ship) . ' shipping' : ''; ?></div>
+          <div style="font-size:12px;color:#999;margin-top:6px"><?php echo $pwyw ? 'Name your price · min ' . esc_html($fmt($p->min_price_cents)) : ''; ?><?php echo $ship ? ($pwyw ? ' · ' : '') . '+ ' . esc_html($ship) . ' shipping' : ''; ?></div>
         <?php else : ?>
           <a href="<?php echo esc_url(add_query_arg(['lmeg_buy' => $p->id], home_url('/'))); ?>" style="display:inline-block;background:#E15FA8;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px"><?php echo esc_html($price); ?> · Buy now</a>
           <?php if ($ship) : ?><div style="font-size:12px;color:#999;margin-top:6px">+ <?php echo esc_html($ship); ?> shipping</div><?php endif; ?>
         <?php endif; ?>
+        </div>
       </div>
     </div>
     <?php
@@ -623,20 +649,38 @@ function lmeg_admin_products() {
         return;
     }
 
-    /* ----- list + sales ----- */
+    /* ----- list + sales + download analytics ----- */
     $rows  = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC");
     $units = (int) $wpdb->get_var("SELECT COUNT(*) FROM $ptbl WHERE status = 'paid'");
     $rev   = (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid'");
+    $dls   = (int) $wpdb->get_var("SELECT COALESCE(SUM(access_count),0) FROM $ptbl WHERE status = 'paid'");
+
+    // Per-product: buyers, downloads, how many buyers actually downloaded.
+    $pstats = [];
+    foreach ((array) $wpdb->get_results("SELECT product_id, COUNT(*) buyers, COALESCE(SUM(access_count),0) dls, SUM(CASE WHEN access_count > 0 THEN 1 ELSE 0 END) downloaders FROM $ptbl WHERE status = 'paid' GROUP BY product_id") as $r) {
+        $pstats[(int) $r->product_id] = $r;
+    }
+
+    // 30-day units/day sparkline.
+    $since    = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
+    $daily    = array_fill(0, 30, 0);
+    $today_ts = current_time('timestamp');
+    foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COUNT(*) n FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
+        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+        if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
+    }
     ?>
-    <p style="margin:10px 0 18px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a></p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:620px;margin-bottom:20px">
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Units sold</div><div class="lmeg-stat__value"><?php echo number_format_i18n($units); ?></div></div>
+    <p style="margin:10px 0 4px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a></p>
+    <p class="description" style="margin:0 0 18px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>).</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;max-width:840px;margin-bottom:20px">
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Units sold · 30d trend</div><div class="lmeg-stat__value"><?php echo number_format_i18n($units); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($daily, ['color' => '#E15FA8', 'uid' => 'store-units', 'h' => 44, 'suffix' => 'sales']) : ''; ?></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price($rev, 'USD') : '$' . number_format($rev/100,2)); ?></div><div class="lmeg-stat__hint">before processor fees · lands in your Stripe / Square</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Downloads</div><div class="lmeg-stat__value"><?php echo number_format_i18n($dls); ?></div><div class="lmeg-stat__hint">total file/link accesses by buyers</div></div>
     </div>
     <table class="widefat striped">
-        <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
         <tbody>
-        <?php if (!$rows) : ?><tr><td colspan="7">No products yet. Create your first drop.</td></tr>
+        <?php if (!$rows) : ?><tr><td colspan="8">No products yet. Create your first drop.</td></tr>
         <?php else : foreach ($rows as $p) :
             $cur = $p->currency ?: 'USD';
             $price = lmeg_product_is_pwyw($p)
@@ -649,6 +693,14 @@ function lmeg_admin_products() {
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
                 <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?></td>
+                <td><?php
+                    $st = $pstats[(int) $p->id] ?? null;
+                    if ($p->type === 'physical') { echo '<span style="color:#9A9DB0">—</span>'; }
+                    elseif ($st && (int) $st->buyers > 0) {
+                        $pct = round(((int) $st->downloaders / (int) $st->buyers) * 100);
+                        echo number_format_i18n((int) $st->dls) . ' <span style="color:#888;font-size:12px">· ' . (int) $st->downloaders . '/' . (int) $st->buyers . ' (' . $pct . '%)</span>';
+                    } else { echo '<span style="color:#9A9DB0">0</span>'; }
+                ?></td>
                 <td><?php echo $p->status === 'active' ? '<span style="color:#34D399">● Active</span>' : '<span style="color:#9A9DB0">Draft</span>'; ?></td>
                 <td><a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&edit=' . $p->id)); ?>">Edit</a></td>
             </tr>
