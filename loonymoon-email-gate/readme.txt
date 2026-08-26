@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.72.0
+Stable tag: 2.73.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.73.0 =
+* Store (Beta): a "find my purchases" page so buyers can always get their downloads back. A fan enters the email they bought with and we send a secure magic link (good for 30 minutes) listing everything they've purchased — fresh download buttons for digital items, and order status (Preparing / Shipped) for physical ones. No login. Embed the finder anywhere with [fanloop_purchases], link to it directly at ?lmeg_purchases=find, and it's linked automatically from every checkout success page. The email is never revealed to whoever types it — we only send a link to an address that actually has orders, and rate-limit to one email every couple of minutes.
+
 = 2.72.0 =
 * Store (Beta): a real cart + demo checkout. Every product now has an "Add to cart" button beside Buy now; a floating cart and slide-in drawer let fans add several items, change quantities, and check out together (one Stripe session for the whole cart, digital + physical). New Demo checkout mode (Settings → Payments) lets you complete an order WITHOUT payment, so you can walk the entire flow end-to-end — cart, receipt email, download links, the fan being captured, and physical orders landing in "Orders to ship". Demo sales are tagged so you can spot them, and one click on the Store page clears all test orders (restoring sold counts and any variant stock the tests used). Turn Demo off before you go live.
 

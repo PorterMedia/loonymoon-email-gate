@@ -408,6 +408,7 @@ function lmeg_cart_done($stem = '') {
     $body = '<div class="dot">✓</div><h1>You\'re in. Thank you!</h1>'
         . '<p>' . ($any_dl ? 'Your downloads are ready below, and a' : 'A') . ' receipt is on its way to your inbox.</p>'
         . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:4px 16px 12px;margin-bottom:8px">' . $items . '</div>'
+        . ($any_dl ? '<p style="font-size:12px;color:#8B90A0;margin:2px 0 0">Lose this page? Get your downloads again anytime at <a href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '" style="color:#E7A6CF">find my purchases</a>.</p>' : '')
         . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>'
         . '<script>try{localStorage.removeItem("fanloop_cart")}catch(e){}</script>';
 

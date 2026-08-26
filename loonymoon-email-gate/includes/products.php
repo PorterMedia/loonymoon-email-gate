@@ -963,7 +963,7 @@ function lmeg_admin_products() {
             <button type="submit" class="button">🧪 Clear test orders (<?php echo (int) $demo_n; ?>)</button>
         </form>
     <?php endif; ?></p>
-    <p class="description" style="margin:0 0 12px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>).</p>
+    <p class="description" style="margin:0 0 12px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>). Let buyers re-download what they bought with <code>[fanloop_purchases]</code> (or link to <code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code>).</p>
     <?php
     $has_samples = false;
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
