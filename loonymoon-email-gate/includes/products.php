@@ -1110,6 +1110,19 @@ function lmeg_admin_products() {
         $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
         if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
     }
+
+    // KPI summary: orders (distinct checkouts), average order value, unique
+    // buyers, top seller, and a 30-day revenue sparkline.
+    $orders = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR))) FROM $ptbl WHERE status = 'paid'");
+    $aov    = $orders ? (int) round($rev / $orders) : 0;
+    $buyers = (int) $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE status = 'paid' AND email IS NOT NULL AND email <> ''");
+    $top    = $wpdb->get_row("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 1");
+    $revdaily = array_fill(0, 30, 0);
+    foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
+        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+        if ($idx >= 0 && $idx < 30) $revdaily[$idx] = round(((int) $dr->c) / 100, 2);
+    }
+    $fmtc = function ($c) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, 'USD') : ('$' . number_format($c / 100, 2)); };
     ?>
     <p style="margin:10px 0 4px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a>
     <?php if ($demo_n > 0) : ?>
@@ -1125,11 +1138,16 @@ function lmeg_admin_products() {
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
     if ($has_samples) echo '<div class="notice notice-info inline" style="margin:0 0 18px;max-width:840px"><p>👋 We added a few <strong>sample products</strong> to get you started — they are <strong>Drafts</strong>, so fans can\'t see them yet. Edit one to make it yours (and set it <em>Active</em> to sell it), or delete them.</p></div>';
     ?>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;max-width:840px;margin-bottom:20px">
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Units sold · 30d trend</div><div class="lmeg-stat__value"><?php echo number_format_i18n($units); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($daily, ['color' => '#E15FA8', 'uid' => 'store-units', 'h' => 44, 'suffix' => 'sales']) : ''; ?></div>
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price($rev, 'USD') : '$' . number_format($rev/100,2)); ?></div><div class="lmeg-stat__hint">before processor fees · lands in your Stripe / Square</div></div>
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Downloads</div><div class="lmeg-stat__value"><?php echo number_format_i18n($dls); ?></div><div class="lmeg-stat__hint">total file/link accesses by buyers</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:980px;margin-bottom:14px">
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue · 30d trend</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($rev)); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($revdaily, ['color' => '#E15FA8', 'uid' => 'store-rev', 'h' => 44, 'suffix' => ' USD']) : '<div class="lmeg-stat__hint">before processor fees</div>'; ?></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Orders</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders); ?></div><div class="lmeg-stat__hint"><?php echo number_format_i18n($units); ?> item<?php echo $units === 1 ? '' : 's'; ?> total</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Avg order</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($aov)); ?></div><div class="lmeg-stat__hint">revenue ÷ orders</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Buyers</div><div class="lmeg-stat__value"><?php echo number_format_i18n($buyers); ?></div><div class="lmeg-stat__hint">unique fans who bought</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Downloads</div><div class="lmeg-stat__value"><?php echo number_format_i18n($dls); ?></div><div class="lmeg-stat__hint">file/link accesses</div></div>
     </div>
+    <?php if ($top && (int) $top->rev > 0) : ?>
+        <p style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #E15FA8;border-radius:6px;padding:9px 14px;color:#17141f">🏆 <strong>Top seller:</strong> <?php echo esc_html($top->title ?: 'Product #' . (int) $top->pid); ?> — <?php echo esc_html($fmtc((int) $top->rev)); ?> across <?php echo (int) $top->n; ?> sale<?php echo (int) $top->n === 1 ? '' : 's'; ?>.</p>
+    <?php endif; ?>
     <table class="widefat striped">
         <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
         <tbody>
