@@ -834,10 +834,60 @@ function lmeg_handle_ship_order() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_ship_order', 'lmeg_ship_nonce');
     global $wpdb;
-    $pid = (int) ($_POST['purchase_id'] ?? 0);
-    $to  = (($_POST['to'] ?? 'shipped') === 'unshipped') ? 'unshipped' : 'shipped';
-    if ($pid) $wpdb->update($wpdb->prefix . 'lmeg_product_purchases', ['fulfillment' => $to], ['id' => $pid]);
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $pid  = (int) ($_POST['purchase_id'] ?? 0);
+    $to   = (($_POST['to'] ?? 'shipped') === 'unshipped') ? 'unshipped' : 'shipped';
+    if (!$pid) { wp_safe_redirect(admin_url('admin.php?page=lmeg-products#orders')); exit; }
+
+    $data = ['fulfillment' => $to];
+    if ($to === 'shipped') {
+        $data['carrier']  = sanitize_text_field(wp_unslash($_POST['carrier'] ?? '')) ?: null;
+        $data['tracking'] = sanitize_text_field(wp_unslash($_POST['tracking'] ?? '')) ?: null;
+    }
+    $wpdb->update($ptbl, $data, ['id' => $pid]);
+
+    // Email the buyer that it's on the way (with tracking, if provided).
+    if ($to === 'shipped') {
+        $pur = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE id = %d", $pid));
+        if ($pur && $pur->email) lmeg_product_send_shipped($pur);
+    }
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&shipped=1#orders')); exit;
+}
+
+/** Build a tracking URL from a carrier + number (or pass through a pasted URL). */
+function lmeg_tracking_url($carrier, $number) {
+    $number = trim((string) $number);
+    if ($number === '') return '';
+    if (preg_match('~^https?://~i', $number)) return esc_url_raw($number);   // buyer pasted a full link
+    $n = rawurlencode($number);
+    switch (strtolower(trim((string) $carrier))) {
+        case 'usps':        return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' . $n;
+        case 'ups':         return 'https://www.ups.com/track?tracknum=' . $n;
+        case 'fedex':       return 'https://www.fedex.com/fedextrack/?trknbr=' . $n;
+        case 'canada post': return 'https://www.canadapost-postescanada.ca/track-reperage/en#/search?searchFor=' . $n;
+        case 'dhl':         return 'https://www.dhl.com/en/express/tracking.html?AWB=' . $n;
+        default:            return '';   // unknown carrier & not a URL → show the number as plain text
+    }
+}
+
+/** Email the buyer a branded "your order shipped" notice (with tracking). */
+function lmeg_product_send_shipped($pur) {
+    if (!function_exists('lmeg_email_deliver')) return;
+    $p      = lmeg_product_get((int) $pur->product_id);
+    $title  = $p ? $p->title : 'your order';
+    $artist = lmeg_email_artist();
+    $url    = lmeg_tracking_url($pur->carrier ?? '', $pur->tracking ?? '');
+
+    $inner = lmeg_email_h('Your order shipped 📦')
+        . lmeg_email_p('Good news — <strong>' . esc_html($title) . '</strong>' . (!empty($pur->variant) ? ' (' . esc_html($pur->variant) . ')' : '')
+            . ' is on its way' . (!empty($pur->ship_name) ? ' to ' . esc_html($pur->ship_name) : '') . '.');
+    if (!empty($pur->tracking) || !empty($pur->carrier)) {
+        $inner .= lmeg_email_label('Tracking')
+            . lmeg_email_p(trim(esc_html($pur->carrier ?: '') . (!empty($pur->carrier) && !empty($pur->tracking) ? ' · ' : '') . esc_html($pur->tracking ?: '')));
+    }
+    if ($url) $inner .= lmeg_email_button('Track your package →', $url);
+    $inner .= lmeg_email_note('Questions about your order? Just reply to this email.');
+    lmeg_email_deliver($pur->email, 'Your order shipped: ' . $title, $inner, $title . ' is on its way.');
 }
 
 /**
@@ -1057,7 +1107,12 @@ function lmeg_admin_products() {
                     <td><?php echo esc_html($o->title); ?><?php echo $o->variant ? ' · <strong>' . esc_html($o->variant) . '</strong>' : ''; ?></td>
                     <td><?php echo esc_html($o->ship_name ?: '—'); ?><?php echo $o->email ? ' · ' . esc_html($o->email) : ''; ?><?php echo $o->ship_address ? '<br><span style="white-space:pre-line;color:#666;font-size:12px">' . esc_html($o->ship_address) . '</span>' : ''; ?></td>
                     <td><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int)$o->amount_cents, $o->currency) : '$'.number_format($o->amount_cents/100,2)); ?></td>
-                    <td><form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>"><?php wp_nonce_field('lmeg_ship_order', 'lmeg_ship_nonce'); ?><input type="hidden" name="action" value="lmeg_ship_order"><input type="hidden" name="purchase_id" value="<?php echo (int) $o->id; ?>"><button class="button button-small" type="submit">Mark shipped</button></form></td>
+                    <td><form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><?php wp_nonce_field('lmeg_ship_order', 'lmeg_ship_nonce'); ?><input type="hidden" name="action" value="lmeg_ship_order"><input type="hidden" name="purchase_id" value="<?php echo (int) $o->id; ?>">
+                        <select name="carrier" style="max-width:120px"><option value="">Carrier…</option><?php foreach (['USPS','UPS','FedEx','Canada Post','DHL','Other'] as $cc) : ?><option value="<?php echo esc_attr($cc); ?>"><?php echo esc_html($cc); ?></option><?php endforeach; ?></select>
+                        <input type="text" name="tracking" placeholder="Tracking # or link" style="width:150px">
+                        <button class="button button-small button-primary" type="submit">Mark shipped</button>
+                        <span class="description" style="flex-basis:100%;margin:0">Adds a "your order shipped" email with a tracking link (optional).</span>
+                    </form></td>
                 </tr>
             <?php endforeach; ?></tbody>
         </table>

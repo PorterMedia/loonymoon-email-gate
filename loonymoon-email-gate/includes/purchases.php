@@ -121,9 +121,14 @@ function lmeg_purchases_view() {
                 ? '<span style="color:#F0A0A0;font-size:12px">download limit reached</span>'
                 : '<a href="' . esc_url(lmeg_product_access_url($r->access_token)) . '" style="background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:750;text-decoration:none;padding:9px 15px;border-radius:9px;white-space:nowrap;font-size:14px">Download →</a>';
         } elseif (!$digital) {
-            $right = ($r->fulfillment === 'shipped')
-                ? '<span style="color:#7DD3A8;font-size:13px;font-weight:600;white-space:nowrap">Shipped</span>'
-                : '<span style="color:#E7C97D;font-size:13px;font-weight:600;white-space:nowrap">Preparing</span>';
+            if ($r->fulfillment === 'shipped') {
+                $turl = function_exists('lmeg_tracking_url') ? lmeg_tracking_url($r->carrier ?? '', $r->tracking ?? '') : '';
+                $right = $turl
+                    ? '<a href="' . esc_url($turl) . '" target="_blank" rel="noopener" style="color:#7DD3A8;font-size:13px;font-weight:700;white-space:nowrap;text-decoration:none">Shipped · Track →</a>'
+                    : '<span style="color:#7DD3A8;font-size:13px;font-weight:600;white-space:nowrap">Shipped</span>';
+            } else {
+                $right = '<span style="color:#E7C97D;font-size:13px;font-weight:600;white-space:nowrap">Preparing</span>';
+            }
         }
         $items .= '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)">'
             . '<div style="text-align:left;min-width:0"><div style="font-weight:650">' . esc_html($r->title ?: 'Item') . ($r->variant ? ' · <span style="color:#9AA">' . esc_html($r->variant) . '</span>' : '') . '</div>'
