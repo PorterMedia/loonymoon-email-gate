@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.86.0
+Stable tag: 2.87.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.87.0 =
+* Store (Beta): share buttons on the product page. Each hosted product page now has a Copy link button plus one-tap sharing to X, Facebook and WhatsApp — so fans can spread a release for you. Uses the product's own link and preview image (already set up), no configuration.
+
 = 2.86.0 =
 * Store (Beta): "More from the shop" on the product page. Each hosted product page now shows up to four other products (best-sellers first) below the item, so a fan who lands on one release can discover the rest of your shop in a tap. Automatic — no setup.
 

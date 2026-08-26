@@ -773,6 +773,23 @@ function lmeg_product_page() {
     </style></head><body>
     <div class="wrap">
       <?php echo lmeg_product_card_html($p, false, true); ?>
+      <?php
+      $share_url = lmeg_product_url($p);
+      $share_txt = $p->title . ' — ' . $site;
+      $x_url  = 'https://twitter.com/intent/tweet?text=' . rawurlencode($share_txt) . '&url=' . rawurlencode($share_url);
+      $fb_url = 'https://www.facebook.com/sharer/sharer.php?u=' . rawurlencode($share_url);
+      $wa_url = 'https://wa.me/?text=' . rawurlencode($share_txt . ' ' . $share_url);
+      $pill   = 'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#F4F2F7;font-size:13px;font-weight:650;padding:9px 14px;border-radius:999px;text-decoration:none;cursor:pointer;font-family:inherit';
+      ?>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px">
+        <button type="button" id="flp-copy" data-url="<?php echo esc_attr($share_url); ?>" style="<?php echo $pill; ?>">🔗 Copy link</button>
+        <a href="<?php echo esc_url($x_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Share on X</a>
+        <a href="<?php echo esc_url($fb_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Facebook</a>
+        <a href="<?php echo esc_url($wa_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">WhatsApp</a>
+      </div>
+      <script>
+      (function(){var b=document.getElementById('flp-copy');if(!b)return;b.addEventListener('click',function(){var u=b.getAttribute('data-url');function done(){var t=b.textContent;b.textContent='✓ Copied';setTimeout(function(){b.textContent=t;},1600);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u).then(done,function(){window.prompt('Copy this link:',u);});}else{window.prompt('Copy this link:',u);}});})();
+      </script>
       <a class="back" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
     </div>
     <?php $rel = lmeg_product_related($p, 4); if ($rel) : ?>
