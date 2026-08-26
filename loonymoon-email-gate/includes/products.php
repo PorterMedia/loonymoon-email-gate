@@ -676,7 +676,8 @@ function lmeg_product_card_html($p, $link = true) {
         <div style="font-weight:750;font-size:19px;margin-bottom:4px;color:#17141f"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
-        <?php if (!$sold_out && $low_stock) : ?><div style="font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🔥 Only <?php echo (int) $remaining; ?> left</div><?php endif; ?>
+        <?php if (!$sold_out && $low_stock) : ?><div style="font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🔥 Only <?php echo (int) $remaining; ?> left</div>
+        <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
         <?php elseif ($needs_form) : ?>

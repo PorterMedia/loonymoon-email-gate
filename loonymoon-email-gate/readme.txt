@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.78.0
+Stable tag: 2.79.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.79.0 =
+* Store (Beta): "★ N sold" social-proof badge on product cards, shown once an item has sold 5 or more. A low-stock "🔥 Only N left" badge still takes priority when both apply, so you never show both at once. Nothing appears for brand-new items — social proof only when it's earned.
+
 = 2.78.0 =
 * Store (Beta): storefront search + sort. When your shop has a handful of items, [fanloop_store] now shows a search box and a sort dropdown (Featured, Newest, Price low→high / high→low, Best selling, Name A–Z). It's instant and client-side — no page reloads. Controls appear automatically once you have 5+ products; force them with [fanloop_store controls="on"] or hide with controls="off".
 
