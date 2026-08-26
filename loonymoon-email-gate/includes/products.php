@@ -264,6 +264,7 @@ function lmeg_product_fulfill_checkout($session) {
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $prod_id));
     lmeg_product_record_revenue($p, $pur_id, $email, $amount, $cur);
     if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $ship_name);
+    lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $variant, $ship_name, $ship_addr);
     return $sub_id;
 }
 
@@ -299,6 +300,7 @@ function lmeg_product_fulfill_square($order_id) {
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $pur->product_id));
     lmeg_product_record_revenue($p, (int) $pur->id, $email, $amount, $cur);
     if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $info['ship_name']);
+    lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, (string) $pur->variant, $info['ship_name'], $info['ship_addr']);
     return $sub_id;
 }
 
@@ -327,6 +329,40 @@ function lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical 
     add_filter('wp_mail_content_type', function () { return 'text/html'; });
     wp_mail($email, $subject, $body);
     remove_all_filters('wp_mail_content_type');
+}
+
+/**
+ * Notify the artist/admin of a new sale (plain text). Off if the Store
+ * notification toggle is disabled; sends to the configured address, or the site
+ * admin email by default. Fires for both processors, digital and physical.
+ */
+function lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $variant = '', $ship_name = '', $ship_addr = '') {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (isset($s['store_notify']) && !$s['store_notify']) return;         // explicitly disabled
+    $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
+    if (!$to || !is_email($to)) return;
+
+    $price   = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
+    $subject = ($physical ? '🛍️ New order: ' : '💿 New sale: ') . $p->title . ' — ' . $price;
+    $lines   = [
+        'A new ' . ($physical ? 'order' : 'sale') . ' just came in on your Fanloop store.',
+        '',
+        'Item:   ' . $p->title . ($variant ? '  (' . $variant . ')' : ''),
+        'Amount: ' . $price,
+        'Buyer:  ' . ($email ?: 'unknown'),
+    ];
+    if ($physical) {
+        $lines[] = '';
+        $lines[] = 'SHIP TO:';
+        $lines[] = '  ' . ($ship_name ?: '(no name given)');
+        if ($ship_addr) foreach (explode("\n", $ship_addr) as $ln) $lines[] = '  ' . $ln;
+        $lines[] = '';
+        $lines[] = 'Mark it shipped: ' . admin_url('admin.php?page=lmeg-products#orders');
+    } else {
+        $lines[] = '';
+        $lines[] = 'The buyer got their download automatically. Your Store: ' . admin_url('admin.php?page=lmeg-products');
+    }
+    wp_mail($to, $subject, implode("\n", $lines));
 }
 
 function lmeg_product_serve_access() {

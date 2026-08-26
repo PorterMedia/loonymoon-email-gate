@@ -2643,6 +2643,9 @@ function lmeg_admin_settings() {
             'square_prod_token'       => sanitize_text_field(wp_unslash($_POST['square_prod_token'] ?? '')),
             'square_prod_location'    => sanitize_text_field(wp_unslash($_POST['square_prod_location'] ?? '')),
             'square_webhook_key'      => sanitize_text_field(wp_unslash($_POST['square_webhook_key'] ?? '')),
+            // Store sale notifications
+            'store_notify'            => !empty($_POST['store_notify']) ? 1 : 0,
+            'store_notify_email'      => sanitize_email(wp_unslash($_POST['store_notify_email'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3287,6 +3290,17 @@ function lmeg_admin_settings() {
                 <tr><th>Webhook endpoint URL</th><td>
                     <input type="text" readonly class="regular-text" value="<?php echo esc_attr(add_query_arg('lmeg_square', 'webhook', home_url('/'))); ?>" onclick="this.select();" />
                     <p class="description">Recommended: add this in Square → Developer → Webhooks (subscribe to <code>payment.updated</code>), then paste the signature key above. Without a webhook, orders still confirm when the buyer returns from checkout.</p>
+                </td></tr>
+            </table>
+
+            <h2>Store notifications</h2>
+            <table class="form-table" role="presentation">
+                <tr><th scope="row">Email me on each sale</th><td>
+                    <label><input type="checkbox" name="store_notify" value="1" <?php checked(!empty($s['store_notify'])); ?> /> Send a notification when someone buys from the Store</label>
+                </td></tr>
+                <tr><th>Notification email</th><td>
+                    <input type="email" name="store_notify_email" class="regular-text" value="<?php echo esc_attr($s['store_notify_email'] ?? ''); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>" autocomplete="off" />
+                    <p class="description">Where sale &amp; order alerts go. Leave blank to use the site admin email. Physical orders include the shipping address so you can post them.</p>
                 </td></tr>
             </table>
 

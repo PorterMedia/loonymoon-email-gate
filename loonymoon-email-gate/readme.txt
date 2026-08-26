@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.70.2
+Stable tag: 2.70.3
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.70.3 =
+* Store (Beta): admin sale notifications. You now get an email each time someone buys — digital sales show the item + buyer, and physical orders include the shipping address so you can post them (with a link straight to "Orders to ship"). Buyers already get a receipt (download link for digital, order confirmation for physical). Configure the notification email and toggle under Settings → Payments → Store notifications (blank = site admin email).
+
 = 2.70.2 =
 * Store (Beta): a fresh install now arrives with a few editable sample products (a digital single, a pay-what-you-want, a physical tee with sizes, and a limited bundle) so the Store isn't empty. They ship as Drafts — hidden from fans — so you can edit one into your own and set it Active, or just delete them. Added only once, and never to a store that already has products.
 
