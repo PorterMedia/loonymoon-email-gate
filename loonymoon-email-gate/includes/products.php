@@ -1033,6 +1033,59 @@ function lmeg_handle_clear_demo() {
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&cleared=' . $n)); exit;
 }
 
+/**
+ * Build CSV rows (header + one per order line) from paid purchase rows.
+ * Text cells starting with =,+,-,@ are prefixed with ' to defuse spreadsheet
+ * formula injection. Separated out so it's unit-testable.
+ */
+function lmeg_orders_csv_rows($rows) {
+    $safe = function ($v) {
+        $v = (string) $v;
+        return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v;
+    };
+    $cents = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
+    $out = [['Date', 'Product', 'Variant', 'Qty', 'Buyer email', 'Amount', 'Currency', 'Discount code', 'Discount', 'Payment', 'Fulfillment', 'Tracking', 'Carrier', 'Ship name', 'Ship address']];
+    foreach ((array) $rows as $r) {
+        $out[] = [
+            $r->paid_at,
+            $safe($r->title),
+            $safe($r->variant),
+            (int) (isset($r->qty) ? $r->qty : 1) ?: 1,
+            $safe($r->email),
+            $cents($r->amount_cents),
+            $r->currency,
+            $safe($r->discount_code ?? ''),
+            !empty($r->discount_cents) ? $cents($r->discount_cents) : '',
+            $r->processor,
+            $r->fulfillment,
+            $safe($r->tracking ?? ''),
+            $safe($r->carrier ?? ''),
+            $safe($r->ship_name ?? ''),
+            $safe($r->ship_address ? str_replace("\n", ', ', $r->ship_address) : ''),
+        ];
+    }
+    return $out;
+}
+
+add_action('admin_post_lmeg_export_orders', 'lmeg_handle_export_orders');
+function lmeg_handle_export_orders() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_orders');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $tbl  = $wpdb->prefix . 'lmeg_products';
+    $rows = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' ORDER BY pp.id DESC");
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-orders-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");   // UTF-8 BOM so Excel reads accents correctly
+    foreach (lmeg_orders_csv_rows($rows) as $line) fputcsv($fh, $line);
+    fclose($fh);
+    exit;
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -1199,6 +1252,9 @@ function lmeg_admin_products() {
             <input type="hidden" name="action" value="lmeg_clear_demo">
             <button type="submit" class="button">🧪 Clear test orders (<?php echo (int) $demo_n; ?>)</button>
         </form>
+    <?php endif; ?>
+    <?php if ($units > 0) : ?>
+        &nbsp; <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_orders'), 'lmeg_export_orders')); ?>" class="button">⬇ Export orders (CSV)</a>
     <?php endif; ?></p>
     <p class="description" style="margin:0 0 12px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>). Let buyers re-download what they bought with <code>[fanloop_purchases]</code> (or link to <code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code>).</p>
     <?php
