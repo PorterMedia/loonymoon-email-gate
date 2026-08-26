@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.73.0
+Stable tag: 2.74.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.74.0 =
+* Store (Beta): low-stock urgency. When a product (or a size/variant) has a stock limit set and is running low, the storefront now shows a subtle "🔥 Only N left" badge, and low sizes read "M — 3 left" in the picker. Only appears when you're actually tracking stock and it's genuinely low (≤10 for the item, ≤5 per size) — nothing shows for unlimited items.
+
 = 2.73.0 =
 * Store (Beta): a "find my purchases" page so buyers can always get their downloads back. A fan enters the email they bought with and we send a secure magic link (good for 30 minutes) listing everything they've purchased — fresh download buttons for digital items, and order status (Preparing / Shipped) for physical ones. No login. Embed the finder anywhere with [fanloop_purchases], link to it directly at ?lmeg_purchases=find, and it's linked automatically from every checkout success page. The email is never revealed to whoever types it — we only send a link to an address that actually has orders, and rate-limit to one email every couple of minutes.
 

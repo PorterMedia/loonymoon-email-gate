@@ -617,6 +617,9 @@ function lmeg_product_card_html($p, $link = true) {
     if ($vlist) { $any_var = false; foreach ($vlist as $v) { if ($v['available']) { $any_var = true; break; } } }
     $sold_out = ($p->status !== 'active') || ($p->stock >= 0 && $p->sold >= $p->stock) || !$any_var;
     $needs_form = $pwyw || !empty($vlist);
+    // Low-stock urgency: only when a limit is actually set and running low.
+    $remaining = ($p->stock >= 0) ? max(0, (int) $p->stock - (int) $p->sold) : null;
+    $low_stock = ($remaining !== null && $remaining > 0 && $remaining <= 10);
     $url = esc_url(lmeg_product_url($p));
     $GLOBALS['lmeg_store_seen'] = true;   // tell wp_footer to print the cart UI
 
@@ -638,6 +641,7 @@ function lmeg_product_card_html($p, $link = true) {
         <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo $link ? '<a href="' . $url . '" style="color:inherit;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#888;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#555;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
+        <?php if (!$sold_out && $low_stock) : ?><div style="font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🔥 Only <?php echo (int) $remaining; ?> left</div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#999">Sold out</div>
         <?php elseif ($needs_form) : ?>
@@ -646,7 +650,7 @@ function lmeg_product_card_html($p, $link = true) {
             <?php if (!empty($vlist) || $pwyw) : ?>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <?php if (!empty($vlist)) : ?>
-                <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($vlist as $v) : ?><option value="<?php echo esc_attr($v['name']); ?>" <?php echo $v['available'] ? '' : 'disabled'; ?>><?php echo esc_html($v['name']) . ($v['available'] ? '' : ' — sold out'); ?></option><?php endforeach; ?></select>
+                <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($vlist as $v) : ?><option value="<?php echo esc_attr($v['name']); ?>" <?php echo $v['available'] ? '' : 'disabled'; ?>><?php echo esc_html($v['name']) . ($v['available'] ? ($v['stock'] !== null && $v['stock'] <= 5 ? ' — ' . (int) $v['stock'] . ' left' : '') : ' — sold out'); ?></option><?php endforeach; ?></select>
               <?php endif; ?>
               <?php if ($pwyw) : ?>
                 <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px" aria-label="Name your price">
