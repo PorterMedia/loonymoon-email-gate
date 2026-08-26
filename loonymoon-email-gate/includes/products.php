@@ -17,6 +17,53 @@ function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 
 /* ---------------------------------------------------------------------------
+ * First-run: seed a few DRAFT sample products so a fresh Store isn't empty and
+ * the artist has real, fully-filled examples to edit. Runs once per site, and
+ * only when the store is genuinely empty (never disturbs real products). Drafts
+ * are hidden from the front end until the artist sets them Active.
+ * ------------------------------------------------------------------------- */
+add_action('admin_init', 'lmeg_products_seed_samples');
+function lmeg_products_seed_samples() {
+    if (get_option('lmeg_store_samples_seeded')) return;
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_products';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tbl)) !== $tbl) return; // table not ready yet
+    if ((int) $wpdb->get_var("SELECT COUNT(*) FROM $tbl") > 0) { update_option('lmeg_store_samples_seeded', 1, false); return; }
+
+    $now = current_time('mysql');
+    $samples = [
+        [
+            'title' => 'Sample — Single (digital download)', 'slug' => 'sample-single',
+            'description' => 'This is a sample. Edit it or delete it. A digital track fans buy and download — upload the audio file (or paste an unlock link) on this product.',
+            'price_cents' => 199, 'min_price_cents' => 0, 'currency' => 'USD',
+            'type' => 'digital', 'processor' => 'stripe', 'shipping_cents' => 0, 'variants' => '', 'stock' => -1,
+        ],
+        [
+            'title' => 'Sample — Pay what you want', 'slug' => 'sample-pwyw',
+            'description' => 'A "name your price" release — great for tips and supporting a record. Edit the suggested price and minimum, then upload the file.',
+            'price_cents' => 500, 'min_price_cents' => 200, 'currency' => 'USD',
+            'type' => 'digital', 'processor' => 'stripe', 'shipping_cents' => 0, 'variants' => '', 'stock' => -1,
+        ],
+        [
+            'title' => 'Sample — T-shirt (physical)', 'slug' => 'sample-tshirt',
+            'description' => 'A physical item that ships. Edit the price, sizes, and flat shipping fee. Uses Stripe by default — switch to Square on this product if you prefer.',
+            'price_cents' => 3000, 'min_price_cents' => 0, 'currency' => 'USD',
+            'type' => 'physical', 'processor' => 'stripe', 'shipping_cents' => 600, 'variants' => 'S, M, L, XL', 'stock' => -1,
+        ],
+        [
+            'title' => 'Sample — Bundle (limited)', 'slug' => 'sample-bundle',
+            'description' => 'Bundle a few things together as a limited drop. This one has a stock limit set — edit or delete it.',
+            'price_cents' => 1200, 'min_price_cents' => 0, 'currency' => 'USD',
+            'type' => 'digital', 'processor' => 'stripe', 'shipping_cents' => 0, 'variants' => '', 'stock' => 100,
+        ],
+    ];
+    foreach ($samples as $s) {
+        $wpdb->insert($tbl, array_merge($s, ['status' => 'draft', 'sold' => 0, 'created_at' => $now]));
+    }
+    update_option('lmeg_store_samples_seeded', 1, false);
+}
+
+/* ---------------------------------------------------------------------------
  * Front-end router: start checkout / return from Stripe / serve access link.
  * ------------------------------------------------------------------------- */
 add_action('init', 'lmeg_products_router');
@@ -671,7 +718,12 @@ function lmeg_admin_products() {
     }
     ?>
     <p style="margin:10px 0 4px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a></p>
-    <p class="description" style="margin:0 0 18px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>).</p>
+    <p class="description" style="margin:0 0 12px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>).</p>
+    <?php
+    $has_samples = false;
+    foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
+    if ($has_samples) echo '<div class="notice notice-info inline" style="margin:0 0 18px;max-width:840px"><p>👋 We added a few <strong>sample products</strong> to get you started — they are <strong>Drafts</strong>, so fans can\'t see them yet. Edit one to make it yours (and set it <em>Active</em> to sell it), or delete them.</p></div>';
+    ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;max-width:840px;margin-bottom:20px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Units sold · 30d trend</div><div class="lmeg-stat__value"><?php echo number_format_i18n($units); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($daily, ['color' => '#E15FA8', 'uid' => 'store-units', 'h' => 44, 'suffix' => 'sales']) : ''; ?></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price($rev, 'USD') : '$' . number_format($rev/100,2)); ?></div><div class="lmeg-stat__hint">before processor fees · lands in your Stripe / Square</div></div>
