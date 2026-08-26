@@ -378,7 +378,10 @@ function lmeg_stripe_handle_event($event) {
     $sub_id = null;
 
     if ($type === 'checkout.session.completed') {
-        if (!empty($obj['metadata']['product_id']) && function_exists('lmeg_product_fulfill_checkout')) {
+        if (!empty($obj['metadata']['cart_token']) && function_exists('lmeg_cart_fulfill_from_session')) {
+            // Multi-item Store cart (mode:payment) — fulfil every line.
+            lmeg_cart_fulfill_from_session($obj);
+        } elseif (!empty($obj['metadata']['product_id']) && function_exists('lmeg_product_fulfill_checkout')) {
             // Native one-off digital product purchase (mode:payment).
             $sub_id = (int) lmeg_product_fulfill_checkout($obj);
         } else {

@@ -2646,6 +2646,7 @@ function lmeg_admin_settings() {
             // Store sale notifications
             'store_notify'            => !empty($_POST['store_notify']) ? 1 : 0,
             'store_notify_email'      => sanitize_email(wp_unslash($_POST['store_notify_email'] ?? '')),
+            'store_demo'              => !empty($_POST['store_demo']) ? 1 : 0,
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3301,6 +3302,10 @@ function lmeg_admin_settings() {
                 <tr><th>Notification email</th><td>
                     <input type="email" name="store_notify_email" class="regular-text" value="<?php echo esc_attr($s['store_notify_email'] ?? ''); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>" autocomplete="off" />
                     <p class="description">Where sale &amp; order alerts go. Leave blank to use the site admin email. Physical orders include the shipping address so you can post them.</p>
+                </td></tr>
+                <tr><th scope="row">Demo checkout</th><td>
+                    <label><input type="checkbox" name="store_demo" value="1" <?php checked(!empty($s['store_demo'])); ?> /> <strong>Let buyers check out without paying</strong> — for testing the flow</label>
+                    <p class="description">When on, checkout skips the payment step and completes the order instantly, so you can walk the whole flow — cart, receipt email, download links, the fan being captured, and physical orders landing in “Orders to ship”. These sales are marked <strong>demo</strong> and can be cleared with one click on the Store page. <strong style="color:#b45309">Turn this off before you go live</strong> — while it’s on, no money is collected.</p>
                 </td></tr>
             </table>
 
