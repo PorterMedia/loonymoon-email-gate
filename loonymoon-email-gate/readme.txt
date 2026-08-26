@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.84.0
+Stable tag: 2.85.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.85.0 =
+* Store (Beta): automatic abandoned-cart reminders. Turn on "Abandoned-cart reminder" in Settings → Payments and Fanloop will automatically email a shopper who didn't finish checkout — once, after a delay you choose (1–72 hours) — with the same one-tap link that reopens their exact cart. Off by default; you can still send reminders by hand anytime. Recovered carts are skipped.
+
 = 2.84.0 =
 * Store (Beta): abandoned-cart recovery. When a shopper reaches checkout and enters their email but doesn't complete payment, the cart is saved. A new "Abandoned carts" panel on the Store admin lists open carts (email, items, total, age); one click sends a branded "you left something behind" email with a link that reopens their exact cart, email prefilled. Anyone who later buys is cleared automatically. (Demo checkout completes instantly, so this recovers live checkouts that stall before payment.)
 

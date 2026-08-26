@@ -89,6 +89,29 @@ function lmeg_abandoned_send_nudge($row) {
     return lmeg_email_deliver($row->email, 'You left something in your cart', $inner, 'Your cart with ' . $artist . ' is still waiting.');
 }
 
+/**
+ * Cron: automatically send one reminder for open carts older than the configured
+ * delay (opt-in). Runs on the plugin's per-minute tick; small batch per run.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_abandoned_nudge_tick', 45);
+function lmeg_abandoned_nudge_tick() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (empty($s['store_cart_nudge']) || !function_exists('lmeg_email_deliver')) return;
+    $hours  = max(1, min(72, (int) ($s['store_cart_nudge_hours'] ?? 1)));
+    $cutoff = date('Y-m-d H:i:s', current_time('timestamp') - $hours * HOUR_IN_SECONDS);
+
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_abandoned';
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $tbl WHERE recovered = 0 AND nudged = 0 AND created_at <= %s ORDER BY id ASC LIMIT 15",
+        $cutoff
+    ));
+    foreach ((array) $rows as $r) {
+        lmeg_abandoned_send_nudge($r);
+        $wpdb->update($tbl, ['nudged' => 1, 'nudged_at' => current_time('mysql')], ['id' => (int) $r->id]);
+    }
+}
+
 add_action('admin_post_lmeg_nudge_cart', 'lmeg_handle_nudge_cart');
 function lmeg_handle_nudge_cart() {
     if (!current_user_can('manage_options')) wp_die('nope');
@@ -120,7 +143,11 @@ function lmeg_abandoned_admin_section() {
     ?>
     <h2 id="abandoned" style="margin-top:30px">Abandoned carts <span style="font-size:12px;color:#8B90A0;font-weight:400">· <?php echo (int) $rec; ?> recovered</span></h2>
     <?php if (isset($_GET['nudged'])) echo '<div class="notice notice-success is-dismissible"><p>Reminder sent.</p></div>'; ?>
-    <p class="description" style="margin:0 0 12px;max-width:800px">Shoppers who reached checkout but didn’t finish. Send a one-tap reminder with a link that reopens their exact cart. Anyone who later buys is cleared automatically. <?php echo lmeg_store_demo_on() ? '<strong>Heads up:</strong> demo checkout completes instantly, so live carts are what show up here.' : ''; ?></p>
+    <?php $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : []; ?>
+    <p class="description" style="margin:0 0 12px;max-width:800px">Shoppers who reached checkout but didn’t finish. Send a one-tap reminder with a link that reopens their exact cart. Anyone who later buys is cleared automatically.
+        <?php if (!empty($s['store_cart_nudge'])) : ?><br><span style="color:#1a8a4a">● Auto-reminders on</span> — one email is sent automatically after <?php echo (int) ($s['store_cart_nudge_hours'] ?? 1); ?> hour(s). <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings#payments')); ?>">Change</a>
+        <?php else : ?><br>Want these sent automatically? Turn on <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings#payments')); ?>">Abandoned-cart reminder</a> in Settings → Payments.<?php endif; ?>
+        <?php echo lmeg_store_demo_on() ? '<br><strong>Heads up:</strong> demo checkout completes instantly, so live carts are what show up here.' : ''; ?></p>
     <?php if (!$rows) : ?>
         <p style="opacity:.7">No open carts right now. 🎉</p>
     <?php else : ?>
