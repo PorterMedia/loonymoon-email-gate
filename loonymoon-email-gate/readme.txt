@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.77.1
+Stable tag: 2.78.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.78.0 =
+* Store (Beta): storefront search + sort. When your shop has a handful of items, [fanloop_store] now shows a search box and a sort dropdown (Featured, Newest, Price low→high / high→low, Best selling, Name A–Z). It's instant and client-side — no page reloads. Controls appear automatically once you have 5+ products; force them with [fanloop_store controls="on"] or hide with controls="off".
+
 = 2.77.1 =
 * Critical fix: the new store-email helper (added in 2.75) was named the same as the plugin's core mailer (lmeg_email_send), which caused a fatal "Cannot redeclare" error on sites updating to 2.75–2.77. Renamed the helper and routed all store emails (receipts, sale notifications, magic links) through the plugin's configured mailer, so they now send via your provider (e.g. Brevo) like every other email. If you saw a critical error after updating, this resolves it.
 

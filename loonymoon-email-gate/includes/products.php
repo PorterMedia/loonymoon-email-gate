@@ -585,16 +585,54 @@ function lmeg_shortcode_product($atts) {
 add_shortcode('fanloop_store', 'lmeg_shortcode_store');
 add_shortcode('loony_store', 'lmeg_shortcode_store');
 function lmeg_shortcode_store($atts) {
-    $atts = shortcode_atts(['type' => 'all', 'min' => 240], $atts, 'fanloop_store');
+    static $store_n = 0; $store_n++;
+    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto'], $atts, 'fanloop_store');
     global $wpdb;
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
     $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY id DESC");
     if (!$rows) return '<p style="opacity:.7">Nothing in the shop yet — check back soon.</p>';
     $min = max(160, min(360, (int) $atts['min']));
-    $out = '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
+    $uid = 'flpstore' . $store_n;
+
+    // Search + sort controls — shown once the shop has enough items to warrant it
+    // (or forced with controls="on" / hidden with controls="off").
+    $show_ctrls = ($atts['controls'] === 'on') || ($atts['controls'] !== 'off' && count($rows) >= 5);
+    $ctrl_css = 'padding:10px 13px;border:1px solid rgba(0,0,0,.18);border-radius:10px;background:#fff;color:#17141f;font-size:14px';
+    $controls = '';
+    if ($show_ctrls) {
+        $controls = '<div class="flp-store-ctrls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">'
+            . '<input type="search" class="flp-q" placeholder="Search the shop…" aria-label="Search the shop" style="flex:1;min-width:180px;' . $ctrl_css . '">'
+            . '<select class="flp-sort" aria-label="Sort products" style="' . $ctrl_css . ';cursor:pointer">'
+            . '<option value="featured">Featured</option><option value="new">Newest</option>'
+            . '<option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option>'
+            . '<option value="sold">Best selling</option><option value="name">Name A–Z</option></select></div>';
+    }
+
+    $out = '<div class="flp-store-wrap" id="' . $uid . '">' . $controls
+        . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
+        . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p);
-    $out .= '</div>';
+    $out .= '</div></div>';
+
+    if ($show_ctrls) {
+        $out .= '<script>(function(){var root=document.getElementById(' . wp_json_encode($uid) . ');if(!root)return;'
+            . 'var grid=root.querySelector(".flp-store"),none=root.querySelector(".flp-store-none"),q=root.querySelector(".flp-q"),sort=root.querySelector(".flp-sort");'
+            . 'var cards=[].slice.call(grid.querySelectorAll(".flp-prod")),orig=cards.slice();'
+            . 'function num(c,a){return parseInt(c.getAttribute(a),10)||0;}'
+            . 'function apply(){var t=((q&&q.value)||"").trim().toLowerCase();'
+            . 'var vis=cards.filter(function(c){if(!t)return true;return((c.getAttribute("data-title")||"")+" "+(c.getAttribute("data-desc")||"")).toLowerCase().indexOf(t)>=0;});'
+            . 'var s=sort?sort.value:"featured",arr;'
+            . 'if(s==="new")arr=vis.slice().sort(function(a,b){return num(b,"data-id")-num(a,"data-id");});'
+            . 'else if(s==="price-asc")arr=vis.slice().sort(function(a,b){return num(a,"data-price")-num(b,"data-price");});'
+            . 'else if(s==="price-desc")arr=vis.slice().sort(function(a,b){return num(b,"data-price")-num(a,"data-price");});'
+            . 'else if(s==="sold")arr=vis.slice().sort(function(a,b){return num(b,"data-sold")-num(a,"data-sold");});'
+            . 'else if(s==="name")arr=vis.slice().sort(function(a,b){return(a.getAttribute("data-title")||"").localeCompare(b.getAttribute("data-title")||"");});'
+            . 'else arr=orig.filter(function(c){return vis.indexOf(c)>=0;});'
+            . 'cards.forEach(function(c){c.style.display="none";});arr.forEach(function(c){c.style.display="";grid.appendChild(c);});'
+            . 'if(none)none.style.display=arr.length?"none":"";}'
+            . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);})();</script>';
+    }
     return $out;
 }
 
@@ -630,7 +668,7 @@ function lmeg_product_card_html($p, $link = true) {
     $add_pri = 'style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 18px;border-radius:10px;cursor:pointer;flex:1;font-size:14px"';
     $buy_sec = 'style="background:#fff;color:#E15FA8;border:1px solid #E15FA8;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none;font-size:14px;white-space:nowrap"';
     ob_start(); ?>
-    <div class="flp-prod" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
+    <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php if (!empty($p->cover_url)) : $img = '<img src="' . esc_url($p->cover_url) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
         echo $link ? '<a href="' . $url . '" style="display:block">' . $img . '</a>' : $img; ?>
       <?php endif; ?>
