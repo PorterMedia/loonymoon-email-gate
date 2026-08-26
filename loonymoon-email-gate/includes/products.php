@@ -15,6 +15,45 @@ if (!defined('ABSPATH')) exit;
 function lmeg_product_get($id)      { global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE id = %d", (int) $id)); }
 function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE slug = %s", (string) $slug)); }
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
+function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
+
+/**
+ * Parse variants (+ optional per-variant stock JSON) into a list of
+ * ['name','stock'(int|null),'available'(bool)]. stock null = untracked/unlimited.
+ */
+function lmeg_product_variants($p) {
+    $names = array_filter(array_map('trim', explode(',', (string) $p->variants)));
+    $stock = [];
+    if (!empty($p->variant_stock)) { $d = json_decode($p->variant_stock, true); if (is_array($d)) $stock = $d; }
+    $out = [];
+    foreach ($names as $n) {
+        $has = array_key_exists($n, $stock);
+        $q   = $has ? (int) $stock[$n] : null;
+        $out[] = ['name' => $n, 'stock' => $q, 'available' => (!$has || $q > 0)];
+    }
+    return $out;
+}
+
+/** Decrement a tracked variant's stock by one on a sale (no-op if untracked). */
+function lmeg_product_decrement_variant($product_id, $variant) {
+    if ($variant === '') return;
+    global $wpdb;
+    $p = lmeg_product_get($product_id);
+    if (!$p || empty($p->variant_stock)) return;
+    $stock = json_decode($p->variant_stock, true);
+    if (!is_array($stock) || !array_key_exists($variant, $stock)) return;
+    $stock[$variant] = max(0, (int) $stock[$variant] - 1);
+    $wpdb->update($wpdb->prefix . 'lmeg_products', ['variant_stock' => wp_json_encode($stock)], ['id' => (int) $product_id]);
+}
+
+/** Build the admin variants field value: "S:8, M:3, L" (remaining qty for tracked). */
+function lmeg_product_variants_field($p) {
+    $parts = [];
+    foreach (lmeg_product_variants($p) as $v) {
+        $parts[] = $v['name'] . ($v['stock'] === null ? '' : ':' . $v['stock']);
+    }
+    return implode(', ', $parts);
+}
 
 /* ---------------------------------------------------------------------------
  * First-run: seed a few DRAFT sample products so a fresh Store isn't empty and
@@ -68,9 +107,10 @@ function lmeg_products_seed_samples() {
  * ------------------------------------------------------------------------- */
 add_action('init', 'lmeg_products_router');
 function lmeg_products_router() {
-    if (isset($_GET['lmeg_buy']))         { lmeg_product_start_checkout(); }
-    elseif (isset($_GET['lmeg_buy_done'])){ lmeg_product_checkout_return(); }
-    elseif (isset($_GET['lmeg_access']))  { lmeg_product_serve_access(); }
+    if (isset($_GET['lmeg_buy']))          { lmeg_product_start_checkout(); }
+    elseif (isset($_GET['lmeg_buy_done'])) { lmeg_product_checkout_return(); }
+    elseif (isset($_GET['lmeg_access']))   { lmeg_product_serve_access(); }
+    elseif (isset($_GET['lmeg_product']) && $_GET['lmeg_product'] !== '') { lmeg_product_page(); }
 }
 
 function lmeg_product_start_checkout() {
@@ -81,12 +121,17 @@ function lmeg_product_start_checkout() {
 
     $physical = ($p->type === 'physical');
 
-    // Optional variant (e.g. a size), validated against the product's list.
+    // Variant (e.g. a size): required if the product defines any, and must be
+    // in stock when quantities are tracked.
     $variant = '';
-    if (!empty($p->variants) && isset($_GET['variant'])) {
-        $opts = array_filter(array_map('trim', explode(',', $p->variants)));
-        $sel  = sanitize_text_field(wp_unslash($_GET['variant']));
-        if (in_array($sel, $opts, true)) $variant = $sel;
+    $vlist   = lmeg_product_variants($p);
+    if ($vlist) {
+        $sel = isset($_GET['variant']) ? sanitize_text_field(wp_unslash($_GET['variant'])) : '';
+        $match = null;
+        foreach ($vlist as $vo) { if ($vo['name'] === $sel) { $match = $vo; break; } }
+        if (!$match)               { wp_die('Please choose an option first.'); }
+        if (!$match['available'])  { wp_die('Sorry — that option is sold out.'); }
+        $variant = $match['name'];
     }
 
     // Item (fixed or pay-what-you-want) + flat shipping for physical.
@@ -262,6 +307,7 @@ function lmeg_product_fulfill_checkout($session) {
         $pur_id = (int) $wpdb->insert_id;
     }
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $prod_id));
+    lmeg_product_decrement_variant($prod_id, $variant);
     lmeg_product_record_revenue($p, $pur_id, $email, $amount, $cur);
     if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $ship_name);
     lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $variant, $ship_name, $ship_addr);
@@ -298,6 +344,7 @@ function lmeg_product_fulfill_square($order_id) {
         'fulfillment' => $physical ? 'unshipped' : 'none', 'paid_at' => current_time('mysql'),
     ], ['id' => (int) $pur->id]);
     $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}lmeg_products SET sold = sold + 1 WHERE id = %d", $pur->product_id));
+    lmeg_product_decrement_variant($pur->product_id, (string) $pur->variant);
     lmeg_product_record_revenue($p, (int) $pur->id, $email, $amount, $cur);
     if ($email) lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical, $info['ship_name']);
     lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, (string) $pur->variant, $info['ship_name'], $info['ship_addr']);
@@ -549,21 +596,26 @@ function lmeg_shortcode_store($atts) {
  * Render a single product card (fills its container's width/height, so it works
  * standalone or inside the storefront grid).
  */
-function lmeg_product_card_html($p) {
-    $sold_out = ($p->status !== 'active') || ($p->stock >= 0 && $p->sold >= $p->stock);
+function lmeg_product_card_html($p, $link = true) {
     $cur      = $p->currency ?: 'USD';
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
     $price    = $fmt($p->price_cents);
     $pwyw     = lmeg_product_is_pwyw($p);
     $physical = ($p->type === 'physical');
-    $variants = array_filter(array_map('trim', explode(',', (string) $p->variants)));
+    $vlist    = lmeg_product_variants($p);
     $ship     = ($physical && (int) $p->shipping_cents > 0) ? $fmt($p->shipping_cents) : '';
-    $needs_form = $pwyw || !empty($variants);
+    $any_var  = true;
+    if ($vlist) { $any_var = false; foreach ($vlist as $v) { if ($v['available']) { $any_var = true; break; } } }
+    $sold_out = ($p->status !== 'active') || ($p->stock >= 0 && $p->sold >= $p->stock) || !$any_var;
+    $needs_form = $pwyw || !empty($vlist);
+    $url = esc_url(lmeg_product_url($p));
     ob_start(); ?>
     <div class="flp-prod" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.08)">
-      <?php if (!empty($p->cover_url)) : ?><img src="<?php echo esc_url($p->cover_url); ?>" alt="<?php echo esc_attr($p->title); ?>" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover"><?php endif; ?>
+      <?php if (!empty($p->cover_url)) : $img = '<img src="' . esc_url($p->cover_url) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
+        echo $link ? '<a href="' . $url . '" style="display:block">' . $img . '</a>' : $img; ?>
+      <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
-        <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#888;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
+        <div style="font-weight:750;font-size:19px;margin-bottom:4px"><?php echo $link ? '<a href="' . $url . '" style="color:inherit;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#888;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#555;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
         <?php if ($sold_out) : ?>
@@ -571,8 +623,8 @@ function lmeg_product_card_html($p) {
         <?php elseif ($needs_form) : ?>
           <form method="get" action="<?php echo esc_url(home_url('/')); ?>" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="hidden" name="lmeg_buy" value="<?php echo (int) $p->id; ?>">
-            <?php if (!empty($variants)) : ?>
-              <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($variants as $v) : ?><option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($v); ?></option><?php endforeach; ?></select>
+            <?php if (!empty($vlist)) : ?>
+              <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px"><option value="" disabled selected>Choose…</option><?php foreach ($vlist as $v) : ?><option value="<?php echo esc_attr($v['name']); ?>" <?php echo $v['available'] ? '' : 'disabled'; ?>><?php echo esc_html($v['name']) . ($v['available'] ? '' : ' — sold out'); ?></option><?php endforeach; ?></select>
             <?php endif; ?>
             <?php if ($pwyw) : ?>
               <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:90px;padding:9px;border:1px solid #ccc;border-radius:8px" aria-label="Name your price">
@@ -589,6 +641,35 @@ function lmeg_product_card_html($p) {
     </div>
     <?php
     return ob_get_clean();
+}
+
+/**
+ * Hosted, shareable product page at ?lmeg_product=<slug>. Standalone on-brand
+ * page centering the product card so each product has its own URL.
+ */
+function lmeg_product_page() {
+    $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
+    if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
+    nocache_headers();
+    header('Content-Type: text/html; charset=utf-8');
+    $site = get_bloginfo('name');
+    ?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title><?php echo esc_html($p->title . ' · ' . $site); ?></title>
+    <meta property="og:title" content="<?php echo esc_attr($p->title); ?>">
+    <?php if (!empty($p->description)) : ?><meta name="description" content="<?php echo esc_attr($p->description); ?>"><meta property="og:description" content="<?php echo esc_attr($p->description); ?>"><?php endif; ?>
+    <?php if (!empty($p->cover_url)) : ?><meta property="og:image" content="<?php echo esc_url($p->cover_url); ?>"><?php endif; ?>
+    <style>
+      *{box-sizing:border-box;margin:0}body{background:#0B0C12;color:#F4F2F7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px}
+      .wrap{width:100%;max-width:440px}
+      .back{display:block;text-align:center;margin-top:22px;color:#8B90A0;font-size:13px;text-decoration:none}
+      .sig{margin-top:10px;text-align:center;color:#6C6F82;font-size:12px}
+    </style></head><body>
+    <div class="wrap">
+      <?php echo lmeg_product_card_html($p, false); ?>
+      <a class="back" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
+    </div>
+    </body></html><?php
+    exit;
 }
 
 /* ---------------------------------------------------------------------------
@@ -624,6 +705,23 @@ function lmeg_handle_save_product() {
     if ($clash) $slug .= '-' . wp_generate_password(4, false, false);
 
     $to_cents = function ($v) { return (int) round(((float) preg_replace('/[^0-9.]/', '', (string) $v)) * 100); };
+
+    // Variants: "S, M, L" (names) or "S:10, M:5, L" to track quantities per option.
+    $v_names = []; $v_stock = [];
+    foreach (explode(',', (string) wp_unslash($_POST['variants'] ?? '')) as $part) {
+        $part = trim($part);
+        if ($part === '') continue;
+        if (strpos($part, ':') !== false) {
+            list($vn, $vq) = array_map('trim', explode(':', $part, 2));
+            $vn = sanitize_text_field($vn);
+            if ($vn === '') continue;
+            $v_names[] = $vn;
+            if ($vq !== '' && is_numeric($vq)) $v_stock[$vn] = max(0, (int) $vq);
+        } else {
+            $v_names[] = sanitize_text_field($part);
+        }
+    }
+
     $data = [
         'title'           => $title,
         'slug'            => $slug,
@@ -635,7 +733,8 @@ function lmeg_handle_save_product() {
         'type'            => in_array($_POST['type'] ?? 'digital', ['digital', 'physical'], true) ? $_POST['type'] : 'digital',
         'processor'       => in_array($_POST['processor'] ?? 'stripe', ['stripe', 'square'], true) ? $_POST['processor'] : 'stripe',
         'shipping_cents'  => max(0, $to_cents($_POST['shipping'] ?? 0)),
-        'variants'        => sanitize_text_field(wp_unslash($_POST['variants'] ?? '')),
+        'variants'        => implode(', ', $v_names),
+        'variant_stock'   => $v_stock ? wp_json_encode($v_stock) : null,
         'deliver_url'     => esc_url_raw($_POST['deliver_url'] ?? ''),
         'deliver_note'    => sanitize_textarea_field(wp_unslash($_POST['deliver_note'] ?? '')),
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
@@ -691,7 +790,8 @@ function lmeg_admin_products() {
 
     /* ----- create / edit form ----- */
     if ($new || $edit) {
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        wp_enqueue_media(); // WordPress media library picker for the cover image
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -703,7 +803,30 @@ function lmeg_admin_products() {
             <table class="form-table">
                 <tr><th><label>Title</label></th><td><input type="text" name="title" class="regular-text" required value="<?php echo esc_attr($p->title); ?>" placeholder="e.g. Neon Hours (single)"></td></tr>
                 <tr><th><label>Description</label></th><td><textarea name="description" class="large-text" rows="3"><?php echo esc_textarea($p->description); ?></textarea></td></tr>
-                <tr><th><label>Cover image URL</label></th><td><input type="url" name="cover_url" class="regular-text" value="<?php echo esc_attr($p->cover_url); ?>" placeholder="https://…"><p class="description">Paste a Media Library image URL (optional).</p></td></tr>
+                <tr><th><label>Cover image</label></th><td>
+                    <div id="lmeg-cover-prev" style="margin-bottom:9px;<?php echo empty($p->cover_url) ? 'display:none' : ''; ?>"><img src="<?php echo esc_url($p->cover_url); ?>" style="max-width:170px;height:auto;border-radius:10px;border:1px solid #ddd"></div>
+                    <input type="hidden" id="lmeg-cover-url" name="cover_url" value="<?php echo esc_attr($p->cover_url); ?>">
+                    <button type="button" class="button" id="lmeg-cover-pick">Choose image</button>
+                    <button type="button" class="button" id="lmeg-cover-clear" style="<?php echo empty($p->cover_url) ? 'display:none' : ''; ?>">Remove</button>
+                    <p class="description">Pick from your WordPress Media Library.</p>
+                    <script>
+                    jQuery(function($){
+                        var frame;
+                        $('#lmeg-cover-pick').on('click', function(e){ e.preventDefault();
+                            if (frame) { frame.open(); return; }
+                            frame = wp.media({ title:'Choose a cover image', button:{text:'Use this image'}, multiple:false, library:{type:'image'} });
+                            frame.on('select', function(){
+                                var a = frame.state().get('selection').first().toJSON();
+                                $('#lmeg-cover-url').val(a.url);
+                                $('#lmeg-cover-prev').html('<img src="'+a.url+'" style="max-width:170px;height:auto;border-radius:10px;border:1px solid #ddd">').show();
+                                $('#lmeg-cover-clear').show();
+                            });
+                            frame.open();
+                        });
+                        $('#lmeg-cover-clear').on('click', function(e){ e.preventDefault(); $('#lmeg-cover-url').val(''); $('#lmeg-cover-prev').hide().empty(); $(this).hide(); });
+                    });
+                    </script>
+                </td></tr>
                 <tr><th><label>Price</label></th><td><input type="number" name="price" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->price_cents)); ?>"> <input type="text" name="currency" style="width:64px" maxlength="3" value="<?php echo esc_attr($p->currency ?: 'USD'); ?>"></td></tr>
                 <tr><th><label>Pay what you want</label></th><td><label><input type="checkbox" name="pwyw" value="1" <?php checked((int) $p->min_price_cents > 0); ?>> Let fans choose the price</label> &nbsp; minimum <input type="number" name="min_price" step="0.01" min="0" style="width:110px" value="<?php echo esc_attr($money($p->min_price_cents)); ?>"><p class="description">When on, the price above is the suggested amount and fans can pay the minimum or more.</p></td></tr>
                 <tr><th><label>Type</label></th><td>
@@ -715,7 +838,7 @@ function lmeg_admin_products() {
                     <label><input type="radio" name="processor" value="square" <?php checked($p->processor ?? 'stripe', 'square'); ?>> Square</label>
                     <p class="description">Which processor collects the payment — the money lands in that account. Set keys under Settings → Payments.</p></td></tr>
                 <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping.</p></td></tr>
-                <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr($p->variants ?? ''); ?>" placeholder="S, M, L, XL"><p class="description">Optional comma-separated options the buyer picks (e.g. sizes). Leave blank for none.</p></td></tr>
+                <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr(lmeg_product_variants_field($p)); ?>" placeholder="S, M, L, XL"><p class="description">Comma-separated options the buyer picks (e.g. <code>S, M, L</code>). To <strong>track stock per option</strong>, add a quantity: <code>S:10, M:5, L:20</code> — that count is the remaining stock (it counts down on each sale, and sold-out options are hidden from buyers). Mix freely; leave a number off an option for unlimited. Blank = no variants.</p></td></tr>
                 <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
                     <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>
                     <input type="file" name="product_file">
@@ -726,7 +849,10 @@ function lmeg_admin_products() {
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
             <?php if ($p->id) : ?> &nbsp; <button type="submit" name="do" value="delete" class="button" onclick="return confirm('Delete this product? Past sales stay recorded.');">Delete</button><?php endif; ?></p>
-            <?php if ($p->id) : ?><p class="description">Embed on your site: <code>[fanloop_product id=<?php echo (int) $p->id; ?>]</code> &nbsp;·&nbsp; direct buy link: <code><?php echo esc_html(add_query_arg(['lmeg_buy' => $p->id], home_url('/'))); ?></code></p><?php endif; ?>
+            <?php if ($p->id) : ?>
+            <p class="description">Its own page: <code><?php echo esc_html(lmeg_product_url($p)); ?></code> <a href="<?php echo esc_url(lmeg_product_url($p)); ?>" target="_blank" rel="noopener">open ↗</a></p>
+            <p class="description">Embed on any page: <code>[fanloop_product id=<?php echo (int) $p->id; ?>]</code> &nbsp;·&nbsp; whole shop: <code>[fanloop_store]</code></p>
+            <?php endif; ?>
         </form>
         </div><?php
         return;
