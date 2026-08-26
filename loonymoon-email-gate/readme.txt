@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.69.0
+Stable tag: 2.70.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.70.0 =
+* Store (Beta): sell an actual FILE. Digital products can now have a file uploaded (audio, zip, pdf, video, image, epub) that Fanloop stores privately and streams only through each buyer's personal, count-limited download link — never a public URL. Uploading a file takes priority over the unlock link. (Very large files may need your host's PHP upload limit raised.)
+
 = 2.69.0 =
 * Store (Beta) now sells PHYSICAL products too, and lets you choose Square OR Stripe per product. Physical items collect a shipping address at checkout, take an optional flat shipping fee and size/variant options, and drop into an "Orders to ship" list where you mark each shipped (the buyer gets a confirmation email and is still captured as a fan with the sale attributed alongside your other revenue). Pick the processor per product under Store; add Square keys (sandbox + production, plus an optional webhook) under Settings → Payments.
 

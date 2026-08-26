@@ -290,10 +290,81 @@ function lmeg_product_serve_access() {
     if (!$pur || $pur->status !== 'paid')              { wp_die('This link is not valid.'); }
     if ((int) $pur->access_count >= (int) $pur->access_limit) { wp_die('This download link has reached its access limit. Reply to your receipt email and the artist can help.'); }
     $p = lmeg_product_get($pur->product_id);
-    if (!$p || empty($p->deliver_url))                 { wp_die('This item has no download set yet. Please contact the artist.'); }
+    if (!$p) { wp_die('This item is unavailable. Please contact the artist.'); }
+
+    // Uploaded file → stream it privately through PHP (the file is never a
+    // public URL). Otherwise fall back to the pasted unlock link.
+    if (!empty($p->file_path)) {
+        $up  = wp_upload_dir();
+        $abs = trailingslashit($up['basedir']) . ltrim($p->file_path, '/');
+        if (!is_file($abs)) { wp_die('The file is missing. Please contact the artist.'); }
+        $wpdb->query($wpdb->prepare("UPDATE $ptbl SET access_count = access_count + 1 WHERE id = %d", (int) $pur->id));
+        lmeg_product_stream_file($abs, $p->file_name ?: basename($abs));
+        exit;
+    }
+    if (empty($p->deliver_url)) { wp_die('This item has no download set yet. Please contact the artist.'); }
     $wpdb->query($wpdb->prepare("UPDATE $ptbl SET access_count = access_count + 1 WHERE id = %d", (int) $pur->id));
     wp_redirect(esc_url_raw($p->deliver_url));
     exit;
+}
+
+/* ---------------------------------------------------------------------------
+ * Private file storage + streaming (for uploaded digital goods)
+ * ------------------------------------------------------------------------- */
+function lmeg_product_private_dir() {
+    $up  = wp_upload_dir();
+    $dir = trailingslashit($up['basedir']) . 'fanloop-private';
+    if (!file_exists($dir)) {
+        wp_mkdir_p($dir);
+        @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
+        @file_put_contents($dir . '/index.html', '');
+    }
+    return $dir;
+}
+
+/**
+ * Move an uploaded product file into private storage. Returns
+ * ['path','name','size'] (path relative to the uploads basedir), ['error'=>..],
+ * or null when no file was sent.
+ */
+function lmeg_product_handle_upload() {
+    if (empty($_FILES['product_file']['tmp_name']) || !is_uploaded_file($_FILES['product_file']['tmp_name'])) return null;
+    if (($_FILES['product_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return ['error' => 'The file did not upload (it may be larger than the server allows).'];
+    }
+    $orig  = sanitize_file_name($_FILES['product_file']['name']);
+    $ext   = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+    $allow = ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'zip', 'pdf', 'mp4', 'mov', 'm4v', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'epub'];
+    if (!in_array($ext, $allow, true)) {
+        return ['error' => 'That file type is not allowed. Use audio, zip, pdf, video, image, txt or epub.'];
+    }
+    $dir  = lmeg_product_private_dir();
+    $rand = wp_generate_password(32, false, false) . '.' . $ext;
+    $dest = trailingslashit($dir) . $rand;
+    if (!@move_uploaded_file($_FILES['product_file']['tmp_name'], $dest)) {
+        return ['error' => 'Could not save the file — check the uploads folder is writable.'];
+    }
+    return ['path' => 'fanloop-private/' . $rand, 'name' => $orig, 'size' => (int) @filesize($dest)];
+}
+
+function lmeg_product_delete_file($rel) {
+    if (!$rel) return;
+    $up  = wp_upload_dir();
+    $abs = trailingslashit($up['basedir']) . ltrim($rel, '/');
+    if (is_file($abs) && strpos((string) realpath($abs), (string) realpath($up['basedir'])) === 0) @unlink($abs);
+}
+
+function lmeg_product_stream_file($abs, $filename) {
+    if (function_exists('set_time_limit')) @set_time_limit(0);
+    while (ob_get_level() > 0) @ob_end_clean();
+    nocache_headers();
+    $ft = wp_check_filetype($filename);
+    header('Content-Type: ' . ($ft['type'] ?: 'application/octet-stream'));
+    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+    header('Content-Length: ' . (int) @filesize($abs));
+    header('X-Content-Type-Options: nosniff');
+    $fh = @fopen($abs, 'rb');
+    if ($fh) { while (!feof($fh)) { echo fread($fh, 8192); @flush(); } fclose($fh); }
 }
 
 /**
@@ -423,8 +494,17 @@ function lmeg_handle_save_product() {
     $id  = (int) ($_POST['product_id'] ?? 0);
 
     if (($_POST['do'] ?? '') === 'delete' && $id) {
+        $old = lmeg_product_get($id);
+        if ($old && !empty($old->file_path)) lmeg_product_delete_file($old->file_path);
         $wpdb->delete($tbl, ['id' => $id]);
         wp_safe_redirect(admin_url('admin.php?page=lmeg-products&deleted=1')); exit;
+    }
+
+    // Uploaded digital file (optional). Fail fast on a bad upload.
+    $file = lmeg_product_handle_upload();
+    if (is_array($file) && !empty($file['error'])) {
+        set_transient('lmeg_product_file_err', $file['error'], 60);
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-products' . ($id ? '&edit=' . $id : '&new=1') . '&err=file')); exit;
     }
 
     $title = sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
@@ -452,6 +532,19 @@ function lmeg_handle_save_product() {
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
         'status'          => in_array($_POST['status'] ?? 'active', ['active', 'draft'], true) ? $_POST['status'] : 'active',
     ];
+
+    // Attach a newly uploaded file, or remove the current one on request.
+    $old = $id ? lmeg_product_get($id) : null;
+    if (is_array($file) && !empty($file['path'])) {
+        $data['file_path'] = $file['path'];
+        $data['file_name'] = $file['name'];
+        $data['file_size'] = (int) $file['size'];
+        if ($old && !empty($old->file_path) && $old->file_path !== $file['path']) lmeg_product_delete_file($old->file_path);
+    } elseif (!empty($_POST['remove_file']) && $old && !empty($old->file_path)) {
+        lmeg_product_delete_file($old->file_path);
+        $data['file_path'] = null; $data['file_name'] = null; $data['file_size'] = 0;
+    }
+
     if ($id) { $wpdb->update($tbl, $data, ['id' => $id]); }
     else     { $data['sold'] = 0; $data['created_at'] = current_time('mysql'); $wpdb->insert($tbl, $data); $id = (int) $wpdb->insert_id; }
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&saved=' . $id)); exit;
@@ -489,11 +582,12 @@ function lmeg_admin_products() {
 
     /* ----- create / edit form ----- */
     if ($new || $edit) {
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','deliver_url'=>'','deliver_note'=>'','stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
+        if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
         <p><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products')); ?>">← All products</a></p>
-        <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:720px;">
+        <form method="post" enctype="multipart/form-data" action="<?php echo esc_url($save); ?>" style="max-width:720px;">
             <?php wp_nonce_field('lmeg_save_product', 'lmeg_product_nonce'); ?>
             <input type="hidden" name="action" value="lmeg_save_product">
             <input type="hidden" name="product_id" value="<?php echo (int) $p->id; ?>">
@@ -513,7 +607,11 @@ function lmeg_admin_products() {
                     <p class="description">Which processor collects the payment — the money lands in that account. Set keys under Settings → Payments.</p></td></tr>
                 <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping.</p></td></tr>
                 <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr($p->variants ?? ''); ?>" placeholder="S, M, L, XL"><p class="description">Optional comma-separated options the buyer picks (e.g. sizes). Leave blank for none.</p></td></tr>
-                <tr><th><label>Deliver (unlock link) <span style="color:#888;font-weight:400">(digital)</span></label></th><td><input type="url" name="deliver_url" class="regular-text" value="<?php echo esc_attr($p->deliver_url); ?>" placeholder="https://… private download / stream / Drive / Discord invite"><p class="description">Digital only: after paying, the fan is sent to this link through a private, per-buyer access URL. <em>(Direct file upload &amp; hosting is coming next — for now use an unlisted link.)</em></p></td></tr>
+                <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
+                    <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>
+                    <input type="file" name="product_file">
+                    <p class="description">Upload the actual file (audio, zip, pdf, video, image, epub…). It's stored privately and served only through each buyer's personal download link — never a public URL. <?php echo !empty($p->file_path) ? 'Uploading a new file replaces the current one. ' : ''; ?>A file takes priority over the link below. (Large files may need your host's upload limit raised.)</p></td></tr>
+                <tr><th><label>…or unlock link <span style="color:#888;font-weight:400">(digital)</span></label></th><td><input type="url" name="deliver_url" class="regular-text" value="<?php echo esc_attr($p->deliver_url); ?>" placeholder="https://… private stream / Drive / Discord invite"><p class="description">Used only when no file is uploaded above: after paying, the fan is sent to this link through a private, per-buyer access URL.</p></td></tr>
                 <tr><th><label>Limit (stock)</label></th><td><input type="number" name="stock" min="0" style="width:120px" value="<?php echo $p->stock < 0 ? '' : (int) $p->stock; ?>" placeholder="unlimited"><p class="description">Leave blank for unlimited; set a number for a limited drop.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
