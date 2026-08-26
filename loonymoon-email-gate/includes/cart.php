@@ -117,7 +117,9 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
     $sub_id = lmeg_product_capture_fan($email, $p);
     $fields = [
         'product_id' => (int) $p->id, 'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
-        'amount_cents' => $amount, 'qty' => $qty, 'currency' => $cur, 'processor' => $processor, 'provider_ref' => $ref,
+        'amount_cents' => $amount, 'qty' => $qty, 'currency' => $cur,
+        'discount_code' => !empty($line['discount_code']) ? $line['discount_code'] : null, 'discount_cents' => $disc,
+        'processor' => $processor, 'provider_ref' => $ref,
         'variant' => $variant ?: null, 'ship_name' => $ship_name ?: null, 'ship_address' => $ship_addr ?: null,
         'fulfillment' => $physical ? 'unshipped' : 'none', 'status' => 'paid', 'access_token' => $token,
         'paid_at' => current_time('mysql'),
@@ -154,9 +156,11 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
         ? lmeg_discount_split($v['lines'], $off, (int) $v['subtotal'])
         : array_fill(0, count($v['lines']), 0);
 
+    $dcode = ($off > 0 && !empty($discount['code'])) ? $discount['code'] : null;
     $results = [];
     foreach ($v['lines'] as $i => $line) {
-        $line['discount'] = $splits[$i] ?? 0;
+        $line['discount']      = $splits[$i] ?? 0;
+        $line['discount_code'] = ($line['discount'] > 0) ? $dcode : null;
         $results[] = lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $stem . '#' . $i);
     }
     $new_any = false;

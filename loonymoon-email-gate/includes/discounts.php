@@ -125,6 +125,13 @@ function lmeg_discounts_admin_section() {
     global $wpdb;
     $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_discounts ORDER BY id DESC");
     $save = admin_url('admin-post.php');
+
+    // Per-code performance, derived from paid purchases tagged with the code.
+    $ptbl  = $wpdb->prefix . 'lmeg_product_purchases';
+    $perf  = [];
+    foreach ((array) $wpdb->get_results("SELECT discount_code code, SUM(amount_cents) rev, SUM(discount_cents) given, MAX(currency) cur FROM $ptbl WHERE status = 'paid' AND discount_code IS NOT NULL AND discount_code <> '' GROUP BY discount_code") as $r) {
+        $perf[$r->code] = $r;
+    }
     ?>
     <h2 id="discounts" style="margin-top:30px">Discount codes</h2>
     <?php if (isset($_GET['dsaved'])) echo '<div class="notice notice-success is-dismissible"><p>Code saved.</p></div>';
@@ -133,9 +140,9 @@ function lmeg_discounts_admin_section() {
     <p class="description" style="margin:0 0 12px;max-width:780px">Create a code fans type at checkout — percent-off or a fixed amount off the item subtotal (shipping isn’t discounted). Works in demo and live checkout. Great for launches (<code>LAUNCH20</code>), superfans, or a mailing-list perk.</p>
 
     <table class="widefat striped" style="max-width:900px;margin-bottom:14px">
-        <thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Revenue</th><th>Given</th><th>Expires</th><th>Status</th><th></th></tr></thead>
         <tbody>
-        <?php if (!$rows) : ?><tr><td colspan="7">No codes yet.</td></tr>
+        <?php if (!$rows) : ?><tr><td colspan="9">No codes yet.</td></tr>
         <?php else : foreach ($rows as $d) :
             $money = function ($c) use ($d) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $d->currency ?: 'USD') : ('$' . number_format($c / 100, 2)); };
             $expired = ($d->expires_at && strtotime($d->expires_at) < current_time('timestamp'));
@@ -145,6 +152,9 @@ function lmeg_discounts_admin_section() {
                 <td><?php echo esc_html(lmeg_discount_desc($d)); ?></td>
                 <td><?php echo (int) $d->min_subtotal_cents > 0 ? esc_html($money($d->min_subtotal_cents)) : '—'; ?></td>
                 <td><?php echo (int) $d->used; ?><?php echo (int) $d->max_uses > 0 ? ' / ' . (int) $d->max_uses : ''; ?></td>
+                <?php $pf = $perf[$d->code] ?? null; ?>
+                <td><?php echo $pf ? esc_html($money((int) $pf->rev)) : '<span style="color:#9A9DB0">—</span>'; ?></td>
+                <td><?php echo ($pf && (int) $pf->given > 0) ? '<span style="color:#1a8a4a">' . esc_html($money((int) $pf->given)) . '</span>' : '<span style="color:#9A9DB0">—</span>'; ?></td>
                 <td><?php echo $d->expires_at ? esc_html(date_i18n(get_option('date_format'), strtotime($d->expires_at))) . ($expired ? ' <span style="color:#b32d2e">(expired)</span>' : '') : '—'; ?></td>
                 <td><?php echo $d->status === 'active' && !$expired ? '<span style="color:#1a8a4a">● Active</span>' : '<span style="color:#9A9DB0">Off</span>'; ?></td>
                 <td>
