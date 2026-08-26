@@ -17,6 +17,29 @@ function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
 
+/**
+ * Store-wide announcement bar (dismissible). Returns '' when no text is set or
+ * it's already been rendered once on this page. Dismiss is remembered per banner
+ * text via localStorage, so a new message reappears.
+ */
+function lmeg_store_banner_html() {
+    if (!empty($GLOBALS['lmeg_banner_shown'])) return '';
+    $s    = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $text = trim((string) ($s['store_banner_text'] ?? ''));
+    if ($text === '') return '';
+    $GLOBALS['lmeg_banner_shown'] = true;
+    $link = trim((string) ($s['store_banner_link'] ?? ''));
+    $key  = substr(md5($text . '|' . $link), 0, 12);
+    $inner = esc_html($text) . ($link ? ' <span style="opacity:.85">→</span>' : '');
+    $content = $link
+        ? '<a href="' . esc_url($link) . '" style="color:inherit;text-decoration:none;font-weight:700">' . $inner . '</a>'
+        : '<span style="font-weight:700">' . $inner . '</span>';
+    return '<div class="flp-banner" data-key="' . esc_attr($key) . '" style="position:relative;margin:0 0 18px;padding:12px 44px 12px 18px;border-radius:12px;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;text-align:center;font-size:14px;line-height:1.45;font-family:inherit">'
+        . $content
+        . '<button type="button" class="flp-banner-x" aria-label="Dismiss" style="position:absolute;right:9px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.18);border:0;color:#0B0C12;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1">×</button></div>'
+        . '<script>(function(){var b=document.currentScript.previousElementSibling;if(!b||!b.classList||!b.classList.contains("flp-banner"))return;var k=b.getAttribute("data-key");try{if(localStorage.getItem("flp_banner_dismissed")===k){b.style.display="none";return;}}catch(e){}var x=b.querySelector(".flp-banner-x");if(x)x.addEventListener("click",function(){b.style.display="none";try{localStorage.setItem("flp_banner_dismissed",k);}catch(e){}});})();</script>';
+}
+
 /** Up to $limit other active products (best-sellers first) for a "more from the shop" strip. */
 function lmeg_product_related($p, $limit = 4) {
     global $wpdb;
@@ -628,7 +651,8 @@ function lmeg_shortcode_store($atts) {
             . '<option value="sold">Best selling</option><option value="name">Name A–Z</option></select></div>';
     }
 
-    $out = '<div class="flp-store-wrap" id="' . $uid . '">' . $controls
+    $out = lmeg_store_banner_html()
+        . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p);
@@ -772,6 +796,7 @@ function lmeg_product_page() {
       .sig{margin-top:10px;text-align:center;color:#6C6F82;font-size:12px}
     </style></head><body>
     <div class="wrap">
+      <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
       <?php
       $share_url = lmeg_product_url($p);

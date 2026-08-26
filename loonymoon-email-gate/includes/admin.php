@@ -2649,6 +2649,8 @@ function lmeg_admin_settings() {
             'store_demo'              => !empty($_POST['store_demo']) ? 1 : 0,
             'store_cart_nudge'        => !empty($_POST['store_cart_nudge']) ? 1 : 0,
             'store_cart_nudge_hours'  => max(1, min(72, (int) ($_POST['store_cart_nudge_hours'] ?? 1))),
+            'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
+            'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3304,6 +3306,12 @@ function lmeg_admin_settings() {
                 <tr><th>Notification email</th><td>
                     <input type="email" name="store_notify_email" class="regular-text" value="<?php echo esc_attr($s['store_notify_email'] ?? ''); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>" autocomplete="off" />
                     <p class="description">Where sale &amp; order alerts go. Leave blank to use the site admin email. Physical orders include the shipping address so you can post them.</p>
+                </td></tr>
+                <tr><th scope="row">Announcement banner</th><td>
+                    <input type="text" name="store_banner_text" class="large-text" value="<?php echo esc_attr($s['store_banner_text'] ?? ''); ?>" placeholder="e.g. Launch week — use LAUNCH20 for 20% off" maxlength="160" />
+                    <p class="description">Optional message shown in a dismissible bar across your storefront and product pages. Leave blank to hide it.</p>
+                    <input type="url" name="store_banner_link" class="regular-text" value="<?php echo esc_attr($s['store_banner_link'] ?? ''); ?>" placeholder="https://… (optional link)" autocomplete="off" style="margin-top:6px" />
+                    <p class="description">Optional — makes the banner a clickable link (e.g. to a specific product).</p>
                 </td></tr>
                 <tr><th scope="row">Abandoned-cart reminder</th><td>
                     <label><input type="checkbox" name="store_cart_nudge" value="1" <?php checked(!empty($s['store_cart_nudge'])); ?> /> <strong>Automatically email shoppers who don’t finish checkout</strong></label>
