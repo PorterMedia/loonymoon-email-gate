@@ -365,7 +365,7 @@ function lmeg_product_access_url($token) {
 }
 
 function lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical = false, $ship_name = '') {
-    if (!$email || !function_exists('lmeg_email_send')) return;
+    if (!$email || !function_exists('lmeg_email_deliver')) return;
     $artist = lmeg_email_artist();
     $price  = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
     $table  = lmeg_email_order_table([['name' => $p->title, 'meta' => '', 'amount' => $price]], $price);
@@ -388,7 +388,7 @@ function lmeg_product_send_receipt($p, $email, $token, $amount, $cur, $physical 
                  . lmeg_email_note('Trouble with the link? Just reply to this email and ' . esc_html($artist) . ' can help.');
         $pre = 'Your download of ' . $p->title . ' is ready.';
     }
-    lmeg_email_send($email, $subject, $inner, $pre);
+    lmeg_email_deliver($email, $subject, $inner, $pre);
 }
 
 /**
@@ -400,7 +400,7 @@ function lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $varian
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     if (isset($s['store_notify']) && !$s['store_notify']) return;         // explicitly disabled
     $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
-    if (!$to || !is_email($to) || !function_exists('lmeg_email_send')) return;
+    if (!$to || !is_email($to) || !function_exists('lmeg_email_deliver')) return;
 
     $price   = function_exists('lmeg_format_price') ? lmeg_format_price($amount, $cur) : ('$' . number_format($amount / 100, 2));
     $subject = ($physical ? '🛍️ New order: ' : '💿 New sale: ') . $p->title . ' — ' . $price;
@@ -415,7 +415,7 @@ function lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $varian
         $inner .= lmeg_email_p('The buyer got their download automatically.')
                 . lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products'));
     }
-    lmeg_email_send($to, $subject, $inner, ($physical ? 'New order' : 'New sale') . ': ' . $p->title . ' — ' . $price);
+    lmeg_email_deliver($to, $subject, $inner, ($physical ? 'New order' : 'New sale') . ': ' . $p->title . ' — ' . $price);
 }
 
 function lmeg_product_serve_access() {

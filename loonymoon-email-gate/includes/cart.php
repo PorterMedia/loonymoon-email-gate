@@ -177,7 +177,7 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
 
 /** One branded receipt for a whole cart order. */
 function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discount = null) {
-    if (!function_exists('lmeg_email_send')) return;
+    if (!function_exists('lmeg_email_deliver')) return;
     $artist = lmeg_email_artist();
     $items = []; $dls = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false;
     foreach ($lines as $ln) {
@@ -197,7 +197,7 @@ function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discoun
         . lmeg_email_download_block($dls)
         . ($has_phys ? lmeg_email_ship_block($ship_name, $ship_addr) . lmeg_email_note('We\'ll get your item' . (count($lines) > 1 ? 's' : '') . ' on the way and email you if we need anything.') : '')
         . ($dls ? lmeg_email_note('Trouble with a link? Just reply and ' . esc_html($artist) . ' can help.') : '');
-    lmeg_email_send($email, 'Your order from ' . $artist, $inner, 'Your order from ' . $artist . ' — receipt & downloads.');
+    lmeg_email_deliver($email, 'Your order from ' . $artist, $inner, 'Your order from ' . $artist . ' — receipt & downloads.');
 }
 
 /** One notification to the artist for a whole cart order. */
@@ -205,7 +205,7 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     if (isset($s['store_notify']) && !$s['store_notify']) return;
     $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
-    if (!$to || !is_email($to) || !function_exists('lmeg_email_send')) return;
+    if (!$to || !is_email($to) || !function_exists('lmeg_email_deliver')) return;
 
     $items = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false;
     foreach ($lines as $ln) {
@@ -223,7 +223,7 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
         . lmeg_email_order_table($items, $price, $extra)
         . ($has_phys ? lmeg_email_ship_block($ship_name ?: '(no name given)', $ship_addr) . lmeg_email_button('Orders to ship →', admin_url('admin.php?page=lmeg-products#orders'))
                      : lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products')));
-    lmeg_email_send($to, ($has_phys ? '🛍️ New order' : '💿 New sale') . ' — ' . $price, $inner, 'New order in your store — ' . $price);
+    lmeg_email_deliver($to, ($has_phys ? '🛍️ New order' : '💿 New sale') . ' — ' . $price, $inner, 'New order in your store — ' . $price);
 }
 
 /**

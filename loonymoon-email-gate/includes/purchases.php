@@ -82,12 +82,12 @@ function lmeg_purchases_request() {
 function lmeg_purchases_send_link($email, $token) {
     $artist = function_exists('lmeg_email_artist') ? lmeg_email_artist() : get_bloginfo('name');
     $url    = add_query_arg(['lmeg_purchases' => 'view', 'token' => $token], home_url('/'));
-    if (!function_exists('lmeg_email_send')) return;
+    if (!function_exists('lmeg_email_deliver')) return;
     $inner  = lmeg_email_h('Your purchases')
             . lmeg_email_p('Here\'s your link to view and re-download everything you\'ve bought from <strong>' . esc_html($artist) . '</strong>.')
             . lmeg_email_button('View my purchases →', $url)
             . lmeg_email_note('This link works for 30 minutes. If you didn\'t request it, you can safely ignore this email.');
-    lmeg_email_send($email, 'Your purchases from ' . $artist, $inner, 'Your link to view and re-download your purchases.');
+    lmeg_email_deliver($email, 'Your purchases from ' . $artist, $inner, 'Your link to view and re-download your purchases.');
 }
 
 /** Render the verified purchases list behind the magic link. */

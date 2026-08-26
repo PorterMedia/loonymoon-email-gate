@@ -47,10 +47,21 @@ function lmeg_email_shell($inner, $preheader = '') {
         . '</table></td></tr></table></body></html>';
 }
 
-/** Send an HTML email through the shell. */
-function lmeg_email_send($to, $subject, $inner, $preheader = '') {
+/**
+ * Wrap $inner in the branded shell and send it. Routes through the plugin's
+ * configured mailer (lmeg_email_send → Brevo) exactly like every other plugin
+ * email, with a derived plain-text part; falls back to wp_mail if that helper
+ * isn't available. (Named lmeg_email_DELIVER to avoid colliding with the core
+ * lmeg_email_send sender in sending.php.)
+ */
+function lmeg_email_deliver($to, $subject, $inner, $preheader = '') {
     if (!$to) return false;
     $html = lmeg_email_shell($inner, $preheader);
+    $text = trim(($preheader ? $preheader . "\n\n" : '') . wp_strip_all_tags(str_replace(['</p>', '</div>', '<br>', '<br/>', '<br />'], "\n", $inner)));
+
+    if (function_exists('lmeg_email_send')) {
+        return lmeg_email_send($to, $subject, $text, $html);   // configured provider (Brevo etc.)
+    }
     $ct = function () { return 'text/html'; };
     add_filter('wp_mail_content_type', $ct);
     $ok = wp_mail($to, $subject, $html);
