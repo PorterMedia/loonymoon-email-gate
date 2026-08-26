@@ -856,6 +856,28 @@ function lmeg_handle_save_product() {
         wp_safe_redirect(admin_url('admin.php?page=lmeg-products&deleted=1')); exit;
     }
 
+    // Duplicate: clone as a fresh Draft. Keeps cover/gallery/price/variants;
+    // does NOT copy the private uploaded file (avoids two products serving the
+    // same file) — the unlock link, if any, is kept.
+    if (($_POST['do'] ?? '') === 'duplicate' && $id) {
+        $src = lmeg_product_get($id);
+        if ($src) {
+            $data = (array) $src;
+            unset($data['id']);
+            $data['title']     = $src->title . ' (copy)';
+            $data['status']    = 'draft';
+            $data['sold']      = 0;
+            $data['file_path'] = null; $data['file_name'] = null; $data['file_size'] = 0;
+            $data['created_at'] = current_time('mysql');
+            $base = sanitize_title($src->slug ?: $src->title) . '-copy';
+            $slug = $base;
+            while ((int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug))) $slug = $base . '-' . wp_generate_password(4, false, false);
+            $data['slug'] = $slug;
+            $wpdb->insert($tbl, $data);
+            wp_safe_redirect(admin_url('admin.php?page=lmeg-products&edit=' . (int) $wpdb->insert_id . '&saved=' . (int) $wpdb->insert_id)); exit;
+        }
+    }
+
     // Uploaded digital file (optional). Fail fast on a bad upload.
     $file = lmeg_product_handle_upload();
     if (is_array($file) && !empty($file['error'])) {
@@ -1200,7 +1222,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
-            <?php if ($p->id) : ?> &nbsp; <button type="submit" name="do" value="delete" class="button" onclick="return confirm('Delete this product? Past sales stay recorded.');">Delete</button><?php endif; ?></p>
+            <?php if ($p->id) : ?> &nbsp; <button type="submit" name="do" value="duplicate" class="button" onclick="return confirm('Make a draft copy of this product?');">Duplicate</button> &nbsp; <button type="submit" name="do" value="delete" class="button" onclick="return confirm('Delete this product? Past sales stay recorded.');">Delete</button><?php endif; ?></p>
             <?php if ($p->id) : ?>
             <p class="description">Its own page: <code><?php echo esc_html(lmeg_product_url($p)); ?></code> <a href="<?php echo esc_url(lmeg_product_url($p)); ?>" target="_blank" rel="noopener">open ↗</a></p>
             <p class="description">Embed on any page: <code>[fanloop_product id=<?php echo (int) $p->id; ?>]</code> &nbsp;·&nbsp; whole shop: <code>[fanloop_store]</code></p>
