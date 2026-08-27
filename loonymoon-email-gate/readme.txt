@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.7.0
+Stable tag: 3.8.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.8.0 =
+* Store (Beta): a proper "Your orders" page for buyers. The email magic-link (find-my-purchases) now groups everything into orders — each with its date, order number and total, per-item download buttons for digital items, and an order-level shipping status: "Preparing to ship" or "Shipped" with the carrier, tracking number and a Track link. Replaces the old flat list. No setup; the finder link and [fanloop_purchases] shortcode are unchanged.
+
 = 3.7.0 =
 * Store (Beta): "Buy the set" storefront merchandising. Product pages now show a "Buy the set & save X%" panel for any product that's part of a bundle — the set's items as tiles, the exact saving, and (when every item is one-tap addable) an "Add the set to cart" button that drops the whole set in the cart so the bundle discount kicks in. Storefront cards for bundled products show a "🎁 Buy the set · save X%" pill. Pairs with the bundle engine from 3.6.
 
