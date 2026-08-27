@@ -2657,6 +2657,7 @@ function lmeg_admin_settings() {
             'store_ship_ca'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_ca'] ?? 0))) * 100)),
             'store_ship_us'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_us'] ?? 0))) * 100)),
             'store_ship_intl'         => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_intl'] ?? 0))) * 100)),
+            'store_ship_free_over'    => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_free_over'] ?? 0))) * 100)),
             'store_ship_from'         => sanitize_textarea_field(wp_unslash($_POST['store_ship_from'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
@@ -3317,6 +3318,7 @@ function lmeg_admin_settings() {
                         🌍 International <input type="number" name="store_ship_intl" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_ship_intl'] ?? 0)); ?>">
                     </p>
                     <p class="description">0 = free shipping for that zone. Set a product's <strong>weight</strong> on its edit screen (used on packing slips and when buying labels).</p>
+                    <p style="margin-top:8px">🎉 Free shipping when the order reaches <input type="number" name="store_ship_free_over" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_ship_free_over'] ?? 0)); ?>"> <span class="description">(0 = off). Shown as an upsell at checkout.</span></p>
                 </td></tr>
                 <tr><th scope="row">Ship-from address</th><td>
                     <textarea name="store_ship_from" class="large-text" rows="3" placeholder="Your name / return address"><?php echo esc_textarea($s['store_ship_from'] ?? ''); ?></textarea>

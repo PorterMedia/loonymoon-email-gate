@@ -52,9 +52,17 @@ function lmeg_store_ship_fee($country) {
  * physical line (zero the rest), and set the order shipping/total. No-op unless
  * zone shipping is on and the cart has a physical item.
  */
+/** Free-shipping threshold (cents) on the order subtotal; 0 = off. */
+function lmeg_store_ship_free_over() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    return (int) ($s['store_ship_free_over'] ?? 0);
+}
+
 function lmeg_cart_apply_zone_shipping(&$v, $country) {
     if (empty($v['zone_shipping']) || empty($v['has_physical'])) return 0;
-    $fee  = lmeg_store_ship_fee($country);
+    $fee = lmeg_store_ship_fee($country);
+    $fo  = lmeg_store_ship_free_over();
+    if ($fo > 0 && (int) $v['subtotal'] >= $fo) $fee = 0;   // free over threshold
     $seen = false;
     foreach ($v['lines'] as $i => $ln) {
         if (!$seen && !empty($ln['physical'])) { $v['lines'][$i]['lship'] = $fee; $seen = true; }
@@ -376,11 +384,21 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     }
 
     $zone_ship = !empty($v['zone_shipping']);
+    $free_over = $zone_ship ? lmeg_store_ship_free_over() : 0;
+    $free_now  = ($free_over > 0 && (int) $v['subtotal'] >= $free_over);
     $ship_row  = '';
     if ($zone_ship) {
-        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span id="flp-ship">select country ↓</span></div>';
+        $ship_now = $free_now ? '<span id="flp-ship" style="color:#7DD3A8">Free</span>' : '<span id="flp-ship">select country ↓</span>';
+        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span>' . $ship_now . '</div>';
     } elseif ($v['shipping']) {
         $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span>' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>';
+    }
+    // Free-shipping upsell hint.
+    $free_hint = '';
+    if ($free_over > 0 && $zone_ship) {
+        $free_hint = $free_now
+            ? '<div style="margin-top:8px;font-size:13px;color:#7DD3A8;text-align:center">🎉 You\'ve unlocked free shipping!</div>'
+            : '<div style="margin-top:8px;font-size:13px;color:#E7C97D;text-align:center">Add ' . esc_html(lmeg_cart_money($free_over - (int) $v['subtotal'], $cur)) . ' more for free shipping</div>';
     }
     $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
@@ -427,7 +445,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
 
     $body = '<div class="dot">🛍️</div><h1 style="margin-bottom:4px">Checkout</h1>'
         . '<p style="margin-bottom:18px;color:#8B90A0">' . count($v['lines']) . ' item' . (count($v['lines']) === 1 ? '' : 's') . ' in your cart' . ($demo ? ' · demo' : '') . '</p>'
-        . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . '</div>'
+        . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . $free_hint . '</div>'
         . $code_ui
         . '<form method="post" action="' . esc_url(add_query_arg(['lmeg_cart' => 'place'], home_url('/'))) . '" style="margin-top:20px;text-align:left">'
         . $errhtml
@@ -445,13 +463,13 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     if ($zone_ship) {
         $fees = lmeg_store_ship_fees();
         $body .= '<script>(function(){'
-            . 'var FEES=' . wp_json_encode($fees) . ',SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',CUR=' . wp_json_encode($cur) . ';'
+            . 'var FEES=' . wp_json_encode($fees) . ',SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',CUR=' . wp_json_encode($cur) . ',FREE=' . (int) $free_over . ';'
             . 'function money(c){try{return new Intl.NumberFormat(undefined,{style:"currency",currency:CUR}).format(c/100);}catch(e){return "$"+(c/100).toFixed(2);}}'
             . 'function zone(v){v=(v||"").toUpperCase();if(v==="CA")return"ca";if(v==="US")return"us";return"intl";}'
             . 'var sel=document.getElementById("flp-country"),shipEl=document.getElementById("flp-ship"),grandEl=document.getElementById("flp-grand");'
-            . 'function upd(){if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF));return;}'
-            . 'var f=FEES[zone(sel.value)]||0;if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f);}'
-            . 'if(sel){sel.addEventListener("change",upd);upd();}})();</script>';
+            . 'function upd(){var f;if(FREE>0&&SUB>=FREE){f=0;}else if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF));return;}else{f=FEES[zone(sel.value)]||0;}'
+            . 'if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f);}'
+            . 'if(sel){sel.addEventListener("change",upd);}upd();})();</script>';
     }
 
     lmeg_store_page('Checkout', $body, 'Checkout');

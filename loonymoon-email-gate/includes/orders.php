@@ -147,6 +147,7 @@ function lmeg_handle_packing_slip() {
     foreach ((array) $rows as $r) $orders[$r->okey][] = $r;
 
     $artist = function_exists('lmeg_email_artist') ? lmeg_email_artist() : get_bloginfo('name');
+    $ship_from = function_exists('lmeg_get_settings') ? trim((string) (lmeg_get_settings()['store_ship_from'] ?? '')) : '';
     nocache_headers();
     header('Content-Type: text/html; charset=utf-8');
     ?><!doctype html><html><head><meta charset="utf-8"><title>Packing slips</title><style>
@@ -175,6 +176,7 @@ function lmeg_handle_packing_slip() {
         <div class="slip">
             <h1>Packing Slip</h1>
             <div class="brand"><?php echo esc_html($artist); ?></div>
+            <?php if ($ship_from) : ?><div style="color:#777;font-size:12px;white-space:pre-line;margin-bottom:12px"><?php echo esc_html($ship_from); ?></div><?php endif; ?>
             <div class="row">
                 <div><div class="lbl">Order</div><?php echo esc_html('#' . substr((string) $key, -8)); ?></div>
                 <div><div class="lbl">Date</div><?php echo esc_html($first->paid_at ? date_i18n('M j, Y', strtotime($first->paid_at)) : '—'); ?></div>
