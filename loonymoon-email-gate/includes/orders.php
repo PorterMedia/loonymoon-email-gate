@@ -355,6 +355,75 @@ function lmeg_handle_export_shipping() {
     exit;
 }
 
+/* Aggregate paid purchase lines into per-day sales rows (pure/testable).
+ * $from/$to are 'Y-m-d' bounds (inclusive; '' = unbounded). Each row:
+ * ['day','orders'(distinct),'units','revenue','tax','discounts'] sorted asc. */
+function lmeg_sales_rows($purchases, $from = '', $to = '') {
+    $from = trim((string) $from); $to = trim((string) $to);
+    $days = [];
+    foreach ((array) $purchases as $p) {
+        if (isset($p->status) && $p->status !== 'paid') continue;
+        $when = (string) ($p->paid_at ?? '');
+        if ($when === '') continue;
+        $day = substr($when, 0, 10);
+        if ($from !== '' && $day < $from) continue;
+        if ($to !== '' && $day > $to) continue;
+        if (!isset($days[$day])) $days[$day] = ['day' => $day, 'orders' => [], 'units' => 0, 'revenue' => 0, 'tax' => 0, 'discounts' => 0];
+        $okey = (string) ($p->okey ?? $p->id ?? '');
+        if ($okey !== '') $days[$day]['orders'][$okey] = 1;
+        $days[$day]['units']     += max(1, (int) ($p->qty ?? 1));
+        $days[$day]['revenue']   += (int) ($p->amount_cents ?? 0);
+        $days[$day]['tax']       += (int) ($p->tax_cents ?? 0);
+        $days[$day]['discounts'] += (int) ($p->discount_cents ?? 0);
+    }
+    ksort($days);
+    $out = [];
+    foreach ($days as $d) {
+        $out[] = ['day' => $d['day'], 'orders' => count($d['orders']), 'units' => $d['units'], 'revenue' => $d['revenue'], 'tax' => $d['tax'], 'discounts' => $d['discounts']];
+    }
+    return $out;
+}
+
+/* CSV of revenue-by-day for a date range (Store's primary currency). */
+add_action('admin_post_lmeg_export_sales', 'lmeg_handle_export_sales');
+function lmeg_handle_export_sales() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_sales');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $okexpr = lmeg_orders_okey_expr('pp.');
+    $valid  = function ($d) { $d = trim((string) $d); return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : ''; };
+    $from = $valid($_GET['from'] ?? '');
+    $to   = $valid($_GET['to'] ?? '');
+
+    $where = ["pp.status = 'paid'"]; $args = [];
+    if ($from !== '') { $where[] = 'DATE(pp.paid_at) >= %s'; $args[] = $from; }
+    if ($to   !== '') { $where[] = 'DATE(pp.paid_at) <= %s'; $args[] = $to; }
+    $sql  = "SELECT pp.paid_at, pp.amount_cents, pp.tax_cents, pp.discount_cents, pp.qty, $okexpr okey FROM $ptbl pp WHERE " . implode(' AND ', $where);
+    $rows = $args ? $wpdb->get_results($wpdb->prepare($sql, $args)) : $wpdb->get_results($sql);
+
+    $sales = lmeg_sales_rows($rows, $from, $to);
+    $safe  = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+    $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
+
+    $t_orders = 0; $t_units = 0; $t_rev = 0; $t_tax = 0; $t_disc = 0;
+    foreach ($sales as $s) { $t_orders += $s['orders']; $t_units += $s['units']; $t_rev += $s['revenue']; $t_tax += $s['tax']; $t_disc += $s['discounts']; }
+
+    $tag = ($from || $to) ? (($from ?: 'start') . '_' . ($to ?: gmdate('Y-m-d'))) : gmdate('Y-m-d');
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-sales-' . $tag . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    fputcsv($fh, ['Date', 'Orders', 'Items', 'Revenue', 'Discounts', 'Tax']);
+    foreach ($sales as $s) {
+        fputcsv($fh, [$safe($s['day']), (int) $s['orders'], (int) $s['units'], $money($s['revenue']), $money($s['discounts']), $money($s['tax'])]);
+    }
+    fputcsv($fh, ['Total', $t_orders, $t_units, $money($t_rev), $money($t_disc), $money($t_tax)]);
+    fclose($fh);
+    exit;
+}
+
 /* Client JS for the Orders bulk-select bar. Row checkboxes (.lmeg-obulk) live
  * in the table (NOT in a form); this collects the checked okeys into the bulk
  * <form> as okeys[] hidden inputs on submit, so no <form> nests inside another. */
@@ -467,6 +536,17 @@ function lmeg_admin_orders() {
         <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue</div><div class="lmeg-stat__value"><?php echo esc_html(lmeg_orders_money($rev_all, 'USD')); ?></div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">To ship</div><div class="lmeg-stat__value"><?php echo number_format_i18n($toship_all); ?></div></div>
     </div>
+
+    <?php $ts = function_exists('current_time') ? current_time('timestamp') : time(); $today = gmdate('Y-m-d', $ts); $ago = gmdate('Y-m-d', $ts - 30 * DAY_IN_SECONDS); ?>
+    <form method="get" action="<?php echo esc_url($save); ?>" style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:0 0 18px;padding:11px 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;max-width:720px">
+        <?php wp_nonce_field('lmeg_export_sales', '_wpnonce', false); ?>
+        <input type="hidden" name="action" value="lmeg_export_sales">
+        <strong style="font-size:13px;display:inline-flex;align-items:center;gap:6px;color:#17141f"><?php echo lmeg_store_icon('download', 14); ?>Sales report</strong>
+        <label style="font-size:13px;color:#50575e">From <input type="date" name="from" value="<?php echo esc_attr($ago); ?>"></label>
+        <label style="font-size:13px;color:#50575e">To <input type="date" name="to" value="<?php echo esc_attr($today); ?>"></label>
+        <button class="button button-primary">Export CSV</button>
+        <span class="description" style="flex-basis:100%;margin-top:2px">Revenue, discounts, tax and order counts by day for the range (your store's currency) — ready for your bookkeeping.</span>
+    </form>
 
     <form method="get" style="margin:0 0 14px">
         <input type="hidden" name="page" value="lmeg-orders">
