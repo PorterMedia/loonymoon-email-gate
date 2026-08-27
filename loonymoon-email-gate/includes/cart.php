@@ -844,6 +844,8 @@ function lmeg_cart_assets_html() {
     </div>
   </aside>
 </div>
+<div id="flp-qv-back" hidden></div>
+<aside id="flp-qv" hidden aria-label="Quick view"><button type="button" id="flp-qv-x" aria-label="Close">✕</button><div id="flp-qv-body"></div></aside>
 <style>
   #flp-cart-btn{position:fixed;right:20px;bottom:20px;z-index:99998;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;border:0;font-weight:800;font-size:15px;padding:13px 18px;border-radius:999px;cursor:pointer;box-shadow:0 12px 34px rgba(138,108,246,.4);display:flex;align-items:center;gap:8px}
   #flp-cart-btn #flp-cart-count{background:#0B0C12;color:#fff;min-width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;padding:0 6px}
@@ -875,6 +877,11 @@ function lmeg_cart_assets_html() {
   .flp-cart-empty{color:#8B90A0;text-align:center;font-size:14px;padding:8px 0}
   #flp-cart-toast{position:fixed;left:50%;bottom:82px;transform:translateX(-50%);z-index:99999;background:#1B1E2C;color:#fff;border:1px solid rgba(255,255,255,.14);padding:10px 16px;border-radius:999px;font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 30px rgba(0,0,0,.4);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
   #flp-cart-toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  #flp-qv-back{position:fixed;inset:0;background:rgba(6,7,12,.66);z-index:100000;backdrop-filter:blur(2px)}
+  #flp-qv{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100001;width:min(430px,94vw);max-height:92vh;overflow:auto;border-radius:16px}
+  #flp-qv-x{position:absolute;top:10px;right:10px;z-index:2;width:34px;height:34px;border-radius:50%;border:0;background:rgba(11,12,18,.6);color:#fff;font-size:16px;cursor:pointer;display:grid;place-items:center}
+  #flp-qv .flp-prod{box-shadow:0 30px 90px rgba(0,0,0,.5)!important}
+  #flp-qv .flp-quick{display:none!important}
 </style>
 <script>
 (function(){
@@ -972,10 +979,23 @@ function lmeg_cart_assets_html() {
     else { window.prompt('Copy this link:',u); }
   }
 
+  var qvBack=document.getElementById('flp-qv-back'), qvPanel=document.getElementById('flp-qv'), qvBody=document.getElementById('flp-qv-body');
+  function qvOpen(card){
+    if(!card||!qvPanel||!qvBody) return;
+    var clone=card.cloneNode(true);
+    clone.style.margin='0'; clone.style.width='100%'; clone.style.height='auto';
+    var q=clone.querySelector('.flp-quick'); if(q) q.parentNode.removeChild(q);
+    qvBody.innerHTML=''; qvBody.appendChild(clone);
+    qvBack.hidden=false; qvPanel.hidden=false;
+  }
+  function qvClose(){ if(qvPanel){ qvPanel.hidden=true; } if(qvBack){ qvBack.hidden=true; } if(qvBody) qvBody.innerHTML=''; }
+
   document.addEventListener('click', function(e){
+    var qk=e.target.closest('.flp-quick'); if(qk){ e.preventDefault(); e.stopPropagation(); qvOpen(qk.closest('.flp-prod')); return; }
+    if(e.target===qvBack||e.target===document.getElementById('flp-qv-x')){ qvClose(); return; }
     var sh=e.target.closest('.flp-share'); if(sh){ e.preventDefault(); handleShare(sh); return; }
-    var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); return; }
-    var a=e.target.closest('.flp-add'); if(a){ e.preventDefault(); handleAdd(a); return; }
+    var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); if(qvPanel&&!qvPanel.hidden) qvClose(); return; }
+    var a=e.target.closest('.flp-add'); if(a){ e.preventDefault(); handleAdd(a); if(qvPanel&&!qvPanel.hidden) qvClose(); return; }
     if(e.target===btn||e.target.closest('#flp-cart-btn')){ render(); open(); return; }
     if(e.target===back||e.target===document.getElementById('flp-cart-x')){ close(); return; }
     var act=e.target.getAttribute&&e.target.getAttribute('data-act');
@@ -997,7 +1017,7 @@ function lmeg_cart_assets_html() {
       f.appendChild(inp); document.body.appendChild(f); f.submit();
     }
   });
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ if(qvPanel&&!qvPanel.hidden){ qvClose(); return; } close(); } });
 
   render();
 })();
