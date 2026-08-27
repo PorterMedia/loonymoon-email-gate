@@ -916,7 +916,11 @@ function lmeg_shortcode_store($atts) {
     $chip_css .= ($has_tags || $has_soldout) ? '</style>' : '';
 
     $run_js = $show_ctrls || $has_tags || $has_soldout;
-    $out = $chip_css . lmeg_store_banner_html()
+    // Subtle card hover lift — hover-capable pointers only, disabled for reduced motion.
+    $hover_css = '<style>@media(hover:hover){#' . $uid . ' .flp-prod{transition:transform .16s ease,box-shadow .16s ease}'
+        . '#' . $uid . ' .flp-prod:hover{transform:translateY(-4px);box-shadow:0 22px 50px rgba(0,0,0,.16)}}'
+        . '@media(prefers-reduced-motion:reduce){#' . $uid . ' .flp-prod{transition:none}#' . $uid . ' .flp-prod:hover{transform:none}}</style>';
+    $out = $hover_css . $chip_css . lmeg_store_banner_html()
         . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls . $chips
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
