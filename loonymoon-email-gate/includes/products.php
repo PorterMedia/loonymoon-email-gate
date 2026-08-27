@@ -59,6 +59,43 @@ function lmeg_product_related($p, $limit = 4) {
     ));
 }
 
+/**
+ * Best-sellers strip for the post-purchase "You might also like" upsell.
+ * Excludes the products just bought. Dark-surface mini-cards (this renders on
+ * the dark thank-you chrome — every colour is explicit, none inherited).
+ * Returns '' when nothing else is for sale.
+ */
+function lmeg_store_upsell_html($exclude_ids = [], $limit = 3, $heading = 'You might also like') {
+    global $wpdb;
+    $limit   = max(1, min(6, (int) $limit));
+    $exclude = array_values(array_unique(array_filter(array_map('intval', (array) $exclude_ids))));
+    $notin   = $exclude ? ' AND id NOT IN (' . implode(',', $exclude) . ')' : '';   // ints only — safe to inline
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}lmeg_products WHERE status = 'active'$notin ORDER BY sold DESC, id DESC LIMIT %d",
+        $limit
+    ));
+    if (!$rows) return '';
+
+    $cards = '';
+    foreach ($rows as $r) {
+        $rurl  = esc_url(lmeg_product_url($r));
+        $price = lmeg_product_is_pwyw($r) ? 'Name your price'
+               : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2));
+        $img = !empty($r->cover_url)
+            ? '<img src="' . esc_url($r->cover_url) . '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
+            : '<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>';
+        $cards .= '<a href="' . $rurl . '" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'
+            . $img
+            . '<div style="padding:9px 11px">'
+            . '<div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . esc_html($r->title) . '</div>'
+            . '<div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px">' . esc_html($price) . '</div>'
+            . '</div></a>';
+    }
+    return '<div style="width:100%;max-width:720px;margin:34px auto 0">'
+        . '<div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">' . esc_html($heading) . '</div>'
+        . '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">' . $cards . '</div></div>';
+}
+
 /** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
 function lmeg_product_gallery($p) {
     $g = [];
@@ -711,7 +748,9 @@ function lmeg_product_checkout_return() {
         <p>Hang tight — your payment is being confirmed. Check your email in a moment for your receipt. You can safely close this page.</p>
       <?php endif; ?>
       <a class="home" href="<?php echo esc_url(home_url('/')); ?>">← Back to site</a>
-    </div></body></html><?php
+    </div>
+    <?php if ($paid && function_exists('lmeg_store_upsell_html')) echo lmeg_store_upsell_html($p ? [(int) $p->id] : [], 3); ?>
+    </body></html><?php
     exit;
 }
 

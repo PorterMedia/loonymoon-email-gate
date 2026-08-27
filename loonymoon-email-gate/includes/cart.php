@@ -683,6 +683,10 @@ function lmeg_cart_done($stem = '') {
         . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>'
         . '<script>try{localStorage.removeItem("fanloop_cart")}catch(e){}</script>';
 
+    // Post-purchase upsell — best-sellers they didn't just buy.
+    $bought = array_map(function ($r) { return (int) $r->product_id; }, $rows);
+    if (function_exists('lmeg_store_upsell_html')) $body .= lmeg_store_upsell_html($bought, 3);
+
     lmeg_store_page('Thank you', $body, 'Order');
 }
 
