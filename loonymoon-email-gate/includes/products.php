@@ -1350,7 +1350,7 @@ function lmeg_admin_products() {
 
     $recent = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' ORDER BY pp.id DESC LIMIT 15");
     if ($recent) : ?>
-        <h2 style="margin-top:26px">Recent sales</h2>
+        <h2 style="margin-top:26px">Recent sales <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-orders')); ?>" style="font-size:13px;font-weight:400;text-decoration:none">· all orders →</a></h2>
         <table class="widefat striped" style="max-width:820px">
             <thead><tr><th>When</th><th>Product</th><th>Buyer</th><th>Amount</th></tr></thead>
             <tbody><?php foreach ($recent as $r) : ?>
