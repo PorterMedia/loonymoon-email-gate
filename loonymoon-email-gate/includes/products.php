@@ -1493,6 +1493,7 @@ function lmeg_admin_products() {
     <?php endif;
 
     if (function_exists('lmeg_discounts_admin_section')) lmeg_discounts_admin_section();
+    if (function_exists('lmeg_waitlist_admin_section'))  lmeg_waitlist_admin_section();
     if (function_exists('lmeg_abandoned_admin_section')) lmeg_abandoned_admin_section();
     echo '</div>';
 }

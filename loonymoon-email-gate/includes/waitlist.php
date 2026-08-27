@@ -74,6 +74,66 @@ function lmeg_handle_notify_waitlist() {
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&edit=' . $pid . '&notified_wl=' . $sent)); exit;
 }
 
+/* ---------------------------------------------------------------------------
+ * Admin: a "Waitlist" section on the Store page + CSV export.
+ * ------------------------------------------------------------------------- */
+function lmeg_waitlist_admin_section() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_waitlist';
+    $ptbl = $wpdb->prefix . 'lmeg_products';
+    $rows = $wpdb->get_results("SELECT w.product_id pid, COUNT(*) n, MIN(w.created_at) oldest, p.title FROM $tbl w LEFT JOIN $ptbl p ON p.id = w.product_id WHERE w.notified = 0 GROUP BY w.product_id, p.title ORDER BY n DESC");
+    if (!$rows) return;   // nobody waiting
+    $save  = admin_url('admin-post.php');
+    $total = 0; foreach ($rows as $r) $total += (int) $r->n;
+    ?>
+    <h2 id="waitlist" style="margin-top:30px">Waitlist <span style="font-size:12px;color:#8B90A0;font-weight:400">· <?php echo number_format_i18n($total); ?> waiting</span>
+        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_waitlist'), 'lmeg_export_waitlist')); ?>" class="button button-small" style="vertical-align:middle;margin-left:8px">⬇ Export CSV</a></h2>
+    <p class="description" style="margin:0 0 12px;max-width:800px">Fans waiting for a sold-out product to come back. Restock it, then hit “Notify” to email everyone a link.</p>
+    <table class="widefat striped" style="max-width:760px">
+        <thead><tr><th>Product</th><th>Waiting</th><th>Since</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($rows as $r) : ?>
+            <tr>
+                <td><strong><?php echo esc_html($r->title ?: 'Product #' . (int) $r->pid); ?></strong></td>
+                <td>🔔 <?php echo (int) $r->n; ?></td>
+                <td><?php echo esc_html($r->oldest ? human_time_diff(strtotime($r->oldest), current_time('timestamp')) . ' ago' : '—'); ?></td>
+                <td>
+                    <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline" onsubmit="return confirm('Email all <?php echo (int) $r->n; ?> waiting fans that this is back in stock?');">
+                        <?php wp_nonce_field('lmeg_notify_waitlist', 'lmeg_waitlist_nonce'); ?>
+                        <input type="hidden" name="action" value="lmeg_notify_waitlist">
+                        <input type="hidden" name="product_id" value="<?php echo (int) $r->pid; ?>">
+                        <button type="submit" class="button button-small">Notify them it's back</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php
+}
+
+add_action('admin_post_lmeg_export_waitlist', 'lmeg_handle_export_waitlist');
+function lmeg_handle_export_waitlist() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_waitlist');
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_waitlist';
+    $ptbl = $wpdb->prefix . 'lmeg_products';
+    $rows = $wpdb->get_results("SELECT w.email, w.variant, w.created_at, p.title FROM $tbl w LEFT JOIN $ptbl p ON p.id = w.product_id WHERE w.notified = 0 ORDER BY w.product_id, w.id");
+    $safe = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-waitlist-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    fputcsv($fh, ['Product', 'Variant', 'Email', 'Signed up']);
+    foreach ((array) $rows as $r) fputcsv($fh, [$safe($r->title), $safe($r->variant), $safe($r->email), $r->created_at]);
+    fclose($fh);
+    exit;
+}
+
 /** Branded "it's back in stock" email. */
 function lmeg_waitlist_send_back($p, $email) {
     if (!function_exists('lmeg_email_deliver')) return false;
