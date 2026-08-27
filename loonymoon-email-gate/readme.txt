@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.39.0
+Stable tag: 3.40.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.40.0 =
+* Store (Beta): product image lightbox. On a product page with more than one photo, tapping the main image now opens it full-screen in a zoom viewer — swipe through every photo with the ‹ › arrows or your keyboard, see a "2 / 3" position counter, and close with ✕, the arrow keys' Esc, or a tap on the backdrop. The thumbnail strip still switches the main image, and the viewer opens on whichever photo you're looking at. Buyers can finally see the details up close.
+
 = 3.39.0 =
 * Store (Beta): per-product size guide. Add a size chart to any product (Store → edit product → "Size guide") — one row per line with columns separated by "|", first line is the header. It shows on the product page as a tidy, collapsible "📏 Size guide" table (styled for the dark product page), and stays hidden when left blank. Perfect for apparel and anything where fit matters, so buyers pick the right size the first time.
 

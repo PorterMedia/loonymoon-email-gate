@@ -1094,16 +1094,49 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
       $imgs = [];
       foreach (array_merge([$p->cover_url], $gallery) as $u) { $u = trim((string) $u); if ($u !== '' && !in_array($u, $imgs, true)) $imgs[] = $u; }
       if ($solo && count($imgs) > 1) :
-        $mid = 'flpmain' . (int) $p->id; ?>
-        <div>
-          <img id="<?php echo esc_attr($mid); ?>" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">
+        $mid = 'flpmain' . (int) $p->id; $gid = 'flpgal' . (int) $p->id; ?>
+        <div class="flp-gal" id="<?php echo esc_attr($gid); ?>" data-imgs="<?php echo esc_attr(wp_json_encode(array_values($imgs))); ?>" data-alt="<?php echo esc_attr($p->title); ?>">
+          <div style="position:relative">
+            <img id="<?php echo esc_attr($mid); ?>" class="flp-gal-main" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" data-idx="0" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover;cursor:zoom-in">
+            <span class="flp-gal-zoom" aria-hidden="true" style="position:absolute;right:10px;top:10px;background:rgba(11,12,18,.62);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;pointer-events:none">⤢ Zoom</span>
+          </div>
           <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
             <?php foreach ($imgs as $i => $u) : ?>
-              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? '#E15FA8' : 'rgba(0,0,0,.12)'; ?>">
+              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" data-idx="<?php echo (int) $i; ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? '#E15FA8' : 'rgba(0,0,0,.12)'; ?>">
             <?php endforeach; ?>
           </div>
         </div>
-        <script>(function(){var t=document.currentScript.previousElementSibling.querySelectorAll('.flp-thumb');for(var i=0;i<t.length;i++){t[i].addEventListener('click',function(){var m=document.getElementById(this.getAttribute('data-main'));if(m)m.src=this.src;for(var j=0;j<t.length;j++)t[j].style.borderColor='rgba(0,0,0,.12)';this.style.borderColor='#E15FA8';});}})();</script>
+        <div class="flp-lb" id="<?php echo esc_attr($gid); ?>lb" hidden style="position:fixed;inset:0;z-index:100002;background:rgba(6,7,12,.93);display:flex;align-items:center;justify-content:center">
+          <button type="button" class="flp-lb-x" aria-label="Close" style="position:absolute;top:14px;right:16px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:19px;cursor:pointer">✕</button>
+          <button type="button" class="flp-lb-prev" aria-label="Previous image" style="position:absolute;left:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:26px;line-height:1;cursor:pointer">‹</button>
+          <img class="flp-lb-img" src="" alt="" style="max-width:92vw;max-height:86vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 70px rgba(0,0,0,.6)">
+          <button type="button" class="flp-lb-next" aria-label="Next image" style="position:absolute;right:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:26px;line-height:1;cursor:pointer">›</button>
+          <div class="flp-lb-count" style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#CFD2DC;font-size:13px;font-weight:600"></div>
+        </div>
+        <script>
+        (function(){
+          var g=document.getElementById(<?php echo wp_json_encode($gid); ?>); if(!g) return;
+          var imgs; try{imgs=JSON.parse(g.getAttribute('data-imgs')||'[]');}catch(e){imgs=[];}
+          var alt=g.getAttribute('data-alt')||'';
+          var main=g.querySelector('.flp-gal-main');
+          var thumbs=[].slice.call(g.querySelectorAll('.flp-thumb'));
+          var lb=document.getElementById(g.id+'lb');
+          var limg=lb.querySelector('.flp-lb-img'), cnt=lb.querySelector('.flp-lb-count');
+          var idx=0;
+          function setMain(i){ idx=(i+imgs.length)%imgs.length; if(main){main.src=imgs[idx];main.setAttribute('data-idx',idx);} thumbs.forEach(function(t){t.style.borderColor=(+t.getAttribute('data-idx')===idx)?'#E15FA8':'rgba(0,0,0,.12)';}); }
+          function show(i){ if(!imgs.length)return; idx=(i+imgs.length)%imgs.length; limg.src=imgs[idx]; limg.alt=alt; if(cnt)cnt.textContent=(idx+1)+' / '+imgs.length; }
+          function openLb(){ show(idx); lb.hidden=false; }
+          function closeLb(){ lb.hidden=true; setMain(idx); }
+          thumbs.forEach(function(t){ t.addEventListener('click',function(){ setMain(+t.getAttribute('data-idx')); }); });
+          if(main) main.addEventListener('click',openLb);
+          lb.querySelector('.flp-lb-x').addEventListener('click',closeLb);
+          lb.querySelector('.flp-lb-prev').addEventListener('click',function(e){e.stopPropagation();show(idx-1);});
+          lb.querySelector('.flp-lb-next').addEventListener('click',function(e){e.stopPropagation();show(idx+1);});
+          lb.addEventListener('click',function(e){ if(e.target===lb) closeLb(); });
+          document.addEventListener('keydown',function(e){ if(lb.hidden)return; if(e.key==='Escape')closeLb(); else if(e.key==='ArrowLeft')show(idx-1); else if(e.key==='ArrowRight')show(idx+1); });
+          setMain(0);
+        })();
+        </script>
       <?php elseif (!empty($imgs)) : $img = '<img src="' . esc_url($imgs[0]) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
         $badge = (count($imgs) > 1) ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(11,12,18,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">▦ ' . count($imgs) . '</span>' : '';
         $wrapped = '<div style="position:relative;display:block">' . $img . $badge . '</div>';
