@@ -424,6 +424,60 @@ function lmeg_handle_export_sales() {
     exit;
 }
 
+/* Aggregate paid purchase lines into per-customer rows (pure/testable), keyed
+ * by lower-cased email. Each row: ['email','orders'(distinct okey),'items',
+ * 'spent','first','last'] sorted by spend desc, then email. */
+function lmeg_customers_rows($purchases) {
+    $by = [];
+    foreach ((array) $purchases as $p) {
+        if (isset($p->status) && $p->status !== 'paid') continue;
+        $email = trim((string) ($p->email ?? ''));
+        if ($email === '') continue;
+        $k = strtolower($email);
+        if (!isset($by[$k])) $by[$k] = ['email' => $email, 'orders' => [], 'items' => 0, 'spent' => 0, 'first' => null, 'last' => null];
+        $okey = (string) ($p->okey ?? $p->id ?? '');
+        if ($okey !== '') $by[$k]['orders'][$okey] = 1;
+        $by[$k]['items'] += max(1, (int) ($p->qty ?? 1));
+        $by[$k]['spent'] += (int) ($p->amount_cents ?? 0);
+        $when = (string) ($p->paid_at ?? '');
+        if ($when !== '') {
+            $day = substr($when, 0, 10);
+            if ($by[$k]['first'] === null || $day < $by[$k]['first']) $by[$k]['first'] = $day;
+            if ($by[$k]['last'] === null  || $day > $by[$k]['last'])  $by[$k]['last']  = $day;
+        }
+    }
+    $out = [];
+    foreach ($by as $c) $out[] = ['email' => $c['email'], 'orders' => count($c['orders']), 'items' => $c['items'], 'spent' => $c['spent'], 'first' => $c['first'] ?? '', 'last' => $c['last'] ?? ''];
+    usort($out, function ($a, $b) { if ($a['spent'] === $b['spent']) return strcasecmp($a['email'], $b['email']); return $b['spent'] - $a['spent']; });
+    return $out;
+}
+
+/* CSV of every customer (by email) — order count, items, total spent, first/
+ * last order. Formula-injection-safe + UTF-8 BOM, like the other exports. */
+add_action('admin_post_lmeg_export_customers', 'lmeg_handle_export_customers');
+function lmeg_handle_export_customers() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_customers');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $okexpr = lmeg_orders_okey_expr('pp.');
+    $rows = $wpdb->get_results("SELECT pp.email, pp.amount_cents, pp.qty, pp.paid_at, $okexpr okey FROM $ptbl pp WHERE pp.status='paid'");
+    $cust = lmeg_customers_rows($rows);
+    $safe  = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+    $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-customers-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    fputcsv($fh, ['Email', 'Orders', 'Items', 'Total spent', 'First order', 'Last order']);
+    foreach ($cust as $c) {
+        fputcsv($fh, [$safe($c['email']), (int) $c['orders'], (int) $c['items'], $money($c['spent']), $safe($c['first']), $safe($c['last'])]);
+    }
+    fclose($fh);
+    exit;
+}
+
 /* Client JS for the Orders bulk-select bar. Row checkboxes (.lmeg-obulk) live
  * in the table (NOT in a form); this collects the checked okeys into the bulk
  * <form> as okeys[] hidden inputs on submit, so no <form> nests inside another. */
@@ -547,6 +601,35 @@ function lmeg_admin_orders() {
         <button class="button button-primary">Export CSV</button>
         <span class="description" style="flex-basis:100%;margin-top:2px">Revenue, discounts, tax and order counts by day for the range (your store's currency) — ready for your bookkeeping.</span>
     </form>
+
+    <?php
+    $cust_total = (int) $wpdb->get_var("SELECT COUNT(DISTINCT LOWER(pp.email)) FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>''");
+    if ($cust_total > 0) :
+        $top_cust = $wpdb->get_results("SELECT MAX(pp.email) email, COUNT(DISTINCT $OK) orders, SUM(pp.qty) items, SUM(pp.amount_cents) spent, MIN(DATE(pp.paid_at)) firstd, MAX(DATE(pp.paid_at)) lastd FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>'' GROUP BY LOWER(pp.email) ORDER BY spent DESC LIMIT 10");
+    ?>
+    <details style="max-width:820px;margin:0 0 18px;background:#fff;border:1px solid #dcdcde;border-radius:8px" <?php echo $cust_total <= 10 ? 'open' : ''; ?>>
+        <summary style="cursor:pointer;list-style:none;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <strong style="display:inline-flex;align-items:center;gap:7px;color:#17141f"><?php echo lmeg_store_icon('users', 15); ?>Customers <span style="color:#50575e;font-weight:400">(<?php echo number_format_i18n($cust_total); ?>)</span></strong>
+            <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_customers'), 'lmeg_export_customers')); ?>" style="display:inline-flex;align-items:center;gap:6px" onclick="event.stopPropagation()"><?php echo lmeg_store_icon('download', 14); ?>Export customers (CSV)</a>
+        </summary>
+        <table class="widefat" style="border:0;border-top:1px solid #e5e5e5">
+            <thead><tr><th>Customer</th><th>Orders</th><th>Items</th><th>Total spent</th><th>First</th><th>Last</th></tr></thead>
+            <tbody>
+            <?php foreach ((array) $top_cust as $c) : ?>
+                <tr>
+                    <td><?php echo esc_html($c->email); ?></td>
+                    <td><?php echo (int) $c->orders; ?></td>
+                    <td><?php echo (int) $c->items; ?></td>
+                    <td style="font-weight:700"><?php echo esc_html(lmeg_orders_money((int) $c->spent, 'USD')); ?></td>
+                    <td style="white-space:nowrap;color:#50575e"><?php echo esc_html($c->firstd ? date_i18n('M j, Y', strtotime($c->firstd)) : '—'); ?></td>
+                    <td style="white-space:nowrap;color:#50575e"><?php echo esc_html($c->lastd ? date_i18n('M j, Y', strtotime($c->lastd)) : '—'); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php if ($cust_total > 10) : ?><p class="description" style="padding:8px 14px;margin:0">Showing the top 10 by spend · export the CSV for all <?php echo number_format_i18n($cust_total); ?>.</p><?php endif; ?>
+    </details>
+    <?php endif; ?>
 
     <form method="get" style="margin:0 0 14px">
         <input type="hidden" name="page" value="lmeg-orders">
