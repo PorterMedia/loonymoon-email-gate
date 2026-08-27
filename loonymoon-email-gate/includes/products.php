@@ -117,6 +117,22 @@ function lmeg_product_tags_normalize($raw) {
     return mb_substr($str, 0, 255);
 }
 
+/**
+ * Is this product buyable right now? Mirrors the card's sold-out logic:
+ * must be active, not stock-exhausted, and (if it has variants) at least one
+ * variant available. Used for back-in-stock auto-notify on restock.
+ */
+function lmeg_product_is_available($p) {
+    if (!$p || ($p->status ?? '') !== 'active') return false;
+    if (($p->stock ?? -1) >= 0 && (int) ($p->sold ?? 0) >= (int) $p->stock) return false;
+    $vlist = function_exists('lmeg_product_variants') ? lmeg_product_variants($p) : [];
+    if ($vlist) {
+        foreach ($vlist as $v) if (!empty($v['available'])) return true;
+        return false;
+    }
+    return true;
+}
+
 /** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
 function lmeg_product_gallery($p) {
     $g = [];
@@ -946,7 +962,13 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
-          <?php if (function_exists('lmeg_waitlist_form_html') && $p->status === 'active') echo lmeg_waitlist_form_html($p); ?>
+          <?php
+          if (function_exists('lmeg_waitlist_form_html') && $p->status === 'active') {
+              echo lmeg_waitlist_form_html($p);
+              $waiting = function_exists('lmeg_waitlist_count') ? lmeg_waitlist_count($p->id) : 0;
+              if ($waiting >= 3) echo '<div style="font-size:12px;color:#8a6d00;margin-top:6px">🔔 ' . (int) $waiting . ' fans waiting for this to come back</div>';
+          }
+          ?>
         <?php elseif ($needs_form) : ?>
           <form method="get" action="<?php echo esc_url(home_url('/')); ?>" style="display:flex;flex-direction:column;gap:9px">
             <input type="hidden" name="lmeg_buy" value="<?php echo (int) $p->id; ?>">
@@ -1159,9 +1181,18 @@ function lmeg_handle_save_product() {
         $data['file_path'] = null; $data['file_name'] = null; $data['file_size'] = 0;
     }
 
-    if ($id) { $wpdb->update($tbl, $data, ['id' => $id]); }
-    else     { $data['sold'] = 0; $data['created_at'] = current_time('mysql'); $wpdb->insert($tbl, $data); $id = (int) $wpdb->insert_id; }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&saved=' . $id)); exit;
+    $auto_notified = 0;
+    if ($id) {
+        $wpdb->update($tbl, $data, ['id' => $id]);
+        // Back-in-stock: if this edit brought a sold-out product back, email the waitlist.
+        if (function_exists('lmeg_waitlist_maybe_autonotify')) {
+            $after = lmeg_product_get($id);
+            $auto_notified = (int) lmeg_waitlist_maybe_autonotify($old, $after);
+        }
+    } else {
+        $data['sold'] = 0; $data['created_at'] = current_time('mysql'); $wpdb->insert($tbl, $data); $id = (int) $wpdb->insert_id;
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&saved=' . $id . ($auto_notified ? '&notified_wl=' . $auto_notified : ''))); exit;
 }
 
 add_action('admin_post_lmeg_ship_order', 'lmeg_handle_ship_order');

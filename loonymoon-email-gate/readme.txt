@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.4.0
+Stable tag: 3.5.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.5.0 =
+* Store (Beta): automatic back-in-stock emails. When a sold-out product comes back — you raise its stock, refill a size, or set it active again — everyone on its waitlist is emailed a branded "it's back in stock" note with a buy link automatically. No button to remember. Toggle it in Settings → Payments ("Back-in-stock"); you can still notify manually from the Waitlist section. Sold-out product cards now also show "🔔 N fans waiting" once a few people are in line.
+
 = 3.4.0 =
 * Store (Beta): product tags / categories + filter chips in [fanloop_store]. Add comma-separated Tags (e.g. Vinyl, Apparel, Digital, Limited) on any product's edit screen. When two or more distinct tags exist, filter chips appear at the top of your shop so fans can browse by category in one tap — ordered by how common each tag is. Works alongside the existing search + sort. No layout change if you don't use tags.
 

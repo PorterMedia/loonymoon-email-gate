@@ -65,13 +65,43 @@ function lmeg_handle_notify_waitlist() {
     $p   = $pid ? lmeg_product_get($pid) : null;
     if (!$p) { wp_safe_redirect(admin_url('admin.php?page=lmeg-products')); exit; }
 
-    $waiters = $wpdb->get_results($wpdb->prepare("SELECT * FROM $tbl WHERE product_id = %d AND notified = 0 ORDER BY id ASC LIMIT 2000", $pid));
+    $sent = lmeg_waitlist_notify_all($p);
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&edit=' . $pid . '&notified_wl=' . $sent)); exit;
+}
+
+/**
+ * Email every un-notified fan on a product's waitlist that it's back, mark them
+ * notified, and return how many were emailed. Shared by the manual "Notify"
+ * button and the automatic on-restock path. Idempotent: marks notified as it
+ * goes, so a second call sends to nobody.
+ */
+function lmeg_waitlist_notify_all($p) {
+    global $wpdb;
+    if (!$p) return 0;
+    $tbl = $wpdb->prefix . 'lmeg_waitlist';
+    $waiters = $wpdb->get_results($wpdb->prepare("SELECT * FROM $tbl WHERE product_id = %d AND notified = 0 ORDER BY id ASC LIMIT 2000", (int) $p->id));
     $sent = 0;
     foreach ((array) $waiters as $w) {
         if ($w->email && lmeg_waitlist_send_back($p, $w->email)) $sent++;
         $wpdb->update($tbl, ['notified' => 1, 'notified_at' => current_time('mysql')], ['id' => (int) $w->id]);
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&edit=' . $pid . '&notified_wl=' . $sent)); exit;
+    return $sent;
+}
+
+/**
+ * Called after a product is saved. If it just went from sold-out → available
+ * and auto-notify is on, email everyone waiting. Guarded so it only fires on a
+ * genuine restock (was unavailable before, is available now).
+ */
+function lmeg_waitlist_maybe_autonotify($before, $after) {
+    if (!function_exists('lmeg_product_is_available')) return 0;
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (isset($s['store_waitlist_auto']) && !$s['store_waitlist_auto']) return 0;   // opted out
+    if (!$before || !$after) return 0;
+    if (lmeg_product_is_available($before)) return 0;   // wasn't sold out — nothing to restock
+    if (!lmeg_product_is_available($after))  return 0;   // still not available
+    if (lmeg_waitlist_count($after->id) < 1) return 0;   // nobody waiting
+    return lmeg_waitlist_notify_all($after);
 }
 
 /* ---------------------------------------------------------------------------

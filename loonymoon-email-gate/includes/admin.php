@@ -2653,6 +2653,7 @@ function lmeg_admin_settings() {
             'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
+            'store_waitlist_auto'     => !empty($_POST['store_waitlist_auto']) ? 1 : 0,
             'store_ship_zones'        => !empty($_POST['store_ship_zones']) ? 1 : 0,
             'store_ship_ca'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_ca'] ?? 0))) * 100)),
             'store_ship_us'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_us'] ?? 0))) * 100)),
@@ -3349,6 +3350,10 @@ function lmeg_admin_settings() {
                 <tr><th scope="row">Low-stock digest</th><td>
                     <label><input type="checkbox" name="store_lowstock_digest" value="1" <?php checked(!empty($s['store_lowstock_digest'])); ?> /> <strong>Email me a weekly heads-up when products are running low</strong></label>
                     <p class="description">Once a week, if any product (or size) with a stock limit is down to 5 or fewer, we'll email your notification address so you can restock in time. Only sends when there's something to report.</p>
+                </td></tr>
+                <tr><th scope="row">Back-in-stock</th><td>
+                    <label><input type="checkbox" name="store_waitlist_auto" value="1" <?php checked(!empty($s['store_waitlist_auto'])); ?> /> <strong>Automatically email the waitlist when a sold-out product is restocked</strong></label>
+                    <p class="description">When a product sells out, fans can leave their email to be notified. With this on, the moment you bring it back (raise its stock, refill a size, or set it active again) everyone waiting gets a branded “it’s back in stock” email with a buy link — no button to remember. You can still send manually from the Waitlist section any time. Off = notify only when you click.</p>
                 </td></tr>
                 <tr><th scope="row">Demo checkout</th><td>
                     <label><input type="checkbox" name="store_demo" value="1" <?php checked(!empty($s['store_demo'])); ?> /> <strong>Let buyers check out without paying</strong> — for testing the flow</label>
