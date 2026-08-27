@@ -16,6 +16,16 @@ function lmeg_product_get($id)      { global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE slug = %s", (string) $slug)); }
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
+/** On sale = a compare-at price above the (real) price, and not pay-what-you-want. */
+function lmeg_product_on_sale($p) {
+    return !lmeg_product_is_pwyw($p) && (int) ($p->compare_at_cents ?? 0) > (int) $p->price_cents && (int) $p->price_cents >= 0 && (int) ($p->compare_at_cents ?? 0) > 0;
+}
+/** Percent off vs the compare-at price (0 when not on sale). */
+function lmeg_product_sale_pct($p) {
+    if (!lmeg_product_on_sale($p)) return 0;
+    $was = (int) $p->compare_at_cents; $now = (int) $p->price_cents;
+    return (int) round(($was - $now) / $was * 100);
+}
 
 /** A product is a pre-order while its release date is still in the future. */
 function lmeg_product_is_preorder($p) {
@@ -1030,6 +1040,9 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
     $price    = $fmt($p->price_cents);
     $pwyw     = lmeg_product_is_pwyw($p);
+    $on_sale  = lmeg_product_on_sale($p);
+    $sale_pct = $on_sale ? lmeg_product_sale_pct($p) : 0;
+    $was      = $on_sale ? $fmt($p->compare_at_cents) : '';
     $physical = ($p->type === 'physical');
     $vlist    = lmeg_product_variants($p);
     $ship     = ($physical && (int) $p->shipping_cents > 0) ? $fmt($p->shipping_cents) : '';
@@ -1094,6 +1107,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         </div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
+        <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php endif; ?>
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🗓 Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
@@ -1384,6 +1398,7 @@ function lmeg_handle_save_product() {
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'price_cents'     => max(0, $to_cents($_POST['price'] ?? 0)),
+        'compare_at_cents' => max(0, $to_cents($_POST['compare_at'] ?? 0)),
         'min_price_cents' => !empty($_POST['pwyw']) ? max(0, $to_cents($_POST['min_price'] ?? 0)) : 0,
         'currency'        => strtoupper(substr(sanitize_text_field($_POST['currency'] ?? 'USD'), 0, 3)) ?: 'USD',
         'type'            => in_array($_POST['type'] ?? 'digital', ['digital', 'physical'], true) ? $_POST['type'] : 'digital',
@@ -1587,7 +1602,7 @@ function lmeg_handle_export_orders() {
 
 /** Canonical CSV column order. */
 function lmeg_products_csv_headers() {
-    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Deliver URL', 'Deliver note'];
+    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Compare at', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Deliver URL', 'Deliver note'];
 }
 
 /** Rebuild a "S:10, M:5, L" variants string from the stored variants + variant_stock JSON. */
@@ -1614,6 +1629,7 @@ function lmeg_products_csv_rows($rows) {
             $safe($p->description ?? ''),
             $type,
             $money($p->price_cents ?? 0),
+            $money($p->compare_at_cents ?? 0),
             $money($p->min_price_cents ?? 0),
             strtoupper($p->currency ?: 'USD'),
             ($type === 'physical') ? $money($p->shipping_cents ?? 0) : '',
@@ -1691,6 +1707,7 @@ function lmeg_products_import_prepare($row) {
         'description'     => $g('description'),
         'cover_url'       => function_exists('esc_url_raw') ? esc_url_raw($g('cover url')) : $g('cover url'),
         'price_cents'     => $to_cents($g('price')),
+        'compare_at_cents' => $to_cents($g('compare at')),
         'min_price_cents' => $to_cents($g('min price')),
         'currency'        => (strtoupper(substr($g('currency'), 0, 3)) ?: 'USD'),
         'type'            => $type,
@@ -1876,7 +1893,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -1944,6 +1961,7 @@ function lmeg_admin_products() {
                     </script>
                 </td></tr>
                 <tr><th><label>Price</label></th><td><input type="number" name="price" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->price_cents)); ?>"> <input type="text" name="currency" style="width:64px" maxlength="3" value="<?php echo esc_attr($p->currency ?: 'USD'); ?>"></td></tr>
+                <tr><th><label>Compare-at price</label></th><td><input type="number" name="compare_at" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->compare_at_cents ?? 0)); ?>"><p class="description">Optional “was” price. Set it <strong>higher than the price</strong> to put the product on sale — the card shows the original struck through, the sale price, and a <strong>−X%</strong> badge. Fans are charged the Price above. Leave 0 for no sale.</p></td></tr>
                 <tr><th><label>Pay what you want</label></th><td><label><input type="checkbox" name="pwyw" value="1" <?php checked((int) $p->min_price_cents > 0); ?>> Let fans choose the price</label> &nbsp; minimum <input type="number" name="min_price" step="0.01" min="0" style="width:110px" value="<?php echo esc_attr($money($p->min_price_cents)); ?>"><p class="description">When on, the price above is the suggested amount and fans can pay the minimum or more.</p></td></tr>
                 <tr><th><label>Type</label></th><td>
                     <label><input type="radio" name="type" value="digital" <?php checked($p->type ?? 'digital', 'digital'); ?>> Digital (download / unlock link)</label> &nbsp;&nbsp;
