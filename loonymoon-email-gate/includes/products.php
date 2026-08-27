@@ -843,7 +843,13 @@ function lmeg_shortcode_store($atts) {
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
     $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY featured DESC, id DESC");
-    if (!$rows) return '<p style="opacity:.7">Nothing in the shop yet — check back soon.</p>';
+    if (!$rows) {
+        return '<div style="max-width:420px;margin:20px auto;text-align:center;background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.12);border-radius:16px;padding:34px 26px;box-shadow:0 12px 40px rgba(0,0,0,.08);font-family:inherit">'
+            . '<div style="font-size:40px;line-height:1;margin-bottom:10px">🛍️</div>'
+            . '<div style="font-weight:750;font-size:18px;margin-bottom:5px">The shop is warming up</div>'
+            . '<div style="font-size:14px;color:#6b6b78;line-height:1.5">New drops are on the way — check back soon.</div>'
+            . '</div>';
+    }
     $min = max(160, min(360, (int) $atts['min']));
     $uid = 'flpstore' . $store_n;
 
