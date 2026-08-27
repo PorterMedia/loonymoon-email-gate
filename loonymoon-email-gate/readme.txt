@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.19.0
+Stable tag: 3.20.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.20.0 =
+* Store (Beta): live results count. The search + sort bar in [fanloop_store] now shows how many products are showing — "12 items" normally, "3 of 12" while a search or filter is active — so fans know what they're looking at as they narrow things down.
+
 = 3.19.0 =
 * Store (Beta): "to ship" badge on the Orders menu. The Orders menu item now shows a red count bubble for how many orders are waiting to be shipped — the same at-a-glance badge WordPress uses for comments — so pending fulfilment is visible from anywhere in your dashboard. Updates as you ship.
 

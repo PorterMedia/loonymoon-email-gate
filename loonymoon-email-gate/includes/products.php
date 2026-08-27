@@ -853,12 +853,14 @@ function lmeg_shortcode_store($atts) {
     $ctrl_css = 'padding:10px 13px;border:1px solid rgba(0,0,0,.18);border-radius:10px;background:#fff;color:#17141f;font-size:14px';
     $controls = '';
     if ($show_ctrls) {
+        $n_total = count($rows);
         $controls = '<div class="flp-store-ctrls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">'
             . '<input type="search" class="flp-q" placeholder="Search the shop…" aria-label="Search the shop" style="flex:1;min-width:180px;' . $ctrl_css . '">'
             . '<select class="flp-sort" aria-label="Sort products" style="' . $ctrl_css . ';cursor:pointer">'
             . '<option value="featured">Featured</option><option value="new">Newest</option>'
             . '<option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option>'
-            . '<option value="sold">Best selling</option><option value="name">Name A–Z</option></select></div>';
+            . '<option value="sold">Best selling</option><option value="name">Name A–Z</option></select>'
+            . '<span class="flp-count" aria-live="polite" style="font-size:13px;color:#6b6b78;white-space:nowrap;flex:0 0 auto">' . (int) $n_total . ' item' . ($n_total === 1 ? '' : 's') . '</span></div>';
     }
 
     // Tag / category filter chips — union of tags across the shown products,
@@ -926,6 +928,7 @@ function lmeg_shortcode_store($atts) {
             . 'var grid=root.querySelector(".flp-store"),none=root.querySelector(".flp-store-none"),q=root.querySelector(".flp-q"),sort=root.querySelector(".flp-sort");'
             . 'var cards=[].slice.call(grid.querySelectorAll(".flp-prod")),orig=cards.slice();'
             . 'var tagBtns=[].slice.call(root.querySelectorAll(".flp-tag")),stockBtn=root.querySelector(".flp-instock");'
+            . 'var countEl=root.querySelector(".flp-count"),total=cards.length;'
             . 'function num(c,a){return parseInt(c.getAttribute(a),10)||0;}'
             . 'function activeTag(){var a=root.querySelector(".flp-tag.is-active");return a?(a.getAttribute("data-tag")||""):"";}'
             . 'function inStock(){return !!(stockBtn&&stockBtn.classList.contains("is-active"));}'
@@ -942,7 +945,8 @@ function lmeg_shortcode_store($atts) {
             . 'else if(s==="name")arr=vis.slice().sort(function(a,b){return(a.getAttribute("data-title")||"").localeCompare(b.getAttribute("data-title")||"");});'
             . 'else arr=orig.filter(function(c){return vis.indexOf(c)>=0;});'
             . 'cards.forEach(function(c){c.style.display="none";});arr.forEach(function(c){c.style.display="";grid.appendChild(c);});'
-            . 'if(none)none.style.display=arr.length?"none":"";}'
+            . 'if(none)none.style.display=arr.length?"none":"";'
+            . 'if(countEl)countEl.textContent=(arr.length===total)?(total+" item"+(total===1?"":"s")):(arr.length+" of "+total);}'
             . 'tagBtns.forEach(function(b){b.addEventListener("click",function(){tagBtns.forEach(function(x){x.classList.remove("is-active");});b.classList.add("is-active");apply();});});'
             . 'if(stockBtn)stockBtn.addEventListener("click",function(){stockBtn.classList.toggle("is-active");stockBtn.setAttribute("aria-pressed",stockBtn.classList.contains("is-active")?"true":"false");apply();});'
             . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);})();</script>';
