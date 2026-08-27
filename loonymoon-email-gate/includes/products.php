@@ -1166,6 +1166,13 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🗓 Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
+        <?php if (!$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
+        <div class="flp-qtywrap" style="display:inline-flex;align-items:center;border:1px solid #d9d9e0;border-radius:10px;overflow:hidden;background:#fff;margin-bottom:11px">
+          <button type="button" class="flp-qtir" data-d="-1" aria-label="Decrease quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">−</button>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" class="flp-qty" value="1" min="1" <?php echo $qmax ? 'max="' . (int) $qmax . '" ' : ''; ?>aria-label="Quantity" style="width:48px;height:38px;text-align:center;border:0;border-left:1px solid #ededf1;border-right:1px solid #ededf1;font-size:15px;font-weight:700;color:#17141f;background:#fff">
+          <button type="button" class="flp-qtir" data-d="1" aria-label="Increase quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">+</button>
+        </div>
+        <?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
           <?php

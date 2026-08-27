@@ -948,12 +948,15 @@ function lmeg_cart_assets_html() {
     if(hasvar){ var sel=card.querySelector('select[name=variant]'); variant=sel?sel.value:''; if(!variant){ toast('Choose an option first'); if(sel) sel.focus(); return; } }
     var unit=+b.getAttribute('data-price');
     if(pwyw){ var amt=card.querySelector('input[name=amount]'); var val=amt?parseFloat(amt.value):0; var min=(+b.getAttribute('data-min'))/100; if(!(val>0)) val=min; if(val<min) val=min; unit=Math.round(val*100); }
+    var qty=1, qi=card.querySelector('.flp-qty');
+    if(qi){ qty=parseInt(qi.value,10)||1; if(qty<1) qty=1; var qmx=parseInt(qi.getAttribute('max'),10); if(qmx>=1&&qty>qmx) qty=qmx; }
     var item={ id:+b.getAttribute('data-id'), slug:b.getAttribute('data-slug'), title:b.getAttribute('data-title'),
-      cover:b.getAttribute('data-cover'), unit:unit, cur:b.getAttribute('data-cur')||'USD', variant:variant, qty:1,
+      cover:b.getAttribute('data-cover'), unit:unit, cur:b.getAttribute('data-cur')||'USD', variant:variant, qty:qty,
       type:b.getAttribute('data-type'), ship:+b.getAttribute('data-ship')||0, pwyw:pwyw };
     var c=read(), found=false;
-    for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(item)){ c[k].qty=(+c[k].qty||1)+1; if(pwyw) c[k].unit=unit; found=true; break; } }
+    for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(item)){ c[k].qty=(+c[k].qty||1)+qty; if(pwyw) c[k].unit=unit; found=true; break; } }
     if(!found) c.push(item);
+    if(qi) qi.value=1;
     write(c); toast('Added to cart'); open();
   }
 
@@ -992,6 +995,7 @@ function lmeg_cart_assets_html() {
 
   document.addEventListener('click', function(e){
     var qk=e.target.closest('.flp-quick'); if(qk){ e.preventDefault(); e.stopPropagation(); qvOpen(qk.closest('.flp-prod')); return; }
+    var qr=e.target.closest('.flp-qtir'); if(qr){ e.preventDefault(); var w=qr.closest('.flp-qtywrap'), qi=w&&w.querySelector('.flp-qty'); if(qi){ var v=(parseInt(qi.value,10)||1)+(+qr.getAttribute('data-d')||0), mn=parseInt(qi.getAttribute('min'),10)||1, mx=parseInt(qi.getAttribute('max'),10); if(v<mn) v=mn; if(mx>=1&&v>mx) v=mx; qi.value=v; } return; }
     if(e.target===qvBack||e.target===document.getElementById('flp-qv-x')){ qvClose(); return; }
     var sh=e.target.closest('.flp-share'); if(sh){ e.preventDefault(); handleShare(sh); return; }
     var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); if(qvPanel&&!qvPanel.hidden) qvClose(); return; }
