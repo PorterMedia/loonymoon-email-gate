@@ -2189,6 +2189,72 @@ function lmeg_admin_lowstock_html($rows, $threshold = 5) {
         . $body . '</div>';
 }
 
+/* Bulk actions over the products selected with row checkboxes: activate, set
+ * draft, feature, unfeature, or delete several at once. ids[] carries the
+ * selection. Mirrors the Orders bulk-actions pattern. */
+add_action('admin_post_lmeg_bulk_products', 'lmeg_handle_bulk_products');
+function lmeg_handle_bulk_products() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_bulk_products', 'lmeg_pbulk_nonce');
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_products';
+    $do  = sanitize_key($_POST['do'] ?? '');
+    $ids = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? [])), function ($i) { return $i > 0; }));
+    if (!$ids || !in_array($do, ['activate', 'draft', 'feature', 'unfeature', 'delete'], true)) {
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-products')); exit;
+    }
+    $ph = implode(',', array_fill(0, count($ids), '%d'));
+    $n  = 0;
+    if ($do === 'delete') {
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT id, file_path FROM $tbl WHERE id IN ($ph)", $ids));
+        foreach ((array) $rows as $r) { if (!empty($r->file_path) && function_exists('lmeg_product_delete_file')) lmeg_product_delete_file($r->file_path); }
+        $n = (int) $wpdb->query($wpdb->prepare("DELETE FROM $tbl WHERE id IN ($ph)", $ids));
+    } else {
+        $set = ['activate' => "status='active'", 'draft' => "status='draft'", 'feature' => 'featured=1', 'unfeature' => 'featured=0'][$do];
+        $n = (int) $wpdb->query($wpdb->prepare("UPDATE $tbl SET $set WHERE id IN ($ph)", $ids));
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&pbulk=' . $do . '&pn=' . (int) $n)); exit;
+}
+
+/* Client JS for the product-list bulk-select bar (mirrors lmeg_orders_bulk_js).
+ * Row checkboxes (.lmeg-pbulk) live in the table, NOT in a form; this collects
+ * the checked ids into the bulk <form> as ids[] hidden inputs on submit. */
+function lmeg_products_bulk_js() {
+    ob_start(); ?>
+<script>
+(function(){
+  var form=document.getElementById('lmeg-pbulk-form'); if(!form) return;
+  var bar=form, all=document.getElementById('lmeg-pbulk-all'),
+      keys=document.getElementById('lmeg-pbulk-keys'), doIn=document.getElementById('lmeg-pbulk-do'),
+      count=document.getElementById('lmeg-pbulk-count');
+  function boxes(){ return Array.prototype.slice.call(document.querySelectorAll('.lmeg-pbulk')); }
+  function checked(){ return boxes().filter(function(b){ return b.checked; }); }
+  function sync(){
+    var c=checked().length, n=boxes().length;
+    if(bar) bar.style.display = c>0 ? 'flex' : 'none';
+    if(count) count.textContent = c + ' selected';
+    if(all){ all.checked = c>0 && c===n; all.indeterminate = c>0 && c<n; }
+  }
+  document.addEventListener('change', function(e){
+    if(e.target===all){ boxes().forEach(function(b){ b.checked=all.checked; }); sync(); return; }
+    if(e.target.classList && e.target.classList.contains('lmeg-pbulk')) sync();
+  });
+  form.addEventListener('click', function(e){
+    var btn=e.target.closest('button[data-do]'); if(!btn) return;
+    e.preventDefault();
+    var sel=checked(); if(!sel.length) return;
+    if(btn.getAttribute('data-do')==='delete' && !window.confirm('Delete '+sel.length+' product(s)? This also removes any uploaded files and cannot be undone.')) return;
+    keys.innerHTML='';
+    sel.forEach(function(b){ var h=document.createElement('input'); h.type='hidden'; h.name='ids[]'; h.value=b.value; keys.appendChild(h); });
+    doIn.value=btn.getAttribute('data-do');
+    form.submit();
+  });
+  sync();
+})();
+</script>
+    <?php return ob_get_clean();
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -2208,6 +2274,7 @@ function lmeg_admin_products() {
     if (isset($_GET['deleted'])) echo '<div class="notice notice-success is-dismissible"><p>Deleted.</p></div>';
     if (isset($_GET['shipped'])) echo '<div class="notice notice-success is-dismissible"><p>Order updated.</p></div>';
     if (isset($_GET['cleared'])) echo '<div class="notice notice-success is-dismissible"><p>Cleared ' . (int) $_GET['cleared'] . ' test order' . ((int) $_GET['cleared'] === 1 ? '' : 's') . '.</p></div>';
+    if (isset($_GET['pbulk'])) { $pl = ['activate' => 'activated', 'draft' => 'set to draft', 'feature' => 'featured', 'unfeature' => 'unfeatured', 'delete' => 'deleted']; $pa = sanitize_key($_GET['pbulk']); if (isset($pl[$pa])) echo '<div class="notice notice-success is-dismissible"><p>' . (int) ($_GET['pn'] ?? 0) . ' product(s) ' . $pl[$pa] . '.</p></div>'; }
     if (function_exists('lmeg_store_demo_on') && lmeg_store_demo_on()) {
         echo '<div class="notice notice-warning" style="border-left-color:#E15FA8"><p>' . lmeg_store_icon('flask', 14, ['style' => 'margin-right:5px;vertical-align:-2px']) . '<strong>Demo checkout is ON.</strong> Orders complete <strong>without payment</strong> so you can walk the whole flow (cart → receipt → download → fan captured). These show up as normal sales, tagged <em>demo</em>. <strong>Turn it off before you go live</strong> in <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings#payments')) . '">Settings → Payments</a> — while it\'s on, no money is collected.</p></div>';
     }
@@ -2469,10 +2536,22 @@ function lmeg_admin_products() {
     </div>
     <?php echo lmeg_admin_top_products_html($topn, $fmtc); ?>
     <?php echo lmeg_admin_lowstock_html($rows); ?>
+    <form id="lmeg-pbulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-left:4px solid #E15FA8;border-radius:4px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
+        <?php wp_nonce_field('lmeg_bulk_products', 'lmeg_pbulk_nonce'); ?>
+        <input type="hidden" name="action" value="lmeg_bulk_products">
+        <input type="hidden" name="do" id="lmeg-pbulk-do" value="">
+        <div id="lmeg-pbulk-keys"></div>
+        <strong id="lmeg-pbulk-count" style="min-width:78px">0 selected</strong>
+        <button type="submit" class="button" data-do="activate">Activate</button>
+        <button type="submit" class="button" data-do="draft">Set draft</button>
+        <button type="submit" class="button" data-do="feature">Feature</button>
+        <button type="submit" class="button" data-do="unfeature">Unfeature</button>
+        <button type="submit" class="button link-delete" data-do="delete">Delete</button>
+    </form>
     <table class="widefat striped">
-        <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th style="width:2.2em;text-align:center"><input type="checkbox" id="lmeg-pbulk-all" title="Select all"></th><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
         <tbody>
-        <?php if (!$rows) : ?><tr><td colspan="8">No products yet. Create your first drop.</td></tr>
+        <?php if (!$rows) : ?><tr><td colspan="9">No products yet. Create your first drop.</td></tr>
         <?php else : foreach ($rows as $p) :
             $cur = $p->currency ?: 'USD';
             $price = lmeg_product_is_pwyw($p)
@@ -2480,11 +2559,12 @@ function lmeg_admin_products() {
                 : (function_exists('lmeg_format_price') ? lmeg_format_price((int)$p->price_cents,$cur) : '$'.number_format($p->price_cents/100,2));
         ?>
             <tr>
+                <td style="text-align:center"><input type="checkbox" class="lmeg-pbulk" value="<?php echo (int) $p->id; ?>" aria-label="Select product"></td>
                 <td><?php echo !empty($p->featured) ? lmeg_store_icon('star', 13, ['fill' => true, 'style' => 'color:#E0A800;margin-right:5px;vertical-align:-2px']) : ''; ?><strong><?php echo esc_html($p->title); ?></strong></td>
-                <td><?php echo ($p->type === 'physical') ? '📦 Physical' : '⬇ Digital'; ?></td>
+                <td><?php echo ($p->type === 'physical') ? lmeg_store_icon('box', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Physical' : lmeg_store_icon('download', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Digital'; ?></td>
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
-                <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?><?php if (function_exists('lmeg_waitlist_count')) { $wl = lmeg_waitlist_count($p->id); if ($wl > 0) echo ' <span title="waiting for restock" style="color:#b03083;font-size:12px">· 🔔 ' . (int) $wl . '</span>'; } ?></td>
+                <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?><?php if (function_exists('lmeg_waitlist_count')) { $wl = lmeg_waitlist_count($p->id); if ($wl > 0) echo ' <span title="waiting for restock" style="color:#b03083;font-size:12px">· ' . lmeg_store_icon('bell', 11, ['style' => 'vertical-align:-1px']) . ' ' . (int) $wl . '</span>'; } ?></td>
                 <td><?php
                     $st = $pstats[(int) $p->id] ?? null;
                     if ($p->type === 'physical') { echo '<span style="color:#9A9DB0">—</span>'; }
@@ -2499,6 +2579,7 @@ function lmeg_admin_products() {
         <?php endforeach; endif; ?>
         </tbody>
     </table>
+    <?php echo lmeg_products_bulk_js(); ?>
     <?php
     // Physical orders awaiting shipment.
     $orders = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY pp.id ASC LIMIT 100");
