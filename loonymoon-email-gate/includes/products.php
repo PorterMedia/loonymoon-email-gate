@@ -1544,6 +1544,33 @@ function lmeg_store_checklist_html($units) {
         . $rows . '</div>';
 }
 
+/**
+ * "Top products by revenue" mini bar-list for the Store dashboard (admin light
+ * surface). $rows: objects with pid, rev (cents), n (sales), title — ordered
+ * revenue DESC. $fmt: cents→money formatter. Returns '' when there are no sales.
+ */
+function lmeg_admin_top_products_html($rows, $fmt) {
+    $rows = array_values(array_filter((array) $rows, function ($r) { return (int) $r->rev > 0; }));
+    if (!$rows) return '';
+    $maxrev = max(1, (int) $rows[0]->rev);
+    $medals = ['🥇', '🥈', '🥉'];
+    $items = '';
+    foreach ($rows as $i => $r) {
+        $pct  = (int) round(min(100, max(2, (int) $r->rev / $maxrev * 100)));
+        $name = $r->title ?: ('Product #' . (int) $r->pid);
+        $items .= '<div style="display:flex;align-items:center;gap:10px;padding:7px 0">'
+            . '<span style="font-size:15px;width:20px;text-align:center;flex:0 0 auto">' . ($medals[$i] ?? '#' . ($i + 1)) . '</span>'
+            . '<div style="flex:1;min-width:0">'
+            . '<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#17141f;margin-bottom:3px">'
+            . '<span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . esc_html($name) . '</span>'
+            . '<span style="white-space:nowrap;font-weight:700">' . esc_html($fmt((int) $r->rev)) . ' <span style="color:#8a8a94;font-weight:400">· ' . (int) $r->n . ' sale' . ((int) $r->n === 1 ? '' : 's') . '</span></span></div>'
+            . '<div style="height:6px;border-radius:999px;background:#F0EEF4;overflow:hidden"><div style="height:100%;width:' . $pct . '%;background:linear-gradient(90deg,#E15FA8,#8A6CF6);border-radius:999px"></div></div>'
+            . '</div></div>';
+    }
+    return '<div style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:13px 18px">'
+        . '<div style="font-weight:700;color:#17141f;margin-bottom:6px">🏆 Top products</div>' . $items . '</div>';
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -1734,7 +1761,7 @@ function lmeg_admin_products() {
     $orders = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR))) FROM $ptbl WHERE status = 'paid'");
     $aov    = $orders ? (int) round($rev / $orders) : 0;
     $buyers = (int) $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE status = 'paid' AND email IS NOT NULL AND email <> ''");
-    $top    = $wpdb->get_row("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 1");
+    $topn   = $wpdb->get_results("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 3");
     $revdaily = array_fill(0, 30, 0);
     foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
         $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
@@ -1780,9 +1807,7 @@ function lmeg_admin_products() {
         <div class="lmeg-stat"><div class="lmeg-stat__label">Buyers</div><div class="lmeg-stat__value"><?php echo number_format_i18n($buyers); ?></div><div class="lmeg-stat__hint">unique fans who bought</div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Downloads</div><div class="lmeg-stat__value"><?php echo number_format_i18n($dls); ?></div><div class="lmeg-stat__hint">file/link accesses</div></div>
     </div>
-    <?php if ($top && (int) $top->rev > 0) : ?>
-        <p style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #E15FA8;border-radius:6px;padding:9px 14px;color:#17141f">🏆 <strong>Top seller:</strong> <?php echo esc_html($top->title ?: 'Product #' . (int) $top->pid); ?> — <?php echo esc_html($fmtc((int) $top->rev)); ?> across <?php echo (int) $top->n; ?> sale<?php echo (int) $top->n === 1 ? '' : 's'; ?>.</p>
-    <?php endif; ?>
+    <?php echo lmeg_admin_top_products_html($topn, $fmtc); ?>
     <table class="widefat striped">
         <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
         <tbody>

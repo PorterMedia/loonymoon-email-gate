@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.15.0
+Stable tag: 3.16.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.16.0 =
+* Store (Beta): "Top products" on the dashboard. The Store screen now shows your top 3 products by revenue as a ranked mini bar-chart (🥇🥈🥉 with each product's revenue and sale count), replacing the single top-seller line — so you can see what's actually driving the money at a glance.
+
 = 3.15.0 =
 * Store (Beta): discount usage bars. Codes with a usage limit now show a little progress bar in the Discounts list — green while there's room, amber as it nears the cap, red and "maxed" when it's spent — so you can see at a glance which codes are running out. Unlimited codes just show their count.
 
