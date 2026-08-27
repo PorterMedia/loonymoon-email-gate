@@ -2652,6 +2652,7 @@ function lmeg_admin_settings() {
             'store_cart_nudge_hours'  => max(1, min(72, (int) ($_POST['store_cart_nudge_hours'] ?? 1))),
             'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
+            'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3318,6 +3319,10 @@ function lmeg_admin_settings() {
                     <label><input type="checkbox" name="store_cart_nudge" value="1" <?php checked(!empty($s['store_cart_nudge'])); ?> /> <strong>Automatically email shoppers who don’t finish checkout</strong></label>
                     &nbsp; after <input type="number" name="store_cart_nudge_hours" min="1" max="72" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_hours'] ?? 1); ?>"> hour(s)
                     <p class="description">Sends one branded reminder (with a link that reopens their exact cart) once a saved cart is this old and hasn’t been recovered. Only fires on live checkout — demo completes instantly. You can also send reminders by hand from the Store’s “Abandoned carts” panel.</p>
+                </td></tr>
+                <tr><th scope="row">Low-stock digest</th><td>
+                    <label><input type="checkbox" name="store_lowstock_digest" value="1" <?php checked(!empty($s['store_lowstock_digest'])); ?> /> <strong>Email me a weekly heads-up when products are running low</strong></label>
+                    <p class="description">Once a week, if any product (or size) with a stock limit is down to 5 or fewer, we'll email your notification address so you can restock in time. Only sends when there's something to report.</p>
                 </td></tr>
                 <tr><th scope="row">Demo checkout</th><td>
                     <label><input type="checkbox" name="store_demo" value="1" <?php checked(!empty($s['store_demo'])); ?> /> <strong>Let buyers check out without paying</strong> — for testing the flow</label>

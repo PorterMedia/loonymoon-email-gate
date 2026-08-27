@@ -506,6 +506,56 @@ function lmeg_product_notify_admin($p, $email, $amount, $cur, $physical, $varian
     lmeg_email_deliver($to, $subject, $inner, ($physical ? 'New order' : 'New sale') . ': ' . $p->title . ' — ' . $price);
 }
 
+/** Active products whose tracked stock (overall or a size) is low (≤ $threshold). */
+function lmeg_lowstock_products($threshold = 5) {
+    global $wpdb;
+    $out  = [];
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE status = 'active'");
+    foreach ((array) $rows as $p) {
+        $low = [];
+        if ($p->stock >= 0) {
+            $rem = max(0, (int) $p->stock - (int) $p->sold);
+            if ($rem <= $threshold) $low[] = ($rem === 0 ? 'sold out' : $rem . ' left');
+        }
+        foreach (lmeg_product_variants($p) as $v) {
+            if ($v['stock'] !== null && (int) $v['stock'] <= $threshold) $low[] = $v['name'] . ': ' . ((int) $v['stock'] === 0 ? 'sold out' : (int) $v['stock'] . ' left');
+        }
+        if ($low) $out[] = ['title' => $p->title, 'detail' => implode(', ', $low)];
+    }
+    return $out;
+}
+
+/**
+ * Weekly low-stock digest to the artist (opt-in). Runs on the per-minute tick
+ * but self-throttles to at most one email a week, and only when something's low.
+ */
+add_action('lmeg_broadcast_tick', 'lmeg_lowstock_digest_tick', 46);
+function lmeg_lowstock_digest_tick() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (empty($s['store_lowstock_digest']) || !function_exists('lmeg_email_deliver')) return;
+    $last = (int) get_option('lmeg_lowstock_digest_last', 0);
+    if ((current_time('timestamp') - $last) < 7 * DAY_IN_SECONDS) return;
+
+    update_option('lmeg_lowstock_digest_last', current_time('timestamp'));   // reset weekly clock regardless
+    $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
+    if (!$to || !is_email($to)) return;
+
+    $low = lmeg_lowstock_products(5);
+    if (!$low) return;   // nothing to report this week
+
+    $rows = '';
+    foreach ($low as $l) {
+        $rows .= '<tr><td style="padding:8px 0;border-bottom:1px solid #f0eef4;font-weight:650;color:#1a1622">' . esc_html($l['title'])
+              . '</td><td align="right" style="padding:8px 0;border-bottom:1px solid #f0eef4;color:#B45309;font-weight:700;white-space:nowrap">' . esc_html($l['detail']) . '</td></tr>';
+    }
+    $n = count($low);
+    $inner = lmeg_email_h('Running low on stock 📦')
+        . lmeg_email_p($n . ' product' . ($n === 1 ? '' : 's') . ' in your shop ' . ($n === 1 ? 'is' : 'are') . ' running low — restock before ' . ($n === 1 ? 'it sells' : 'they sell') . ' out.')
+        . '<div style="margin:6px 0 18px;background:#faf9fc;border:1px solid #efedf3;border-radius:12px;padding:6px 18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $rows . '</table></div>'
+        . lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products'));
+    lmeg_email_deliver($to, 'Low stock: ' . $n . ' product' . ($n === 1 ? '' : 's') . ' need a restock', $inner, $n . ' products are running low in your shop.');
+}
+
 function lmeg_product_serve_access() {
     global $wpdb;
     $token = sanitize_text_field($_GET['lmeg_access'] ?? '');
