@@ -1534,6 +1534,188 @@ function lmeg_handle_export_orders() {
     exit;
 }
 
+/* ---------------------------------------------------------------------------
+ * Products CSV — bulk export + import (manage the whole catalogue at once)
+ * ------------------------------------------------------------------------- */
+
+/** Canonical CSV column order. */
+function lmeg_products_csv_headers() {
+    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Deliver URL', 'Deliver note'];
+}
+
+/** Rebuild a "S:10, M:5, L" variants string from the stored variants + variant_stock JSON. */
+function lmeg_products_variants_to_str($variants, $variant_stock) {
+    $names = array_filter(array_map('trim', explode(',', (string) $variants)));
+    if (!$names) return '';
+    $stock = [];
+    if ($variant_stock) { $d = json_decode($variant_stock, true); if (is_array($d)) $stock = $d; }
+    $parts = [];
+    foreach ($names as $n) $parts[] = isset($stock[$n]) ? ($n . ':' . (int) $stock[$n]) : $n;
+    return implode(', ', $parts);
+}
+
+/** Build export rows (header + one per product); text cells starting =,+,-,@ are defused. Testable. */
+function lmeg_products_csv_rows($rows) {
+    $safe  = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+    $money = function ($c) { return ((int) $c) > 0 ? number_format(((int) $c) / 100, 2, '.', '') : ''; };
+    $out = [lmeg_products_csv_headers()];
+    foreach ((array) $rows as $p) {
+        $type = (($p->type ?? '') === 'physical') ? 'physical' : 'digital';
+        $out[] = [
+            $safe($p->title),
+            $p->slug,
+            $safe($p->description ?? ''),
+            $type,
+            $money($p->price_cents ?? 0),
+            $money($p->min_price_cents ?? 0),
+            strtoupper($p->currency ?: 'USD'),
+            ($type === 'physical') ? $money($p->shipping_cents ?? 0) : '',
+            ((int) ($p->weight_g ?? 0)) ?: '',
+            (((int) ($p->stock ?? -1)) < 0) ? '' : (int) $p->stock,
+            $safe(lmeg_products_variants_to_str($p->variants ?? '', $p->variant_stock ?? '')),
+            $safe($p->tags ?? ''),
+            (!empty($p->featured) ? '1' : '0'),
+            (($p->status ?? '') === 'draft') ? 'draft' : 'active',
+            (!empty($p->preorder_at) && strtotime($p->preorder_at)) ? date('Y-m-d', strtotime($p->preorder_at)) : '',
+            $p->cover_url ?? '',
+            $p->deliver_url ?? '',
+            $safe($p->deliver_note ?? ''),
+        ];
+    }
+    return $out;
+}
+
+/** Parse a CSV string → ['headers'=>[lowercased], 'rows'=>[assoc(lowerheader=>value)]]. Testable. */
+function lmeg_products_csv_parse($str) {
+    $str = preg_replace('/^\xEF\xBB\xBF/', '', (string) $str);   // strip UTF-8 BOM
+    $fh = fopen('php://temp', 'r+');
+    fwrite($fh, $str);
+    rewind($fh);
+    $headers = null; $rows = [];
+    while (($cells = fgetcsv($fh)) !== false) {
+        if ($cells === [null] || (count($cells) === 1 && trim((string) $cells[0]) === '')) continue;   // blank line
+        if ($headers === null) {
+            $headers = array_map(function ($h) { return strtolower(trim((string) $h)); }, $cells);
+            continue;
+        }
+        $row = [];
+        foreach ($headers as $i => $h) { if ($h === '') continue; $row[$h] = isset($cells[$i]) ? (string) $cells[$i] : ''; }
+        $rows[] = $row;
+    }
+    fclose($fh);
+    return ['headers' => $headers ?: [], 'rows' => $rows];
+}
+
+/**
+ * Validate + normalize one import row into product DB fields (no DB access, so
+ * unit-testable). Returns ['ok'=>false,'error'=>..] or
+ * ['ok'=>true,'title'=>..,'slug_in'=>..,'data'=>[..fields..]].
+ */
+function lmeg_products_import_prepare($row) {
+    $g = function ($k) use ($row) { return isset($row[$k]) ? trim((string) $row[$k]) : ''; };
+    $to_cents = function ($v) { $v = preg_replace('/[^0-9.]/', '', (string) $v); return max(0, (int) round(((float) $v) * 100)); };
+    $truthy = function ($v) { return in_array(strtolower(trim((string) $v)), ['1', 'yes', 'y', 'true', 'on'], true); };
+
+    $title = $g('title');
+    if ($title === '') return ['ok' => false, 'error' => 'missing title'];
+
+    $type = (strtolower($g('type')) === 'physical') ? 'physical' : 'digital';
+
+    // variants "S:10, M:5, L"
+    $v_names = []; $v_stock = [];
+    foreach (explode(',', $g('variants')) as $part) {
+        $part = trim($part);
+        if ($part === '') continue;
+        if (strpos($part, ':') !== false) {
+            list($vn, $vq) = array_map('trim', explode(':', $part, 2));
+            if ($vn === '') continue;
+            $v_names[] = $vn;
+            if ($vq !== '' && is_numeric($vq)) $v_stock[$vn] = max(0, (int) $vq);
+        } else { $v_names[] = $part; }
+    }
+
+    $stock_raw = $g('stock');
+    $st = strtolower($g('status'));
+    $status = ($st === 'active') ? 'active' : 'draft';   // default draft on import — safer than auto-publishing
+    $pre_ts = ($g('preorder date') !== '') ? strtotime($g('preorder date')) : false;
+
+    $data = [
+        'title'           => $title,
+        'description'     => $g('description'),
+        'cover_url'       => function_exists('esc_url_raw') ? esc_url_raw($g('cover url')) : $g('cover url'),
+        'price_cents'     => $to_cents($g('price')),
+        'min_price_cents' => $to_cents($g('min price')),
+        'currency'        => (strtoupper(substr($g('currency'), 0, 3)) ?: 'USD'),
+        'type'            => $type,
+        'processor'       => 'stripe',
+        'shipping_cents'  => ($type === 'physical') ? $to_cents($g('shipping')) : 0,
+        'weight_g'        => max(0, (int) $g('weight (g)')),
+        'variants'        => implode(', ', $v_names),
+        'variant_stock'   => $v_stock ? wp_json_encode($v_stock) : null,
+        'deliver_url'     => function_exists('esc_url_raw') ? esc_url_raw($g('deliver url')) : $g('deliver url'),
+        'deliver_note'    => $g('deliver note'),
+        'stock'           => ($stock_raw === '') ? -1 : max(0, (int) $stock_raw),
+        'status'          => $status,
+        'preorder_at'     => $pre_ts ? (date('Y-m-d', $pre_ts) . ' 00:00:00') : null,
+        'featured'        => $truthy($g('featured')) ? 1 : 0,
+        'tags'            => function_exists('lmeg_product_tags_normalize') ? (lmeg_product_tags_normalize($g('tags')) ?: null) : ($g('tags') ?: null),
+    ];
+    return ['ok' => true, 'title' => $title, 'slug_in' => function_exists('sanitize_title') ? sanitize_title($g('slug')) : $g('slug'), 'data' => $data];
+}
+
+add_action('admin_post_lmeg_export_products', 'lmeg_handle_export_products');
+function lmeg_handle_export_products() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_products');
+    global $wpdb;
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products ORDER BY id DESC");
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-products-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    foreach (lmeg_products_csv_rows($rows) as $line) fputcsv($fh, $line);
+    fclose($fh);
+    exit;
+}
+
+add_action('admin_post_lmeg_import_products', 'lmeg_handle_import_products');
+function lmeg_handle_import_products() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_import_products', 'lmeg_import_nonce');
+    global $wpdb;
+    $tbl = $wpdb->prefix . 'lmeg_products';
+    $back = admin_url('admin.php?page=lmeg-products&imported=1');
+
+    if (empty($_FILES['csv']['tmp_name']) || !is_uploaded_file($_FILES['csv']['tmp_name'])) {
+        set_transient('lmeg_import_result', ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => ['No file was uploaded.']], 120);
+        wp_safe_redirect($back); exit;
+    }
+    $str    = (string) file_get_contents($_FILES['csv']['tmp_name']);
+    $parsed = lmeg_products_csv_parse($str);
+    $created = 0; $updated = 0; $skipped = 0; $errors = [];
+    $rownum = 1;   // header is row 1
+    foreach ($parsed['rows'] as $row) {
+        $rownum++;
+        $prep = lmeg_products_import_prepare($row);
+        if (empty($prep['ok'])) { $skipped++; if (count($errors) < 25) $errors[] = "Row $rownum: " . $prep['error']; continue; }
+        $data = $prep['data'];
+        $slug = $prep['slug_in'] ?: sanitize_title($prep['title']);
+        $existing = $wpdb->get_row($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug));
+        if ($existing) {
+            $wpdb->update($tbl, $data, ['id' => (int) $existing->id]);   // keeps slug + sold + created_at
+            $updated++;
+        } else {
+            $base = $slug; $k = 1;
+            while ((int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug))) $slug = $base . '-' . (++$k);
+            $wpdb->insert($tbl, array_merge($data, ['slug' => $slug, 'sold' => 0, 'created_at' => current_time('mysql')]));
+            $created++;
+        }
+    }
+    set_transient('lmeg_import_result', ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'errors' => $errors], 120);
+    wp_safe_redirect($back); exit;
+}
+
 /**
  * Getting-started checklist for the Store admin. Returns '' once every step is
  * done (so it disappears when the shop is set up). Steps are derived from state:
@@ -1854,7 +2036,32 @@ function lmeg_admin_products() {
         </tbody></table>
         <p class="description" style="margin:6px 0 0">Sort options in the bar: Featured · Newest · Price · Best selling · Name. Pin a product to the top with the ⭐ <strong>Featured</strong> checkbox on its edit screen. Every <code>fanloop_</code> code also works as <code>loony_</code>.</p>
     </details>
+    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
+        <summary style="cursor:pointer;font-weight:600">Import / export products (CSV)</summary>
+        <p class="description" style="margin:10px 0">Bulk-manage your catalogue in a spreadsheet. <strong>Export</strong> to download every product as a CSV; edit it (or build one from scratch) and <strong>import</strong> to create and update products in one go. Rows are matched by <strong>Slug</strong> — an existing slug updates that product, a new or blank slug creates one. Imported products come in as <strong>Drafts</strong> unless the Status column says <code>active</code>. Columns: <?php echo esc_html(implode(', ', lmeg_products_csv_headers())); ?>. Price/Min price/Shipping in dollars; Stock blank = unlimited; Variants like <code>S:10, M:5, L</code>; Featured <code>1</code>/<code>0</code>.</p>
+        <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0">
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_products'), 'lmeg_export_products')); ?>" class="button">⬇ Export products (CSV)</a>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" style="display:inline-flex;gap:8px;align-items:center;margin:0">
+                <?php wp_nonce_field('lmeg_import_products', 'lmeg_import_nonce'); ?>
+                <input type="hidden" name="action" value="lmeg_import_products">
+                <input type="file" name="csv" accept=".csv,text/csv" required>
+                <button type="submit" class="button button-primary" onclick="return confirm('Import products from this CSV? Existing products with a matching slug will be updated.');">⬆ Import</button>
+            </form>
+        </p>
+    </details>
     <?php
+    // Import result notice.
+    if (isset($_GET['imported']) && ($ir = get_transient('lmeg_import_result'))) {
+        delete_transient('lmeg_import_result');
+        $bits = [];
+        if ($ir['created']) $bits[] = '<strong>' . (int) $ir['created'] . '</strong> created';
+        if ($ir['updated']) $bits[] = '<strong>' . (int) $ir['updated'] . '</strong> updated';
+        if ($ir['skipped']) $bits[] = '<strong>' . (int) $ir['skipped'] . '</strong> skipped';
+        $cls = !empty($ir['errors']) ? 'notice-warning' : 'notice-success';
+        echo '<div class="notice ' . $cls . ' is-dismissible" style="max-width:840px"><p>CSV import: ' . ($bits ? implode(' · ', $bits) : 'nothing to import') . '.';
+        if (!empty($ir['errors'])) echo '<br><span style="color:#8a6d00">' . esc_html(implode(' · ', array_slice($ir['errors'], 0, 25))) . '</span>';
+        echo '</p></div>';
+    }
     $has_samples = false;
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
     if ($has_samples) echo '<div class="notice notice-info inline" style="margin:0 0 18px;max-width:840px"><p>👋 We added a few <strong>sample products</strong> to get you started — they are <strong>Drafts</strong>, so fans can\'t see them yet. Edit one to make it yours (and set it <em>Active</em> to sell it), or delete them.</p></div>';
