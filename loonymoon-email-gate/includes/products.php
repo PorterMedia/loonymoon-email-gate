@@ -96,6 +96,27 @@ function lmeg_store_upsell_html($exclude_ids = [], $limit = 3, $heading = 'You m
         . '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">' . $cards . '</div></div>';
 }
 
+/** A product's tags → clean list (comma-separated in the `tags` column). */
+function lmeg_product_tags($p) {
+    $raw = is_object($p) ? ($p->tags ?? '') : (string) $p;
+    $out = [];
+    foreach (explode(',', (string) $raw) as $t) {
+        $t = trim(preg_replace('/\s+/', ' ', (string) $t));
+        if ($t === '') continue;
+        $key = strtolower($t);
+        if (!isset($out[$key])) $out[$key] = $t;   // dedupe case-insensitively, keep first casing
+        if (count($out) >= 12) break;
+    }
+    return array_values($out);
+}
+
+/** Normalise a raw tags string for storage (trim, dedupe, cap length). */
+function lmeg_product_tags_normalize($raw) {
+    $list = lmeg_product_tags($raw);
+    $str  = implode(', ', $list);
+    return mb_substr($str, 0, 255);
+}
+
 /** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
 function lmeg_product_gallery($p) {
     $g = [];
@@ -794,20 +815,56 @@ function lmeg_shortcode_store($atts) {
             . '<option value="sold">Best selling</option><option value="name">Name A–Z</option></select></div>';
     }
 
-    $out = lmeg_store_banner_html()
-        . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls
+    // Tag / category filter chips — union of tags across the shown products,
+    // ordered by frequency then name. Shown only when ≥2 distinct tags exist.
+    $tag_counts = [];
+    foreach ($rows as $p) {
+        foreach (lmeg_product_tags($p) as $t) {
+            $k = strtolower($t);
+            if (!isset($tag_counts[$k])) $tag_counts[$k] = ['label' => $t, 'n' => 0];
+            $tag_counts[$k]['n']++;
+        }
+    }
+    uasort($tag_counts, function ($a, $b) {
+        if ($a['n'] !== $b['n']) return $b['n'] - $a['n'];
+        return strcasecmp($a['label'], $b['label']);
+    });
+    $has_tags = count($tag_counts) >= 2;
+    $chips = '';
+    if ($has_tags) {
+        $chips = '<div class="flp-tags" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'
+            . '<button type="button" class="flp-tag is-active" data-tag="">All</button>';
+        foreach ($tag_counts as $k => $info) {
+            $chips .= '<button type="button" class="flp-tag" data-tag="' . esc_attr($k) . '">' . esc_html($info['label']) . '</button>';
+        }
+        $chips .= '</div>';
+    }
+
+    $chip_css = $has_tags
+        ? '<style>#' . $uid . ' .flp-tag{background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;transition:background .12s,color .12s}'
+          . '#' . $uid . ' .flp-tag:hover{border-color:#E15FA8;color:#E15FA8}'
+          . '#' . $uid . ' .flp-tag.is-active{background:#E15FA8;color:#fff;border-color:#E15FA8}</style>'
+        : '';
+
+    $run_js = $show_ctrls || $has_tags;
+    $out = $chip_css . lmeg_store_banner_html()
+        . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls . $chips
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p);
     $out .= '</div></div>';
 
-    if ($show_ctrls) {
+    if ($run_js) {
         $out .= '<script>(function(){var root=document.getElementById(' . wp_json_encode($uid) . ');if(!root)return;'
             . 'var grid=root.querySelector(".flp-store"),none=root.querySelector(".flp-store-none"),q=root.querySelector(".flp-q"),sort=root.querySelector(".flp-sort");'
             . 'var cards=[].slice.call(grid.querySelectorAll(".flp-prod")),orig=cards.slice();'
+            . 'var tagBtns=[].slice.call(root.querySelectorAll(".flp-tag"));'
             . 'function num(c,a){return parseInt(c.getAttribute(a),10)||0;}'
-            . 'function apply(){var t=((q&&q.value)||"").trim().toLowerCase();'
-            . 'var vis=cards.filter(function(c){if(!t)return true;return((c.getAttribute("data-title")||"")+" "+(c.getAttribute("data-desc")||"")).toLowerCase().indexOf(t)>=0;});'
+            . 'function activeTag(){var a=root.querySelector(".flp-tag.is-active");return a?(a.getAttribute("data-tag")||""):"";}'
+            . 'function apply(){var t=((q&&q.value)||"").trim().toLowerCase(),tg=activeTag();'
+            . 'var vis=cards.filter(function(c){'
+            . 'if(tg){var ct=(c.getAttribute("data-tags")||"").split("|");if(ct.indexOf(tg)<0)return false;}'
+            . 'if(!t)return true;return((c.getAttribute("data-title")||"")+" "+(c.getAttribute("data-desc")||"")).toLowerCase().indexOf(t)>=0;});'
             . 'var s=sort?sort.value:"featured",arr;'
             . 'if(s==="new")arr=vis.slice().sort(function(a,b){return num(b,"data-id")-num(a,"data-id");});'
             . 'else if(s==="price-asc")arr=vis.slice().sort(function(a,b){return num(a,"data-price")-num(b,"data-price");});'
@@ -817,6 +874,7 @@ function lmeg_shortcode_store($atts) {
             . 'else arr=orig.filter(function(c){return vis.indexOf(c)>=0;});'
             . 'cards.forEach(function(c){c.style.display="none";});arr.forEach(function(c){c.style.display="";grid.appendChild(c);});'
             . 'if(none)none.style.display=arr.length?"none":"";}'
+            . 'tagBtns.forEach(function(b){b.addEventListener("click",function(){tagBtns.forEach(function(x){x.classList.remove("is-active");});b.classList.add("is-active");apply();});});'
             . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);})();</script>';
     }
     return $out;
@@ -857,7 +915,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
     $add_pri = 'style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 18px;border-radius:10px;cursor:pointer;flex:1;font-size:14px"';
     $buy_sec = 'style="background:#fff;color:#E15FA8;border:1px solid #E15FA8;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none;font-size:14px;white-space:nowrap"';
     ob_start(); ?>
-    <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
+    <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" data-tags="<?php echo esc_attr(implode('|', array_map('strtolower', lmeg_product_tags($p)))); ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php
       $gallery = lmeg_product_gallery($p);
       $imgs = [];
@@ -1086,6 +1144,7 @@ function lmeg_handle_save_product() {
         'status'          => in_array($_POST['status'] ?? 'active', ['active', 'draft'], true) ? $_POST['status'] : 'active',
         'preorder_at'     => !empty($_POST['preorder_at']) ? (sanitize_text_field($_POST['preorder_at']) . ' 00:00:00') : null,
         'featured'        => !empty($_POST['featured']) ? 1 : 0,
+        'tags'            => lmeg_product_tags_normalize(sanitize_text_field(wp_unslash($_POST['tags'] ?? ''))) ?: null,
     ];
 
     // Attach a newly uploaded file, or remove the current one on request.
@@ -1325,7 +1384,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'weight_g'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -1413,6 +1472,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Limit (stock)</label></th><td><input type="number" name="stock" min="0" style="width:120px" value="<?php echo $p->stock < 0 ? '' : (int) $p->stock; ?>" placeholder="unlimited"><p class="description">Leave blank for unlimited; set a number for a limited drop.</p></td></tr>
                 <tr><th><label>Pre-order until</label></th><td><input type="date" name="preorder_at" value="<?php echo esc_attr(!empty($p->preorder_at) ? date('Y-m-d', strtotime($p->preorder_at)) : ''); ?>"><p class="description">Optional. Set a future release date to sell it as a <strong>pre-order</strong> — fans buy now and it shows “Available &lt;date&gt;”. Digital pre-orders don’t send a download until you release it (upload the file, then use “Send downloads to buyers”); physical pre-orders ship when you’re ready. Leave blank for a normal product.</p></td></tr>
                 <tr><th><label>Featured</label></th><td><label><input type="checkbox" name="featured" value="1" <?php checked(!empty($p->featured)); ?>> Pin to the top of your shop</label><p class="description">Featured products show first in <code>[fanloop_store]</code> and get a ⭐ Featured badge.</p></td></tr>
+                <tr><th><label>Tags <span style="color:#888;font-weight:400">/ category</span></label></th><td><input type="text" name="tags" value="<?php echo esc_attr(implode(', ', lmeg_product_tags($p))); ?>" placeholder="Vinyl, Apparel, Limited" style="width:100%;max-width:420px"><p class="description">Comma-separated. Fans can filter your shop by these — filter chips appear in <code>[fanloop_store]</code> when any product has tags. e.g. <em>Vinyl, Apparel, Digital, Merch, Limited</em>. Up to 12 tags.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
