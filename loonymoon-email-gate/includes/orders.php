@@ -87,6 +87,41 @@ function lmeg_orders_keep_args() {
     return $keep;
 }
 
+/**
+ * Mark a whole order refunded (or restore to paid). Reuses the status column —
+ * refunded orders drop out of every status='paid' surface (KPIs, analytics,
+ * downloads). Also syncs lmeg_shop_orders (removes/re-adds the revenue rows) so
+ * refunds leave the wider dashboard totals too. Does NOT move money — the artist
+ * refunds in Stripe/Square; this just records it.
+ */
+add_action('admin_post_lmeg_refund_order', 'lmeg_handle_refund_order');
+function lmeg_handle_refund_order() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_refund_order', 'lmeg_refund_nonce');
+    global $wpdb;
+    $ptbl  = $wpdb->prefix . 'lmeg_product_purchases';
+    $sotbl = $wpdb->prefix . 'lmeg_shop_orders';
+    $okey  = sanitize_text_field(wp_unslash($_POST['okey'] ?? ''));
+    $to    = (($_POST['to'] ?? 'refunded') === 'paid') ? 'paid' : 'refunded';
+    if ($okey === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-orders')); exit; }
+    $expr = lmeg_orders_okey_expr('');
+
+    $rows = $wpdb->get_results($wpdb->prepare("SELECT id, product_id, email, amount_cents, currency FROM $ptbl WHERE $expr = %s AND status IN ('paid','refunded')", $okey));
+    foreach ((array) $rows as $r) {
+        $soid = 800000000000 + (int) $r->id;
+        if ($to === 'refunded') {
+            $wpdb->query($wpdb->prepare("DELETE FROM $sotbl WHERE shopify_order_id = %d", $soid));
+        } else {
+            $p = function_exists('lmeg_product_get') ? lmeg_product_get($r->product_id) : null;
+            if ($p && $r->email && function_exists('lmeg_product_record_revenue')) {
+                lmeg_product_record_revenue($p, (int) $r->id, $r->email, (int) $r->amount_cents, $r->currency);
+            }
+        }
+    }
+    $wpdb->query($wpdb->prepare("UPDATE $ptbl SET status = %s WHERE $expr = %s AND status IN ('paid','refunded')", $to, $okey));
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&' . ($to === 'refunded' ? 'refunded' : 'unrefunded') . '=1' . lmeg_orders_keep_args())); exit;
+}
+
 /* ---------------------------------------------------------------------------
  * The Orders page
  * ------------------------------------------------------------------------- */
@@ -102,9 +137,12 @@ function lmeg_admin_orders() {
     $paged = max(1, (int) ($_GET['paged'] ?? 1));
     $per   = 25; $offset = ($paged - 1) * $per;
 
-    // Line-level WHERE + order-level HAVING.
-    $where = ["pp.status='paid'"]; $having = []; $hargs = [];
-    if ($f === 'demo') $where[] = "pp.processor='demo'";
+    // Line-level WHERE + order-level HAVING. Include refunded so they stay
+    // visible (and reversible); refunds are excluded from revenue/KPIs below.
+    $where = ["pp.status IN ('paid','refunded')"]; $having = []; $hargs = [];
+    if ($f === 'demo')     $where[] = "pp.processor='demo'";
+    if ($f === 'refunded') $having[] = "MAX(pp.status) = 'refunded'";
+    if ($f !== 'refunded' && $f !== 'all') $having[] = "MAX(pp.status) = 'paid'";
     if ($q !== '') {
         $like = '%' . $wpdb->esc_like($q) . '%';
         $having[] = "(MAX(pp.email) LIKE %s OR MAX(CASE WHEN pr.title LIKE %s THEN 1 ELSE 0 END)=1)";
@@ -125,6 +163,7 @@ function lmeg_admin_orders() {
                 MAX(pp.tracking) tracking, MAX(pp.carrier) carrier,
                 SUM(CASE WHEN pp.fulfillment='unshipped' THEN 1 ELSE 0 END) unshipped,
                 SUM(CASE WHEN pr.type='physical' THEN 1 ELSE 0 END) physicals,
+                MAX(pp.status) ostatus,
                 SUM(pp.qty) items, COUNT(*) nlines
                FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id=pp.product_id
                WHERE $whereSql GROUP BY okey $havingSql ORDER BY maxid DESC LIMIT %d OFFSET %d";
@@ -136,7 +175,7 @@ function lmeg_admin_orders() {
     if ($keys) {
         $ph = implode(',', array_fill(0, count($keys), '%s'));
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT pp.*, pr.title, pr.type, $OK okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id=pp.product_id WHERE pp.status='paid' AND $OK IN ($ph) ORDER BY pp.id ASC", $keys));
+            "SELECT pp.*, pr.title, pr.type, $OK okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id=pp.product_id WHERE pp.status IN ('paid','refunded') AND $OK IN ($ph) ORDER BY pp.id ASC", $keys));
         foreach ((array) $rows as $ln) $lines_by[$ln->okey][] = $ln;
     }
 
@@ -149,6 +188,8 @@ function lmeg_admin_orders() {
     echo '<div class="wrap"><h1>Fanloop — Orders</h1>';
     if (isset($_GET['shipped'])) echo '<div class="notice notice-success is-dismissible"><p>Order marked shipped and the buyer notified.</p></div>';
     if (isset($_GET['resent']))  echo '<div class="notice notice-success is-dismissible"><p>Receipt re-sent.</p></div>';
+    if (isset($_GET['refunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order marked refunded and removed from revenue. Remember to refund the money in your Stripe/Square dashboard.</p></div>';
+    if (isset($_GET['unrefunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order restored to paid.</p></div>';
     ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;max-width:720px;margin:12px 0 18px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Orders</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders_all); ?></div></div>
@@ -163,7 +204,7 @@ function lmeg_admin_orders() {
             $url = add_query_arg(array_filter(['page' => 'lmeg-orders', 'f' => $key === 'all' ? false : $key, 'q' => $q ?: false]), admin_url('admin.php'));
             echo '<a href="' . esc_url($url) . '" class="button' . ($on ? ' button-primary' : '') . '" style="margin-right:6px">' . esc_html($label) . '</a>';
         }; ?>
-        <?php $pill('all', 'All'); $pill('toship', 'To ship'); $pill('digital', 'Digital'); $pill('demo', 'Demo'); ?>
+        <?php $pill('all', 'All'); $pill('toship', 'To ship'); $pill('digital', 'Digital'); $pill('demo', 'Demo'); $pill('refunded', 'Refunded'); ?>
         &nbsp; <input type="search" name="q" value="<?php echo esc_attr($q); ?>" placeholder="Search email or product…" style="min-width:220px">
         <?php if ($f !== 'all') : ?><input type="hidden" name="f" value="<?php echo esc_attr($f); ?>"><?php endif; ?>
         <button class="button">Search</button>
@@ -179,8 +220,10 @@ function lmeg_admin_orders() {
             $item_str = [];
             foreach ($mylines as $ln) $item_str[] = $ln->title . ($ln->variant ? ' · ' . $ln->variant : '') . ((int) ($ln->qty ?: 1) > 1 ? ' ×' . (int) $ln->qty : '');
             $cur = $o->cur ?: 'USD';
+            $refunded = (($o->ostatus ?? 'paid') === 'refunded');
             $digital_only = ((int) $o->physicals === 0);
-            if ((int) $o->unshipped > 0)      { $status = '<span style="color:#E7C97D;font-weight:600">To ship</span>'; }
+            if ($refunded)                    { $status = '<span style="color:#9A9DB0;font-weight:600">↩ Refunded</span>'; }
+            elseif ((int) $o->unshipped > 0)  { $status = '<span style="color:#E7C97D;font-weight:600">To ship</span>'; }
             elseif (!$digital_only)           { $status = '<span style="color:#7DD3A8;font-weight:600">Shipped</span>' . ($o->tracking && function_exists('lmeg_tracking_url') && lmeg_tracking_url($o->carrier, $o->tracking) ? ' · <a href="' . esc_url(lmeg_tracking_url($o->carrier, $o->tracking)) . '" target="_blank" rel="noopener">track</a>' : ''); }
             else                              { $status = '<span style="color:#7DD3A8;font-weight:600">Delivered</span>'; }
             $paychip = ['stripe' => 'Stripe', 'square' => 'Square', 'demo' => 'Demo'][$o->processor] ?? esc_html($o->processor);
@@ -193,24 +236,34 @@ function lmeg_admin_orders() {
                 <td><?php echo esc_html($paychip); ?></td>
                 <td><?php echo $status; ?></td>
                 <td>
-                    <?php if ((int) $o->unshipped > 0) : ?>
+                    <?php $keep = '<input type="hidden" name="okey" value="' . esc_attr($o->okey) . '"><input type="hidden" name="q" value="' . esc_attr($q) . '"><input type="hidden" name="f" value="' . esc_attr($f) . '"><input type="hidden" name="paged" value="' . (int) $paged . '">'; ?>
+                    <?php if (!$refunded) : ?>
+                        <?php if ((int) $o->unshipped > 0) : ?>
                         <form method="post" action="<?php echo esc_url($save); ?>" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:5px">
                             <?php wp_nonce_field('lmeg_ship_group', 'lmeg_shipg_nonce'); ?>
-                            <input type="hidden" name="action" value="lmeg_ship_group">
-                            <input type="hidden" name="okey" value="<?php echo esc_attr($o->okey); ?>">
-                            <input type="hidden" name="q" value="<?php echo esc_attr($q); ?>"><input type="hidden" name="f" value="<?php echo esc_attr($f); ?>"><input type="hidden" name="paged" value="<?php echo (int) $paged; ?>">
+                            <input type="hidden" name="action" value="lmeg_ship_group"><?php echo $keep; ?>
                             <select name="carrier" style="max-width:110px"><option value="">Carrier…</option><?php foreach (['USPS','UPS','FedEx','Canada Post','DHL','Other'] as $cc) echo '<option>' . esc_html($cc) . '</option>'; ?></select>
                             <input type="text" name="tracking" placeholder="Tracking #" style="width:120px">
                             <button class="button button-small button-primary">Ship</button>
                         </form>
+                        <?php endif; ?>
+                        <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline">
+                            <?php wp_nonce_field('lmeg_resend_receipt', 'lmeg_resend_nonce'); ?>
+                            <input type="hidden" name="action" value="lmeg_resend_receipt"><?php echo $keep; ?>
+                            <button class="button button-small" title="Email the buyer their receipt &amp; download links again">Resend receipt</button>
+                        </form>
+                        <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline" onsubmit="return confirm('Mark this order refunded? It leaves your revenue and reports. This does NOT move money — refund it in Stripe/Square yourself.');">
+                            <?php wp_nonce_field('lmeg_refund_order', 'lmeg_refund_nonce'); ?>
+                            <input type="hidden" name="action" value="lmeg_refund_order"><input type="hidden" name="to" value="refunded"><?php echo $keep; ?>
+                            <button class="button button-small link-delete">Refund</button>
+                        </form>
+                    <?php else : ?>
+                        <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline" onsubmit="return confirm('Restore this order to paid?');">
+                            <?php wp_nonce_field('lmeg_refund_order', 'lmeg_refund_nonce'); ?>
+                            <input type="hidden" name="action" value="lmeg_refund_order"><input type="hidden" name="to" value="paid"><?php echo $keep; ?>
+                            <button class="button button-small">Un-refund</button>
+                        </form>
                     <?php endif; ?>
-                    <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline">
-                        <?php wp_nonce_field('lmeg_resend_receipt', 'lmeg_resend_nonce'); ?>
-                        <input type="hidden" name="action" value="lmeg_resend_receipt">
-                        <input type="hidden" name="okey" value="<?php echo esc_attr($o->okey); ?>">
-                        <input type="hidden" name="q" value="<?php echo esc_attr($q); ?>"><input type="hidden" name="f" value="<?php echo esc_attr($f); ?>"><input type="hidden" name="paged" value="<?php echo (int) $paged; ?>">
-                        <button class="button button-small" title="Email the buyer their receipt &amp; download links again">Resend receipt</button>
-                    </form>
                 </td>
             </tr>
         <?php endforeach; endif; ?>
