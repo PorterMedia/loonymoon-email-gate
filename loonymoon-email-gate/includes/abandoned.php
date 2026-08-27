@@ -189,7 +189,7 @@ function lmeg_abandoned_admin_section() {
         <?php else : ?><br>Want these sent automatically? Turn on <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings#payments')); ?>">Abandoned-cart reminder</a> in Settings → Payments.<?php endif; ?>
         <?php echo lmeg_store_demo_on() ? '<br><strong>Heads up:</strong> demo checkout completes instantly, so live carts are what show up here.' : ''; ?></p>
     <?php if (!$rows) : ?>
-        <p style="opacity:.7">No open carts right now. 🎉</p>
+        <p style="opacity:.7">No open carts right now.</p>
     <?php else : ?>
     <table class="widefat striped" style="max-width:940px">
         <thead><tr><th>When</th><th>Email</th><th>Items</th><th>Total</th><th></th></tr></thead>

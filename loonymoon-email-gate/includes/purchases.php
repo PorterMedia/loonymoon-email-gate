@@ -27,10 +27,10 @@ function lmeg_purchases_router() {
 function lmeg_purchases_find_page() {
     if (function_exists('lmeg_store_page')) {
         lmeg_store_page('Find my purchases',
-            '<div class="dot">🔑</div><h1>Find your purchases</h1>'
+            '<div class="dot">' . lmeg_store_icon('key', 24, ['style' => 'color:#0B0C12']) . '</div><h1>Find your purchases</h1>'
             . '<p>Enter the email you bought with and we\'ll send you a link to view and re-download everything.</p>'
             . lmeg_purchases_form_html(true)
-            . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>', 'Purchases');
+            . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>', 'Purchases');
     }
 }
 
@@ -73,9 +73,9 @@ function lmeg_purchases_request() {
 
     $shown = $email ? esc_html($email) : 'that address';
     lmeg_store_page('Check your email',
-        '<div class="dot">✉️</div><h1>Check your email</h1>'
+        '<div class="dot">' . lmeg_store_icon('mail', 24, ['style' => 'color:#0B0C12']) . '</div><h1>Check your email</h1>'
         . '<p>If there are any purchases under <strong>' . $shown . '</strong>, we just sent a link to view and re-download them. It\'s good for 30 minutes — check your spam folder if it doesn\'t arrive.</p>'
-        . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>', 'Purchases');
+        . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>', 'Purchases');
 }
 
 /** Email the magic link. */
@@ -96,10 +96,10 @@ function lmeg_purchases_view() {
     $email = $token ? get_transient('lmeg_purch_' . $token) : '';
     if (!$email) {
         lmeg_store_page('Link expired',
-            '<div class="dot">⌛</div><h1>This link has expired</h1>'
+            '<div class="dot">' . lmeg_store_icon('clock', 24, ['style' => 'color:#0B0C12']) . '</div><h1>This link has expired</h1>'
             . '<p>For your security, purchase links are good for 30 minutes. Request a fresh one and we\'ll email it right over.</p>'
             . '<a class="home" href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '">Get a new link →</a>'
-            . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>', 'Purchases');
+            . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>', 'Purchases');
     }
 
     global $wpdb;
@@ -111,10 +111,10 @@ function lmeg_purchases_view() {
          WHERE pp.email = %s AND pp.status = 'paid' ORDER BY pp.id DESC", $email));
 
     lmeg_store_page('Your purchases',
-        '<div class="dot">🎧</div><h1>Your orders</h1>'
+        '<div class="dot">' . lmeg_store_icon('headphones', 24, ['style' => 'color:#0B0C12']) . '</div><h1>Your orders</h1>'
         . '<p>Everything under <strong>' . esc_html($email) . '</strong>. Downloads are ready anytime; shipped items show tracking.</p>'
         . lmeg_purchases_orders_html($rows)
-        . '<a class="home" href="' . esc_url(home_url('/')) . '">← Back to site</a>', 'Purchases');
+        . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>', 'Purchases');
 }
 
 /** Group paid purchase lines (each carrying an `okey`) into per-order cards. */
@@ -167,11 +167,11 @@ function lmeg_purchases_orders_html($rows) {
         if ($any_phys) {
             if ($all_shipped) {
                 $turl = ($track && function_exists('lmeg_tracking_url')) ? lmeg_tracking_url($carrier, $track) : '';
-                $line = '✅ Shipped' . ($carrier ? ' · ' . esc_html($carrier) : '') . ($track ? ' · ' . esc_html($track) : '');
+                $line = lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:5px;vertical-align:-2px']) . 'Shipped' . ($carrier ? ' · ' . esc_html($carrier) : '') . ($track ? ' · ' . esc_html($track) : '');
                 $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.3);border-radius:9px;font-size:13px;color:#8fe3b5">' . $line
                     . ($turl ? ' <a href="' . esc_url($turl) . '" target="_blank" rel="noopener" style="color:#8fe3b5;font-weight:700">Track →</a>' : '') . '</div>';
             } else {
-                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(231,201,125,.1);border:1px solid rgba(231,201,125,.3);border-radius:9px;font-size:13px;color:#E7C97D">📦 Preparing to ship — you\'ll get tracking by email.</div>';
+                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(231,201,125,.1);border:1px solid rgba(231,201,125,.3);border-radius:9px;font-size:13px;color:#E7C97D;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('truck', 15) . 'Preparing to ship — you\'ll get tracking by email.</div>';
             }
         }
 

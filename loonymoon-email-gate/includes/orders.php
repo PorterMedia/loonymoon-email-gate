@@ -284,7 +284,7 @@ function lmeg_handle_packing_slip() {
       .thanks{margin-top:18px;color:#666;font-size:13px}
       @media print{.bar{display:none}body{background:#fff}.slip{border:0;border-radius:0;padding:0 0 20px;margin:0;page-break-after:always}.wrap{padding:0}}
     </style></head><body>
-    <div class="bar"><button onclick="window.print()">🖨 Print</button><span style="align-self:center;color:#666;font-size:13px"><?php echo count($orders); ?> packing slip<?php echo count($orders) === 1 ? '' : 's'; ?></span></div>
+    <div class="bar"><button onclick="window.print()" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('printer', 14); ?>Print</button><span style="align-self:center;color:#666;font-size:13px"><?php echo count($orders); ?> packing slip<?php echo count($orders) === 1 ? '' : 's'; ?></span></div>
     <div class="wrap">
     <?php if (!$orders) : ?><div class="slip"><p>No orders to print.</p></div><?php endif; ?>
     <?php foreach ($orders as $key => $lines) :
@@ -305,10 +305,10 @@ function lmeg_handle_packing_slip() {
             </tbody></table>
             <?php $wt = 0; foreach ($lines as $ln) $wt += (int) ($ln->weight_g ?? 0) * (int) ($ln->qty ?: 1); if ($wt > 0) : ?><div style="margin-top:8px;color:#666;font-size:13px">Total weight: <?php echo esc_html(number_format($wt)); ?> g</div><?php endif; ?>
             <?php $onote = ''; foreach ($lines as $ln) { if (!empty($ln->note)) { $onote = (string) $ln->note; break; } } if ($onote !== '') : ?>
-            <div style="margin-top:16px;padding:12px 14px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:8px"><div class="lbl" style="color:#8A7420">🎁 Gift message / note</div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#5A4A16"><?php echo esc_html($onote); ?></div></div>
+            <div style="margin-top:16px;padding:12px 14px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:8px"><div class="lbl" style="color:#8A7420;display:flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('gift', 13); ?>Gift message / note</div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#5A4A16"><?php echo esc_html($onote); ?></div></div>
             <?php endif; ?>
             <?php $anote = ''; foreach ($lines as $ln) { if (!empty($ln->admin_note)) { $anote = (string) $ln->admin_note; break; } } if ($anote !== '') : ?>
-            <div style="margin-top:12px;padding:10px 14px;background:#F1F4F9;border:1px dashed #9DB0CE;border-radius:8px"><div class="lbl" style="color:#41597E">🔒 Staff note <span style="font-weight:400;text-transform:none;letter-spacing:0">(not shown to buyer)</span></div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#2E425F"><?php echo esc_html($anote); ?></div></div>
+            <div style="margin-top:12px;padding:10px 14px;background:#F1F4F9;border:1px dashed #9DB0CE;border-radius:8px"><div class="lbl" style="color:#41597E;display:flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('lock', 13); ?>Staff note <span style="font-weight:400;text-transform:none;letter-spacing:0">(not shown to buyer)</span></div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#2E425F"><?php echo esc_html($anote); ?></div></div>
             <?php endif; ?>
             <div class="thanks">Thanks for supporting <?php echo esc_html($artist); ?> 💜</div>
         </div>
@@ -484,8 +484,8 @@ function lmeg_admin_orders() {
 
     <?php if ($toship_all > 0) : ?>
     <p style="margin:0 0 12px">
-        <a class="button" target="_blank" rel="noopener" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_packing_slip'), 'lmeg_packing_slip')); ?>">🖨 Print packing slips (<?php echo (int) $toship_all; ?>)</a>
-        <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_shipping'), 'lmeg_export_shipping')); ?>">⬇ Export to-ship (CSV)</a>
+        <a class="button" target="_blank" rel="noopener" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_packing_slip'), 'lmeg_packing_slip')); ?>" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('printer', 14); ?>Print packing slips (<?php echo (int) $toship_all; ?>)</a>
+        <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_shipping'), 'lmeg_export_shipping')); ?>" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export to-ship (CSV)</a>
         <span class="description" style="margin-left:6px">Print slips for the box, or take the CSV to Pirate Ship / Shippo / Canada Post to buy labels — then paste tracking back in below.</span>
     </p>
     <?php endif; ?>
@@ -526,7 +526,7 @@ function lmeg_admin_orders() {
                 <td style="text-align:center"><input type="checkbox" class="lmeg-obulk" value="<?php echo esc_attr($o->okey); ?>" aria-label="Select order"></td>
                 <td style="white-space:nowrap"><?php echo esc_html($o->when_ ? date_i18n('M j, Y', strtotime($o->when_)) : '—'); ?></td>
                 <td><?php echo esc_html($o->email ?: '—'); ?><?php echo $o->ship_name ? '<br><span style="color:#777;font-size:12px">' . esc_html($o->ship_name) . '</span>' : ''; ?></td>
-                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">📝 ' . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">🔒 ' . esc_html($o->admin_note) . '</span>' : ''; ?></td>
+                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">' . lmeg_store_icon('lock', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->admin_note) . '</span>' : ''; ?></td>
                 <td style="white-space:nowrap"><?php echo esc_html(lmeg_orders_money((int) $o->total + (int) ($o->tax ?? 0), $cur)); ?><?php echo (int) ($o->tax ?? 0) > 0 ? '<br><span style="color:#777;font-size:12px">incl. ' . esc_html(lmeg_orders_money((int) $o->tax, $cur)) . ' tax</span>' : ''; ?><?php echo (int) $o->disc > 0 ? '<br><span style="color:#1a8a4a;font-size:12px">' . esc_html($o->code ? $o->code . ' ' : '') . '−' . esc_html(lmeg_orders_money($o->disc, $cur)) . '</span>' : ''; ?></td>
                 <td><?php echo esc_html($paychip); ?></td>
                 <td><?php echo $status; ?></td>
@@ -561,7 +561,7 @@ function lmeg_admin_orders() {
                         </form>
                     <?php endif; ?>
                     <details style="margin-top:6px">
-                        <summary style="cursor:pointer;font-size:12px;color:#50575e"><?php echo !empty($o->admin_note) ? '🔒 Edit staff note' : '🔒 Add staff note'; ?></summary>
+                        <summary style="cursor:pointer;font-size:12px;color:#50575e"><?php echo !empty($o->admin_note) ? lmeg_store_icon('lock', 12, ['style' => 'margin-right:4px']) . 'Edit staff note' : lmeg_store_icon('lock', 12, ['style' => 'margin-right:4px']) . 'Add staff note'; ?></summary>
                         <form method="post" action="<?php echo esc_url($save); ?>" style="margin-top:6px">
                             <?php wp_nonce_field('lmeg_order_note', 'lmeg_ordernote_nonce'); ?>
                             <input type="hidden" name="action" value="lmeg_order_note"><?php echo $keep; ?>

@@ -197,7 +197,7 @@ function lmeg_product_lowstock_html($sold, $stock) {
     $claimed   = min($stock, $sold);
     $pct       = (int) round(min(100, max(0, $claimed / $stock * 100)));
     return '<div style="margin-bottom:9px">'
-        . '<div style="display:inline-block;font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;padding:2px 10px;border-radius:999px;margin-bottom:6px">🔥 Only ' . $remaining . ' left</div>'
+        . '<div style="display:inline-block;font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;padding:2px 10px;border-radius:999px;margin-bottom:6px">' . lmeg_store_icon('flame', 13, ['style' => 'margin-right:4px']) . 'Only ' . $remaining . ' left</div>'
         . '<div style="height:6px;border-radius:999px;background:#EFE6D2;overflow:hidden"><div style="height:100%;width:' . $pct . '%;background:linear-gradient(90deg,#F59E0B,#EF4444);border-radius:999px"></div></div>'
         . '<div style="font-size:11px;color:#8a6d00;margin-top:4px;font-weight:600">' . $claimed . ' of ' . $stock . ' claimed</div>'
         . '</div>';
@@ -890,7 +890,7 @@ function lmeg_shortcode_store($atts) {
     }
     if (!$rows) {
         return '<div style="max-width:420px;margin:20px auto;text-align:center;background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.12);border-radius:16px;padding:34px 26px;box-shadow:0 12px 40px rgba(0,0,0,.08);font-family:inherit">'
-            . '<div style="font-size:40px;line-height:1;margin-bottom:10px">🛍️</div>'
+            . '<div style="line-height:1;margin-bottom:10px;color:#c3c3cf">' . lmeg_store_icon('bag', 40) . '</div>'
             . '<div style="font-weight:750;font-size:18px;margin-bottom:5px">The shop is warming up</div>'
             . '<div style="font-size:14px;color:#6b6b78;line-height:1.5">New drops are on the way — check back soon.</div>'
             . '</div>';
@@ -954,7 +954,7 @@ function lmeg_shortcode_store($atts) {
         }
         $push = $has_tags ? ' style="margin-left:auto"' : '';
         if ($has_sale) {
-            $chips .= '<button type="button" class="flp-onsale" aria-pressed="false"' . $push . '>🔖 On sale</button>';
+            $chips .= '<button type="button" class="flp-onsale" aria-pressed="false"' . $push . '>' . lmeg_store_icon('tag', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'On sale</button>';
             $push = '';   // only the first right-group chip gets the push
         }
         if ($has_soldout) {
@@ -1098,7 +1098,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <div class="flp-gal" id="<?php echo esc_attr($gid); ?>" data-imgs="<?php echo esc_attr(wp_json_encode(array_values($imgs))); ?>" data-alt="<?php echo esc_attr($p->title); ?>">
           <div style="position:relative">
             <img id="<?php echo esc_attr($mid); ?>" class="flp-gal-main" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" data-idx="0" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover;cursor:zoom-in">
-            <span class="flp-gal-zoom" aria-hidden="true" style="position:absolute;right:10px;top:10px;background:rgba(11,12,18,.62);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;pointer-events:none">⤢ Zoom</span>
+            <span class="flp-gal-zoom" aria-hidden="true" style="position:absolute;right:10px;top:10px;background:rgba(11,12,18,.62);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;pointer-events:none;display:inline-flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('maximize', 12); ?>Zoom</span>
           </div>
           <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
             <?php foreach ($imgs as $i => $u) : ?>
@@ -1107,10 +1107,10 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           </div>
         </div>
         <div class="flp-lb" id="<?php echo esc_attr($gid); ?>lb" hidden style="position:fixed;inset:0;z-index:100002;background:rgba(6,7,12,.93);display:flex;align-items:center;justify-content:center">
-          <button type="button" class="flp-lb-x" aria-label="Close" style="position:absolute;top:14px;right:16px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:19px;cursor:pointer">✕</button>
-          <button type="button" class="flp-lb-prev" aria-label="Previous image" style="position:absolute;left:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:26px;line-height:1;cursor:pointer">‹</button>
+          <button type="button" class="flp-lb-x" aria-label="Close" style="position:absolute;top:14px;right:16px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('x', 20); ?></button>
+          <button type="button" class="flp-lb-prev" aria-label="Previous image" style="position:absolute;left:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('chevron-left', 26, ['stroke' => 2.2]); ?></button>
           <img class="flp-lb-img" src="" alt="" style="max-width:92vw;max-height:86vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 70px rgba(0,0,0,.6)">
-          <button type="button" class="flp-lb-next" aria-label="Next image" style="position:absolute;right:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:26px;line-height:1;cursor:pointer">›</button>
+          <button type="button" class="flp-lb-next" aria-label="Next image" style="position:absolute;right:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('chevron-right', 26, ['stroke' => 2.2]); ?></button>
           <div class="flp-lb-count" style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#CFD2DC;font-size:13px;font-weight:600"></div>
         </div>
         <script>
@@ -1141,12 +1141,12 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         $badge = (count($imgs) > 1) ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(11,12,18,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">▦ ' . count($imgs) . '</span>' : '';
         $wrapped = '<div style="position:relative;display:block">' . $img . $badge . '</div>';
         $linked  = $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped;
-        $quick   = !$solo ? '<button type="button" class="flp-quick" aria-label="Quick look" style="position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.93);color:#17141f;border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22)">🔍 Quick look</button>' : '';
+        $quick   = !$solo ? '<button type="button" class="flp-quick" aria-label="Quick look" style="position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.93);color:#17141f;border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22);display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('search', 13) . 'Quick look</button>' : '';
         echo '<div style="position:relative">' . $linked . $quick . '</div>'; ?>
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
-        <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px">⭐ Featured</div><?php endif; ?>
-        <?php if (empty($p->featured) && function_exists('lmeg_product_is_new') && lmeg_product_is_new($p)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#0f766e;background:#CCFBF1;padding:2px 9px;border-radius:999px;margin-bottom:8px">✨ Just added</div><?php endif; ?>
+        <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?>Featured</div><?php endif; ?>
+        <?php if (empty($p->featured) && function_exists('lmeg_product_is_new') && lmeg_product_is_new($p)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#0f766e;background:#CCFBF1;padding:2px 9px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px"><?php echo lmeg_store_icon('sparkles', 12); ?>Just added</div><?php endif; ?>
         <?php
         if (!$solo && function_exists('lmeg_bundles_for_product')) {
             $pbundles = lmeg_bundles_for_product($p->id);
@@ -1158,14 +1158,14 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         ?>
         <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">
           <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
-          <?php if (!$solo) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center">🔗</button><?php endif; ?>
+          <?php if (!$solo) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center"><?php echo lmeg_store_icon('link', 15); ?></button><?php endif; ?>
         </div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
         <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php endif; ?>
-        <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🗓 Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
+        <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('calendar', 12); ?>Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
-        <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
+        <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?><?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if (!$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
         <div class="flp-qtywrap" style="display:inline-flex;align-items:center;border:1px solid #d9d9e0;border-radius:10px;overflow:hidden;background:#fff;margin-bottom:11px">
           <button type="button" class="flp-qtir" data-d="-1" aria-label="Decrease quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">−</button>
@@ -1179,7 +1179,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           if (function_exists('lmeg_waitlist_form_html') && $p->status === 'active') {
               echo lmeg_waitlist_form_html($p);
               $waiting = function_exists('lmeg_waitlist_count') ? lmeg_waitlist_count($p->id) : 0;
-              if ($waiting >= 3) echo '<div style="font-size:12px;color:#8a6d00;margin-top:6px">🔔 ' . (int) $waiting . ' fans waiting for this to come back</div>';
+              if ($waiting >= 3) echo '<div style="font-size:12px;color:#8a6d00;margin-top:6px;display:flex;align-items:center;gap:5px">' . lmeg_store_icon('bell', 12) . (int) $waiting . ' fans waiting for this to come back</div>';
           }
           ?>
         <?php elseif ($needs_form) : ?>
@@ -1362,13 +1362,13 @@ function lmeg_product_page() {
       .topback:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.28);color:#fff}
       @media(max-width:520px){.topback{top:12px;left:12px;font-size:12px;padding:7px 12px}}
     </style></head><body>
-    <a class="topback" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
+    <a class="topback" href="<?php echo esc_url(home_url('/')); ?>"><?php echo lmeg_store_icon('arrow-left', 14); ?><?php echo esc_html($site); ?></a>
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
       <?php if (!empty($p->size_chart) && ($sizeg = lmeg_size_chart_html($p->size_chart, true))) : ?>
       <details class="flp-sizeguide" style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden">
-        <summary style="cursor:pointer;list-style:none;padding:13px 16px;font-weight:700;font-size:14px;color:#F4F2F7;display:flex;align-items:center;justify-content:space-between">📏 Size&nbsp;guide<span style="color:#8B90A0;font-size:12px;font-weight:600">tap to open</span></summary>
+        <summary style="cursor:pointer;list-style:none;padding:13px 16px;font-weight:700;font-size:14px;color:#F4F2F7;display:flex;align-items:center;justify-content:space-between"><span style="display:inline-flex;align-items:center;gap:7px"><?php echo lmeg_store_icon('ruler', 15); ?>Size guide</span><span style="color:#8B90A0;font-size:12px;font-weight:600">tap to open</span></summary>
         <div style="padding:0 16px 14px;overflow-x:auto"><?php echo $sizeg; ?></div>
       </details>
       <?php endif; ?>
@@ -1382,15 +1382,15 @@ function lmeg_product_page() {
       $pill   = 'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#F4F2F7;font-size:13px;font-weight:650;padding:9px 14px;border-radius:999px;text-decoration:none;cursor:pointer;font-family:inherit';
       ?>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px">
-        <button type="button" id="flp-copy" data-url="<?php echo esc_attr($share_url); ?>" style="<?php echo $pill; ?>">🔗 Copy link</button>
+        <button type="button" id="flp-copy" data-url="<?php echo esc_attr($share_url); ?>" style="<?php echo $pill; ?>;display:inline-flex;align-items:center;gap:7px"><?php echo lmeg_store_icon('link', 15); ?><span class="flp-copy-t">Copy link</span></button>
         <a href="<?php echo esc_url($x_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Share on X</a>
         <a href="<?php echo esc_url($fb_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Facebook</a>
         <a href="<?php echo esc_url($wa_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">WhatsApp</a>
       </div>
       <script>
-      (function(){var b=document.getElementById('flp-copy');if(!b)return;b.addEventListener('click',function(){var u=b.getAttribute('data-url');function done(){var t=b.textContent;b.textContent='✓ Copied';setTimeout(function(){b.textContent=t;},1600);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u).then(done,function(){window.prompt('Copy this link:',u);});}else{window.prompt('Copy this link:',u);}});})();
+      (function(){var b=document.getElementById('flp-copy');if(!b)return;var lbl=b.querySelector('.flp-copy-t')||b;b.addEventListener('click',function(){var u=b.getAttribute('data-url');function done(){var t=lbl.textContent;lbl.textContent='Copied';setTimeout(function(){lbl.textContent=t;},1600);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u).then(done,function(){window.prompt('Copy this link:',u);});}else{window.prompt('Copy this link:',u);}});})();
       </script>
-      <a class="back" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
+      <a class="back" href="<?php echo esc_url(home_url('/')); ?>" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('arrow-left', 14); ?><?php echo esc_html($site); ?></a>
     </div>
     <?php $rel = lmeg_product_related($p, 4); if ($rel) : ?>
     <div style="width:100%;max-width:720px;margin-top:36px">
@@ -1969,7 +1969,7 @@ function lmeg_admin_top_products_html($rows, $fmt) {
             . '</div></div>';
     }
     return '<div style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:13px 18px">'
-        . '<div style="font-weight:700;color:#17141f;margin-bottom:6px">🏆 Top products</div>' . $items . '</div>';
+        . '<div style="font-weight:700;color:#17141f;margin-bottom:6px;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('trophy', 15) . 'Top products</div>' . $items . '</div>';
 }
 
 /**
@@ -2093,21 +2093,21 @@ function lmeg_admin_lowstock_html($rows, $threshold = 5) {
 
     $body = '';
     if (!$rep['out'] && !$rep['low']) {
-        $body = '<div style="padding:10px 0 2px;color:#3f6212;font-weight:600">✅ Every tracked product is above the low-stock threshold (' . (int) $rep['threshold'] . ' or fewer).</div>';
+        $body = '<div style="padding:10px 0 2px;color:#3f6212;font-weight:600;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('check-circle', 14) . 'Every tracked product is above the low-stock threshold (' . (int) $rep['threshold'] . ' or fewer).</div>';
     } else {
         if ($rep['out']) {
-            $body .= '<div style="margin-top:8px;font-weight:800;color:#B91C1C;font-size:13px">⛔ Out of stock (' . count($rep['out']) . ')</div>';
+            $body .= '<div style="margin-top:8px;font-weight:800;color:#B91C1C;font-size:13px;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('ban', 14) . 'Out of stock (' . count($rep['out']) . ')</div>';
             foreach ($rep['out'] as $it) $body .= $row($it, '#B91C1C');
         }
         if ($rep['low']) {
-            $body .= '<div style="margin-top:12px;font-weight:800;color:#92400E;font-size:13px">⚠️ Running low — ' . (int) $rep['threshold'] . ' or fewer (' . count($rep['low']) . ')</div>';
+            $body .= '<div style="margin-top:12px;font-weight:800;color:#92400E;font-size:13px;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('alert', 14) . 'Running low — ' . (int) $rep['threshold'] . ' or fewer (' . count($rep['low']) . ')</div>';
             foreach ($rep['low'] as $it) $body .= $row($it, '#92400E');
         }
     }
 
     return '<div style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px">'
         . '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">'
-        . '<div style="font-weight:700;color:#17141f">📦 Inventory</div>'
+        . '<div style="font-weight:700;color:#17141f;display:flex;align-items:center;gap:7px">' . lmeg_store_icon('box', 16) . 'Inventory</div>'
         . '<div style="color:#50575e;font-size:12px">' . $summary . '</div></div>'
         . $body . '</div>';
 }
@@ -2132,7 +2132,7 @@ function lmeg_admin_products() {
     if (isset($_GET['shipped'])) echo '<div class="notice notice-success is-dismissible"><p>Order updated.</p></div>';
     if (isset($_GET['cleared'])) echo '<div class="notice notice-success is-dismissible"><p>Cleared ' . (int) $_GET['cleared'] . ' test order' . ((int) $_GET['cleared'] === 1 ? '' : 's') . '.</p></div>';
     if (function_exists('lmeg_store_demo_on') && lmeg_store_demo_on()) {
-        echo '<div class="notice notice-warning" style="border-left-color:#E15FA8"><p>🧪 <strong>Demo checkout is ON.</strong> Orders complete <strong>without payment</strong> so you can walk the whole flow (cart → receipt → download → fan captured). These show up as normal sales, tagged <em>demo</em>. <strong>Turn it off before you go live</strong> in <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings#payments')) . '">Settings → Payments</a> — while it\'s on, no money is collected.</p></div>';
+        echo '<div class="notice notice-warning" style="border-left-color:#E15FA8"><p>' . lmeg_store_icon('flask', 14, ['style' => 'margin-right:5px;vertical-align:-2px']) . '<strong>Demo checkout is ON.</strong> Orders complete <strong>without payment</strong> so you can walk the whole flow (cart → receipt → download → fan captured). These show up as normal sales, tagged <em>demo</em>. <strong>Turn it off before you go live</strong> in <a href="' . esc_url(admin_url('admin.php?page=lmeg-settings#payments')) . '">Settings → Payments</a> — while it\'s on, no money is collected.</p></div>';
     }
 
     /* ----- create / edit form ----- */
@@ -2245,7 +2245,7 @@ function lmeg_admin_products() {
             if (isset($_GET['notified_wl'])) echo '<div class="notice notice-success is-dismissible"><p>Notified ' . (int) $_GET['notified_wl'] . ' waiting fan' . ((int) $_GET['notified_wl'] === 1 ? '' : 's') . '.</p></div>';
             if ($wl > 0) : ?>
             <div style="max-width:720px;margin-top:18px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #E15FA8;border-radius:8px;padding:14px 18px">
-                <strong>🔔 <?php echo (int) $wl; ?> <?php echo $wl === 1 ? 'fan is' : 'fans are'; ?> waiting</strong> for this to come back in stock.
+                <strong style="display:inline-flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('bell', 13); ?><?php echo (int) $wl; ?> <?php echo $wl === 1 ? 'fan is' : 'fans are'; ?> waiting</strong> for this to come back in stock.
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;margin-left:8px" onsubmit="return confirm('Email all <?php echo (int) $wl; ?> waiting fans that this is back in stock?');">
                     <?php wp_nonce_field('lmeg_notify_waitlist', 'lmeg_waitlist_nonce'); ?>
                     <input type="hidden" name="action" value="lmeg_notify_waitlist">
@@ -2327,11 +2327,11 @@ function lmeg_admin_products() {
         &nbsp; <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline" onsubmit="return confirm('Clear <?php echo (int) $demo_n; ?> demo/test order<?php echo $demo_n === 1 ? '' : 's'; ?>? Real sales are untouched. Sold counts and variant stock consumed by the tests are restored.');">
             <?php wp_nonce_field('lmeg_clear_demo', 'lmeg_demo_nonce'); ?>
             <input type="hidden" name="action" value="lmeg_clear_demo">
-            <button type="submit" class="button">🧪 Clear test orders (<?php echo (int) $demo_n; ?>)</button>
+            <button type="submit" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('flask', 14); ?>Clear test orders (<?php echo (int) $demo_n; ?>)</button>
         </form>
     <?php endif; ?>
     <?php if ($units > 0) : ?>
-        &nbsp; <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_orders'), 'lmeg_export_orders')); ?>" class="button">⬇ Export orders (CSV)</a>
+        &nbsp; <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_orders'), 'lmeg_export_orders')); ?>" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export orders (CSV)</a>
     <?php endif; ?></p>
     <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
         <summary style="cursor:pointer;font-weight:600">Shortcodes &amp; links — how to show your shop</summary>
@@ -2354,7 +2354,7 @@ function lmeg_admin_products() {
         <summary style="cursor:pointer;font-weight:600">Import / export products (CSV)</summary>
         <p class="description" style="margin:10px 0">Bulk-manage your catalogue in a spreadsheet. <strong>Export</strong> to download every product as a CSV; edit it (or build one from scratch) and <strong>import</strong> to create and update products in one go. Rows are matched by <strong>Slug</strong> — an existing slug updates that product, a new or blank slug creates one. Imported products come in as <strong>Drafts</strong> unless the Status column says <code>active</code>. Columns: <?php echo esc_html(implode(', ', lmeg_products_csv_headers())); ?>. Price/Min price/Shipping in dollars; Stock blank = unlimited; Variants like <code>S:10, M:5, L</code>; Featured <code>1</code>/<code>0</code>.</p>
         <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0">
-            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_products'), 'lmeg_export_products')); ?>" class="button">⬇ Export products (CSV)</a>
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_products'), 'lmeg_export_products')); ?>" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export products (CSV)</a>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" style="display:inline-flex;gap:8px;align-items:center;margin:0">
                 <?php wp_nonce_field('lmeg_import_products', 'lmeg_import_nonce'); ?>
                 <input type="hidden" name="action" value="lmeg_import_products">
@@ -2402,7 +2402,7 @@ function lmeg_admin_products() {
                 : (function_exists('lmeg_format_price') ? lmeg_format_price((int)$p->price_cents,$cur) : '$'.number_format($p->price_cents/100,2));
         ?>
             <tr>
-                <td><?php echo !empty($p->featured) ? '⭐ ' : ''; ?><strong><?php echo esc_html($p->title); ?></strong></td>
+                <td><?php echo !empty($p->featured) ? lmeg_store_icon('star', 13, ['fill' => true, 'style' => 'color:#E0A800;margin-right:5px;vertical-align:-2px']) : ''; ?><strong><?php echo esc_html($p->title); ?></strong></td>
                 <td><?php echo ($p->type === 'physical') ? '📦 Physical' : '⬇ Digital'; ?></td>
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
