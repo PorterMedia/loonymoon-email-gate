@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.28.0
+Stable tag: 3.29.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.29.0 =
+* Store (Beta): tax / VAT. Set a tax rate (%) and label (HST, VAT, GST…) in Settings → Payments and it's charged at checkout on the item subtotal after any discount (shipping isn't taxed) — shown on the checkout summary, the receipt, and the admin sale email, and collected through Stripe or demo checkout. Collected tax is tracked separately from your revenue (a new tax_cents field) and shows as "incl. $X tax" on the Orders screen, so your sales figures stay clean. You set the right rate for where you sell and remit it. 0% = off.
+
 = 3.28.0 =
 * Store (Beta): bulk product import / export (CSV). On the Store screen, "Import / export products (CSV)" lets you download your whole catalogue as a spreadsheet, edit it, and re-import to create and update products in one go — or build a CSV from scratch to launch a shop fast. Rows match by slug (existing slug updates, new/blank creates), imports come in as Drafts unless marked active, and you get a created/updated/skipped summary with per-row errors. Great for migrating a catalogue or editing prices/stock in bulk.
 

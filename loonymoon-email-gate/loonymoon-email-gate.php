@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.28.0
+ * Version:     3.29.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.28.0');
-define('LMEG_DB_VERSION',  '3.6.0');
+define('LMEG_VERSION',     '3.29.0');
+define('LMEG_DB_VERSION',  '3.29.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -676,6 +676,7 @@ function lmeg_create_tables() {
         currency VARCHAR(3) NOT NULL DEFAULT 'USD',
         discount_code VARCHAR(60) DEFAULT NULL,
         discount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        tax_cents INT UNSIGNED NOT NULL DEFAULT 0,
         note VARCHAR(500) DEFAULT NULL,
         processor VARCHAR(10) NOT NULL DEFAULT 'stripe',
         stripe_session_id VARCHAR(120) DEFAULT NULL,
@@ -832,6 +833,9 @@ function lmeg_default_settings() {
         // Store (Beta) sale notifications to the artist/admin
         'store_notify'             => 1,
         'store_notify_email'       => '',
+        // Store (Beta) tax/VAT — percent applied to the (discounted) item subtotal; 0 = off
+        'store_tax_rate'           => 0,
+        'store_tax_label'          => 'Tax',
         // Store (Beta) demo checkout — orders complete WITHOUT payment (testing)
         'store_demo'               => 0,
         // Store (Beta) automatic abandoned-cart reminder

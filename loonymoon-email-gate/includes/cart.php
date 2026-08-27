@@ -58,6 +58,28 @@ function lmeg_store_ship_free_over() {
     return (int) ($s['store_ship_free_over'] ?? 0);
 }
 
+/* ---------------------------------------------------------------------------
+ * Tax / VAT — a flat percent on the discounted item subtotal (shipping is not
+ * taxed). Server-authoritative: computed from settings, never trusted from the
+ * client. 0% = off. Recorded separately from revenue (tax_cents column).
+ * ------------------------------------------------------------------------- */
+function lmeg_store_tax_rate() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    return max(0, min(100, (float) ($s['store_tax_rate'] ?? 0)));
+}
+function lmeg_store_tax_label() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $l = trim((string) ($s['store_tax_label'] ?? ''));
+    return $l !== '' ? $l : 'Tax';
+}
+/** Tax owed on a taxable base (cents), at the store rate. Testable. */
+function lmeg_cart_tax($base_cents) {
+    $r = lmeg_store_tax_rate();
+    $base_cents = (int) $base_cents;
+    if ($r <= 0 || $base_cents <= 0) return 0;
+    return (int) round($base_cents * $r / 100);
+}
+
 function lmeg_cart_apply_zone_shipping(&$v, $country) {
     if (empty($v['zone_shipping']) || empty($v['has_physical'])) return 0;
     $fee = lmeg_store_ship_fee($country);
@@ -155,6 +177,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
             'amount' => (int) $existing->amount_cents, 'unit' => (int) $line['unit'], 'line_discount' => 0,
             'qty' => (int) $existing->qty ?: 1, 'cur' => strtoupper($existing->currency ?: 'USD'),
             'token' => (string) $existing->access_token, 'note' => (string) ($existing->note ?? ''),
+            'tax' => (int) ($existing->tax_cents ?? 0),
             'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
             'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
         ];
@@ -173,6 +196,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'product_id' => (int) $p->id, 'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
         'amount_cents' => $amount, 'qty' => $qty, 'currency' => $cur,
         'discount_code' => !empty($line['discount_code']) ? $line['discount_code'] : null, 'discount_cents' => $disc,
+        'tax_cents' => max(0, (int) ($line['tax'] ?? 0)),
         'note' => !empty($line['note']) ? mb_substr((string) $line['note'], 0, 500) : null,
         'processor' => $processor, 'provider_ref' => $ref,
         'variant' => $variant ?: null, 'ship_name' => $ship_name ?: null, 'ship_address' => $ship_addr ?: null,
@@ -195,7 +219,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'new' => true, 'id' => $pur_id, 'physical' => $physical, 'title' => $p->title,
         'variant' => $variant, 'type' => $p->type, 'amount' => $amount, 'unit' => (int) $line['unit'],
         'line_discount' => $disc, 'qty' => $qty, 'cur' => $cur, 'token' => $token,
-        'note' => (string) ($line['note'] ?? ''),
+        'note' => (string) ($line['note'] ?? ''), 'tax' => max(0, (int) ($line['tax'] ?? 0)),
         'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
         'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
     ];
@@ -207,11 +231,16 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
  * combined receipt to the buyer and ONE notification to the artist (guarded so
  * a webhook + return race can't double-send). Returns the ref stem.
  */
-function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $stem, $discount = null, $note = '') {
+function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $stem, $discount = null, $note = '', $tax = 0) {
     // Distribute an order discount across the item lines (shipping isn't discounted).
     $off    = $discount ? max(0, min((int) $discount['amount_off'], (int) $v['subtotal'])) : 0;
     $splits = ($off > 0 && function_exists('lmeg_discount_split'))
         ? lmeg_discount_split($v['lines'], $off, (int) $v['subtotal'])
+        : array_fill(0, count($v['lines']), 0);
+    // Distribute the order tax across lines (sum is exact) — recorded separately from revenue.
+    $tax    = max(0, (int) $tax);
+    $tsplit = ($tax > 0 && function_exists('lmeg_discount_split') && (int) $v['subtotal'] > 0)
+        ? lmeg_discount_split($v['lines'], $tax, (int) $v['subtotal'])
         : array_fill(0, count($v['lines']), 0);
 
     $dcode = ($off > 0 && !empty($discount['code'])) ? $discount['code'] : null;
@@ -220,6 +249,7 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
         $line['discount']      = $splits[$i] ?? 0;
         $line['discount_code'] = ($line['discount'] > 0) ? $dcode : null;
         $line['note']          = $note;
+        $line['tax']           = $tsplit[$i] ?? 0;
         $results[] = lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $stem . '#' . $i);
     }
     $new_any = false;
@@ -232,19 +262,20 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
             lmeg_discount_increment($discount['code']);
         }
         $dctx = ($off > 0 && !empty($discount['code'])) ? ['code' => $discount['code'], 'amount_off' => $off, 'bundle' => !empty($discount['bundle'])] : null;
-        if ($email) lmeg_cart_send_receipt($results, $email, $ship_name, $ship_addr, $dctx);
-        lmeg_cart_notify_admin($results, $email, $ship_name, $ship_addr, $dctx);
+        $tctx = ($tax > 0) ? ['tax' => $tax, 'label' => function_exists('lmeg_store_tax_label') ? lmeg_store_tax_label() : 'Tax'] : null;
+        if ($email) lmeg_cart_send_receipt($results, $email, $ship_name, $ship_addr, $dctx, $tctx);
+        lmeg_cart_notify_admin($results, $email, $ship_name, $ship_addr, $dctx, $tctx);
     }
     return $stem;
 }
 
 /** One branded receipt for a whole cart order. */
-function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discount = null) {
+function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discount = null, $tax = null) {
     if (!function_exists('lmeg_email_deliver')) return;
     $artist = lmeg_email_artist();
-    $items = []; $dls = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false; $pre = [];
+    $items = []; $dls = []; $total = 0; $off = 0; $taxsum = 0; $cur = 'USD'; $has_phys = false; $pre = [];
     foreach ($lines as $ln) {
-        $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0);
+        $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0); $taxsum += (int) ($ln['tax'] ?? 0);
         $full = (int) $ln['amount'] + (int) ($ln['line_discount'] ?? 0);   // list price before discount
         $meta = ((int) $ln['qty'] > 1 ? (int) $ln['qty'] . ' × ' . lmeg_cart_money($ln['unit'], $ln['cur']) : '')
               . ((int) $ln['qty'] > 1 && $ln['variant'] ? ' · ' : '') . ($ln['variant'] ? $ln['variant'] : '');
@@ -257,9 +288,10 @@ function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discoun
     }
     $dlabel = (!empty($discount['bundle']) ? '🎁 Bundle' : 'Discount') . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : '');
     $extra = ($off > 0) ? [['label' => $dlabel, 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
+    if ($taxsum > 0) $extra[] = ['label' => ($tax['label'] ?? 'Tax'), 'amount' => lmeg_cart_money($taxsum, $cur)];
     $inner = lmeg_email_h('Thanks for your order 💜')
         . lmeg_email_p('Here\'s everything from your order with <strong>' . esc_html($artist) . '</strong>.')
-        . lmeg_email_order_table($items, lmeg_cart_money($total, $cur), $extra)
+        . lmeg_email_order_table($items, lmeg_cart_money($total + $taxsum, $cur), $extra)
         . lmeg_email_download_block($dls)
         . ($pre ? lmeg_email_note('Pre-order' . (count($pre) > 1 ? 's' : '') . ' — we\'ll email you when ready:<br>' . implode('<br>', $pre)) : '')
         . ($has_phys ? lmeg_email_ship_block($ship_name, $ship_addr) . lmeg_email_note('We\'ll get your item' . (count($lines) > 1 ? 's' : '') . ' on the way and email you if we need anything.') : '')
@@ -268,15 +300,15 @@ function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discoun
 }
 
 /** One notification to the artist for a whole cart order. */
-function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discount = null) {
+function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discount = null, $tax = null) {
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     if (isset($s['store_notify']) && !$s['store_notify']) return;
     $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
     if (!$to || !is_email($to) || !function_exists('lmeg_email_deliver')) return;
 
-    $items = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false; $note = '';
+    $items = []; $total = 0; $off = 0; $taxsum = 0; $cur = 'USD'; $has_phys = false; $note = '';
     foreach ($lines as $ln) {
-        $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0);
+        $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0); $taxsum += (int) ($ln['tax'] ?? 0);
         $full = (int) $ln['amount'] + (int) ($ln['line_discount'] ?? 0);
         $items[] = ['name' => $ln['title'] . ($ln['variant'] ? ' · ' . $ln['variant'] : ''),
                     'meta' => (int) $ln['qty'] > 1 ? 'Qty ' . (int) $ln['qty'] : '',
@@ -284,9 +316,10 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
         if ($ln['physical']) $has_phys = true;
         if ($note === '' && !empty($ln['note'])) $note = (string) $ln['note'];
     }
-    $price = lmeg_cart_money($total, $cur);
+    $price = lmeg_cart_money($total + $taxsum, $cur);
     $dlabel = (!empty($discount['bundle']) ? '🎁 Bundle' : 'Discount') . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : '');
     $extra = ($off > 0) ? [['label' => $dlabel, 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
+    if ($taxsum > 0) $extra[] = ['label' => ($tax['label'] ?? 'Tax'), 'amount' => lmeg_cart_money($taxsum, $cur)];
     $note_block = ($note !== '') ? lmeg_email_note('📝 <strong>Note from buyer:</strong><br>' . nl2br(esc_html($note))) : '';
     $inner = lmeg_email_h($has_phys ? 'New order 🛍️' : 'New sale 💿')
         . lmeg_email_p('A new order just landed — <strong>' . count($lines) . '</strong> item' . (count($lines) === 1 ? '' : 's') . ' from <strong>' . esc_html($email ?: 'unknown') . '</strong>.')
@@ -320,9 +353,10 @@ function lmeg_cart_fulfill_from_session($session) {
     $ship_addr = lmeg_product_fmt_addr($sd['address'] ?? []) ?: (string) ($stash['ship_addr'] ?? '');
     $discount  = !empty($stash['discount']) ? $stash['discount'] : null;
     $note      = (string) ($stash['note'] ?? '');
+    $tax       = (int) ($stash['tax'] ?? 0);
     if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $stash['ship_country'] ?? '');
 
-    lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount, $note);
+    lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount, $note, $tax);
     if (function_exists('lmeg_abandoned_mark_recovered')) lmeg_abandoned_mark_recovered($email);
     delete_transient('lmeg_cart_' . $token);
 }
@@ -401,7 +435,9 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         $bm = lmeg_cart_bundle_match($v);
         if ($bm && (int) $bm['amount_off'] > 0) { $bundle = $bm; $off = (int) $bm['amount_off']; }
     }
-    $grand   = max(0, (int) $v['total'] - $off);
+    // Tax on the discounted item subtotal (shipping not taxed).
+    $tax       = lmeg_cart_tax(max(0, (int) $v['subtotal'] - $off));
+    $grand     = max(0, (int) $v['total'] - $off) + $tax;
     $checkout_action = esc_url(add_query_arg(['lmeg_cart' => 'checkout'], home_url('/')));
 
     // Order summary rows.
@@ -443,6 +479,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . ($disc && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
         . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>🎁 ' . esc_html($bundle['title']) . ' (' . (int) $bundle['pct'] . '% off)</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
         . $ship_row
+        . ($tax > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>' . esc_html(lmeg_store_tax_label()) . ' (' . esc_html(rtrim(rtrim(number_format(lmeg_store_tax_rate(), 2), '0'), '.')) . '%)</span><span>' . esc_html(lmeg_cart_money($tax, $cur)) . '</span></div>' : '')
         . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
 
     // Discount-code apply / remove UI.
@@ -514,12 +551,12 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     if ($zone_ship) {
         $fees = lmeg_store_ship_fees();
         $body .= '<script>(function(){'
-            . 'var FEES=' . wp_json_encode($fees) . ',SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',CUR=' . wp_json_encode($cur) . ',FREE=' . (int) $free_over . ';'
+            . 'var FEES=' . wp_json_encode($fees) . ',SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',CUR=' . wp_json_encode($cur) . ',FREE=' . (int) $free_over . ',TAX=' . (int) $tax . ';'
             . 'function money(c){try{return new Intl.NumberFormat(undefined,{style:"currency",currency:CUR}).format(c/100);}catch(e){return "$"+(c/100).toFixed(2);}}'
             . 'function zone(v){v=(v||"").toUpperCase();if(v==="CA")return"ca";if(v==="US")return"us";return"intl";}'
             . 'var sel=document.getElementById("flp-country"),shipEl=document.getElementById("flp-ship"),grandEl=document.getElementById("flp-grand");'
-            . 'function upd(){var f;if(FREE>0&&SUB>=FREE){f=0;}else if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF));return;}else{f=FEES[zone(sel.value)]||0;}'
-            . 'if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f);}'
+            . 'function upd(){var f;if(FREE>0&&SUB>=FREE){f=0;}else if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+TAX);return;}else{f=FEES[zone(sel.value)]||0;}'
+            . 'if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f+TAX);}'
             . 'if(sel){sel.addEventListener("change",upd);}upd();})();</script>';
     }
 
@@ -597,10 +634,13 @@ function lmeg_cart_place() {
         }
     }
 
+    // Tax on the discounted item subtotal (server-authoritative).
+    $tax = lmeg_cart_tax(max(0, (int) $v['subtotal'] - $off));
+
     /* ---------- DEMO: fulfil immediately, no payment ---------- */
     if (lmeg_store_demo_on()) {
         $stem = 'demo_' . wp_generate_password(20, false, false);
-        lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'demo', $stem, $disc, $onote);
+        lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'demo', $stem, $disc, $onote, $tax);
         lmeg_cart_done($stem);   // render success
         exit;
     }
@@ -623,7 +663,7 @@ function lmeg_cart_place() {
     $token = wp_generate_password(24, false, false);
     set_transient('lmeg_cart_' . $token, [
         'raw' => $raw, 'email' => $email, 'ship_name' => $ship_name, 'ship_addr' => $ship_addr, 'discount' => $disc,
-        'ship_country' => $ship_country, 'note' => $onote,
+        'ship_country' => $ship_country, 'note' => $onote, 'tax' => $tax,
     ], 2 * HOUR_IN_SECONDS);
 
     // Save the cart so it can be recovered if they don't complete payment.
@@ -655,6 +695,13 @@ function lmeg_cart_place() {
             $params["line_items[$i][price_data][product_data][images][0]"] = $p->cover_url;
         }
         $i++;
+    }
+    // Tax as its own Stripe line item (kept out of product revenue).
+    if ($tax > 0) {
+        $params["line_items[$i][price_data][currency]"]              = $cur;
+        $params["line_items[$i][price_data][unit_amount]"]           = (int) $tax;
+        $params["line_items[$i][price_data][product_data][name]"]    = lmeg_store_tax_label() . ' (' . rtrim(rtrim(number_format(lmeg_store_tax_rate(), 2), '0'), '.') . '%)';
+        $params["line_items[$i][quantity]"]                          = 1;
     }
     if ($v['shipping'] > 0) {
         $params['shipping_options[0][shipping_rate_data][type]']                   = 'fixed_amount';

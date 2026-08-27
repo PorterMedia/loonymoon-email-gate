@@ -2658,6 +2658,8 @@ function lmeg_admin_settings() {
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
             'store_waitlist_auto'     => !empty($_POST['store_waitlist_auto']) ? 1 : 0,
+            'store_tax_rate'          => max(0, min(100, (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_tax_rate'] ?? 0)))),
+            'store_tax_label'         => (sanitize_text_field(wp_unslash($_POST['store_tax_label'] ?? '')) ?: 'Tax'),
             'store_ship_zones'        => !empty($_POST['store_ship_zones']) ? 1 : 0,
             'store_ship_ca'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_ca'] ?? 0))) * 100)),
             'store_ship_us'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_us'] ?? 0))) * 100)),
@@ -3350,6 +3352,11 @@ function lmeg_admin_settings() {
                     <label><input type="checkbox" name="store_cart_nudge" value="1" <?php checked(!empty($s['store_cart_nudge'])); ?> /> <strong>Automatically email shoppers who don’t finish checkout</strong></label>
                     &nbsp; after <input type="number" name="store_cart_nudge_hours" min="1" max="72" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_hours'] ?? 1); ?>"> hour(s)
                     <p class="description">Sends one branded reminder (with a link that reopens their exact cart) once a saved cart is this old and hasn’t been recovered. Only fires on live checkout — demo completes instantly. You can also send reminders by hand from the Store’s “Abandoned carts” panel.</p>
+                </td></tr>
+                <tr><th scope="row">Tax / VAT</th><td>
+                    <input type="number" name="store_tax_rate" step="0.01" min="0" max="100" style="width:90px" value="<?php echo esc_attr(rtrim(rtrim(number_format((float) ($s['store_tax_rate'] ?? 0), 2, '.', ''), '0'), '.')); ?>"> %
+                    &nbsp; labelled <input type="text" name="store_tax_label" style="width:120px" value="<?php echo esc_attr($s['store_tax_label'] ?? 'Tax'); ?>" placeholder="Tax">
+                    <p class="description">Charge tax at checkout as a percentage of the item subtotal (after any discount; shipping isn’t taxed). Set <strong>0</strong> to turn it off. The label (e.g. <code>HST</code>, <code>VAT</code>, <code>GST</code>) shows on the checkout summary and receipt. Collected tax is tracked separately from your revenue. You’re responsible for setting the right rate for where you sell and remitting it.</p>
                 </td></tr>
                 <tr><th scope="row">Low-stock digest</th><td>
                     <label><input type="checkbox" name="store_lowstock_digest" value="1" <?php checked(!empty($s['store_lowstock_digest'])); ?> /> <strong>Email me a weekly heads-up when products are running low</strong></label>
