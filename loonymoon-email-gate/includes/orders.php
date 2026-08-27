@@ -125,6 +125,109 @@ function lmeg_handle_refund_order() {
 /* ---------------------------------------------------------------------------
  * The Orders page
  * ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+ * Fulfilment paperwork: printable packing slips + a carrier-ready CSV.
+ * ------------------------------------------------------------------------- */
+add_action('admin_post_lmeg_packing_slip', 'lmeg_handle_packing_slip');
+function lmeg_handle_packing_slip() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_packing_slip');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $tbl  = $wpdb->prefix . 'lmeg_products';
+    $expr = lmeg_orders_okey_expr('pp.');
+    $okey = sanitize_text_field(wp_unslash($_GET['okey'] ?? ''));
+
+    if ($okey !== '') {
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT pp.*, pr.title, pr.type, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND $expr = %s ORDER BY pp.id ASC", $okey));
+    } else {   // all orders still awaiting shipment
+        $rows = $wpdb->get_results("SELECT pp.*, pr.title, pr.type, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
+    }
+    $orders = [];
+    foreach ((array) $rows as $r) $orders[$r->okey][] = $r;
+
+    $artist = function_exists('lmeg_email_artist') ? lmeg_email_artist() : get_bloginfo('name');
+    nocache_headers();
+    header('Content-Type: text/html; charset=utf-8');
+    ?><!doctype html><html><head><meta charset="utf-8"><title>Packing slips</title><style>
+      *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:0;background:#f4f4f6}
+      .bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:10px}
+      .bar button{font-size:14px;padding:8px 16px;border-radius:8px;border:0;background:#E15FA8;color:#fff;font-weight:700;cursor:pointer}
+      .wrap{max-width:720px;margin:0 auto;padding:18px}
+      .slip{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:26px 28px;margin-bottom:18px}
+      .slip h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#888;margin:0 0 2px}
+      .brand{font-weight:800;font-size:20px;margin-bottom:14px}
+      .row{display:flex;justify-content:space-between;gap:20px;margin-bottom:16px;font-size:14px}
+      .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#999;margin-bottom:3px}
+      .ship{font-size:15px;line-height:1.5;white-space:pre-line}
+      table{width:100%;border-collapse:collapse;margin-top:6px}
+      th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #eee;font-size:14px}
+      th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#999}
+      td.q{width:44px;font-weight:700}
+      .thanks{margin-top:18px;color:#666;font-size:13px}
+      @media print{.bar{display:none}body{background:#fff}.slip{border:0;border-radius:0;padding:0 0 20px;margin:0;page-break-after:always}.wrap{padding:0}}
+    </style></head><body>
+    <div class="bar"><button onclick="window.print()">🖨 Print</button><span style="align-self:center;color:#666;font-size:13px"><?php echo count($orders); ?> packing slip<?php echo count($orders) === 1 ? '' : 's'; ?></span></div>
+    <div class="wrap">
+    <?php if (!$orders) : ?><div class="slip"><p>No orders to print.</p></div><?php endif; ?>
+    <?php foreach ($orders as $key => $lines) :
+        $first = $lines[0]; ?>
+        <div class="slip">
+            <h1>Packing Slip</h1>
+            <div class="brand"><?php echo esc_html($artist); ?></div>
+            <div class="row">
+                <div><div class="lbl">Order</div><?php echo esc_html('#' . substr((string) $key, -8)); ?></div>
+                <div><div class="lbl">Date</div><?php echo esc_html($first->paid_at ? date_i18n('M j, Y', strtotime($first->paid_at)) : '—'); ?></div>
+            </div>
+            <div class="row"><div><div class="lbl">Ship to</div><div class="ship"><?php echo esc_html(($first->ship_name ? $first->ship_name . "\n" : '') . ($first->ship_address ?: '')); ?></div><?php echo $first->email ? '<div style="color:#888;font-size:13px;margin-top:4px">' . esc_html($first->email) . '</div>' : ''; ?></div></div>
+            <table><thead><tr><th class="q">Qty</th><th>Item</th></tr></thead><tbody>
+            <?php foreach ($lines as $ln) : ?>
+                <tr><td class="q"><?php echo (int) ($ln->qty ?: 1); ?></td><td><?php echo esc_html($ln->title . ($ln->variant ? ' · ' . $ln->variant : '')); ?></td></tr>
+            <?php endforeach; ?>
+            </tbody></table>
+            <div class="thanks">Thanks for supporting <?php echo esc_html($artist); ?> 💜</div>
+        </div>
+    <?php endforeach; ?>
+    </div></body></html><?php
+    exit;
+}
+
+add_action('admin_post_lmeg_export_shipping', 'lmeg_handle_export_shipping');
+function lmeg_handle_export_shipping() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_export_shipping');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $tbl  = $wpdb->prefix . 'lmeg_products';
+    $expr = lmeg_orders_okey_expr('pp.');
+    $rows = $wpdb->get_results("SELECT pp.*, pr.title, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
+
+    $orders = [];   // okey => ['name','email','addr','items'[]]
+    foreach ((array) $rows as $r) {
+        if (!isset($orders[$r->okey])) $orders[$r->okey] = ['name' => $r->ship_name, 'email' => $r->email, 'addr' => $r->ship_address, 'items' => []];
+        $orders[$r->okey]['items'][] = ((int) ($r->qty ?: 1) > 1 ? (int) $r->qty . '× ' : '') . $r->title . ($r->variant ? ' (' . $r->variant . ')' : '');
+    }
+    $safe = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-to-ship-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    fputcsv($fh, ['Order', 'Name', 'Email', 'Address', 'Items']);
+    foreach ($orders as $key => $o) {
+        fputcsv($fh, [
+            '#' . substr((string) $key, -8),
+            $safe($o['name']),
+            $safe($o['email']),
+            $safe(str_replace("\n", ', ', (string) $o['addr'])),
+            $safe(implode('; ', $o['items'])),
+        ]);
+    }
+    fclose($fh);
+    exit;
+}
+
 function lmeg_admin_orders() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -211,6 +314,14 @@ function lmeg_admin_orders() {
         <?php if ($q !== '') : ?><a class="button" href="<?php echo esc_url(add_query_arg(['page' => 'lmeg-orders', 'f' => $f], admin_url('admin.php'))); ?>">Clear</a><?php endif; ?>
     </form>
 
+    <?php if ($toship_all > 0) : ?>
+    <p style="margin:0 0 12px">
+        <a class="button" target="_blank" rel="noopener" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_packing_slip'), 'lmeg_packing_slip')); ?>">🖨 Print packing slips (<?php echo (int) $toship_all; ?>)</a>
+        <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_shipping'), 'lmeg_export_shipping')); ?>">⬇ Export to-ship (CSV)</a>
+        <span class="description" style="margin-left:6px">Print slips for the box, or take the CSV to Pirate Ship / Shippo / Canada Post to buy labels — then paste tracking back in below.</span>
+    </p>
+    <?php endif; ?>
+
     <table class="widefat striped">
         <thead><tr><th>When</th><th>Buyer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
@@ -252,6 +363,7 @@ function lmeg_admin_orders() {
                             <input type="hidden" name="action" value="lmeg_resend_receipt"><?php echo $keep; ?>
                             <button class="button button-small" title="Email the buyer their receipt &amp; download links again">Resend receipt</button>
                         </form>
+                        <?php if ((int) $o->physicals > 0) : ?><a class="button button-small" target="_blank" rel="noopener" href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'lmeg_packing_slip', 'okey' => $o->okey], admin_url('admin-post.php')), 'lmeg_packing_slip')); ?>" title="Printable packing slip">Slip</a><?php endif; ?>
                         <form method="post" action="<?php echo esc_url($save); ?>" style="display:inline" onsubmit="return confirm('Mark this order refunded? It leaves your revenue and reports. This does NOT move money — refund it in Stripe/Square yourself.');">
                             <?php wp_nonce_field('lmeg_refund_order', 'lmeg_refund_nonce'); ?>
                             <input type="hidden" name="action" value="lmeg_refund_order"><input type="hidden" name="to" value="refunded"><?php echo $keep; ?>
