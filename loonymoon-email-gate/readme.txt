@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.1.0
+Stable tag: 3.2.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.2.0 =
+* Store (Beta): gift message / order note at checkout. Buyers can add an optional note or gift message with their order (label switches to "Gift message" for physical carts). It shows up in your sale email, on the order row in Orders, and prints on the packing slip so it goes in the box. Works in cart + single Buy-now, demo and live.
+
 = 3.1.0 =
 * Store (Beta): free-shipping threshold + return address on packing slips. Set "Free shipping when the order reaches $X" in Settings -> Payments and orders at or above that get free shipping (with a live "Add $Y more for free shipping" upsell at checkout that flips to "You've unlocked free shipping!"). Your ship-from address now prints on packing slips too.
 

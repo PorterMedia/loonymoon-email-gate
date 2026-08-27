@@ -188,6 +188,9 @@ function lmeg_handle_packing_slip() {
             <?php endforeach; ?>
             </tbody></table>
             <?php $wt = 0; foreach ($lines as $ln) $wt += (int) ($ln->weight_g ?? 0) * (int) ($ln->qty ?: 1); if ($wt > 0) : ?><div style="margin-top:8px;color:#666;font-size:13px">Total weight: <?php echo esc_html(number_format($wt)); ?> g</div><?php endif; ?>
+            <?php $onote = ''; foreach ($lines as $ln) { if (!empty($ln->note)) { $onote = (string) $ln->note; break; } } if ($onote !== '') : ?>
+            <div style="margin-top:16px;padding:12px 14px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:8px"><div class="lbl" style="color:#8A7420">🎁 Gift message / note</div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#5A4A16"><?php echo esc_html($onote); ?></div></div>
+            <?php endif; ?>
             <div class="thanks">Thanks for supporting <?php echo esc_html($artist); ?> 💜</div>
         </div>
     <?php endforeach; ?>
@@ -266,7 +269,7 @@ function lmeg_admin_orders() {
 
     $aggSql = "SELECT $OK okey, MAX(pp.id) maxid, MAX(pp.paid_at) when_, MAX(pp.email) email,
                 SUM(pp.amount_cents) total, MAX(pp.currency) cur, MAX(pp.processor) processor,
-                MAX(pp.discount_code) code, SUM(pp.discount_cents) disc,
+                MAX(pp.discount_code) code, SUM(pp.discount_cents) disc, MAX(pp.note) note,
                 MAX(pp.ship_name) ship_name, MAX(pp.ship_address) ship_addr,
                 MAX(pp.tracking) tracking, MAX(pp.carrier) carrier,
                 SUM(CASE WHEN pp.fulfillment='unshipped' THEN 1 ELSE 0 END) unshipped,
@@ -347,7 +350,7 @@ function lmeg_admin_orders() {
             <tr>
                 <td style="white-space:nowrap"><?php echo esc_html($o->when_ ? date_i18n('M j, Y', strtotime($o->when_)) : '—'); ?></td>
                 <td><?php echo esc_html($o->email ?: '—'); ?><?php echo $o->ship_name ? '<br><span style="color:#777;font-size:12px">' . esc_html($o->ship_name) . '</span>' : ''; ?></td>
-                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?></td>
+                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">📝 ' . esc_html($o->note) . '</span>' : ''; ?></td>
                 <td style="white-space:nowrap"><?php echo esc_html(lmeg_orders_money($o->total, $cur)); ?><?php echo (int) $o->disc > 0 ? '<br><span style="color:#1a8a4a;font-size:12px">' . esc_html($o->code ? $o->code . ' ' : '') . '−' . esc_html(lmeg_orders_money($o->disc, $cur)) . '</span>' : ''; ?></td>
                 <td><?php echo esc_html($paychip); ?></td>
                 <td><?php echo $status; ?></td>

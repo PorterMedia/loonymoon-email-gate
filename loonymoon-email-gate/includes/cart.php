@@ -154,7 +154,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
             'title' => $p->title, 'variant' => (string) $existing->variant, 'type' => $p->type,
             'amount' => (int) $existing->amount_cents, 'unit' => (int) $line['unit'], 'line_discount' => 0,
             'qty' => (int) $existing->qty ?: 1, 'cur' => strtoupper($existing->currency ?: 'USD'),
-            'token' => (string) $existing->access_token,
+            'token' => (string) $existing->access_token, 'note' => (string) ($existing->note ?? ''),
             'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
             'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
         ];
@@ -173,6 +173,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'product_id' => (int) $p->id, 'subscriber_id' => $sub_id ?: null, 'email' => $email ?: null,
         'amount_cents' => $amount, 'qty' => $qty, 'currency' => $cur,
         'discount_code' => !empty($line['discount_code']) ? $line['discount_code'] : null, 'discount_cents' => $disc,
+        'note' => !empty($line['note']) ? mb_substr((string) $line['note'], 0, 500) : null,
         'processor' => $processor, 'provider_ref' => $ref,
         'variant' => $variant ?: null, 'ship_name' => $ship_name ?: null, 'ship_address' => $ship_addr ?: null,
         'fulfillment' => $physical ? 'unshipped' : 'none', 'status' => 'paid', 'access_token' => $token,
@@ -194,6 +195,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'new' => true, 'id' => $pur_id, 'physical' => $physical, 'title' => $p->title,
         'variant' => $variant, 'type' => $p->type, 'amount' => $amount, 'unit' => (int) $line['unit'],
         'line_discount' => $disc, 'qty' => $qty, 'cur' => $cur, 'token' => $token,
+        'note' => (string) ($line['note'] ?? ''),
         'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
         'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
     ];
@@ -205,7 +207,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
  * combined receipt to the buyer and ONE notification to the artist (guarded so
  * a webhook + return race can't double-send). Returns the ref stem.
  */
-function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $stem, $discount = null) {
+function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $stem, $discount = null, $note = '') {
     // Distribute an order discount across the item lines (shipping isn't discounted).
     $off    = $discount ? max(0, min((int) $discount['amount_off'], (int) $v['subtotal'])) : 0;
     $splits = ($off > 0 && function_exists('lmeg_discount_split'))
@@ -217,6 +219,7 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
     foreach ($v['lines'] as $i => $line) {
         $line['discount']      = $splits[$i] ?? 0;
         $line['discount_code'] = ($line['discount'] > 0) ? $dcode : null;
+        $line['note']          = $note;
         $results[] = lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processor, $stem . '#' . $i);
     }
     $new_any = false;
@@ -270,7 +273,7 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
     $to = trim((string) ($s['store_notify_email'] ?? '')) ?: get_option('admin_email');
     if (!$to || !is_email($to) || !function_exists('lmeg_email_deliver')) return;
 
-    $items = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false;
+    $items = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false; $note = '';
     foreach ($lines as $ln) {
         $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0);
         $full = (int) $ln['amount'] + (int) ($ln['line_discount'] ?? 0);
@@ -278,12 +281,15 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
                     'meta' => (int) $ln['qty'] > 1 ? 'Qty ' . (int) $ln['qty'] : '',
                     'amount' => lmeg_cart_money($full, $ln['cur'])];
         if ($ln['physical']) $has_phys = true;
+        if ($note === '' && !empty($ln['note'])) $note = (string) $ln['note'];
     }
     $price = lmeg_cart_money($total, $cur);
     $extra = ($off > 0) ? [['label' => 'Discount' . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : ''), 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
+    $note_block = ($note !== '') ? lmeg_email_note('📝 <strong>Note from buyer:</strong><br>' . nl2br(esc_html($note))) : '';
     $inner = lmeg_email_h($has_phys ? 'New order 🛍️' : 'New sale 💿')
         . lmeg_email_p('A new order just landed — <strong>' . count($lines) . '</strong> item' . (count($lines) === 1 ? '' : 's') . ' from <strong>' . esc_html($email ?: 'unknown') . '</strong>.')
         . lmeg_email_order_table($items, $price, $extra)
+        . $note_block
         . ($has_phys ? lmeg_email_ship_block($ship_name ?: '(no name given)', $ship_addr) . lmeg_email_button('Orders to ship →', admin_url('admin.php?page=lmeg-products#orders'))
                      : lmeg_email_button('Open your Store →', admin_url('admin.php?page=lmeg-products')));
     lmeg_email_deliver($to, ($has_phys ? '🛍️ New order' : '💿 New sale') . ' — ' . $price, $inner, 'New order in your store — ' . $price);
@@ -311,9 +317,10 @@ function lmeg_cart_fulfill_from_session($session) {
     $ship_name = sanitize_text_field($sd['name'] ?? ($stash['ship_name'] ?? ''));
     $ship_addr = lmeg_product_fmt_addr($sd['address'] ?? []) ?: (string) ($stash['ship_addr'] ?? '');
     $discount  = !empty($stash['discount']) ? $stash['discount'] : null;
+    $note      = (string) ($stash['note'] ?? '');
     if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $stash['ship_country'] ?? '');
 
-    lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount);
+    lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount, $note);
     if (function_exists('lmeg_abandoned_mark_recovered')) lmeg_abandoned_mark_recovered($email);
     delete_transient('lmeg_cart_' . $token);
 }
@@ -438,6 +445,14 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         $errhtml .= '<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px">Your cart mixes currencies — please check items out separately.</div>';
     }
 
+    // Optional order / gift note.
+    $note_ph = $v['has_physical'] ? 'Add a gift message or note for this order (optional)' : 'Add a note with your order (optional)';
+    $notefield = '<label style="display:block;font-size:13px;color:#B9BCC9;margin:14px 0 5px">'
+        . ($v['has_physical'] ? '🎁 Gift message or note' : '📝 Note') . ' <span style="color:#8B90A0;font-weight:400">— optional</span></label>'
+        . '<textarea name="order_note" maxlength="500" rows="2" placeholder="' . esc_attr($note_ph) . '" '
+        . 'style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px;resize:vertical;font-family:inherit">'
+        . esc_textarea(isset($_POST['order_note']) ? sanitize_textarea_field(wp_unslash($_POST['order_note'])) : '') . '</textarea>';
+
     $cta   = $demo ? 'Place demo order — no payment' : 'Continue to payment →';
     $note  = $demo
         ? '<div style="margin-top:12px;font-size:12px;color:#F5A9D0;background:rgba(225,95,168,.12);border-radius:9px;padding:9px 11px">Demo mode — no card is charged. This runs the full order flow so you can see receipts, downloads and the fan being captured.</div>'
@@ -454,6 +469,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '<label style="display:block;font-size:13px;color:#B9BCC9;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
         . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
         . $shipfields
+        . $notefield
         . '<button type="submit" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
         . $note
         . '</form>'
@@ -523,6 +539,9 @@ function lmeg_cart_place() {
     }
     $ship_country = isset($ctry) ? $ctry : '';
 
+    // Optional order / gift note.
+    $onote = isset($_POST['order_note']) ? mb_substr(sanitize_textarea_field(wp_unslash($_POST['order_note'])), 0, 500) : '';
+
     // Zone flat shipping — set the order's shipping from the destination country.
     if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $ship_country);
 
@@ -538,7 +557,7 @@ function lmeg_cart_place() {
     /* ---------- DEMO: fulfil immediately, no payment ---------- */
     if (lmeg_store_demo_on()) {
         $stem = 'demo_' . wp_generate_password(20, false, false);
-        lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'demo', $stem, $disc);
+        lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'demo', $stem, $disc, $onote);
         lmeg_cart_done($stem);   // render success
         exit;
     }
@@ -561,7 +580,7 @@ function lmeg_cart_place() {
     $token = wp_generate_password(24, false, false);
     set_transient('lmeg_cart_' . $token, [
         'raw' => $raw, 'email' => $email, 'ship_name' => $ship_name, 'ship_addr' => $ship_addr, 'discount' => $disc,
-        'ship_country' => $ship_country,
+        'ship_country' => $ship_country, 'note' => $onote,
     ], 2 * HOUR_IN_SECONDS);
 
     // Save the cart so it can be recovered if they don't complete payment.
