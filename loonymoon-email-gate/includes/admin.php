@@ -2653,6 +2653,11 @@ function lmeg_admin_settings() {
             'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
+            'store_ship_zones'        => !empty($_POST['store_ship_zones']) ? 1 : 0,
+            'store_ship_ca'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_ca'] ?? 0))) * 100)),
+            'store_ship_us'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_us'] ?? 0))) * 100)),
+            'store_ship_intl'         => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_intl'] ?? 0))) * 100)),
+            'store_ship_from'         => sanitize_textarea_field(wp_unslash($_POST['store_ship_from'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
             'default_post_access'     => in_array($_POST['default_post_access'] ?? 'free', ['public', 'free', 'paid'], true) ? $_POST['default_post_access'] : 'free',
@@ -3297,6 +3302,25 @@ function lmeg_admin_settings() {
                 <tr><th>Webhook endpoint URL</th><td>
                     <input type="text" readonly class="regular-text" value="<?php echo esc_attr(add_query_arg('lmeg_square', 'webhook', home_url('/'))); ?>" onclick="this.select();" />
                     <p class="description">Recommended: add this in Square → Developer → Webhooks (subscribe to <code>payment.updated</code>), then paste the signature key above. Without a webhook, orders still confirm when the buyer returns from checkout.</p>
+                </td></tr>
+            </table>
+
+            <h2>Shipping (physical products)</h2>
+            <table class="form-table" role="presentation">
+                <?php $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); }; ?>
+                <tr><th scope="row">Flat rate by zone</th><td>
+                    <label><input type="checkbox" name="store_ship_zones" value="1" <?php checked(!empty($s['store_ship_zones'])); ?> /> <strong>Charge one flat shipping fee per order, by destination</strong></label>
+                    <p class="description">When on, this replaces the per-product shipping fee: the buyer picks their country at checkout and pays the matching flat rate below. When off, each physical product uses its own “Shipping fee”.</p>
+                    <p style="margin-top:8px">
+                        🇨🇦 Canada <input type="number" name="store_ship_ca" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_ship_ca'] ?? 0)); ?>"> &nbsp;
+                        🇺🇸 USA <input type="number" name="store_ship_us" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_ship_us'] ?? 0)); ?>"> &nbsp;
+                        🌍 International <input type="number" name="store_ship_intl" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_ship_intl'] ?? 0)); ?>">
+                    </p>
+                    <p class="description">0 = free shipping for that zone. Set a product's <strong>weight</strong> on its edit screen (used on packing slips and when buying labels).</p>
+                </td></tr>
+                <tr><th scope="row">Ship-from address</th><td>
+                    <textarea name="store_ship_from" class="large-text" rows="3" placeholder="Your name / return address"><?php echo esc_textarea($s['store_ship_from'] ?? ''); ?></textarea>
+                    <p class="description">Optional — your return address, for packing slips and label services.</p>
                 </td></tr>
             </table>
 

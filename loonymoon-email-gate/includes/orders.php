@@ -139,9 +139,9 @@ function lmeg_handle_packing_slip() {
     $okey = sanitize_text_field(wp_unslash($_GET['okey'] ?? ''));
 
     if ($okey !== '') {
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT pp.*, pr.title, pr.type, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND $expr = %s ORDER BY pp.id ASC", $okey));
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT pp.*, pr.title, pr.type, pr.weight_g, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND $expr = %s ORDER BY pp.id ASC", $okey));
     } else {   // all orders still awaiting shipment
-        $rows = $wpdb->get_results("SELECT pp.*, pr.title, pr.type, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
+        $rows = $wpdb->get_results("SELECT pp.*, pr.title, pr.type, pr.weight_g, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
     }
     $orders = [];
     foreach ((array) $rows as $r) $orders[$r->okey][] = $r;
@@ -185,6 +185,7 @@ function lmeg_handle_packing_slip() {
                 <tr><td class="q"><?php echo (int) ($ln->qty ?: 1); ?></td><td><?php echo esc_html($ln->title . ($ln->variant ? ' · ' . $ln->variant : '')); ?></td></tr>
             <?php endforeach; ?>
             </tbody></table>
+            <?php $wt = 0; foreach ($lines as $ln) $wt += (int) ($ln->weight_g ?? 0) * (int) ($ln->qty ?: 1); if ($wt > 0) : ?><div style="margin-top:8px;color:#666;font-size:13px">Total weight: <?php echo esc_html(number_format($wt)); ?> g</div><?php endif; ?>
             <div class="thanks">Thanks for supporting <?php echo esc_html($artist); ?> 💜</div>
         </div>
     <?php endforeach; ?>
@@ -200,12 +201,13 @@ function lmeg_handle_export_shipping() {
     $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
     $tbl  = $wpdb->prefix . 'lmeg_products';
     $expr = lmeg_orders_okey_expr('pp.');
-    $rows = $wpdb->get_results("SELECT pp.*, pr.title, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
+    $rows = $wpdb->get_results("SELECT pp.*, pr.title, pr.weight_g, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY $expr, pp.id ASC");
 
-    $orders = [];   // okey => ['name','email','addr','items'[]]
+    $orders = [];   // okey => ['name','email','addr','items'[],'weight']
     foreach ((array) $rows as $r) {
-        if (!isset($orders[$r->okey])) $orders[$r->okey] = ['name' => $r->ship_name, 'email' => $r->email, 'addr' => $r->ship_address, 'items' => []];
-        $orders[$r->okey]['items'][] = ((int) ($r->qty ?: 1) > 1 ? (int) $r->qty . '× ' : '') . $r->title . ($r->variant ? ' (' . $r->variant . ')' : '');
+        if (!isset($orders[$r->okey])) $orders[$r->okey] = ['name' => $r->ship_name, 'email' => $r->email, 'addr' => $r->ship_address, 'items' => [], 'weight' => 0];
+        $orders[$r->okey]['items'][]  = ((int) ($r->qty ?: 1) > 1 ? (int) $r->qty . '× ' : '') . $r->title . ($r->variant ? ' (' . $r->variant . ')' : '');
+        $orders[$r->okey]['weight']  += (int) ($r->weight_g ?? 0) * (int) ($r->qty ?: 1);
     }
     $safe = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
 
@@ -214,7 +216,7 @@ function lmeg_handle_export_shipping() {
     header('Content-Disposition: attachment; filename="fanloop-to-ship-' . gmdate('Y-m-d') . '.csv"');
     $fh = fopen('php://output', 'w');
     fwrite($fh, "\xEF\xBB\xBF");
-    fputcsv($fh, ['Order', 'Name', 'Email', 'Address', 'Items']);
+    fputcsv($fh, ['Order', 'Name', 'Email', 'Address', 'Items', 'Weight (g)']);
     foreach ($orders as $key => $o) {
         fputcsv($fh, [
             '#' . substr((string) $key, -8),
@@ -222,6 +224,7 @@ function lmeg_handle_export_shipping() {
             $safe($o['email']),
             $safe(str_replace("\n", ', ', (string) $o['addr'])),
             $safe(implode('; ', $o['items'])),
+            (int) $o['weight'] ?: '',
         ]);
     }
     fclose($fh);

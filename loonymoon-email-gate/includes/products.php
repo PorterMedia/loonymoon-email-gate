@@ -185,9 +185,12 @@ function lmeg_product_start_checkout() {
         $variant = $match['name'];
     }
 
-    // Demo mode — complete the order with no payment processor so the whole
-    // flow can be walked. Route this single item through the cart checkout page.
-    if (function_exists('lmeg_store_demo_on') && lmeg_store_demo_on()) {
+    // Route this single item through the cart checkout page when we need to run
+    // the full flow there: demo mode (no payment), or a physical item with zone
+    // shipping on (so the destination country / fee is collected first).
+    $route_cart = (function_exists('lmeg_store_demo_on') && lmeg_store_demo_on())
+        || ($physical && function_exists('lmeg_store_ship_enabled') && lmeg_store_ship_enabled());
+    if ($route_cart) {
         lmeg_cart_checkout_page(null, [[
             'id' => (int) $p->id, 'variant' => $variant, 'qty' => 1,
             'amount' => isset($_GET['amount']) ? (float) $_GET['amount'] : null,
@@ -1035,6 +1038,7 @@ function lmeg_handle_save_product() {
         'type'            => in_array($_POST['type'] ?? 'digital', ['digital', 'physical'], true) ? $_POST['type'] : 'digital',
         'processor'       => in_array($_POST['processor'] ?? 'stripe', ['stripe', 'square'], true) ? $_POST['processor'] : 'stripe',
         'shipping_cents'  => max(0, $to_cents($_POST['shipping'] ?? 0)),
+        'weight_g'        => max(0, (int) ($_POST['weight_g'] ?? 0)),
         'variants'        => implode(', ', $v_names),
         'variant_stock'   => $v_stock ? wp_json_encode($v_stock) : null,
         'deliver_url'     => esc_url_raw($_POST['deliver_url'] ?? ''),
@@ -1282,7 +1286,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'weight_g'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -1359,7 +1363,8 @@ function lmeg_admin_products() {
                     <label><input type="radio" name="processor" value="stripe" <?php checked($p->processor ?? 'stripe', 'stripe'); ?>> Stripe</label> &nbsp;&nbsp;
                     <label><input type="radio" name="processor" value="square" <?php checked($p->processor ?? 'stripe', 'square'); ?>> Square</label>
                     <p class="description">Which processor collects the payment — the money lands in that account. Set keys under Settings → Payments.</p></td></tr>
-                <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping.</p></td></tr>
+                <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping. <em>Ignored when flat rate by zone is on (Settings → Payments).</em></p></td></tr>
+                <tr><th><label>Weight <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="weight_g" min="0" step="1" style="width:120px" value="<?php echo (int) ($p->weight_g ?? 0); ?>"> grams<p class="description">Shipping weight (grams). Shows on packing slips and helps when buying labels. Optional.</p></td></tr>
                 <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr(lmeg_product_variants_field($p)); ?>" placeholder="S, M, L, XL"><p class="description">Comma-separated options the buyer picks (e.g. <code>S, M, L</code>). To <strong>track stock per option</strong>, add a quantity: <code>S:10, M:5, L:20</code> — that count is the remaining stock (it counts down on each sale, and sold-out options are hidden from buyers). Mix freely; leave a number off an option for unlimited. Blank = no variants.</p></td></tr>
                 <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
                     <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>

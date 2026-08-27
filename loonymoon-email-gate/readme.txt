@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.99.0
+Stable tag: 3.0.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.0.0 =
+* Store (Beta): flat shipping by zone + product weights. Turn on "Flat rate by zone" in Settings -> Payments and set three shipping fees — Canada, USA, International. At checkout the buyer picks their country and pays the matching flat rate (updates live); it replaces per-product shipping when on. Added a per-product Weight (grams) field that prints on packing slips and appears in the to-ship CSV, ready for buying labels (e.g. Canada Post). Works in cart and single Buy-now, demo and live.
+
 = 2.99.0 =
 * Store (Beta): fulfilment paperwork. On the Orders screen you can now print packing slips (one clean, print-ready slip per order to drop in the box — or all your to-ship orders at once) and export a to-ship CSV of unshipped orders (name, address, items) to take to Pirate Ship, Shippo or Canada Post to buy and print labels. Paste the tracking number back into the order and the buyer is emailed automatically.
 

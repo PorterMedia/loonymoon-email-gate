@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.99.0
+ * Version:     3.0.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.99.0');
-define('LMEG_DB_VERSION',  '2.98.0');
+define('LMEG_VERSION',     '3.0.0');
+define('LMEG_DB_VERSION',  '3.0.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -640,6 +640,7 @@ function lmeg_create_tables() {
         gallery TEXT,
         preorder_at DATETIME DEFAULT NULL,
         featured TINYINT(1) NOT NULL DEFAULT 0,
+        weight_g INT UNSIGNED NOT NULL DEFAULT 0,
         price_cents INT UNSIGNED NOT NULL DEFAULT 0,
         min_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
         currency VARCHAR(3) NOT NULL DEFAULT 'USD',
@@ -826,6 +827,12 @@ function lmeg_default_settings() {
         'store_banner_link'        => '',
         // Store (Beta) weekly low-stock digest to the artist/admin
         'store_lowstock_digest'    => 0,
+        // Store (Beta) flat shipping by zone (Canada / USA / International)
+        'store_ship_zones'         => 0,
+        'store_ship_ca'            => 0,
+        'store_ship_us'            => 0,
+        'store_ship_intl'          => 0,
+        'store_ship_from'          => '',
         'member_cookie_days'       => 30,
         'magic_link_ttl_hours'     => 24,
         'default_post_access'      => 'free', // 'public' | 'free' | 'paid'

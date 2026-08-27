@@ -25,6 +25,46 @@ function lmeg_store_demo_on() {
     return !empty($s['store_demo']);
 }
 
+/** Flat shipping-by-zone (Canada / USA / International) enabled? */
+function lmeg_store_ship_enabled() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    return !empty($s['store_ship_zones']);
+}
+/** Map a country (name or 2-letter code) to a shipping zone. */
+function lmeg_store_ship_zone($country) {
+    $c = strtoupper(trim((string) $country));
+    if ($c === 'CA' || $c === 'CANADA') return 'ca';
+    if ($c === 'US' || $c === 'USA' || $c === 'UNITED STATES' || $c === 'UNITED STATES OF AMERICA') return 'us';
+    return 'intl';
+}
+/** The three zone fees (cents), for display/JS. */
+function lmeg_store_ship_fees() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    return ['ca' => (int) ($s['store_ship_ca'] ?? 0), 'us' => (int) ($s['store_ship_us'] ?? 0), 'intl' => (int) ($s['store_ship_intl'] ?? 0)];
+}
+/** The flat shipping fee (cents) for a destination country. */
+function lmeg_store_ship_fee($country) {
+    $fees = lmeg_store_ship_fees();
+    return (int) $fees[lmeg_store_ship_zone($country)];
+}
+/**
+ * Apply the zone flat fee to a validated cart: put the whole fee on the first
+ * physical line (zero the rest), and set the order shipping/total. No-op unless
+ * zone shipping is on and the cart has a physical item.
+ */
+function lmeg_cart_apply_zone_shipping(&$v, $country) {
+    if (empty($v['zone_shipping']) || empty($v['has_physical'])) return 0;
+    $fee  = lmeg_store_ship_fee($country);
+    $seen = false;
+    foreach ($v['lines'] as $i => $ln) {
+        if (!$seen && !empty($ln['physical'])) { $v['lines'][$i]['lship'] = $fee; $seen = true; }
+        else $v['lines'][$i]['lship'] = 0;
+    }
+    $v['shipping'] = $fee;
+    $v['total']    = (int) $v['subtotal'] + $fee;
+    return $fee;
+}
+
 /**
  * Validate a raw cart (array of ['id','variant','qty','amount']) against the DB.
  * Never trusts client prices — only the pay-what-you-want amount is honoured,
@@ -34,6 +74,7 @@ function lmeg_store_demo_on() {
  */
 function lmeg_cart_validate($raw) {
     $lines = []; $sub = 0; $ship = 0; $cur = ''; $phys = false; $mixed = false; $dropped = 0;
+    $zone = lmeg_store_ship_enabled();   // flat shipping by destination zone
     if (!is_array($raw)) $raw = [];
     foreach ($raw as $it) {
         if (!is_array($it)) { $dropped++; continue; }
@@ -63,7 +104,9 @@ function lmeg_cart_validate($raw) {
         }
 
         $physical = ($p->type === 'physical');
-        $lship    = $physical ? (int) $p->shipping_cents : 0;   // flat per line, qty-independent
+        // Per-product flat shipping, unless zone shipping is on (a single
+        // destination-based fee is applied to the order instead).
+        $lship    = ($physical && !$zone) ? (int) $p->shipping_cents : 0;
         $lcur     = strtoupper($p->currency ?: 'USD');
         if ($cur === '') $cur = $lcur;
         elseif ($lcur !== $cur) $mixed = true;
@@ -76,7 +119,8 @@ function lmeg_cart_validate($raw) {
     }
     if ($cur === '') $cur = 'USD';
     return ['lines' => $lines, 'subtotal' => $sub, 'shipping' => $ship, 'total' => $sub + $ship,
-            'currency' => $cur, 'has_physical' => $phys, 'mixed' => $mixed, 'dropped' => $dropped];
+            'currency' => $cur, 'has_physical' => $phys, 'mixed' => $mixed, 'dropped' => $dropped,
+            'zone_shipping' => ($zone && $phys)];
 }
 
 /** Money formatter shared by the store pages. */
@@ -259,6 +303,7 @@ function lmeg_cart_fulfill_from_session($session) {
     $ship_name = sanitize_text_field($sd['name'] ?? ($stash['ship_name'] ?? ''));
     $ship_addr = lmeg_product_fmt_addr($sd['address'] ?? []) ?: (string) ($stash['ship_addr'] ?? '');
     $discount  = !empty($stash['discount']) ? $stash['discount'] : null;
+    if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $stash['ship_country'] ?? '');
 
     lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount);
     if (function_exists('lmeg_abandoned_mark_recovered')) lmeg_abandoned_mark_recovered($email);
@@ -330,11 +375,18 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
               . '<div style="font-weight:700;white-space:nowrap">' . esc_html($lt) . '</div></div>';
     }
 
+    $zone_ship = !empty($v['zone_shipping']);
+    $ship_row  = '';
+    if ($zone_ship) {
+        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span id="flp-ship">select country ↓</span></div>';
+    } elseif ($v['shipping']) {
+        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span>' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>';
+    }
     $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
         . ($off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
-        . ($v['shipping'] ? '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span>' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>' : '')
-        . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span>' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
+        . $ship_row
+        . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
 
     // Discount-code apply / remove UI.
     if ($disc) {
@@ -352,6 +404,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     // Shipping fields for physical carts.
     $shipfields = '';
     if ($v['has_physical']) {
+        $country_field = $zone_ship ? lmeg_cart_country_select() : lmeg_cart_input('ship_country', 'Country', true);
         $shipfields = '<div style="margin-top:12px;display:grid;gap:9px">'
             . lmeg_cart_input('ship_name', 'Full name', true)
             . lmeg_cart_input('ship_line1', 'Address', true)
@@ -359,7 +412,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
             . '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">'
             . lmeg_cart_input('ship_city', 'City', true) . lmeg_cart_input('ship_region', 'State / Province', false) . '</div>'
             . '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">'
-            . lmeg_cart_input('ship_postal', 'Postal code', true) . lmeg_cart_input('ship_country', 'Country', true) . '</div></div>';
+            . lmeg_cart_input('ship_postal', 'Postal code', true) . $country_field . '</div></div>';
     }
 
     $errhtml = $err ? '<div style="background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#FCA5A5;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px">' . esc_html($err) . '</div>' : '';
@@ -388,6 +441,19 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '</form>'
         . '<a class="home" href="' . esc_url(home_url('/')) . '">← Keep shopping</a>';
 
+    // Live shipping recompute for zone shipping: pick fee from the country.
+    if ($zone_ship) {
+        $fees = lmeg_store_ship_fees();
+        $body .= '<script>(function(){'
+            . 'var FEES=' . wp_json_encode($fees) . ',SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',CUR=' . wp_json_encode($cur) . ';'
+            . 'function money(c){try{return new Intl.NumberFormat(undefined,{style:"currency",currency:CUR}).format(c/100);}catch(e){return "$"+(c/100).toFixed(2);}}'
+            . 'function zone(v){v=(v||"").toUpperCase();if(v==="CA")return"ca";if(v==="US")return"us";return"intl";}'
+            . 'var sel=document.getElementById("flp-country"),shipEl=document.getElementById("flp-ship"),grandEl=document.getElementById("flp-grand");'
+            . 'function upd(){if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF));return;}'
+            . 'var f=FEES[zone(sel.value)]||0;if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f);}'
+            . 'if(sel){sel.addEventListener("change",upd);upd();}})();</script>';
+    }
+
     lmeg_store_page('Checkout', $body, 'Checkout');
 }
 
@@ -395,6 +461,17 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
 function lmeg_cart_input($name, $label, $required) {
     return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '"' . ($required ? ' required' : '')
         . ' style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px">';
+}
+
+/** Country <select> for zone shipping (values are used to pick the zone fee). */
+function lmeg_cart_country_select() {
+    $countries = ['CA' => 'Canada', 'US' => 'United States', 'GB' => 'United Kingdom', 'AU' => 'Australia',
+        'NZ' => 'New Zealand', 'IE' => 'Ireland', 'DE' => 'Germany', 'FR' => 'France', 'NL' => 'Netherlands',
+        'BE' => 'Belgium', 'SE' => 'Sweden', 'NO' => 'Norway', 'DK' => 'Denmark', 'ES' => 'Spain', 'IT' => 'Italy',
+        'CH' => 'Switzerland', 'AT' => 'Austria', 'JP' => 'Japan', 'MX' => 'Mexico', 'BR' => 'Brazil', 'ZZ' => 'Other country'];
+    $opts = '<option value="" disabled selected>Country…</option>';
+    foreach ($countries as $code => $name) $opts .= '<option value="' . esc_attr($code) . '">' . esc_html($name) . '</option>';
+    return '<select name="ship_country" id="flp-country" required style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px">' . $opts . '</select>';
 }
 
 /* ---------------------------------------------------------------------------
@@ -426,6 +503,10 @@ function lmeg_cart_place() {
             'postal_code' => $postal, 'country' => $ctry,
         ]);
     }
+    $ship_country = isset($ctry) ? $ctry : '';
+
+    // Zone flat shipping — set the order's shipping from the destination country.
+    if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $ship_country);
 
     // Discount code — re-validate at place time (it may have expired/hit its cap).
     $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
@@ -462,6 +543,7 @@ function lmeg_cart_place() {
     $token = wp_generate_password(24, false, false);
     set_transient('lmeg_cart_' . $token, [
         'raw' => $raw, 'email' => $email, 'ship_name' => $ship_name, 'ship_addr' => $ship_addr, 'discount' => $disc,
+        'ship_country' => $ship_country,
     ], 2 * HOUR_IN_SECONDS);
 
     // Save the cart so it can be recovered if they don't complete payment.
