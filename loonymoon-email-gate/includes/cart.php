@@ -849,7 +849,22 @@ function lmeg_cart_assets_html() {
     write(c); toast('Added to cart'); open();
   }
 
+  // Add a whole bundle at once (payloads in data-items).
+  function handleAddSet(b){
+    var items; try{items=JSON.parse(b.getAttribute('data-items')||'[]');}catch(_){items=[];}
+    if(!items.length) return;
+    var c=read();
+    items.forEach(function(it){
+      if(!it||!it.id) return;
+      var found=false;
+      for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(it)){ c[k].qty=(+c[k].qty||1)+1; found=true; break; } }
+      if(!found){ it.qty=(+it.qty||1); c.push(it); }
+    });
+    write(c); toast('Set added to cart'); open();
+  }
+
   document.addEventListener('click', function(e){
+    var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); return; }
     var a=e.target.closest('.flp-add'); if(a){ e.preventDefault(); handleAdd(a); return; }
     if(e.target===btn||e.target.closest('#flp-cart-btn')){ render(); open(); return; }
     if(e.target===back||e.target===document.getElementById('flp-cart-x')){ close(); return; }

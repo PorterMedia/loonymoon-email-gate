@@ -954,6 +954,15 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
         <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px">⭐ Featured</div><?php endif; ?>
+        <?php
+        if (!$solo && function_exists('lmeg_bundles_for_product')) {
+            $pbundles = lmeg_bundles_for_product($p->id);
+            if ($pbundles) {
+                $bpct = 0; foreach ($pbundles as $bb) $bpct = max($bpct, (int) $bb->pct);
+                echo '<div style="align-self:flex-start;font-size:11px;font-weight:800;color:#9d2b76;background:#FBE7F2;padding:2px 9px;border-radius:999px;margin-bottom:8px">🎁 Buy the set · save ' . (int) $bpct . '%</div>';
+            }
+        }
+        ?>
         <div style="font-weight:750;font-size:19px;margin-bottom:4px;color:#17141f"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
@@ -1026,6 +1035,7 @@ function lmeg_product_page() {
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
+      <?php if (function_exists('lmeg_bundle_widget_html')) echo lmeg_bundle_widget_html($p); ?>
       <?php
       $share_url = lmeg_product_url($p);
       $share_txt = $p->title . ' — ' . $site;

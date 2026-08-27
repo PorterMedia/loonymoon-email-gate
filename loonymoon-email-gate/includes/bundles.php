@@ -11,10 +11,13 @@ if (!defined('ABSPATH')) exit;
  * bundle fills in when no code is used. Table: lmeg_bundles.
  * ========================================================================== */
 
-/** All active bundles, newest first. */
+/** All active bundles, newest first. Cached per-request (cards call it a lot). */
 function lmeg_bundles_active() {
+    static $cache = null;
+    if ($cache !== null) return $cache;
     global $wpdb;
-    return $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_bundles WHERE active = 1 ORDER BY id DESC");
+    $cache = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_bundles WHERE active = 1 ORDER BY id DESC");
+    return $cache;
 }
 
 /** A bundle row's product ids → clean int list. */
@@ -72,6 +75,110 @@ function lmeg_bundles_for_product($product_id) {
         if (in_array($product_id, lmeg_bundle_ids($b), true)) $out[] = $b;
     }
     return $out;
+}
+
+/**
+ * If a product can be added to the cart in one tap (no size to pick, not
+ * pay-what-you-want, active and in stock), return its client cart-item payload;
+ * otherwise null. Used to decide whether "Add the set" can one-tap the whole
+ * bundle.
+ */
+function lmeg_bundle_quick_item($q) {
+    if (!$q || ($q->status ?? '') !== 'active') return null;
+    if (function_exists('lmeg_product_is_pwyw') && lmeg_product_is_pwyw($q)) return null;
+    $vlist = function_exists('lmeg_product_variants') ? lmeg_product_variants($q) : [];
+    if ($vlist) return null;
+    if (function_exists('lmeg_product_is_available') && !lmeg_product_is_available($q)) return null;
+    $physical = (($q->type ?? '') === 'physical');
+    return [
+        'id'    => (int) $q->id,
+        'slug'  => (string) ($q->slug ?? ''),
+        'title' => (string) ($q->title ?? ''),
+        'cover' => (string) ($q->cover_url ?? ''),
+        'unit'  => (int) $q->price_cents,
+        'cur'   => strtoupper($q->currency ?: 'USD'),
+        'variant' => '',
+        'qty'   => 1,
+        'type'  => (string) ($q->type ?? 'digital'),
+        'ship'  => $physical ? (int) $q->shipping_cents : 0,
+        'pwyw'  => false,
+    ];
+}
+
+/**
+ * "Buy the set & save X%" widget for a product page (dark chrome). Shows the
+ * best bundle this product belongs to, its products as tiles, and — when every
+ * product is one-tap addable — an "Add the set to cart" button that drops the
+ * whole set in the cart so the bundle discount kicks in at checkout. Returns ''
+ * when the product isn't in a usable bundle.
+ */
+function lmeg_bundle_widget_html($p) {
+    if (!$p) return '';
+    $bundles = lmeg_bundles_for_product($p->id);
+    if (!$bundles) return '';
+    usort($bundles, function ($a, $b) { return (int) $b->pct - (int) $a->pct; });   // biggest saving first
+    $b   = $bundles[0];
+    $pct = max(1, min(90, (int) $b->pct));
+
+    // Load the set's products (active only).
+    $prods = [];
+    foreach (lmeg_bundle_ids($b) as $id) {
+        $q = function_exists('lmeg_product_get') ? lmeg_product_get($id) : null;
+        if ($q && $q->status === 'active') $prods[] = $q;
+    }
+    if (count($prods) < 2) return '';
+
+    $fmt = function ($c, $cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur ?: 'USD') : '$' . number_format($c / 100, 2); };
+
+    // One-tap payloads + a fixed-price total (for a concrete "save $X" line).
+    $items = []; $all_quick = true; $base = 0; $all_fixed = true; $cur = 'USD';
+    foreach ($prods as $q) {
+        $cur = strtoupper($q->currency ?: 'USD');
+        $it = lmeg_bundle_quick_item($q);
+        if ($it === null) $all_quick = false; else $items[] = $it;
+        if (function_exists('lmeg_product_is_pwyw') && lmeg_product_is_pwyw($q)) $all_fixed = false;
+        else $base += (int) $q->price_cents;
+    }
+    $can_addall = $all_quick && count($items) === count($prods);
+    $save_cents = $all_fixed ? (int) floor($base * $pct / 100) : 0;
+
+    // Product tiles.
+    $tiles = '';
+    foreach ($prods as $q) {
+        $is_this = ((int) $q->id === (int) $p->id);
+        $price   = lmeg_product_is_pwyw($q) ? 'Name your price' : $fmt($q->price_cents, $q->currency);
+        $img = !empty($q->cover_url)
+            ? '<img src="' . esc_url($q->cover_url) . '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
+            : '<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>';
+        $inner = $img
+            . '<div style="padding:8px 10px">'
+            . '<div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . esc_html($q->title) . '</div>'
+            . '<div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px">' . esc_html($price) . '</div></div>';
+        $ring = $is_this ? 'outline:2px solid #E15FA8;outline-offset:-2px;' : '';
+        $tiles .= $is_this
+            ? '<div style="' . $ring . 'background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">' . $inner . '</div>'
+            : '<a href="' . esc_url(lmeg_product_url($q)) . '" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">' . $inner . '</a>';
+    }
+
+    $head_save = $save_cents > 0
+        ? 'Buy the set &amp; save ' . esc_html($fmt($save_cents, $cur)) . ' <span style="color:#8B90A0;font-weight:600">(' . $pct . '% off)</span>'
+        : 'Buy the set &amp; save ' . $pct . '%';
+
+    $cta = '';
+    if ($can_addall) {
+        $cta = '<button type="button" class="flp-add-set" data-items="' . esc_attr(wp_json_encode($items)) . '" '
+             . 'style="margin-top:14px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:13px;border-radius:11px;font-size:15px;cursor:pointer">'
+             . '🛒 Add the set to cart</button>'
+             . '<div style="margin-top:7px;font-size:12px;color:#8B90A0;text-align:center">The ' . $pct . '% comes off automatically at checkout.</div>';
+    } else {
+        $cta = '<div style="margin-top:12px;font-size:13px;color:#B9BCC9;text-align:center">Add each item to your cart and the ' . $pct . '% comes off automatically at checkout.</div>';
+    }
+
+    return '<div style="width:100%;max-width:720px;margin:26px auto 0;background:linear-gradient(160deg,#1a1526,#141019);border:1px solid rgba(225,95,168,.28);border-radius:16px;padding:20px 22px">'
+        . '<div style="text-align:center;font-weight:800;font-size:17px;color:#fff;margin-bottom:3px">🎁 ' . $head_save . '</div>'
+        . '<div style="text-align:center;color:#9AA0B4;font-size:13px;margin-bottom:16px">' . esc_html($b->title) . '</div>'
+        . '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">' . $tiles . '</div>'
+        . $cta . '</div>';
 }
 
 /* ---------------------------------------------------------------------------
