@@ -24,6 +24,8 @@ function lmeg_store_icon_paths() {
         'arrow-down'    => ['<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>', false],
         'chevron-left'  => ['<polyline points="15 18 9 12 15 6"/>', false],
         'chevron-right' => ['<polyline points="9 18 15 12 9 6"/>', false],
+        'chevron-down'  => ['<polyline points="6 9 12 15 18 9"/>', false],
+        'help'          => ['<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>', false],
         'x'             => ['<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', false],
         'check'         => ['<polyline points="20 6 9 17 4 12"/>', false],
         'check-circle'  => ['<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', false],

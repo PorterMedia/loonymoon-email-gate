@@ -1377,6 +1377,43 @@ function lmeg_size_chart_html($text, $dark = true) {
     return $out;
 }
 
+/* Turn a plain-text FAQ into a collapsible accordion. One "Question | Answer"
+ * per non-empty line (split on the FIRST "|"; a line with no "|" is a heading-
+ * only question with no body). Cells escaped; empty input → ''. $dark picks the
+ * product-page palette. The chevron flips when its <details> is open. */
+function lmeg_faq_html($text, $dark = true) {
+    $text = trim((string) $text);
+    if ($text === '') return '';
+    $items = [];
+    foreach (preg_split('/\r\n|\r|\n/', $text) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $parts = explode('|', $line, 2);
+        $q = trim($parts[0]);
+        $a = isset($parts[1]) ? trim($parts[1]) : '';
+        if ($q === '') continue;
+        $items[] = [$q, $a];
+    }
+    if (!$items) return '';
+    $bd   = $dark ? 'rgba(255,255,255,.1)' : '#e6e6ec';
+    $qtxt = $dark ? '#F4F2F7' : '#17141f';
+    $atxt = $dark ? '#C9CBD6' : '#3a3a44';
+    $mut  = $dark ? '#8B90A0' : '#9A9DB0';
+    $out  = '<style>.flp-faq details>summary::-webkit-details-marker{display:none}.flp-faq details[open] .flp-faq-chev{transform:rotate(180deg)}.flp-faq-chev{transition:transform .18s ease}</style>';
+    $out .= '<div class="flp-faq">';
+    foreach ($items as $it) {
+        $out .= '<details style="border-bottom:1px solid ' . $bd . '">'
+            . '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 2px;font-weight:650;font-size:14px;color:' . $qtxt . '">'
+            . '<span>' . esc_html($it[0]) . '</span>'
+            . '<span class="flp-faq-chev" style="flex:0 0 auto;color:' . $mut . ';display:inline-flex">' . lmeg_store_icon('chevron-down', 16) . '</span>'
+            . '</summary>';
+        if ($it[1] !== '') $out .= '<div style="padding:0 2px 14px;font-size:14px;line-height:1.55;color:' . $atxt . ';white-space:pre-line">' . esc_html($it[1]) . '</div>';
+        $out .= '</details>';
+    }
+    $out .= '</div>';
+    return $out;
+}
+
 function lmeg_product_page() {
     $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
     if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
@@ -1404,6 +1441,12 @@ function lmeg_product_page() {
         <summary style="cursor:pointer;list-style:none;padding:13px 16px;font-weight:700;font-size:14px;color:#F4F2F7;display:flex;align-items:center;justify-content:space-between"><span style="display:inline-flex;align-items:center;gap:7px"><?php echo lmeg_store_icon('ruler', 15); ?>Size guide</span><span style="color:#8B90A0;font-size:12px;font-weight:600">tap to open</span></summary>
         <div style="padding:0 16px 14px;overflow-x:auto"><?php echo $sizeg; ?></div>
       </details>
+      <?php endif; ?>
+      <?php if (!empty($p->faq) && ($faqhtml = lmeg_faq_html($p->faq, true))) : ?>
+      <div style="margin-top:16px">
+        <div style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8B90A0;margin-bottom:4px"><?php echo lmeg_store_icon('help', 14); ?>FAQ</div>
+        <?php echo $faqhtml; ?>
+      </div>
       <?php endif; ?>
       <?php if (function_exists('lmeg_bundle_widget_html')) echo lmeg_bundle_widget_html($p); ?>
       <?php
@@ -1555,6 +1598,7 @@ function lmeg_handle_save_product() {
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
+        'faq'             => sanitize_textarea_field(wp_unslash($_POST['faq'] ?? '')),
         'price_cents'     => max(0, $to_cents($_POST['price'] ?? 0)),
         'compare_at_cents' => max(0, $to_cents($_POST['compare_at'] ?? 0)),
         'min_price_cents' => !empty($_POST['pwyw']) ? max(0, $to_cents($_POST['min_price'] ?? 0)) : 0,
@@ -2262,6 +2306,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Featured</label></th><td><label><input type="checkbox" name="featured" value="1" <?php checked(!empty($p->featured)); ?>> Pin to the top of your shop</label><p class="description">Featured products show first in <code>[fanloop_store]</code> and get a ⭐ Featured badge.</p></td></tr>
                 <tr><th><label>Tags <span style="color:#888;font-weight:400">/ category</span></label></th><td><input type="text" name="tags" value="<?php echo esc_attr(implode(', ', lmeg_product_tags($p))); ?>" placeholder="Vinyl, Apparel, Limited" style="width:100%;max-width:420px"><p class="description">Comma-separated. Fans can filter your shop by these — filter chips appear in <code>[fanloop_store]</code> when any product has tags. e.g. <em>Vinyl, Apparel, Digital, Merch, Limited</em>. Up to 12 tags.</p></td></tr>
                 <tr><th><label>Size guide <span style="color:#888;font-weight:400">/ measurements</span></label></th><td><textarea name="size_chart" class="large-text" rows="4" placeholder="Size | Chest | Length&#10;S | 18 in | 27 in&#10;M | 20 in | 28 in&#10;L | 22 in | 29 in"><?php echo esc_textarea($p->size_chart ?? ''); ?></textarea><p class="description">Optional. One row per line, columns separated by <code>|</code>. The <strong>first line is the header</strong>. Shows as a collapsible “📏 Size guide” table on the product page. Leave blank to hide. Great for apparel.</p></td></tr>
+                <tr><th><label>FAQ <span style="color:#888;font-weight:400">/ questions</span></label></th><td><textarea name="faq" class="large-text" rows="4" placeholder="When will it ship? | Orders go out within 3–5 business days.&#10;What's your return policy? | Unopened items can be returned within 30 days.&#10;Is this a pre-order?"><?php echo esc_textarea($p->faq ?? ''); ?></textarea><p class="description">Optional. One question per line as <code>Question | Answer</code> (split on the first <code>|</code>). Shows as a collapsible FAQ accordion on the product page. Leave blank to hide.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
