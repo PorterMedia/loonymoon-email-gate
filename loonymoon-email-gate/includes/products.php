@@ -1164,6 +1164,46 @@ function lmeg_handle_export_orders() {
     exit;
 }
 
+/**
+ * Getting-started checklist for the Store admin. Returns '' once every step is
+ * done (so it disappears when the shop is set up). Steps are derived from state:
+ * payment connected, a live product, the storefront placed on a page, a sale made.
+ */
+function lmeg_store_checklist_html($units) {
+    global $wpdb;
+    $keys   = function_exists('lmeg_stripe_keys') ? lmeg_stripe_keys() : [];
+    $pay    = !empty($keys['sk']) || (function_exists('lmeg_square_ready') && lmeg_square_ready());
+    $prod   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_products WHERE status='active'") > 0;
+    $placed = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status='publish' AND (post_content LIKE '%[fanloop_store%' OR post_content LIKE '%[fanloop_product%' OR post_content LIKE '%[loony_store%' OR post_content LIKE '%[loony_product%')") > 0;
+    $sale   = ((int) $units) > 0;
+
+    $steps = [
+        ['ok' => $pay,    'label' => 'Connect a payment processor', 'hint' => 'Stripe or Square — that\'s where the money lands.',       'link' => admin_url('admin.php?page=lmeg-settings#payments'), 'cta' => 'Connect'],
+        ['ok' => $prod,   'label' => 'Add your first product',       'hint' => 'A single, a bundle, some merch — or edit a sample.',      'link' => admin_url('admin.php?page=lmeg-products&new=1'),     'cta' => 'New product'],
+        ['ok' => $placed, 'label' => 'Put your shop on a page',      'hint' => 'Paste <code>[fanloop_store]</code> into any page or post.', 'link' => '',                                                'cta' => ''],
+        ['ok' => $sale,   'label' => 'Make a test sale',            'hint' => 'Flip on Demo checkout to walk the whole flow for free.', 'link' => admin_url('admin.php?page=lmeg-settings#payments'), 'cta' => 'Enable demo'],
+    ];
+    $done = 0; foreach ($steps as $s) if ($s['ok']) $done++;
+    if ($done >= count($steps)) return '';
+
+    $rows = '';
+    foreach ($steps as $s) {
+        $mark = $s['ok']
+            ? '<span style="color:#34D399;font-weight:800">✓</span>'
+            : '<span style="display:inline-block;width:14px;height:14px;border:2px solid #6C6F82;border-radius:50%"></span>';
+        $cta = (!$s['ok'] && $s['link'] && $s['cta']) ? ' <a href="' . esc_url($s['link']) . '" style="color:#E7A6CF;text-decoration:none;font-weight:600;white-space:nowrap">' . esc_html($s['cta']) . ' →</a>' : '';
+        $rows .= '<div style="display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.06)">'
+            . '<div style="flex:0 0 16px;margin-top:2px;text-align:center">' . $mark . '</div>'
+            . '<div style="flex:1"><div style="font-weight:650;color:' . ($s['ok'] ? '#8B90A0' : '#F4F5F7') . '">' . esc_html($s['label']) . $cta . '</div>'
+            . '<div style="font-size:12px;color:#8B90A0;margin-top:1px">' . $s['hint'] . '</div></div></div>';
+    }
+    $pct = (int) round($done / count($steps) * 100);
+    return '<div style="max-width:640px;margin:14px 0 20px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;color:#F4F5F7">'
+        . '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><strong style="font-size:15px">Get your shop live</strong><span style="color:#8B90A0;font-size:13px">' . $done . ' of ' . count($steps) . '</span></div>'
+        . '<div style="height:6px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:' . $pct . '%;background:linear-gradient(90deg,#E15FA8,#8A6CF6)"></div></div>'
+        . $rows . '</div>';
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -1375,6 +1415,7 @@ function lmeg_admin_products() {
     $has_samples = false;
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
     if ($has_samples) echo '<div class="notice notice-info inline" style="margin:0 0 18px;max-width:840px"><p>👋 We added a few <strong>sample products</strong> to get you started — they are <strong>Drafts</strong>, so fans can\'t see them yet. Edit one to make it yours (and set it <em>Active</em> to sell it), or delete them.</p></div>';
+    echo lmeg_store_checklist_html($units);
     ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:980px;margin-bottom:14px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue · 30d trend</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($rev)); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($revdaily, ['color' => '#E15FA8', 'uid' => 'store-rev', 'h' => 44, 'suffix' => ' USD']) : '<div class="lmeg-stat__hint">before processor fees</div>'; ?></div>

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.93.0
+Stable tag: 2.94.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 2.94.0 =
+* Store (Beta): a getting-started checklist. Until your shop is live, the Store screen shows a short checklist with progress — connect a payment processor, add a product, put the shop on a page, make a test sale — with one-tap links for each. It disappears automatically once everything is done.
+
 = 2.93.0 =
 * Store (Beta): pre-orders. Give a product a future "Pre-order until" date and fans can buy it now — the card shows "Pre-order · available <date>" and the receipt confirms the pre-order (no download is sent yet for digital). On release day, upload the file and click "Send downloads to buyers" to email everyone their download; physical pre-orders ship when you are ready. Works in the cart and single Buy-now.
 
