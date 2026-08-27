@@ -1326,6 +1326,28 @@ function lmeg_product_page() {
       </div>
     </div>
     <?php endif; ?>
+    <?php
+    // Recently viewed — filled client-side from localStorage (excludes this product), then records this one.
+    $rv_cur = wp_json_encode([
+        'id'    => (int) $p->id,
+        'title' => (string) $p->title,
+        'cover' => (string) ($p->cover_url ?: ''),
+        'url'   => (string) lmeg_product_url($p),
+        'price' => lmeg_product_is_pwyw($p) ? 'Name your price'
+                 : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $p->price_cents, $p->currency ?: 'USD') : '$' . number_format($p->price_cents / 100, 2)),
+    ]);
+    ?>
+    <div id="flp-recent" style="display:none;width:100%;max-width:720px;margin:34px auto 0"></div>
+    <script>(function(){var KEY="fanloop_recent",CUR=<?php echo $rv_cur; ?>,CAP=8;
+    function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+    var list=[];try{list=JSON.parse(localStorage.getItem(KEY))||[];}catch(e){}if(!Array.isArray(list))list=[];
+    var others=list.filter(function(i){return i&&i.id!=CUR.id;}).slice(0,CAP);
+    var wrap=document.getElementById("flp-recent");
+    if(wrap&&others.length){var h='<div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">Recently viewed</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">';
+    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
+    h+="</div>";wrap.innerHTML=h;wrap.style.display="";}
+    list=list.filter(function(i){return i&&i.id!=CUR.id;});list.unshift(CUR);list=list.slice(0,CAP);
+    try{localStorage.setItem(KEY,JSON.stringify(list));}catch(e){}})();</script>
     <?php echo lmeg_product_sticky_bar_html($p); ?>
     <?php if (function_exists('lmeg_cart_assets_html')) echo lmeg_cart_assets_html(); ?>
     </body></html><?php

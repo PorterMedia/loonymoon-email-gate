@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.34.0
+Stable tag: 3.35.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.35.0 =
+* Store (Beta): "Recently viewed" on product pages. As a fan browses, each product page now shows a "Recently viewed" strip of the items they looked at before (newest first, up to 8), so it's easy to hop back and compare. It's kept in the fan's own browser only — nothing is tracked server-side — and the current product is never shown in its own strip.
+
 = 3.34.0 =
 * Store (Beta): "On sale" filter. When any product is on sale, an "On sale" chip appears in [fanloop_store] so fans can show just the deals in one tap. Works alongside search, sort, tags and the in-stock toggle, and is remembered across reloads. Only shows when something's actually on sale.
 
