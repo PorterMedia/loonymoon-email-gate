@@ -1985,6 +1985,126 @@ function lmeg_admin_pct_chip($cur, $prev, $suffix = '') {
         : $wrap('#DC2626', '#FEE2E2', '▼ ' . abs($pct) . '%');
 }
 
+/* Per-product stock analysis (pure). Handles product-level stock (stock>=0,
+ * remaining = stock - sold) and per-variant remaining (variant_stock JSON via
+ * lmeg_product_variants). 'remaining' is the min across whatever is tracked
+ * (drives urgency); 'on_hand' is units in stock for inventory totals (variant
+ * sum when variant-tracked, else product remaining). Untracked → tracked=false. */
+function lmeg_product_remaining($p) {
+    $product_tracked = ((int) $p->stock >= 0);
+    $prem = $product_tracked ? ((int) $p->stock - (int) $p->sold) : null;
+    $vars = []; $vtracked = false;
+    if (function_exists('lmeg_product_variants')) {
+        foreach (lmeg_product_variants($p) as $v) {
+            if ($v['stock'] !== null) { $vtracked = true; $vars[] = ['name' => $v['name'], 'remaining' => (int) $v['stock']]; }
+        }
+    }
+    $cands = [];
+    if ($product_tracked) $cands[] = (int) $prem;
+    foreach ($vars as $v) $cands[] = $v['remaining'];
+    $min = $cands ? min($cands) : null;
+    if ($vtracked)            { $on_hand = 0; foreach ($vars as $v) $on_hand += max(0, $v['remaining']); }
+    elseif ($product_tracked) { $on_hand = max(0, (int) $prem); }
+    else                      { $on_hand = 0; }
+    return [
+        'tracked'           => ($product_tracked || $vtracked),
+        'product_tracked'   => $product_tracked,
+        'variant_tracked'   => $vtracked,
+        'remaining'         => $min,
+        'product_remaining' => $prem,
+        'variants'          => $vars,
+        'on_hand'           => $on_hand,
+    ];
+}
+
+/* Aggregate stock report (pure). Classifies tracked products into out-of-stock
+ * (remaining<=0) and running-low (0<remaining<=threshold), most-urgent first,
+ * and totals units on hand + inventory value per currency. Untracked products
+ * are skipped. */
+function lmeg_products_lowstock($rows, $threshold = 5) {
+    $threshold = max(0, (int) $threshold);
+    $out = []; $low = []; $tracked = 0; $units = 0; $value = [];
+    foreach ((array) $rows as $p) {
+        $st = lmeg_product_remaining($p);
+        if (!$st['tracked']) continue;
+        $tracked++;
+        $units += (int) $st['on_hand'];
+        $cur = strtoupper((!empty($p->currency)) ? $p->currency : 'USD');
+        if (!isset($value[$cur])) $value[$cur] = 0;
+        $value[$cur] += (int) $st['on_hand'] * (int) $p->price_cents;
+        $rem  = (int) $st['remaining'];
+        $item = ['p' => $p, 'remaining' => $rem, 'on_hand' => (int) $st['on_hand'], 'variants' => $st['variants'], 'product_remaining' => $st['product_remaining'], 'variant_tracked' => $st['variant_tracked']];
+        if ($rem <= 0)              $out[] = $item;
+        elseif ($rem <= $threshold) $low[] = $item;
+    }
+    $sorter = function ($a, $b) {
+        if ($a['remaining'] === $b['remaining']) return strcasecmp((string) $a['p']->title, (string) $b['p']->title);
+        return $a['remaining'] - $b['remaining'];
+    };
+    usort($out, $sorter); usort($low, $sorter);
+    return ['out' => $out, 'low' => $low, 'tracked' => $tracked, 'units' => $units, 'value' => $value, 'threshold' => $threshold];
+}
+
+/* Render the inventory / low-stock card for the Store admin (light surface). */
+function lmeg_admin_lowstock_html($rows, $threshold = 5) {
+    $rep = lmeg_products_lowstock($rows, $threshold);
+    if ($rep['tracked'] === 0) return '';   // no tracked inventory at all — nothing useful to show
+    $fmt = function ($cents, $cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $cents, $cur) : ('$' . number_format($cents / 100, 2)); };
+
+    $vchips = function ($item) use ($threshold) {
+        if (empty($item['variant_tracked']) || !$item['variants']) return '';
+        $out = '';
+        foreach ($item['variants'] as $v) {
+            $r = (int) $v['remaining'];
+            if ($r <= 0)          { $c = '#B91C1C'; $bg = '#FEE2E2'; }
+            elseif ($r <= $threshold) { $c = '#92400E'; $bg = '#FEF3C7'; }
+            else                  { $c = '#3f6212'; $bg = '#ECFCCB'; }
+            $out .= '<span style="display:inline-block;font-size:11px;font-weight:700;color:' . $c . ';background:' . $bg . ';padding:1px 7px;border-radius:999px;margin:2px 4px 0 0">' . esc_html($v['name']) . ': ' . $r . '</span>';
+        }
+        return '<div style="margin-top:3px">' . $out . '</div>';
+    };
+    $row = function ($item, $accent) use ($fmt, $vchips) {
+        $p = $item['p'];
+        $cur = !empty($p->currency) ? $p->currency : 'USD';
+        $url = admin_url('admin.php?page=lmeg-products&edit=' . (int) $p->id);
+        $draft = (isset($p->status) && $p->status === 'draft') ? ' <span style="font-size:11px;color:#6b6b78;background:#eef0f4;padding:1px 7px;border-radius:999px">draft</span>' : '';
+        $rem = (int) $item['remaining'];
+        $label = $rem <= 0 ? 'Out' : ($rem . ' left');
+        return '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid #f0f0f2">'
+            . '<div style="min-width:0"><a href="' . esc_url($url) . '" style="font-weight:600;color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' . $draft
+            . '<span style="color:#8a8a94;font-size:12px"> · ' . esc_html($fmt((int) $p->price_cents, $cur)) . ($item['on_hand'] ? ' · ' . (int) $item['on_hand'] . ' on hand' : '') . '</span>'
+            . $vchips($item) . '</div>'
+            . '<span style="flex:0 0 auto;font-weight:800;font-size:13px;color:' . $accent . ';white-space:nowrap">' . esc_html($label) . '</span></div>';
+    };
+
+    // Summary line.
+    $vals = [];
+    foreach ($rep['value'] as $cur => $cents) if ($cents > 0) $vals[] = $fmt($cents, $cur);
+    $summary = number_format_i18n($rep['tracked']) . ' tracked product' . ($rep['tracked'] === 1 ? '' : 's')
+        . ' · ' . number_format_i18n($rep['units']) . ' unit' . ($rep['units'] === 1 ? '' : 's') . ' on hand'
+        . ($vals ? ' · value ≈ ' . implode(' + ', array_map('esc_html', $vals)) : '');
+
+    $body = '';
+    if (!$rep['out'] && !$rep['low']) {
+        $body = '<div style="padding:10px 0 2px;color:#3f6212;font-weight:600">✅ Every tracked product is above the low-stock threshold (' . (int) $rep['threshold'] . ' or fewer).</div>';
+    } else {
+        if ($rep['out']) {
+            $body .= '<div style="margin-top:8px;font-weight:800;color:#B91C1C;font-size:13px">⛔ Out of stock (' . count($rep['out']) . ')</div>';
+            foreach ($rep['out'] as $it) $body .= $row($it, '#B91C1C');
+        }
+        if ($rep['low']) {
+            $body .= '<div style="margin-top:12px;font-weight:800;color:#92400E;font-size:13px">⚠️ Running low — ' . (int) $rep['threshold'] . ' or fewer (' . count($rep['low']) . ')</div>';
+            foreach ($rep['low'] as $it) $body .= $row($it, '#92400E');
+        }
+    }
+
+    return '<div style="max-width:980px;margin:0 0 20px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px">'
+        . '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">'
+        . '<div style="font-weight:700;color:#17141f">📦 Inventory</div>'
+        . '<div style="color:#50575e;font-size:12px">' . $summary . '</div></div>'
+        . $body . '</div>';
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -2263,6 +2383,7 @@ function lmeg_admin_products() {
         <div class="lmeg-stat"><div class="lmeg-stat__label">Orders · 7d</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders7); ?></div><div><?php echo lmeg_admin_pct_chip($orders7, $ordersprev7, 'vs prev 7d'); ?></div><?php if (!$orders7) : ?><div class="lmeg-stat__hint">this week</div><?php endif; ?></div>
     </div>
     <?php echo lmeg_admin_top_products_html($topn, $fmtc); ?>
+    <?php echo lmeg_admin_lowstock_html($rows); ?>
     <table class="widefat striped">
         <thead><tr><th>Product</th><th>Type</th><th>Price</th><th>Payment</th><th>Sold</th><th>Downloads</th><th>Status</th><th></th></tr></thead>
         <tbody>

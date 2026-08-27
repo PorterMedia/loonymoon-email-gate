@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.40.0
+Stable tag: 3.41.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.41.0 =
+* Store (Beta): inventory / low-stock report. The Store admin now shows an "📦 Inventory" panel at a glance — how many products you're tracking, total units on hand, and the value of that stock — plus two lists that sort themselves most-urgent first: "Out of stock" and "Running low" (5 or fewer left). It understands per-size stock too, so a hoodie shows a chip per size (S: 0, M: 2, L: 20) and flags the whole product the moment any size runs out. Click any product to restock it. Untracked (unlimited) products are ignored.
+
 = 3.40.0 =
 * Store (Beta): product image lightbox. On a product page with more than one photo, tapping the main image now opens it full-screen in a zoom viewer — swipe through every photo with the ‹ › arrows or your keyboard, see a "2 / 3" position counter, and close with ✕, the arrow keys' Esc, or a tap on the backdrop. The thumbnail strip still switches the main image, and the viewer opens on whichever photo you're looking at. Buyers can finally see the details up close.
 
