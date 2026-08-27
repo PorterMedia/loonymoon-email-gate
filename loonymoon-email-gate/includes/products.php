@@ -1122,6 +1122,45 @@ function lmeg_product_sticky_bar_html($p) {
     return ob_get_clean();
 }
 
+/**
+ * Open Graph / Twitter / product meta tags for a product page, so shared links
+ * unfurl with a title, image, price and availability. Returns a block of
+ * <meta> tags. All values escaped.
+ */
+function lmeg_product_meta_tags($p) {
+    $site  = get_bloginfo('name');
+    $url   = function_exists('lmeg_product_url') ? lmeg_product_url($p) : home_url('/');
+    $cur   = strtoupper($p->currency ?: 'USD');
+    $pwyw  = function_exists('lmeg_product_is_pwyw') && lmeg_product_is_pwyw($p);
+    $avail = (function_exists('lmeg_product_is_available') && !lmeg_product_is_available($p)) ? 'oos' : 'instock';
+    $desc  = trim((string) $p->description);
+    if ($desc === '') $desc = $p->title . ($pwyw ? '' : ' — ' . (function_exists('lmeg_format_price') ? lmeg_format_price((int) $p->price_cents, $cur) : '$' . number_format($p->price_cents / 100, 2)));
+
+    $m  = '<meta property="og:type" content="product">' . "\n";
+    $m .= '<meta property="og:site_name" content="' . esc_attr($site) . '">' . "\n";
+    $m .= '<meta property="og:title" content="' . esc_attr($p->title) . '">' . "\n";
+    $m .= '<meta property="og:url" content="' . esc_url($url) . '">' . "\n";
+    $m .= '<meta name="description" content="' . esc_attr($desc) . '">' . "\n";
+    $m .= '<meta property="og:description" content="' . esc_attr($desc) . '">' . "\n";
+    if (!$pwyw) {
+        $amount = number_format($p->price_cents / 100, 2, '.', '');
+        $m .= '<meta property="product:price:amount" content="' . esc_attr($amount) . '">' . "\n";
+        $m .= '<meta property="product:price:currency" content="' . esc_attr($cur) . '">' . "\n";
+        $m .= '<meta property="og:price:amount" content="' . esc_attr($amount) . '">' . "\n";
+        $m .= '<meta property="og:price:currency" content="' . esc_attr($cur) . '">' . "\n";
+    }
+    $m .= '<meta property="product:availability" content="' . ($avail === 'oos' ? 'out of stock' : 'in stock') . '">' . "\n";
+    $has_img = !empty($p->cover_url) && filter_var($p->cover_url, FILTER_VALIDATE_URL);
+    if ($has_img) {
+        $m .= '<meta property="og:image" content="' . esc_url($p->cover_url) . '">' . "\n";
+        $m .= '<meta name="twitter:image" content="' . esc_url($p->cover_url) . '">' . "\n";
+    }
+    $m .= '<meta name="twitter:card" content="' . ($has_img ? 'summary_large_image' : 'summary') . '">' . "\n";
+    $m .= '<meta name="twitter:title" content="' . esc_attr($p->title) . '">' . "\n";
+    $m .= '<meta name="twitter:description" content="' . esc_attr($desc) . '">' . "\n";
+    return $m;
+}
+
 function lmeg_product_page() {
     $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
     if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
@@ -1130,9 +1169,7 @@ function lmeg_product_page() {
     $site = get_bloginfo('name');
     ?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title><?php echo esc_html($p->title . ' · ' . $site); ?></title>
-    <meta property="og:title" content="<?php echo esc_attr($p->title); ?>">
-    <?php if (!empty($p->description)) : ?><meta name="description" content="<?php echo esc_attr($p->description); ?>"><meta property="og:description" content="<?php echo esc_attr($p->description); ?>"><?php endif; ?>
-    <?php if (!empty($p->cover_url)) : ?><meta property="og:image" content="<?php echo esc_url($p->cover_url); ?>"><?php endif; ?>
+    <?php echo lmeg_product_meta_tags($p); ?>
     <style>
       *{box-sizing:border-box;margin:0}body{background:#0B0C12;color:#F4F2F7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px}
       .wrap{width:100%;max-width:440px}
