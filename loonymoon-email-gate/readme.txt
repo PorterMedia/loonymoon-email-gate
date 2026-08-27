@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.38.0
+Stable tag: 3.39.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.39.0 =
+* Store (Beta): per-product size guide. Add a size chart to any product (Store → edit product → "Size guide") — one row per line with columns separated by "|", first line is the header. It shows on the product page as a tidy, collapsible "📏 Size guide" table (styled for the dark product page), and stays hidden when left blank. Perfect for apparel and anything where fit matters, so buyers pick the right size the first time.
+
 = 3.38.0 =
 * Store (Beta): bulk order actions. The Orders screen now has a checkbox on every order (plus a select-all in the header). Tick a few and a bar appears: "Mark shipped" fulfils all of them at once and emails those buyers (with an optional carrier), and "Export selected (CSV)" downloads just the orders you picked — date, buyer, address, items, total, tax, status and tracking. Marking shipped is safe to repeat: already-shipped orders are skipped. Per-order Ship / Resend / Slip / Refund are unchanged.
 

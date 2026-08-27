@@ -1270,6 +1270,40 @@ function lmeg_product_meta_tags($p) {
     return $m;
 }
 
+/* Turn a plain-text size chart into an HTML table. One row per non-empty line,
+ * cells split on "|", the first row is the header. Returns '' when empty. Cells
+ * are escaped. $dark picks the on-brand dark-page palette (product page) vs a
+ * light palette (admin preview). */
+function lmeg_size_chart_html($text, $dark = true) {
+    $text = trim((string) $text);
+    if ($text === '') return '';
+    $rows = [];
+    foreach (preg_split('/\r\n|\r|\n/', $text) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $rows[] = array_map('trim', explode('|', $line));
+    }
+    if (!$rows) return '';
+    $ncol = 0; foreach ($rows as $r) $ncol = max($ncol, count($r));
+    $bd   = $dark ? 'rgba(255,255,255,.14)' : '#e2e2e8';
+    $htxt = $dark ? '#F4F2F7' : '#17141f';
+    $hbg  = $dark ? 'rgba(255,255,255,.06)' : '#f5f4f8';
+    $btxt = $dark ? '#C9CBD6' : '#3a3a44';
+    $head = array_shift($rows);
+    $cell = 'padding:7px 12px;border:1px solid ' . $bd . ';text-align:left;font-size:13px';
+    $out  = '<table class="flp-sizes" style="border-collapse:collapse;width:100%;margin:2px 0 4px">';
+    $out .= '<thead><tr>';
+    for ($i = 0; $i < $ncol; $i++) $out .= '<th style="' . $cell . ';font-weight:700;color:' . $htxt . ';background:' . $hbg . '">' . esc_html($head[$i] ?? '') . '</th>';
+    $out .= '</tr></thead><tbody>';
+    foreach ($rows as $r) {
+        $out .= '<tr>';
+        for ($i = 0; $i < $ncol; $i++) $out .= '<td style="' . $cell . ';color:' . $btxt . '">' . esc_html($r[$i] ?? '') . '</td>';
+        $out .= '</tr>';
+    }
+    $out .= '</tbody></table>';
+    return $out;
+}
+
 function lmeg_product_page() {
     $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
     if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
@@ -1292,6 +1326,12 @@ function lmeg_product_page() {
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
+      <?php if (!empty($p->size_chart) && ($sizeg = lmeg_size_chart_html($p->size_chart, true))) : ?>
+      <details class="flp-sizeguide" style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden">
+        <summary style="cursor:pointer;list-style:none;padding:13px 16px;font-weight:700;font-size:14px;color:#F4F2F7;display:flex;align-items:center;justify-content:space-between">📏 Size&nbsp;guide<span style="color:#8B90A0;font-size:12px;font-weight:600">tap to open</span></summary>
+        <div style="padding:0 16px 14px;overflow-x:auto"><?php echo $sizeg; ?></div>
+      </details>
+      <?php endif; ?>
       <?php if (function_exists('lmeg_bundle_widget_html')) echo lmeg_bundle_widget_html($p); ?>
       <?php
       $share_url = lmeg_product_url($p);
@@ -1441,6 +1481,7 @@ function lmeg_handle_save_product() {
         'description'     => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
+        'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
         'price_cents'     => max(0, $to_cents($_POST['price'] ?? 0)),
         'compare_at_cents' => max(0, $to_cents($_POST['compare_at'] ?? 0)),
         'min_price_cents' => !empty($_POST['pwyw']) ? max(0, $to_cents($_POST['min_price'] ?? 0)) : 0,
@@ -2027,6 +2068,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Pre-order until</label></th><td><input type="date" name="preorder_at" value="<?php echo esc_attr(!empty($p->preorder_at) ? date('Y-m-d', strtotime($p->preorder_at)) : ''); ?>"><p class="description">Optional. Set a future release date to sell it as a <strong>pre-order</strong> — fans buy now and it shows “Available &lt;date&gt;”. Digital pre-orders don’t send a download until you release it (upload the file, then use “Send downloads to buyers”); physical pre-orders ship when you’re ready. Leave blank for a normal product.</p></td></tr>
                 <tr><th><label>Featured</label></th><td><label><input type="checkbox" name="featured" value="1" <?php checked(!empty($p->featured)); ?>> Pin to the top of your shop</label><p class="description">Featured products show first in <code>[fanloop_store]</code> and get a ⭐ Featured badge.</p></td></tr>
                 <tr><th><label>Tags <span style="color:#888;font-weight:400">/ category</span></label></th><td><input type="text" name="tags" value="<?php echo esc_attr(implode(', ', lmeg_product_tags($p))); ?>" placeholder="Vinyl, Apparel, Limited" style="width:100%;max-width:420px"><p class="description">Comma-separated. Fans can filter your shop by these — filter chips appear in <code>[fanloop_store]</code> when any product has tags. e.g. <em>Vinyl, Apparel, Digital, Merch, Limited</em>. Up to 12 tags.</p></td></tr>
+                <tr><th><label>Size guide <span style="color:#888;font-weight:400">/ measurements</span></label></th><td><textarea name="size_chart" class="large-text" rows="4" placeholder="Size | Chest | Length&#10;S | 18 in | 27 in&#10;M | 20 in | 28 in&#10;L | 22 in | 29 in"><?php echo esc_textarea($p->size_chart ?? ''); ?></textarea><p class="description">Optional. One row per line, columns separated by <code>|</code>. The <strong>first line is the header</strong>. Shows as a collapsible “📏 Size guide” table on the product page. Leave blank to hide. Great for apparel.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
