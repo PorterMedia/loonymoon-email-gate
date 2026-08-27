@@ -946,10 +946,19 @@ function lmeg_shortcode_store($atts) {
             . 'else arr=orig.filter(function(c){return vis.indexOf(c)>=0;});'
             . 'cards.forEach(function(c){c.style.display="none";});arr.forEach(function(c){c.style.display="";grid.appendChild(c);});'
             . 'if(none)none.style.display=arr.length?"none":"";'
-            . 'if(countEl)countEl.textContent=(arr.length===total)?(total+" item"+(total===1?"":"s")):(arr.length+" of "+total);}'
+            . 'if(countEl)countEl.textContent=(arr.length===total)?(total+" item"+(total===1?"":"s")):(arr.length+" of "+total);save();}'
+            . 'var SKEY="fanloop_store_filters";'
+            . 'function save(){try{localStorage.setItem(SKEY,JSON.stringify({q:q?q.value:"",sort:sort?sort.value:"",tag:activeTag(),stock:inStock()}));}catch(e){}}'
+            . 'function restore(){var s;try{s=JSON.parse(localStorage.getItem(SKEY)||"null");}catch(e){s=null;}if(!s)return false;var did=false;'
+            . 'if(q&&typeof s.q==="string"&&s.q){q.value=s.q;did=true;}'
+            . 'if(sort&&s.sort){var ok=false;[].forEach.call(sort.options,function(o){if(o.value===s.sort)ok=true;});if(ok){sort.value=s.sort;did=true;}}'
+            . 'if(typeof s.tag==="string"&&s.tag&&tagBtns.length){var f=null;tagBtns.forEach(function(b){if((b.getAttribute("data-tag")||"")===s.tag)f=b;});if(f){tagBtns.forEach(function(b){b.classList.remove("is-active");});f.classList.add("is-active");did=true;}}'
+            . 'if(s.stock&&stockBtn){stockBtn.classList.add("is-active");stockBtn.setAttribute("aria-pressed","true");did=true;}'
+            . 'return did;}'
             . 'tagBtns.forEach(function(b){b.addEventListener("click",function(){tagBtns.forEach(function(x){x.classList.remove("is-active");});b.classList.add("is-active");apply();});});'
             . 'if(stockBtn)stockBtn.addEventListener("click",function(){stockBtn.classList.toggle("is-active");stockBtn.setAttribute("aria-pressed",stockBtn.classList.contains("is-active")?"true":"false");apply();});'
-            . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);})();</script>';
+            . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);'
+            . 'if(restore())apply();})();</script>';
     }
     return $out;
 }
