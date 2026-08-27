@@ -852,9 +852,15 @@ function lmeg_cart_assets_html() {
 <aside id="flp-qv" hidden aria-label="Quick view"><button type="button" id="flp-qv-x" aria-label="Close"><?php echo lmeg_store_icon('x', 16); ?></button><div id="flp-qv-body"></div></aside>
 <style>
   #flp-cart-btn{position:fixed;right:20px;bottom:20px;z-index:99998;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;border:0;font-weight:800;font-size:15px;padding:13px 18px;border-radius:999px;cursor:pointer;box-shadow:0 12px 34px rgba(138,108,246,.4);display:flex;align-items:center;gap:8px}
+  #flp-cart-btn[hidden]{display:none}
   #flp-cart-btn #flp-cart-count{background:#0B0C12;color:#fff;min-width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;padding:0 6px}
   #flp-cart-back{position:fixed;inset:0;background:rgba(6,7,12,.62);z-index:99998;backdrop-filter:blur(2px)}
   #flp-cart-panel{position:fixed;top:0;right:0;height:100%;width:min(390px,92vw);z-index:99999;background:#12141F;color:#F4F2F7;box-shadow:-24px 0 70px rgba(0,0,0,.5);display:flex;flex-direction:column;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;transform:translateX(0)}
+  /* The panel/backdrop set display, which overrides the plain [hidden] UA rule —
+     re-assert display:none for the hidden state so the drawer is truly closed by
+     default and close() works without relying on the host theme's reset. */
+  #flp-cart-panel[hidden],#flp-cart-back[hidden]{display:none}
+  .flp-lb[hidden]{display:none!important}   /* the gallery lightbox sets display:flex inline */
   #flp-cart-panel .flp-cart-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);font-size:17px}
   #flp-cart-x{background:0;border:0;color:#9AA0B4;font-size:18px;cursor:pointer}
   #flp-cart-items{flex:1;overflow:auto;padding:6px 20px}
