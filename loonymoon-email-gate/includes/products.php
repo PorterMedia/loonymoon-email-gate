@@ -741,6 +741,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
+          <?php if (function_exists('lmeg_waitlist_form_html') && $p->status === 'active') echo lmeg_waitlist_form_html($p); ?>
         <?php elseif ($needs_form) : ?>
           <form method="get" action="<?php echo esc_url(home_url('/')); ?>" style="display:flex;flex-direction:column;gap:9px">
             <input type="hidden" name="lmeg_buy" value="<?php echo (int) $p->id; ?>">
@@ -1228,6 +1229,25 @@ function lmeg_admin_products() {
             <p class="description">Embed on any page: <code>[fanloop_product id=<?php echo (int) $p->id; ?>]</code> &nbsp;·&nbsp; whole shop: <code>[fanloop_store]</code></p>
             <?php endif; ?>
         </form>
+        <?php
+        // Sold-out waitlist for this product.
+        if ($p->id && function_exists('lmeg_waitlist_count')) {
+            $wl = lmeg_waitlist_count($p->id);
+            if (isset($_GET['notified_wl'])) echo '<div class="notice notice-success is-dismissible"><p>Notified ' . (int) $_GET['notified_wl'] . ' waiting fan' . ((int) $_GET['notified_wl'] === 1 ? '' : 's') . '.</p></div>';
+            if ($wl > 0) : ?>
+            <div style="max-width:720px;margin-top:18px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #E15FA8;border-radius:8px;padding:14px 18px">
+                <strong>🔔 <?php echo (int) $wl; ?> <?php echo $wl === 1 ? 'fan is' : 'fans are'; ?> waiting</strong> for this to come back in stock.
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;margin-left:8px" onsubmit="return confirm('Email all <?php echo (int) $wl; ?> waiting fans that this is back in stock?');">
+                    <?php wp_nonce_field('lmeg_notify_waitlist', 'lmeg_waitlist_nonce'); ?>
+                    <input type="hidden" name="action" value="lmeg_notify_waitlist">
+                    <input type="hidden" name="product_id" value="<?php echo (int) $p->id; ?>">
+                    <button type="submit" class="button button-primary">Notify them it's back</button>
+                </form>
+                <p class="description" style="margin:8px 0 0">Send once you've set the stock (or a size) back to available. Each fan is emailed a link to the product and won't be notified again.</p>
+            </div>
+            <?php endif;
+        }
+        ?>
         </div><?php
         return;
     }
@@ -1309,7 +1329,7 @@ function lmeg_admin_products() {
                 <td><?php echo ($p->type === 'physical') ? '📦 Physical' : '⬇ Digital'; ?></td>
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
-                <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?></td>
+                <td><?php echo (int) $p->sold; ?><?php echo $p->stock >= 0 ? ' / ' . (int) $p->stock : ''; ?><?php if (function_exists('lmeg_waitlist_count')) { $wl = lmeg_waitlist_count($p->id); if ($wl > 0) echo ' <span title="waiting for restock" style="color:#b03083;font-size:12px">· 🔔 ' . (int) $wl . '</span>'; } ?></td>
                 <td><?php
                     $st = $pstats[(int) $p->id] ?? null;
                     if ($p->type === 'physical') { echo '<span style="color:#9A9DB0">—</span>'; }

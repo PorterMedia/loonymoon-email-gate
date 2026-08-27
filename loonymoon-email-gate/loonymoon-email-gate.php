@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     2.91.0
+ * Version:     2.92.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '2.91.0');
-define('LMEG_DB_VERSION',  '2.84.0');
+define('LMEG_VERSION',     '2.92.0');
+define('LMEG_DB_VERSION',  '2.92.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -89,6 +89,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/cart.php';
 require_once LMEG_PLUGIN_DIR . 'includes/discounts.php';
 require_once LMEG_PLUGIN_DIR . 'includes/abandoned.php';
 require_once LMEG_PLUGIN_DIR . 'includes/orders.php';
+require_once LMEG_PLUGIN_DIR . 'includes/waitlist.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -692,6 +693,20 @@ function lmeg_create_tables() {
         KEY idx_sub (subscriber_id),
         KEY idx_fulfil (fulfillment),
         KEY idx_token (access_token)
+    ) $charset;");
+
+    $waitlist = $wpdb->prefix . 'lmeg_waitlist';
+    dbDelta("CREATE TABLE $waitlist (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        product_id BIGINT(20) UNSIGNED NOT NULL,
+        variant VARCHAR(120) NOT NULL DEFAULT '',
+        email VARCHAR(190) NOT NULL,
+        notified TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL,
+        notified_at DATETIME DEFAULT NULL,
+        PRIMARY KEY  (id),
+        KEY idx_product (product_id),
+        KEY idx_notified (notified)
     ) $charset;");
 
     $abandoned = $wpdb->prefix . 'lmeg_abandoned';
