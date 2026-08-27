@@ -21,6 +21,26 @@ function lmeg_orders_money($c, $cur) {
     return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur ?: 'USD') : ('$' . number_format($c / 100, 2));
 }
 
+/** How many distinct paid orders still need shipping. Cached 2 min. */
+function lmeg_orders_toship_count() {
+    $c = get_transient('lmeg_toship_count');
+    if ($c !== false) return (int) $c;
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $expr = lmeg_orders_okey_expr('');
+    $c = (int) $wpdb->get_var("SELECT COUNT(DISTINCT $expr) FROM $ptbl WHERE status = 'paid' AND fulfillment = 'unshipped'");
+    set_transient('lmeg_toship_count', $c, 2 * MINUTE_IN_SECONDS);
+    return $c;
+}
+
+/** The "Orders" admin menu label with a WP-style count bubble for unshipped orders. */
+function lmeg_orders_menu_title($count) {
+    $count = (int) $count;
+    if ($count <= 0) return 'Orders';
+    return 'Orders <span class="awaiting-mod"><span class="pending-count" aria-hidden="true">' . number_format_i18n($count) . '</span>'
+        . '<span class="screen-reader-text">' . $count . ' orders awaiting shipment</span></span>';
+}
+
 /* ---------------------------------------------------------------------------
  * Actions: ship a whole order / resend its receipt
  * ------------------------------------------------------------------------- */
@@ -42,6 +62,7 @@ function lmeg_handle_ship_group() {
         $rep->tracking = $tracking ?: null; $rep->carrier = $carrier ?: null;
         lmeg_product_send_shipped($rep);
     }
+    delete_transient('lmeg_toship_count');
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&shipped=1' . lmeg_orders_keep_args())); exit;
 }
 
@@ -119,6 +140,7 @@ function lmeg_handle_refund_order() {
         }
     }
     $wpdb->query($wpdb->prepare("UPDATE $ptbl SET status = %s WHERE $expr = %s AND status IN ('paid','refunded')", $to, $okey));
+    delete_transient('lmeg_toship_count');
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&' . ($to === 'refunded' ? 'refunded' : 'unrefunded') . '=1' . lmeg_orders_keep_args())); exit;
 }
 
