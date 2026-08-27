@@ -359,6 +359,16 @@ function lmeg_cart_savings_badge($off, $cur) {
         . esc_html(lmeg_cart_money($off, $cur)) . ' on this order</div>';
 }
 
+/**
+ * A small shipping reassurance line for physical checkouts — promises no
+ * timeframe (accurate for any artist), just that tracking follows. '' otherwise.
+ */
+function lmeg_cart_dispatch_note($has_physical) {
+    if (!$has_physical) return '';
+    return '<div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#9AA0B4">'
+        . '<span style="font-size:14px">📦</span> Packed with care — you\'ll get a tracking email as soon as it ships.</div>';
+}
+
 /* ---------------------------------------------------------------------------
  * Step 1 — review page (order summary + email / shipping form)
  * ------------------------------------------------------------------------- */
@@ -492,6 +502,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '<label style="display:block;font-size:13px;color:#B9BCC9;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
         . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
         . $shipfields
+        . lmeg_cart_dispatch_note($v['has_physical'])
         . $notefield
         . lmeg_cart_savings_badge($off, $cur)
         . '<button type="submit" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
