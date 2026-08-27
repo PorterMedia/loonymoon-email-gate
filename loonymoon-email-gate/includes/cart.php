@@ -868,6 +868,10 @@ function lmeg_cart_assets_html() {
   .flp-qty span{min-width:30px;text-align:center;font-size:13px}
   .flp-ci .rm{background:0;border:0;color:#8B90A0;cursor:pointer;font-size:12px;text-decoration:underline}
   .flp-ci .lt{font-weight:700;white-space:nowrap;font-size:14px}
+  .flp-var{background:#fff;color:#17141f;border:1px solid #cfcfd6;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;font-family:inherit}
+  .flp-var:hover:not(:disabled){border-color:#E15FA8}
+  .flp-var.is-active{background:#FCE7F1;border-color:#E15FA8;color:#B4247E}
+  .flp-var:disabled{opacity:.5;text-decoration:line-through;cursor:not-allowed}
   .flp-save.is-saved{color:#E15FA8!important}
   .flp-save.is-saved svg{fill:currentColor}
   .flp-save:hover{color:#E15FA8}
@@ -1011,7 +1015,7 @@ function lmeg_cart_assets_html() {
   function handleAdd(b){
     var card=b.closest('.flp-prod')||document, hasvar=b.getAttribute('data-hasvar')==='1', pwyw=b.getAttribute('data-pwyw')==='1';
     var variant='';
-    if(hasvar){ var sel=card.querySelector('select[name=variant]'); variant=sel?sel.value:''; if(!variant){ toast('Choose an option first'); if(sel) sel.focus(); return; } }
+    if(hasvar){ var sel=card.querySelector('[name=variant]'); variant=sel?sel.value:''; if(!variant){ toast('Choose an option first'); var vg=card.querySelector('.flp-vars'); if(vg&&vg.scrollIntoView) vg.scrollIntoView({block:'nearest'}); else if(sel&&sel.focus) sel.focus(); return; } }
     var unit=+b.getAttribute('data-price');
     if(pwyw){ var amt=card.querySelector('input[name=amount]'); var val=amt?parseFloat(amt.value):0; var min=(+b.getAttribute('data-min'))/100; if(!(val>0)) val=min; if(val<min) val=min; unit=Math.round(val*100); }
     var qty=1, qi=card.querySelector('.flp-qty');
@@ -1062,6 +1066,7 @@ function lmeg_cart_assets_html() {
   document.addEventListener('click', function(e){
     var qk=e.target.closest('.flp-quick'); if(qk){ e.preventDefault(); e.stopPropagation(); qvOpen(qk.closest('.flp-prod')); return; }
     var qr=e.target.closest('.flp-qtir'); if(qr){ e.preventDefault(); var w=qr.closest('.flp-qtywrap'), qi=w&&w.querySelector('.flp-qty'); if(qi){ var v=(parseInt(qi.value,10)||1)+(+qr.getAttribute('data-d')||0), mn=parseInt(qi.getAttribute('min'),10)||1, mx=parseInt(qi.getAttribute('max'),10); if(v<mn) v=mn; if(mx>=1&&v>mx) v=mx; qi.value=v; } return; }
+    var vp=e.target.closest('.flp-var'); if(vp && !vp.disabled){ e.preventDefault(); var grp=vp.closest('.flp-vars'); if(grp){ var inp=grp.querySelector('.flp-var-input'); if(inp) inp.value=vp.getAttribute('data-v'); [].forEach.call(grp.querySelectorAll('.flp-var'), function(x){ x.classList.remove('is-active'); x.setAttribute('aria-pressed','false'); }); vp.classList.add('is-active'); vp.setAttribute('aria-pressed','true'); } return; }
     var sv=e.target.closest('.flp-save'); if(sv){ e.preventDefault(); e.stopPropagation(); toggleSave(sv); return; }
     var sa=e.target.closest('.flp-saved-add'); if(sa){ e.preventDefault(); savedMoveToCart(+sa.getAttribute('data-id')); return; }
     var srm=e.target.closest('.flp-saved-rm'); if(srm){ e.preventDefault(); var rid=+srm.getAttribute('data-id'); savedWrite(savedRead().filter(function(s){return +s.id!==rid;})); return; }
@@ -1090,6 +1095,7 @@ function lmeg_cart_assets_html() {
       f.appendChild(inp); document.body.appendChild(f); f.submit();
     }
   });
+  document.addEventListener('submit', function(e){ var vi=e.target.querySelector&&e.target.querySelector('.flp-var-input'); if(vi && !vi.value){ e.preventDefault(); toast('Choose an option first'); var g=e.target.querySelector('.flp-vars'); if(g&&g.scrollIntoView) g.scrollIntoView({block:'nearest'}); } });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ if(qvPanel&&!qvPanel.hidden){ qvClose(); return; } close(); } });
 
   render(); renderSaved(); syncHearts();

@@ -1232,7 +1232,12 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
             <?php if (!empty($vlist) || $pwyw) : ?>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <?php if (!empty($vlist)) : ?>
-                <select name="variant" required style="padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff"><option value="" disabled selected>Choose…</option><?php foreach ($vlist as $v) : ?><option value="<?php echo esc_attr($v['name']); ?>" <?php echo $v['available'] ? '' : 'disabled'; ?>><?php echo esc_html($v['name']) . ($v['available'] ? ($v['stock'] !== null && $v['stock'] <= 5 ? ' — ' . (int) $v['stock'] . ' left' : '') : ' — sold out'); ?></option><?php endforeach; ?></select>
+                <div class="flp-vars" role="group" aria-label="Choose an option" style="display:flex;flex-wrap:wrap;gap:7px">
+                  <?php foreach ($vlist as $v) : $av = $v['available']; $lbl = $v['name'] . ($av && $v['stock'] !== null && $v['stock'] <= 5 ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
+                    <button type="button" class="flp-var" data-v="<?php echo esc_attr($v['name']); ?>" aria-pressed="false"<?php echo $av ? '' : ' disabled'; ?> title="<?php echo $av ? esc_attr($v['name']) : esc_attr($v['name'] . ' — sold out'); ?>"><?php echo esc_html($lbl); ?></button>
+                  <?php endforeach; ?>
+                  <input type="hidden" name="variant" value="" class="flp-var-input">
+                </div>
               <?php endif; ?>
               <?php if ($pwyw) : ?>
                 <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff" aria-label="Name your price">
