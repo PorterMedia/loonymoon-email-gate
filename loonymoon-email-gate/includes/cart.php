@@ -833,6 +833,10 @@ function lmeg_cart_assets_html() {
   <aside id="flp-cart-panel" hidden aria-label="Cart">
     <div class="flp-cart-head"><strong>Your cart</strong><button type="button" id="flp-cart-x" aria-label="Close"><?php echo lmeg_store_icon('x', 16); ?></button></div>
     <div id="flp-cart-items"></div>
+    <div id="flp-saved-wrap" hidden>
+      <div class="flp-saved-head"><?php echo lmeg_store_icon('heart', 14, ['fill' => true, 'style' => 'color:#E15FA8']); ?> <strong>Saved for later</strong> <span id="flp-saved-count"></span></div>
+      <div id="flp-saved"></div>
+    </div>
     <div class="flp-cart-foot">
       <div id="flp-cart-ship" class="flp-cart-ship" hidden>
         <div class="flp-ship-msg"></div>
@@ -864,6 +868,19 @@ function lmeg_cart_assets_html() {
   .flp-qty span{min-width:30px;text-align:center;font-size:13px}
   .flp-ci .rm{background:0;border:0;color:#8B90A0;cursor:pointer;font-size:12px;text-decoration:underline}
   .flp-ci .lt{font-weight:700;white-space:nowrap;font-size:14px}
+  .flp-save.is-saved{color:#E15FA8!important}
+  .flp-save.is-saved svg{fill:currentColor}
+  .flp-save:hover{color:#E15FA8}
+  #flp-saved-wrap{padding:14px 20px;border-top:1px solid rgba(255,255,255,.1)}
+  .flp-saved-head{display:flex;align-items:center;gap:7px;font-size:14px;color:#F4F2F7;margin-bottom:10px}
+  .flp-saved-head #flp-saved-count{color:#8B90A0;font-weight:400}
+  .flp-si{display:flex;align-items:center;gap:11px;padding:8px 0}
+  .flp-si img,.flp-si .ph{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.08)}
+  .flp-si .t{flex:1;min-width:0;font-size:13px;color:#F4F2F7}
+  .flp-si .t b{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flp-si .t span{color:#8B90A0;font-size:12px}
+  .flp-si .flp-saved-add{background:rgba(225,95,168,.16);color:#E7A6CF;border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .flp-si .flp-saved-rm{background:0;border:0;color:#8B90A0;cursor:pointer;display:inline-flex;padding:4px}
   .flp-cart-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
   .flp-cart-ship{margin-bottom:14px}
   .flp-cart-ship .flp-ship-msg{font-size:13px;color:#B9BCC9;margin-bottom:7px;text-align:center}
@@ -922,7 +939,7 @@ function lmeg_cart_assets_html() {
   function render(){
     var c=read(), n=count(c);
     cnt.textContent=n;
-    btn.hidden = (n===0 && !document.querySelector('.flp-add'));   // hide when empty & no products on page
+    btn.hidden = (n===0 && !document.querySelector('.flp-add') && savedRead().length===0);   // hide when empty & no products/saved
     if(!c.length){ itemsEl.innerHTML=''; emptyEl.style.display='block'; goBtn.style.display='none'; totalEl.textContent='—'; if(shipEl) shipEl.hidden=true; return; }
     emptyEl.style.display='none'; goBtn.style.display='block';
     var cur=c[0].cur||'USD', sub=0, ship=0, hasPhys=false, html='';
@@ -939,6 +956,55 @@ function lmeg_cart_assets_html() {
     itemsEl.innerHTML=html;
     renderShip(sub,cur,hasPhys);
     totalEl.textContent=money(sub+ship,cur);
+  }
+
+  // ---- Save for later (wishlist) ----
+  var SKEY='fanloop_saved';
+  function savedRead(){ try{return JSON.parse(localStorage.getItem(SKEY))||[]}catch(e){return[]} }
+  function savedWrite(l){ try{localStorage.setItem(SKEY,JSON.stringify(l))}catch(e){}; renderSaved(); syncHearts(); }
+  function savedHas(id){ return savedRead().some(function(s){return +s.id===+id;}); }
+  function saveItemFromBtn(b){
+    var pwyw=b.getAttribute('data-pwyw')==='1', unit=+b.getAttribute('data-price');
+    if(pwyw){ var mn=(+b.getAttribute('data-min'))||0; if(mn>0) unit=mn; }
+    return { id:+b.getAttribute('data-id'), slug:b.getAttribute('data-slug'), title:b.getAttribute('data-title'),
+      cover:b.getAttribute('data-cover'), unit:unit, cur:b.getAttribute('data-cur')||'USD',
+      type:b.getAttribute('data-type'), ship:+b.getAttribute('data-ship')||0, pwyw:pwyw };
+  }
+  function toggleSave(b){
+    var id=+b.getAttribute('data-id'), l=savedRead();
+    if(savedHas(id)){ l=l.filter(function(s){return +s.id!==id;}); savedWrite(l); toast('Removed from saved'); }
+    else { l.push(saveItemFromBtn(b)); savedWrite(l); toast('Saved for later'); }
+  }
+  function syncHearts(){
+    [].forEach.call(document.querySelectorAll('.flp-save'), function(b){
+      var on=savedHas(+b.getAttribute('data-id'));
+      b.classList.toggle('is-saved', on);
+      b.setAttribute('aria-label', on?'Saved — tap to remove':'Save for later');
+    });
+  }
+  function renderSaved(){
+    var wrap=document.getElementById('flp-saved-wrap'); if(!wrap) return;
+    var box=document.getElementById('flp-saved'), cEl=document.getElementById('flp-saved-count');
+    var l=savedRead();
+    if(!l.length){ wrap.hidden=true; box.innerHTML=''; if(cEl)cEl.textContent=''; return; }
+    wrap.hidden=false; if(cEl)cEl.textContent='('+l.length+')';
+    box.innerHTML=l.map(function(s){
+      return '<div class="flp-si" data-id="'+(+s.id)+'">'
+        + (s.cover?'<img src="'+esc(s.cover)+'" alt="">':'<div class="ph"></div>')
+        + '<div class="t"><b>'+esc(s.title)+'</b><span>'+(s.pwyw?'Name your price':money(s.unit,s.cur))+'</span></div>'
+        + '<button type="button" class="flp-saved-add" data-id="'+(+s.id)+'">Add to cart</button>'
+        + '<button type="button" class="flp-saved-rm" data-id="'+(+s.id)+'" aria-label="Remove">'+<?php echo wp_json_encode(lmeg_store_icon('x', 15)); ?>+'</button></div>';
+    }).join('');
+  }
+  function savedMoveToCart(id){
+    var l=savedRead(), it=null; l.forEach(function(s){ if(+s.id===+id) it=s; });
+    if(!it) return;
+    var item={ id:+it.id, slug:it.slug, title:it.title, cover:it.cover, unit:+it.unit, cur:it.cur||'USD', variant:'', qty:1, type:it.type, ship:+it.ship||0, pwyw:!!it.pwyw };
+    var c=read(), found=false;
+    for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(item)){ c[k].qty=(+c[k].qty||1)+1; found=true; break; } }
+    if(!found) c.push(item);
+    savedWrite(l.filter(function(s){return +s.id!==+id;}));
+    write(c); toast('Moved to cart'); open();
   }
 
   // Add-to-cart from a product card.
@@ -996,6 +1062,9 @@ function lmeg_cart_assets_html() {
   document.addEventListener('click', function(e){
     var qk=e.target.closest('.flp-quick'); if(qk){ e.preventDefault(); e.stopPropagation(); qvOpen(qk.closest('.flp-prod')); return; }
     var qr=e.target.closest('.flp-qtir'); if(qr){ e.preventDefault(); var w=qr.closest('.flp-qtywrap'), qi=w&&w.querySelector('.flp-qty'); if(qi){ var v=(parseInt(qi.value,10)||1)+(+qr.getAttribute('data-d')||0), mn=parseInt(qi.getAttribute('min'),10)||1, mx=parseInt(qi.getAttribute('max'),10); if(v<mn) v=mn; if(mx>=1&&v>mx) v=mx; qi.value=v; } return; }
+    var sv=e.target.closest('.flp-save'); if(sv){ e.preventDefault(); e.stopPropagation(); toggleSave(sv); return; }
+    var sa=e.target.closest('.flp-saved-add'); if(sa){ e.preventDefault(); savedMoveToCart(+sa.getAttribute('data-id')); return; }
+    var srm=e.target.closest('.flp-saved-rm'); if(srm){ e.preventDefault(); var rid=+srm.getAttribute('data-id'); savedWrite(savedRead().filter(function(s){return +s.id!==rid;})); return; }
     if(e.target===qvBack||(e.target.closest&&e.target.closest('#flp-qv-x'))){ qvClose(); return; }
     var sh=e.target.closest('.flp-share'); if(sh){ e.preventDefault(); handleShare(sh); return; }
     var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); if(qvPanel&&!qvPanel.hidden) qvClose(); return; }
@@ -1023,7 +1092,7 @@ function lmeg_cart_assets_html() {
   });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ if(qvPanel&&!qvPanel.hidden){ qvClose(); return; } close(); } });
 
-  render();
+  render(); renderSaved(); syncHearts();
 })();
 </script>
 <?php

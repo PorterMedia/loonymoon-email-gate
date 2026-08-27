@@ -1120,6 +1120,16 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           . '" data-hasvar="' . (!empty($vlist) ? 1 : 0) . '"';
     $add_pri = 'style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 18px;border-radius:10px;cursor:pointer;flex:1;font-size:14px"';
     $buy_sec = 'style="background:#fff;color:#E15FA8;border:1px solid #E15FA8;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none;font-size:14px;white-space:nowrap"';
+    // Save-for-later heart: carries the same core data as the Add button so a saved
+    // item can be moved into the cart. Rendered as a cover overlay; JS toggles saved.
+    $save_data = 'class="flp-save" data-id="' . (int) $p->id . '" data-slug="' . esc_attr($p->slug)
+          . '" data-title="' . esc_attr($p->title) . '" data-cover="' . esc_attr($p->cover_url)
+          . '" data-price="' . (int) $p->price_cents . '" data-cur="' . esc_attr($cur)
+          . '" data-type="' . esc_attr($p->type) . '" data-ship="' . ($physical ? (int) $p->shipping_cents : 0)
+          . '" data-pwyw="' . ($pwyw ? 1 : 0) . '" data-min="' . (int) $p->min_price_cents . '"';
+    $heart_btn = function ($pos) use ($save_data) {
+        return '<button type="button" ' . $save_data . ' aria-label="Save for later" title="Save for later" style="position:absolute;' . $pos . ';background:rgba(255,255,255,.92);border:0;border-radius:50%;width:34px;height:34px;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.18);color:#6b6b78;padding:0;z-index:2">' . lmeg_store_icon('heart', 17) . '</button>';
+    };
     ob_start(); ?>
     <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" data-tags="<?php echo esc_attr(implode('|', array_map('strtolower', lmeg_product_tags($p)))); ?>" data-avail="<?php echo $sold_out ? 0 : 1; ?>" data-sale="<?php echo $on_sale ? 1 : 0; ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php
@@ -1132,6 +1142,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           <div style="position:relative">
             <img id="<?php echo esc_attr($mid); ?>" class="flp-gal-main" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" data-idx="0" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover;cursor:zoom-in">
             <span class="flp-gal-zoom" aria-hidden="true" style="position:absolute;right:10px;top:10px;background:rgba(11,12,18,.62);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;pointer-events:none;display:inline-flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('maximize', 12); ?>Zoom</span>
+            <?php echo $heart_btn('left:10px;top:10px'); ?>
           </div>
           <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
             <?php foreach ($imgs as $i => $u) : ?>
@@ -1175,7 +1186,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         $wrapped = '<div style="position:relative;display:block">' . $img . $badge . '</div>';
         $linked  = $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped;
         $quick   = !$solo ? '<button type="button" class="flp-quick" aria-label="Quick look" style="position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.93);color:#17141f;border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22);display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('search', 13) . 'Quick look</button>' : '';
-        echo '<div style="position:relative">' . $linked . $quick . '</div>'; ?>
+        echo '<div style="position:relative">' . $linked . $quick . $heart_btn('right:8px;top:8px') . '</div>'; ?>
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
         <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?>Featured</div><?php endif; ?>
