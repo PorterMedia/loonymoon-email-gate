@@ -110,6 +110,36 @@ function lmeg_product_tags($p) {
     return array_values($out);
 }
 
+/**
+ * Filter/curate a set of product rows for a storefront collection.
+ * - ids "12,7,3" → exactly those products, in that order (missing/inactive skipped).
+ * - else tag "vinyl" → products carrying that tag (case-insensitive).
+ * - else → unchanged. Pure (operates on already-fetched rows), so it's testable.
+ */
+function lmeg_store_filter_rows($rows, $ids_csv, $tag) {
+    $rows = (array) $rows;
+    $ids_csv = trim((string) $ids_csv);
+    if ($ids_csv !== '') {
+        $ids = [];
+        foreach (explode(',', $ids_csv) as $x) { $id = (int) trim($x); if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id; }
+        $by = [];
+        foreach ($rows as $r) $by[(int) $r->id] = $r;
+        $out = [];
+        foreach ($ids as $id) if (isset($by[$id])) $out[] = $by[$id];
+        return $out;
+    }
+    $tag = strtolower(trim((string) $tag));
+    if ($tag !== '') {
+        $out = [];
+        foreach ($rows as $r) {
+            $tags = function_exists('lmeg_product_tags') ? array_map('strtolower', lmeg_product_tags($r)) : [];
+            if (in_array($tag, $tags, true)) $out[] = $r;
+        }
+        return $out;
+    }
+    return $rows;
+}
+
 /** Normalise a raw tags string for storage (trim, dedupe, cap length). */
 function lmeg_product_tags_normalize($raw) {
     $list = lmeg_product_tags($raw);
@@ -838,11 +868,16 @@ add_shortcode('fanloop_store', 'lmeg_shortcode_store');
 add_shortcode('loony_store', 'lmeg_shortcode_store');
 function lmeg_shortcode_store($atts) {
     static $store_n = 0; $store_n++;
-    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto'], $atts, 'fanloop_store');
+    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto', 'ids' => '', 'tag' => ''], $atts, 'fanloop_store');
     global $wpdb;
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
     $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY featured DESC, id DESC");
+    // Curated collection: exact ids (in order) or a single tag section.
+    $curated = (trim((string) $atts['ids']) !== '');
+    if ($curated || trim((string) $atts['tag']) !== '') {
+        $rows = lmeg_store_filter_rows($rows, $atts['ids'], $atts['tag']);
+    }
     if (!$rows) {
         return '<div style="max-width:420px;margin:20px auto;text-align:center;background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.12);border-radius:16px;padding:34px 26px;box-shadow:0 12px 40px rgba(0,0,0,.08);font-family:inherit">'
             . '<div style="font-size:40px;line-height:1;margin-bottom:10px">🛍️</div>'
@@ -855,7 +890,7 @@ function lmeg_shortcode_store($atts) {
 
     // Search + sort controls — shown once the shop has enough items to warrant it
     // (or forced with controls="on" / hidden with controls="off").
-    $show_ctrls = ($atts['controls'] === 'on') || ($atts['controls'] !== 'off' && count($rows) >= 5);
+    $show_ctrls = ($atts['controls'] === 'on') || ($atts['controls'] !== 'off' && !$curated && count($rows) >= 5);
     $ctrl_css = 'padding:10px 13px;border:1px solid rgba(0,0,0,.18);border-radius:10px;background:#fff;color:#17141f;font-size:14px';
     $controls = '';
     if ($show_ctrls) {
@@ -2029,6 +2064,8 @@ function lmeg_admin_products() {
             <tr><td><code>[fanloop_store controls="on"]</code></td><td>Force the <strong>search + sort</strong> bar (auto-shows at 5+ products).</td></tr>
             <tr><td><code>[fanloop_store type="digital"]</code></td><td>Only digital (or <code>type="physical"</code>).</td></tr>
             <tr><td><code>[fanloop_store min="200"]</code></td><td>Smaller cards / more per row (grid min px).</td></tr>
+            <tr><td><code>[fanloop_store ids="12,7,3"]</code></td><td>A <strong>curated collection</strong> — just those products, in that order (great for a landing or feature section).</td></tr>
+            <tr><td><code>[fanloop_store tag="vinyl"]</code></td><td>Only products with that <strong>tag</strong> — a ready-made section page.</td></tr>
             <tr><td><code>[fanloop_product id="<?php echo (int) ($rows[0]->id ?? 1); ?>"]</code></td><td>One product (or <code>slug="…"</code>).</td></tr>
             <tr><td><code>[fanloop_purchases]</code></td><td>A "find my downloads" box for fans.</td></tr>
             <tr><td><code><?php echo esc_html(home_url('/?lmeg_product=your-slug')); ?></code></td><td>A product's own shareable page (URL shown on each product's edit screen).</td></tr>
