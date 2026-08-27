@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.5.0
+ * Version:     3.6.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.5.0');
-define('LMEG_DB_VERSION',  '3.4.0');
+define('LMEG_VERSION',     '3.6.0');
+define('LMEG_DB_VERSION',  '3.6.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -90,6 +90,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/discounts.php';
 require_once LMEG_PLUGIN_DIR . 'includes/abandoned.php';
 require_once LMEG_PLUGIN_DIR . 'includes/orders.php';
 require_once LMEG_PLUGIN_DIR . 'includes/waitlist.php';
+require_once LMEG_PLUGIN_DIR . 'includes/bundles.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -749,6 +750,18 @@ function lmeg_create_tables() {
         PRIMARY KEY  (id),
         UNIQUE KEY uniq_code (code),
         KEY idx_status (status)
+    ) $charset;");
+
+    $bundles = $wpdb->prefix . 'lmeg_bundles';
+    dbDelta("CREATE TABLE $bundles (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title VARCHAR(190) NOT NULL,
+        product_ids VARCHAR(255) NOT NULL DEFAULT '',
+        pct TINYINT UNSIGNED NOT NULL DEFAULT 10,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        KEY idx_active (active)
     ) $charset;");
 }
 

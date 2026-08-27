@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.5.0
+Stable tag: 3.6.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.6.0 =
+* Store (Beta): "Buy the set" bundles. Group products into a set with a % off on the Store page (Bundles section). When a fan has every product in the set in their cart, the discount comes off automatically at checkout — no code to type, computed server-side so it can't be faked. The saving shows on the checkout summary and in the receipt. One order discount applies at a time: a code a fan enters wins; the bundle fills in when there's no code. (A storefront "buy the set" prompt on product pages is coming next.)
+
 = 3.5.0 =
 * Store (Beta): automatic back-in-stock emails. When a sold-out product comes back — you raise its stock, refill a size, or set it active again — everyone on its waitlist is emailed a branded "it's back in stock" note with a buy link automatically. No button to remember. Toggle it in Settings → Payments ("Back-in-stock"); you can still notify manually from the Waitlist section. Sold-out product cards now also show "🔔 N fans waiting" once a few people are in line.
 

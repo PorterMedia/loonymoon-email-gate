@@ -228,10 +228,10 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
     $guard = 'lmeg_cart_mailed_' . md5($stem);
     if ($new_any && !get_transient($guard)) {
         set_transient($guard, 1, DAY_IN_SECONDS);
-        if ($off > 0 && !empty($discount['code']) && function_exists('lmeg_discount_increment')) {
+        if ($off > 0 && !empty($discount['code']) && empty($discount['bundle']) && function_exists('lmeg_discount_increment')) {
             lmeg_discount_increment($discount['code']);
         }
-        $dctx = ($off > 0 && !empty($discount['code'])) ? ['code' => $discount['code'], 'amount_off' => $off] : null;
+        $dctx = ($off > 0 && !empty($discount['code'])) ? ['code' => $discount['code'], 'amount_off' => $off, 'bundle' => !empty($discount['bundle'])] : null;
         if ($email) lmeg_cart_send_receipt($results, $email, $ship_name, $ship_addr, $dctx);
         lmeg_cart_notify_admin($results, $email, $ship_name, $ship_addr, $dctx);
     }
@@ -255,7 +255,8 @@ function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discoun
             $dls[] = ['name' => $ln['title'], 'url' => lmeg_product_access_url($ln['token'])];
         } else { $has_phys = true; }
     }
-    $extra = ($off > 0) ? [['label' => 'Discount' . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : ''), 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
+    $dlabel = (!empty($discount['bundle']) ? '🎁 Bundle' : 'Discount') . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : '');
+    $extra = ($off > 0) ? [['label' => $dlabel, 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
     $inner = lmeg_email_h('Thanks for your order 💜')
         . lmeg_email_p('Here\'s everything from your order with <strong>' . esc_html($artist) . '</strong>.')
         . lmeg_email_order_table($items, lmeg_cart_money($total, $cur), $extra)
@@ -284,7 +285,8 @@ function lmeg_cart_notify_admin($lines, $email, $ship_name, $ship_addr, $discoun
         if ($note === '' && !empty($ln['note'])) $note = (string) $ln['note'];
     }
     $price = lmeg_cart_money($total, $cur);
-    $extra = ($off > 0) ? [['label' => 'Discount' . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : ''), 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
+    $dlabel = (!empty($discount['bundle']) ? '🎁 Bundle' : 'Discount') . (!empty($discount['code']) ? ' (' . $discount['code'] . ')' : '');
+    $extra = ($off > 0) ? [['label' => $dlabel, 'amount' => '−' . lmeg_cart_money($off, $cur), 'accent' => true]] : [];
     $note_block = ($note !== '') ? lmeg_email_note('📝 <strong>Note from buyer:</strong><br>' . nl2br(esc_html($note))) : '';
     $inner = lmeg_email_h($has_phys ? 'New order 🛍️' : 'New sale 💿')
         . lmeg_email_p('A new order just landed — <strong>' . count($lines) . '</strong> item' . (count($lines) === 1 ? '' : 's') . ' from <strong>' . esc_html($email ?: 'unknown') . '</strong>.')
@@ -370,6 +372,12 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         if (!empty($res['ok'])) { $disc = $res; $off = (int) $res['amount_off']; }
         else { $code_err = $res['error']; $code = ''; }
     }
+    // Automatic "buy the set" bundle — only when no manual code was applied.
+    $bundle = null;
+    if (!$disc && function_exists('lmeg_cart_bundle_match')) {
+        $bm = lmeg_cart_bundle_match($v);
+        if ($bm && (int) $bm['amount_off'] > 0) { $bundle = $bm; $off = (int) $bm['amount_off']; }
+    }
     $grand   = max(0, (int) $v['total'] - $off);
     $checkout_action = esc_url(add_query_arg(['lmeg_cart' => 'checkout'], home_url('/')));
 
@@ -409,7 +417,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     }
     $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
-        . ($off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
+        . ($disc && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
+        . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>🎁 ' . esc_html($bundle['title']) . ' (' . (int) $bundle['pct'] . '% off)</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
         . $ship_row
         . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
 
@@ -461,6 +470,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $body = '<div class="dot">🛍️</div><h1 style="margin-bottom:4px">Checkout</h1>'
         . '<p style="margin-bottom:18px;color:#8B90A0">' . count($v['lines']) . ' item' . (count($v['lines']) === 1 ? '' : 's') . ' in your cart' . ($demo ? ' · demo' : '') . '</p>'
         . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . $free_hint . '</div>'
+        . ($bundle ? '<div style="margin-top:14px;display:flex;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px"><span style="color:#8fe3b5;font-size:14px">🎁 <strong>' . esc_html($bundle['title']) . '</strong> applied — buy the set, save ' . (int) $bundle['pct'] . '%</span></div>' : '')
         . $code_ui
         . '<form method="post" action="' . esc_url(add_query_arg(['lmeg_cart' => 'place'], home_url('/'))) . '" style="margin-top:20px;text-align:left">'
         . $errhtml
@@ -552,6 +562,14 @@ function lmeg_cart_place() {
         $res = lmeg_discount_validate($code, (int) $v['subtotal'], $v['currency']);
         if (!empty($res['ok'])) { $disc = ['code' => $res['code'], 'amount_off' => (int) $res['amount_off']]; $off = (int) $res['amount_off']; }
         else lmeg_cart_checkout_page($v, $raw, $res['error']);   // back to review with the reason
+    }
+    // Automatic "buy the set" bundle — server-authoritative, only when no code.
+    if (!$disc && function_exists('lmeg_cart_bundle_match')) {
+        $bm = lmeg_cart_bundle_match($v);
+        if ($bm && (int) $bm['amount_off'] > 0) {
+            $disc = ['code' => $bm['title'], 'amount_off' => (int) $bm['amount_off'], 'bundle' => true];
+            $off  = (int) $bm['amount_off'];
+        }
     }
 
     /* ---------- DEMO: fulfil immediately, no payment ---------- */
