@@ -876,23 +876,44 @@ function lmeg_shortcode_store($atts) {
         return strcasecmp($a['label'], $b['label']);
     });
     $has_tags = count($tag_counts) >= 2;
+
+    // "In stock only" toggle — offered only when at least one active product is
+    // actually sold out (stock exhausted / all sizes gone), so it's meaningful.
+    $has_soldout = false;
+    if (function_exists('lmeg_product_is_available')) {
+        foreach ($rows as $p) { if (!lmeg_product_is_available($p)) { $has_soldout = true; break; } }
+    }
+
     $chips = '';
-    if ($has_tags) {
-        $chips = '<div class="flp-tags" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'
-            . '<button type="button" class="flp-tag is-active" data-tag="">All</button>';
-        foreach ($tag_counts as $k => $info) {
-            $chips .= '<button type="button" class="flp-tag" data-tag="' . esc_attr($k) . '">' . esc_html($info['label']) . '</button>';
+    if ($has_tags || $has_soldout) {
+        $chips = '<div class="flp-tags" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">';
+        if ($has_tags) {
+            $chips .= '<button type="button" class="flp-tag is-active" data-tag="">All</button>';
+            foreach ($tag_counts as $k => $info) {
+                $chips .= '<button type="button" class="flp-tag" data-tag="' . esc_attr($k) . '">' . esc_html($info['label']) . '</button>';
+            }
+        }
+        if ($has_soldout) {
+            $chips .= '<button type="button" class="flp-instock" aria-pressed="false"' . ($has_tags ? ' style="margin-left:auto"' : '') . '><span class="box">✓</span> In stock only</button>';
         }
         $chips .= '</div>';
     }
 
-    $chip_css = $has_tags
-        ? '<style>#' . $uid . ' .flp-tag{background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;transition:background .12s,color .12s}'
+    $chip_css = ($has_tags || $has_soldout) ? '<style>' : '';
+    if ($has_tags) {
+        $chip_css .= '#' . $uid . ' .flp-tag{background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;transition:background .12s,color .12s}'
           . '#' . $uid . ' .flp-tag:hover{border-color:#E15FA8;color:#E15FA8}'
-          . '#' . $uid . ' .flp-tag.is-active{background:#E15FA8;color:#fff;border-color:#E15FA8}</style>'
-        : '';
+          . '#' . $uid . ' .flp-tag.is-active{background:#E15FA8;color:#fff;border-color:#E15FA8}';
+    }
+    if ($has_soldout) {
+        $chip_css .= '#' . $uid . ' .flp-instock{background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;display:inline-flex;align-items:center;gap:6px;transition:background .12s,color .12s}'
+          . '#' . $uid . ' .flp-instock .box{width:14px;height:14px;border-radius:4px;border:1.5px solid rgba(0,0,0,.3);display:inline-grid;place-items:center;font-size:10px;line-height:1;color:transparent}'
+          . '#' . $uid . ' .flp-instock.is-active{background:#ECFDF5;border-color:#047857;color:#047857}'
+          . '#' . $uid . ' .flp-instock.is-active .box{background:#047857;border-color:#047857;color:#fff}';
+    }
+    $chip_css .= ($has_tags || $has_soldout) ? '</style>' : '';
 
-    $run_js = $show_ctrls || $has_tags;
+    $run_js = $show_ctrls || $has_tags || $has_soldout;
     $out = $chip_css . lmeg_store_banner_html()
         . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls . $chips
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
@@ -904,11 +925,13 @@ function lmeg_shortcode_store($atts) {
         $out .= '<script>(function(){var root=document.getElementById(' . wp_json_encode($uid) . ');if(!root)return;'
             . 'var grid=root.querySelector(".flp-store"),none=root.querySelector(".flp-store-none"),q=root.querySelector(".flp-q"),sort=root.querySelector(".flp-sort");'
             . 'var cards=[].slice.call(grid.querySelectorAll(".flp-prod")),orig=cards.slice();'
-            . 'var tagBtns=[].slice.call(root.querySelectorAll(".flp-tag"));'
+            . 'var tagBtns=[].slice.call(root.querySelectorAll(".flp-tag")),stockBtn=root.querySelector(".flp-instock");'
             . 'function num(c,a){return parseInt(c.getAttribute(a),10)||0;}'
             . 'function activeTag(){var a=root.querySelector(".flp-tag.is-active");return a?(a.getAttribute("data-tag")||""):"";}'
-            . 'function apply(){var t=((q&&q.value)||"").trim().toLowerCase(),tg=activeTag();'
+            . 'function inStock(){return !!(stockBtn&&stockBtn.classList.contains("is-active"));}'
+            . 'function apply(){var t=((q&&q.value)||"").trim().toLowerCase(),tg=activeTag(),so=inStock();'
             . 'var vis=cards.filter(function(c){'
+            . 'if(so&&c.getAttribute("data-avail")!=="1")return false;'
             . 'if(tg){var ct=(c.getAttribute("data-tags")||"").split("|");if(ct.indexOf(tg)<0)return false;}'
             . 'if(!t)return true;return((c.getAttribute("data-title")||"")+" "+(c.getAttribute("data-desc")||"")).toLowerCase().indexOf(t)>=0;});'
             . 'var s=sort?sort.value:"featured",arr;'
@@ -921,6 +944,7 @@ function lmeg_shortcode_store($atts) {
             . 'cards.forEach(function(c){c.style.display="none";});arr.forEach(function(c){c.style.display="";grid.appendChild(c);});'
             . 'if(none)none.style.display=arr.length?"none":"";}'
             . 'tagBtns.forEach(function(b){b.addEventListener("click",function(){tagBtns.forEach(function(x){x.classList.remove("is-active");});b.classList.add("is-active");apply();});});'
+            . 'if(stockBtn)stockBtn.addEventListener("click",function(){stockBtn.classList.toggle("is-active");stockBtn.setAttribute("aria-pressed",stockBtn.classList.contains("is-active")?"true":"false");apply();});'
             . 'if(q)q.addEventListener("input",apply);if(sort)sort.addEventListener("change",apply);})();</script>';
     }
     return $out;
@@ -961,7 +985,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
     $add_pri = 'style="background:#E15FA8;color:#fff;border:0;font-weight:700;padding:11px 18px;border-radius:10px;cursor:pointer;flex:1;font-size:14px"';
     $buy_sec = 'style="background:#fff;color:#E15FA8;border:1px solid #E15FA8;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;text-decoration:none;font-size:14px;white-space:nowrap"';
     ob_start(); ?>
-    <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" data-tags="<?php echo esc_attr(implode('|', array_map('strtolower', lmeg_product_tags($p)))); ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
+    <div class="flp-prod" data-title="<?php echo esc_attr($p->title); ?>" data-desc="<?php echo esc_attr($p->description); ?>" data-price="<?php echo (int) $p->price_cents; ?>" data-sold="<?php echo (int) $p->sold; ?>" data-id="<?php echo (int) $p->id; ?>" data-tags="<?php echo esc_attr(implode('|', array_map('strtolower', lmeg_product_tags($p)))); ?>" data-avail="<?php echo $sold_out ? 0 : 1; ?>" style="display:flex;flex-direction:column;width:100%;height:100%;border:1px solid rgba(0,0,0,.12);border-radius:16px;overflow:hidden;font-family:inherit;background:#fff;color:#17141f;box-shadow:0 12px 40px rgba(0,0,0,.08)">
       <?php
       $gallery = lmeg_product_gallery($p);
       $imgs = [];
