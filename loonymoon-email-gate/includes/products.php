@@ -1046,6 +1046,58 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
  * Hosted, shareable product page at ?lmeg_product=<slug>. Standalone on-brand
  * page centering the product card so each product has its own URL.
  */
+/**
+ * Sticky bottom buy-bar for the product page on mobile (≤640px). Simple
+ * products get a direct .flp-add (adds to cart + opens the drawer); products
+ * that need a size/price choice, or sold-out ones, get a button that scrolls
+ * the buy card into view. Dark chrome; hidden on desktop via CSS.
+ */
+function lmeg_product_sticky_bar_html($p) {
+    $cur      = $p->currency ?: 'USD';
+    $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
+    $pwyw     = function_exists('lmeg_product_is_pwyw') && lmeg_product_is_pwyw($p);
+    $physical = ($p->type === 'physical');
+    $vlist    = function_exists('lmeg_product_variants') ? lmeg_product_variants($p) : [];
+    $sold_out = function_exists('lmeg_product_is_available') ? !lmeg_product_is_available($p) : false;
+    $simple   = !$sold_out && !$pwyw && empty($vlist);
+    $price    = $pwyw ? 'Name your price' : $fmt($p->price_cents);
+
+    $data = 'data-id="' . (int) $p->id . '" data-slug="' . esc_attr($p->slug)
+          . '" data-title="' . esc_attr($p->title) . '" data-cover="' . esc_attr($p->cover_url)
+          . '" data-price="' . (int) $p->price_cents . '" data-cur="' . esc_attr($cur)
+          . '" data-type="' . esc_attr($p->type) . '" data-ship="' . ($physical ? (int) $p->shipping_cents : 0)
+          . '" data-pwyw="' . ($pwyw ? 1 : 0) . '" data-min="' . (int) $p->min_price_cents
+          . '" data-hasvar="' . (!empty($vlist) ? 1 : 0) . '"';
+
+    $bs = 'border:0;border-radius:10px;padding:12px 20px;font-weight:800;font-size:15px;cursor:pointer;white-space:nowrap';
+    if ($sold_out) {
+        $btn = '<button type="button" disabled style="' . $bs . ';background:#33313c;color:#8B90A0;cursor:not-allowed">Sold out</button>';
+    } elseif ($simple) {
+        $btn = '<button type="button" class="flp-add" ' . $data . ' style="' . $bs . ';background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12">Add to cart</button>';
+    } else {
+        $btn = '<button type="button" class="flp-goto-buy" style="' . $bs . ';background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12">' . (($physical || $vlist) ? 'Choose options' : 'Buy now') . '</button>';
+    }
+    $thumb = !empty($p->cover_url) ? '<img src="' . esc_url($p->cover_url) . '" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto">' : '';
+
+    ob_start(); ?>
+<style>
+  .flp-sticky-buy{display:none}
+  @media(max-width:640px){
+    body{padding-bottom:84px}
+    .flp-sticky-buy{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:99997;align-items:center;gap:12px;
+      padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(14,16,23,.95);backdrop-filter:blur(8px);
+      border-top:1px solid rgba(255,255,255,.1);box-shadow:0 -10px 30px rgba(0,0,0,.45)}
+  }
+  .flp-sticky-buy .t{flex:1;min-width:0;text-align:left}
+  .flp-sticky-buy .t b{display:block;font-size:14px;color:#F4F2F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:650}
+  .flp-sticky-buy .t span{font-size:13px;color:#E7A6CF;font-weight:700}
+</style>
+<div class="flp-sticky-buy"><?php echo $thumb; ?><div class="t"><b><?php echo esc_html($p->title); ?></b><span><?php echo esc_html($price); ?></span></div><?php echo $btn; ?></div>
+<script>(function(){var g=document.querySelector('.flp-goto-buy');if(!g)return;g.addEventListener('click',function(){var c=document.querySelector('.flp-prod');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});});})();</script>
+<?php
+    return ob_get_clean();
+}
+
 function lmeg_product_page() {
     $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
     if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
@@ -1102,6 +1154,7 @@ function lmeg_product_page() {
       </div>
     </div>
     <?php endif; ?>
+    <?php echo lmeg_product_sticky_bar_html($p); ?>
     <?php if (function_exists('lmeg_cart_assets_html')) echo lmeg_cart_assets_html(); ?>
     </body></html><?php
     exit;

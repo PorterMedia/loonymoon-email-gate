@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.11.0
+Stable tag: 3.12.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.12.0 =
+* Store (Beta): sticky mobile buy bar on product pages. On phones, a slim bar now stays pinned to the bottom of a product page with the title, price and an action button — so fans can add to cart from anywhere on the page without scrolling back up. Simple products add straight to the cart; products with a size or name-your-price get a "Choose options" button that jumps to the picker; sold-out shows a disabled state. Desktop is unchanged.
+
 = 3.11.0 =
 * Store (Beta): "Just added" badge. Products you added in the last 14 days now show a ✨ Just added pill on their storefront card, so fans spot what's new at a glance. Automatic — no setting; it appears when a product is fresh and disappears on its own after two weeks. (Featured products keep their ⭐ badge instead.)
 
