@@ -1195,7 +1195,11 @@ function lmeg_product_page() {
       .wrap{width:100%;max-width:440px}
       .back{display:block;text-align:center;margin-top:22px;color:#8B90A0;font-size:13px;text-decoration:none}
       .sig{margin-top:10px;text-align:center;color:#6C6F82;font-size:12px}
+      .topback{position:fixed;top:16px;left:16px;z-index:5;display:inline-flex;align-items:center;gap:6px;color:#B9BCC9;font-size:13px;font-weight:600;text-decoration:none;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);padding:8px 14px;border-radius:999px;transition:background .15s,border-color .15s;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+      .topback:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.28);color:#fff}
+      @media(max-width:520px){.topback{top:12px;left:12px;font-size:12px;padding:7px 12px}}
     </style></head><body>
+    <a class="topback" href="<?php echo esc_url(home_url('/')); ?>">← <?php echo esc_html($site); ?></a>
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
