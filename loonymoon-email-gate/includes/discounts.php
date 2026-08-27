@@ -120,6 +120,26 @@ function lmeg_handle_delete_discount() {
 /* ---------------------------------------------------------------------------
  * Admin — the "Discount codes" section, embedded on the Store page.
  * ------------------------------------------------------------------------- */
+/**
+ * "N / M used" cell with a usage progress bar (admin light surface). Bar goes
+ * green → amber (≥70%) → red (maxed). With no limit, just shows the count.
+ */
+function lmeg_discount_usage_html($used, $max) {
+    $used = max(0, (int) $used); $max = (int) $max;
+    if ($max <= 0) {
+        return '<span style="font-size:13px;color:#17141f">' . $used . '</span> <span style="color:#9A9DB0;font-size:11px">used</span>';
+    }
+    $pct = (int) round(min(100, $used / $max * 100));
+    $maxed = ($used >= $max);
+    $col = $maxed ? '#DC2626' : ($pct >= 70 ? '#D97706' : '#059669');
+    $bg  = $maxed ? '#FEE2E2' : ($pct >= 70 ? '#FEF3C7' : '#ECFDF5');
+    return '<div style="min-width:92px">'
+        . '<div style="font-size:13px;color:#17141f;margin-bottom:4px">' . $used . ' <span style="color:#6b6b78">/ ' . $max . '</span>'
+        . ($maxed ? ' <span style="color:#DC2626;font-weight:700;font-size:11px">maxed</span>' : '') . '</div>'
+        . '<div style="height:5px;border-radius:999px;background:' . $bg . ';overflow:hidden"><div style="height:100%;width:' . $pct . '%;background:' . $col . ';border-radius:999px"></div></div>'
+        . '</div>';
+}
+
 function lmeg_discounts_admin_section() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -151,7 +171,7 @@ function lmeg_discounts_admin_section() {
                 <td><strong style="font-family:ui-monospace,Menlo,monospace"><?php echo esc_html($d->code); ?></strong></td>
                 <td><?php echo esc_html(lmeg_discount_desc($d)); ?></td>
                 <td><?php echo (int) $d->min_subtotal_cents > 0 ? esc_html($money($d->min_subtotal_cents)) : '—'; ?></td>
-                <td><?php echo (int) $d->used; ?><?php echo (int) $d->max_uses > 0 ? ' / ' . (int) $d->max_uses : ''; ?></td>
+                <td><?php echo lmeg_discount_usage_html($d->used, $d->max_uses); ?></td>
                 <?php $pf = $perf[$d->code] ?? null; ?>
                 <td><?php echo $pf ? esc_html($money((int) $pf->rev)) : '<span style="color:#9A9DB0">—</span>'; ?></td>
                 <td><?php echo ($pf && (int) $pf->given > 0) ? '<span style="color:#1a8a4a">' . esc_html($money((int) $pf->given)) . '</span>' : '<span style="color:#9A9DB0">—</span>'; ?></td>
