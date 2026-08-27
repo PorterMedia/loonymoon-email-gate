@@ -66,6 +66,21 @@ function lmeg_handle_ship_group() {
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&shipped=1' . lmeg_orders_keep_args())); exit;
 }
 
+/* Save a private staff note on an order (applied to all its lines). */
+add_action('admin_post_lmeg_order_note', 'lmeg_handle_order_note');
+function lmeg_handle_order_note() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_order_note', 'lmeg_ordernote_nonce');
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $okey = sanitize_text_field(wp_unslash($_POST['okey'] ?? ''));
+    if ($okey === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-orders')); exit; }
+    $note = mb_substr(sanitize_textarea_field(wp_unslash($_POST['admin_note'] ?? '')), 0, 500);
+    $expr = lmeg_orders_okey_expr('');
+    $wpdb->query($wpdb->prepare("UPDATE $ptbl SET admin_note = %s WHERE $expr = %s", $note !== '' ? $note : null, $okey));
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&noted=1' . lmeg_orders_keep_args())); exit;
+}
+
 add_action('admin_post_lmeg_resend_receipt', 'lmeg_handle_resend_receipt');
 function lmeg_handle_resend_receipt() {
     if (!current_user_can('manage_options')) wp_die('nope');
@@ -213,6 +228,9 @@ function lmeg_handle_packing_slip() {
             <?php $onote = ''; foreach ($lines as $ln) { if (!empty($ln->note)) { $onote = (string) $ln->note; break; } } if ($onote !== '') : ?>
             <div style="margin-top:16px;padding:12px 14px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:8px"><div class="lbl" style="color:#8A7420">🎁 Gift message / note</div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#5A4A16"><?php echo esc_html($onote); ?></div></div>
             <?php endif; ?>
+            <?php $anote = ''; foreach ($lines as $ln) { if (!empty($ln->admin_note)) { $anote = (string) $ln->admin_note; break; } } if ($anote !== '') : ?>
+            <div style="margin-top:12px;padding:10px 14px;background:#F1F4F9;border:1px dashed #9DB0CE;border-radius:8px"><div class="lbl" style="color:#41597E">🔒 Staff note <span style="font-weight:400;text-transform:none;letter-spacing:0">(not shown to buyer)</span></div><div style="font-size:14px;line-height:1.5;white-space:pre-line;color:#2E425F"><?php echo esc_html($anote); ?></div></div>
+            <?php endif; ?>
             <div class="thanks">Thanks for supporting <?php echo esc_html($artist); ?> 💜</div>
         </div>
     <?php endforeach; ?>
@@ -291,7 +309,7 @@ function lmeg_admin_orders() {
 
     $aggSql = "SELECT $OK okey, MAX(pp.id) maxid, MAX(pp.paid_at) when_, MAX(pp.email) email,
                 SUM(pp.amount_cents) total, SUM(pp.tax_cents) tax, MAX(pp.currency) cur, MAX(pp.processor) processor,
-                MAX(pp.discount_code) code, SUM(pp.discount_cents) disc, MAX(pp.note) note,
+                MAX(pp.discount_code) code, SUM(pp.discount_cents) disc, MAX(pp.note) note, MAX(pp.admin_note) admin_note,
                 MAX(pp.ship_name) ship_name, MAX(pp.ship_address) ship_addr,
                 MAX(pp.tracking) tracking, MAX(pp.carrier) carrier,
                 SUM(CASE WHEN pp.fulfillment='unshipped' THEN 1 ELSE 0 END) unshipped,
@@ -323,6 +341,7 @@ function lmeg_admin_orders() {
     if (isset($_GET['resent']))  echo '<div class="notice notice-success is-dismissible"><p>Receipt re-sent.</p></div>';
     if (isset($_GET['refunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order marked refunded and removed from revenue. Remember to refund the money in your Stripe/Square dashboard.</p></div>';
     if (isset($_GET['unrefunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order restored to paid.</p></div>';
+    if (isset($_GET['noted']))    echo '<div class="notice notice-success is-dismissible"><p>Staff note saved.</p></div>';
     ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;max-width:720px;margin:12px 0 18px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Orders</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders_all); ?></div></div>
@@ -372,7 +391,7 @@ function lmeg_admin_orders() {
             <tr>
                 <td style="white-space:nowrap"><?php echo esc_html($o->when_ ? date_i18n('M j, Y', strtotime($o->when_)) : '—'); ?></td>
                 <td><?php echo esc_html($o->email ?: '—'); ?><?php echo $o->ship_name ? '<br><span style="color:#777;font-size:12px">' . esc_html($o->ship_name) . '</span>' : ''; ?></td>
-                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">📝 ' . esc_html($o->note) . '</span>' : ''; ?></td>
+                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">📝 ' . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">🔒 ' . esc_html($o->admin_note) . '</span>' : ''; ?></td>
                 <td style="white-space:nowrap"><?php echo esc_html(lmeg_orders_money((int) $o->total + (int) ($o->tax ?? 0), $cur)); ?><?php echo (int) ($o->tax ?? 0) > 0 ? '<br><span style="color:#777;font-size:12px">incl. ' . esc_html(lmeg_orders_money((int) $o->tax, $cur)) . ' tax</span>' : ''; ?><?php echo (int) $o->disc > 0 ? '<br><span style="color:#1a8a4a;font-size:12px">' . esc_html($o->code ? $o->code . ' ' : '') . '−' . esc_html(lmeg_orders_money($o->disc, $cur)) . '</span>' : ''; ?></td>
                 <td><?php echo esc_html($paychip); ?></td>
                 <td><?php echo $status; ?></td>
@@ -406,6 +425,15 @@ function lmeg_admin_orders() {
                             <button class="button button-small">Un-refund</button>
                         </form>
                     <?php endif; ?>
+                    <details style="margin-top:6px">
+                        <summary style="cursor:pointer;font-size:12px;color:#50575e"><?php echo !empty($o->admin_note) ? '🔒 Edit staff note' : '🔒 Add staff note'; ?></summary>
+                        <form method="post" action="<?php echo esc_url($save); ?>" style="margin-top:6px">
+                            <?php wp_nonce_field('lmeg_order_note', 'lmeg_ordernote_nonce'); ?>
+                            <input type="hidden" name="action" value="lmeg_order_note"><?php echo $keep; ?>
+                            <textarea name="admin_note" rows="2" maxlength="500" placeholder="Private note (not shown to the buyer)" style="width:210px;font-size:12px"><?php echo esc_textarea($o->admin_note ?? ''); ?></textarea><br>
+                            <button class="button button-small" type="submit">Save note</button>
+                        </form>
+                    </details>
                 </td>
             </tr>
         <?php endforeach; endif; ?>
