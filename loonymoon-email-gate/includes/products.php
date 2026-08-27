@@ -1802,6 +1802,12 @@ function lmeg_admin_products() {
     $prev_start = date('Y-m-d H:i:s', $today_ts - 60 * DAY_IN_SECONDS);
     $rev30      = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $since));
     $revprev30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $prev_start, $since));
+    // Orders this 7 days vs the previous 7 days (week-over-week).
+    $w1  = date('Y-m-d H:i:s', $today_ts - 7 * DAY_IN_SECONDS);
+    $w2  = date('Y-m-d H:i:s', $today_ts - 14 * DAY_IN_SECONDS);
+    $okd = "COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR)))";
+    $orders7     = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $w1));
+    $ordersprev7 = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $w2, $w1));
     $revdaily = array_fill(0, 30, 0);
     foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
         $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
@@ -1846,6 +1852,7 @@ function lmeg_admin_products() {
         <div class="lmeg-stat"><div class="lmeg-stat__label">Avg order</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($aov)); ?></div><div class="lmeg-stat__hint">revenue ÷ orders</div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Buyers</div><div class="lmeg-stat__value"><?php echo number_format_i18n($buyers); ?></div><div class="lmeg-stat__hint">unique fans who bought</div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Downloads</div><div class="lmeg-stat__value"><?php echo number_format_i18n($dls); ?></div><div class="lmeg-stat__hint">file/link accesses</div></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Orders · 7d</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders7); ?></div><div><?php echo lmeg_admin_pct_chip($orders7, $ordersprev7, 'vs prev 7d'); ?></div><?php if (!$orders7) : ?><div class="lmeg-stat__hint">this week</div><?php endif; ?></div>
     </div>
     <?php echo lmeg_admin_top_products_html($topn, $fmtc); ?>
     <table class="widefat striped">
