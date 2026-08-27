@@ -748,8 +748,12 @@ function lmeg_cart_assets_html() {
     if (!empty($GLOBALS['lmeg_cart_printed'])) return '';
     $GLOBALS['lmeg_cart_printed'] = true;
     $checkout = esc_url(add_query_arg(['lmeg_cart' => 'checkout'], home_url('/')));
+    // Free-shipping progress nudge (only when zone shipping + a threshold are set).
+    $s_cfg     = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $zone_on   = !empty($s_cfg['store_ship_zones']);
+    $free_over = ($zone_on && function_exists('lmeg_store_ship_free_over')) ? (int) lmeg_store_ship_free_over() : 0;
     ob_start(); ?>
-<div id="flp-cart-root" data-checkout="<?php echo $checkout; ?>">
+<div id="flp-cart-root" data-checkout="<?php echo $checkout; ?>" data-freeover="<?php echo (int) $free_over; ?>">
   <button id="flp-cart-btn" type="button" aria-label="Open cart" hidden>
     🛒 <span id="flp-cart-count">0</span>
   </button>
@@ -758,6 +762,10 @@ function lmeg_cart_assets_html() {
     <div class="flp-cart-head"><strong>Your cart</strong><button type="button" id="flp-cart-x" aria-label="Close">✕</button></div>
     <div id="flp-cart-items"></div>
     <div class="flp-cart-foot">
+      <div id="flp-cart-ship" class="flp-cart-ship" hidden>
+        <div class="flp-ship-msg"></div>
+        <div class="flp-ship-track"><div class="flp-ship-fill"></div></div>
+      </div>
       <div class="flp-cart-tot"><span>Total</span><span id="flp-cart-total">—</span></div>
       <button type="button" id="flp-cart-go" class="flp-cart-go">Checkout</button>
       <div id="flp-cart-empty" class="flp-cart-empty">Your cart is empty.</div>
@@ -783,6 +791,13 @@ function lmeg_cart_assets_html() {
   .flp-ci .rm{background:0;border:0;color:#8B90A0;cursor:pointer;font-size:12px;text-decoration:underline}
   .flp-ci .lt{font-weight:700;white-space:nowrap;font-size:14px}
   .flp-cart-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
+  .flp-cart-ship{margin-bottom:14px}
+  .flp-cart-ship .flp-ship-msg{font-size:13px;color:#B9BCC9;margin-bottom:7px;text-align:center}
+  .flp-cart-ship .flp-ship-msg b{color:#fff}
+  .flp-cart-ship.is-free .flp-ship-msg{color:#7DD3A8;font-weight:700}
+  .flp-cart-ship .flp-ship-track{height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+  .flp-cart-ship .flp-ship-fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#E15FA8,#8A6CF6);transition:width .3s ease}
+  .flp-cart-ship.is-free .flp-ship-fill{background:linear-gradient(90deg,#7DD3A8,#5bbf8c)}
   .flp-cart-tot{display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin-bottom:12px}
   .flp-cart-go{width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:14px;border-radius:11px;font-size:15px;cursor:pointer}
   .flp-cart-empty{color:#8B90A0;text-align:center;font-size:14px;padding:8px 0}
@@ -792,11 +807,12 @@ function lmeg_cart_assets_html() {
 <script>
 (function(){
   var KEY='fanloop_cart', root=document.getElementById('flp-cart-root'); if(!root) return;
-  var CHECKOUT=root.getAttribute('data-checkout');
+  var CHECKOUT=root.getAttribute('data-checkout'), FREEOVER=+root.getAttribute('data-freeover')||0;
   var btn=document.getElementById('flp-cart-btn'), cnt=document.getElementById('flp-cart-count'),
       back=document.getElementById('flp-cart-back'), panel=document.getElementById('flp-cart-panel'),
       itemsEl=document.getElementById('flp-cart-items'), totalEl=document.getElementById('flp-cart-total'),
-      goBtn=document.getElementById('flp-cart-go'), emptyEl=document.getElementById('flp-cart-empty');
+      goBtn=document.getElementById('flp-cart-go'), emptyEl=document.getElementById('flp-cart-empty'),
+      shipEl=document.getElementById('flp-cart-ship');
 
   function read(){ try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]} }
   function write(c){ try{localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}; render(); }
@@ -813,15 +829,27 @@ function lmeg_cart_assets_html() {
   function open(){ back.hidden=false; panel.hidden=false; }
   function close(){ back.hidden=true; panel.hidden=true; }
 
+  // Free-shipping progress nudge in the drawer.
+  function renderShip(sub,cur,hasPhys){
+    if(!shipEl) return;
+    if(!(FREEOVER>0 && hasPhys)){ shipEl.hidden=true; return; }
+    shipEl.hidden=false;
+    var pct=Math.max(0,Math.min(100, Math.round(sub/FREEOVER*100)));
+    var msg=shipEl.querySelector('.flp-ship-msg'), fill=shipEl.querySelector('.flp-ship-fill');
+    if(sub>=FREEOVER){ shipEl.classList.add('is-free'); msg.innerHTML='🎉 You’ve unlocked free shipping!'; fill.style.width='100%'; }
+    else{ shipEl.classList.remove('is-free'); msg.innerHTML='Add <b>'+money(FREEOVER-sub,cur)+'</b> more for free shipping'; fill.style.width=pct+'%'; }
+  }
+
   function render(){
     var c=read(), n=count(c);
     cnt.textContent=n;
     btn.hidden = (n===0 && !document.querySelector('.flp-add'));   // hide when empty & no products on page
-    if(!c.length){ itemsEl.innerHTML=''; emptyEl.style.display='block'; goBtn.style.display='none'; totalEl.textContent='—'; return; }
+    if(!c.length){ itemsEl.innerHTML=''; emptyEl.style.display='block'; goBtn.style.display='none'; totalEl.textContent='—'; if(shipEl) shipEl.hidden=true; return; }
     emptyEl.style.display='none'; goBtn.style.display='block';
-    var cur=c[0].cur||'USD', sub=0, ship=0, html='';
+    var cur=c[0].cur||'USD', sub=0, ship=0, hasPhys=false, html='';
     c.forEach(function(i,idx){
       var lt=(+i.unit)*(+i.qty); sub+=lt; ship+=(+i.ship||0);
+      if(i.type==='physical') hasPhys=true;
       html+='<div class="flp-ci" data-k="'+esc(keyOf(i))+'">'
         + (i.cover?'<img src="'+esc(i.cover)+'" alt="">':'<div class="ph"></div>')
         + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')
@@ -830,6 +858,7 @@ function lmeg_cart_assets_html() {
         + '<div class="lt">'+money(lt,i.cur)+'</div></div>';
     });
     itemsEl.innerHTML=html;
+    renderShip(sub,cur,hasPhys);
     totalEl.textContent=money(sub+ship,cur);
   }
 

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.8.0
+Stable tag: 3.9.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.9.0 =
+* Store (Beta): free-shipping progress bar in the cart. When you've set a free-shipping threshold (Settings → Payments, with flat zone shipping on), the cart drawer now shows a live progress bar — "Add $X more for free shipping" that fills as fans add items and flips to "🎉 You've unlocked free shipping!" once they qualify. Only shows when the cart has a physical item. A gentle nudge to grow the order.
+
 = 3.8.0 =
 * Store (Beta): a proper "Your orders" page for buyers. The email magic-link (find-my-purchases) now groups everything into orders — each with its date, order number and total, per-item download buttons for digital items, and an order-level shipping status: "Preparing to ship" or "Shipped" with the carrier, tracking number and a Track link. Replaces the old flat list. No setup; the finder link and [fanloop_purchases] shortcode are unchanged.
 
