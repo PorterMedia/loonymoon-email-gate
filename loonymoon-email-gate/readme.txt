@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.9.0
+Stable tag: 3.10.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.10.0 =
+* Store (Beta): low-stock urgency bar. When a product with a stock limit is running low (10 or fewer left), its card now shows a "🔥 Only N left" pill above a claimed-progress bar and an "X of Y claimed" line — real, honest scarcity that only appears when you're actually tracking stock. Nudges fans to grab it before it's gone.
+
 = 3.9.0 =
 * Store (Beta): free-shipping progress bar in the cart. When you've set a free-shipping threshold (Settings → Payments, with flat zone shipping on), the cart drawer now shows a live progress bar — "Add $X more for free shipping" that fills as fans add items and flips to "🎉 You've unlocked free shipping!" once they qualify. Only shows when the cart has a physical item. A gentle nudge to grow the order.
 

@@ -133,6 +133,24 @@ function lmeg_product_is_available($p) {
     return true;
 }
 
+/**
+ * Low-stock urgency block for a product card (WHITE surface): a "🔥 Only N left"
+ * pill, a claimed-progress bar, and an "X of Y claimed" line. Returns '' when
+ * there's no real stock limit. All colours explicit (card never inherits).
+ */
+function lmeg_product_lowstock_html($sold, $stock) {
+    $sold = max(0, (int) $sold); $stock = (int) $stock;
+    if ($stock <= 0) return '';
+    $remaining = max(0, $stock - $sold);
+    $claimed   = min($stock, $sold);
+    $pct       = (int) round(min(100, max(0, $claimed / $stock * 100)));
+    return '<div style="margin-bottom:9px">'
+        . '<div style="display:inline-block;font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;padding:2px 10px;border-radius:999px;margin-bottom:6px">🔥 Only ' . $remaining . ' left</div>'
+        . '<div style="height:6px;border-radius:999px;background:#EFE6D2;overflow:hidden"><div style="height:100%;width:' . $pct . '%;background:linear-gradient(90deg,#F59E0B,#EF4444);border-radius:999px"></div></div>'
+        . '<div style="font-size:11px;color:#8a6d00;margin-top:4px;font-weight:600">' . $claimed . ' of ' . $stock . ' claimed</div>'
+        . '</div>';
+}
+
 /** Decode a product's extra gallery images (JSON array of URLs) → valid URLs. */
 function lmeg_product_gallery($p) {
     $g = [];
@@ -967,7 +985,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🗓 Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
-        <?php elseif (!$sold_out && $low_stock) : ?><div style="font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🔥 Only <?php echo (int) $remaining; ?> left</div>
+        <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">★ <?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
