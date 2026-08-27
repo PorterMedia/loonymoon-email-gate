@@ -103,6 +103,8 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
             'amount' => (int) $existing->amount_cents, 'unit' => (int) $line['unit'], 'line_discount' => 0,
             'qty' => (int) $existing->qty ?: 1, 'cur' => strtoupper($existing->currency ?: 'USD'),
             'token' => (string) $existing->access_token,
+            'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
+            'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
         ];
     }
 
@@ -140,6 +142,8 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'new' => true, 'id' => $pur_id, 'physical' => $physical, 'title' => $p->title,
         'variant' => $variant, 'type' => $p->type, 'amount' => $amount, 'unit' => (int) $line['unit'],
         'line_discount' => $disc, 'qty' => $qty, 'cur' => $cur, 'token' => $token,
+        'preorder' => function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p),
+        'predate' => function_exists('lmeg_product_preorder_date') ? lmeg_product_preorder_date($p) : '',
     ];
 }
 
@@ -183,14 +187,16 @@ function lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, $processor, $
 function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discount = null) {
     if (!function_exists('lmeg_email_deliver')) return;
     $artist = lmeg_email_artist();
-    $items = []; $dls = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false;
+    $items = []; $dls = []; $total = 0; $off = 0; $cur = 'USD'; $has_phys = false; $pre = [];
     foreach ($lines as $ln) {
         $cur = $ln['cur']; $total += (int) $ln['amount']; $off += (int) ($ln['line_discount'] ?? 0);
         $full = (int) $ln['amount'] + (int) ($ln['line_discount'] ?? 0);   // list price before discount
         $meta = ((int) $ln['qty'] > 1 ? (int) $ln['qty'] . ' × ' . lmeg_cart_money($ln['unit'], $ln['cur']) : '')
               . ((int) $ln['qty'] > 1 && $ln['variant'] ? ' · ' : '') . ($ln['variant'] ? $ln['variant'] : '');
-        $items[] = ['name' => $ln['title'], 'meta' => trim($meta, ' ·'), 'amount' => lmeg_cart_money($full, $ln['cur'])];
-        if ($ln['type'] !== 'physical' && $ln['token']) {
+        $items[] = ['name' => $ln['title'] . (!empty($ln['preorder']) ? ' (pre-order)' : ''), 'meta' => trim($meta, ' ·'), 'amount' => lmeg_cart_money($full, $ln['cur'])];
+        if (!empty($ln['preorder'])) {
+            $pre[] = esc_html($ln['title']) . ' — ' . ($ln['type'] === 'physical' ? 'ships ' : 'available ') . esc_html($ln['predate'] ?? '');
+        } elseif ($ln['type'] !== 'physical' && $ln['token']) {
             $dls[] = ['name' => $ln['title'], 'url' => lmeg_product_access_url($ln['token'])];
         } else { $has_phys = true; }
     }
@@ -199,6 +205,7 @@ function lmeg_cart_send_receipt($lines, $email, $ship_name, $ship_addr, $discoun
         . lmeg_email_p('Here\'s everything from your order with <strong>' . esc_html($artist) . '</strong>.')
         . lmeg_email_order_table($items, lmeg_cart_money($total, $cur), $extra)
         . lmeg_email_download_block($dls)
+        . ($pre ? lmeg_email_note('Pre-order' . (count($pre) > 1 ? 's' : '') . ' — we\'ll email you when ready:<br>' . implode('<br>', $pre)) : '')
         . ($has_phys ? lmeg_email_ship_block($ship_name, $ship_addr) . lmeg_email_note('We\'ll get your item' . (count($lines) > 1 ? 's' : '') . ' on the way and email you if we need anything.') : '')
         . ($dls ? lmeg_email_note('Trouble with a link? Just reply and ' . esc_html($artist) . ' can help.') : '');
     lmeg_email_deliver($email, 'Your order from ' . $artist, $inner, 'Your order from ' . $artist . ' — receipt & downloads.');
