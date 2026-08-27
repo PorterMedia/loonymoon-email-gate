@@ -892,7 +892,16 @@ function lmeg_cart_assets_html() {
     write(c); toast('Set added to cart'); open();
   }
 
+  // Copy a product's link from a card share button.
+  function handleShare(b){
+    var u=b.getAttribute('data-url'); if(!u) return;
+    function done(){ toast('Link copied'); }
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(u).then(done,function(){window.prompt('Copy this link:',u);}); }
+    else { window.prompt('Copy this link:',u); }
+  }
+
   document.addEventListener('click', function(e){
+    var sh=e.target.closest('.flp-share'); if(sh){ e.preventDefault(); handleShare(sh); return; }
     var st=e.target.closest('.flp-add-set'); if(st){ e.preventDefault(); handleAddSet(st); return; }
     var a=e.target.closest('.flp-add'); if(a){ e.preventDefault(); handleAdd(a); return; }
     if(e.target===btn||e.target.closest('#flp-cart-btn')){ render(); open(); return; }

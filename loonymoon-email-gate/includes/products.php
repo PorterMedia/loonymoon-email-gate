@@ -1018,7 +1018,10 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
             }
         }
         ?>
-        <div style="font-weight:750;font-size:19px;margin-bottom:4px;color:#17141f"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">
+          <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
+          <?php if (!$solo) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center">🔗</button><?php endif; ?>
+        </div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-block;padding:2px 10px;border-radius:999px;margin-bottom:9px">🗓 Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
