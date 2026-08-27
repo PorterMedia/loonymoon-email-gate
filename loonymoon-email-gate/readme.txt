@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.21.0
+Stable tag: 3.22.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.22.0 =
+* Store (Beta): "you're saving $X" badge at checkout. When a discount code or bundle applies, a green savings badge now appears right above the pay button, reinforcing the deal at the moment fans decide to buy. Only shows when there's an actual saving.
+
 = 3.21.0 =
 * Store (Beta): the shop remembers your filters. A fan's search text, category, in-stock toggle and sort choice now persist across page reloads (saved in their browser only), so browsing a big shop and coming back doesn't reset everything. Restores gracefully — a saved category that no longer exists just falls back to "All".
 

@@ -346,6 +346,19 @@ function lmeg_cart_posted() {
     return is_array($raw) ? $raw : [];
 }
 
+/**
+ * A celebratory "you're saving $X" badge for the checkout, near the pay button.
+ * Reinforces a discount/bundle at the point of action. '' when there's no saving.
+ */
+function lmeg_cart_savings_badge($off, $cur) {
+    $off = (int) $off;
+    if ($off <= 0) return '';
+    return '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;'
+        . 'background:rgba(125,211,168,.14);border:1px solid rgba(125,211,168,.4);border-radius:11px;'
+        . 'padding:11px 14px;color:#7DD3A8;font-weight:800;font-size:15px">🎉 You\'re saving '
+        . esc_html(lmeg_cart_money($off, $cur)) . ' on this order</div>';
+}
+
 /* ---------------------------------------------------------------------------
  * Step 1 — review page (order summary + email / shipping form)
  * ------------------------------------------------------------------------- */
@@ -480,6 +493,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
         . $shipfields
         . $notefield
+        . lmeg_cart_savings_badge($off, $cur)
         . '<button type="submit" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
         . $note
         . '</form>'
