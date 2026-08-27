@@ -827,7 +827,7 @@ function lmeg_cart_assets_html() {
     ob_start(); ?>
 <div id="flp-cart-root" data-checkout="<?php echo $checkout; ?>" data-freeover="<?php echo (int) $free_over; ?>">
   <button id="flp-cart-btn" type="button" aria-label="Open cart" hidden>
-    <?php echo lmeg_store_icon('cart', 18); ?> <span id="flp-cart-count">0</span>
+    <?php echo lmeg_store_icon('cart', 18); ?> <span id="flp-cart-count" aria-live="polite" aria-atomic="true">0</span>
   </button>
   <div id="flp-cart-back" hidden></div>
   <aside id="flp-cart-panel" hidden aria-label="Cart">
@@ -861,6 +861,10 @@ function lmeg_cart_assets_html() {
      default and close() works without relying on the host theme's reset. */
   #flp-cart-panel[hidden],#flp-cart-back[hidden]{display:none}
   .flp-lb[hidden]{display:none!important}   /* the gallery lightbox sets display:flex inline */
+  /* Keyboard focus ring — a brand-pink outline that sits OUTSIDE the element
+     (outline-offset) so it stays visible on white cards, dark chrome, and even
+     on the pink Add button. :focus-visible = keyboard only (no mouse-click ring). */
+  .flp-add:focus-visible,.flp-var:focus-visible,.flp-quick:focus-visible,.flp-save:focus-visible,.flp-qtir:focus-visible,.flp-qty:focus-visible,.flp-share:focus-visible,.flp-tag:focus-visible,.flp-onsale:focus-visible,.flp-instock:focus-visible,.flp-more:focus-visible,.flp-q:focus-visible,.flp-sort:focus-visible,.flp-thumb:focus-visible,.flp-gal-main:focus-visible,.flp-saved-add:focus-visible,.flp-saved-rm:focus-visible,.flp-lb-x:focus-visible,.flp-lb-prev:focus-visible,.flp-lb-next:focus-visible,#flp-cart-btn:focus-visible,#flp-cart-x:focus-visible,#flp-cart-go:focus-visible,#flp-qv-x:focus-visible,#flp-cart-items [data-act]:focus-visible{outline:2px solid #E15FA8!important;outline-offset:2px!important}
   #flp-cart-panel .flp-cart-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);font-size:17px}
   #flp-cart-x{background:0;border:0;color:#9AA0B4;font-size:18px;cursor:pointer}
   #flp-cart-items{flex:1;overflow:auto;padding:6px 20px}
@@ -929,7 +933,7 @@ function lmeg_cart_assets_html() {
 
   function toast(msg){
     var t=document.getElementById('flp-cart-toast');
-    if(!t){ t=document.createElement('div'); t.id='flp-cart-toast'; document.body.appendChild(t); }
+    if(!t){ t=document.createElement('div'); t.id='flp-cart-toast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite'); document.body.appendChild(t); }
     t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},1600);
   }
   function open(){ back.hidden=false; panel.hidden=false; }

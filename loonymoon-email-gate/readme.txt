@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.50.1
+Stable tag: 3.51.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.51.0 =
+* Store (Beta): accessibility polish. Keyboard shoppers now get a clear focus ring (a brand-pink outline) on every storefront control — Add to cart, size pills, Quick look, the heart, quantity buttons, the cart and its buttons — so it's obvious where you are when tabbing through. It only shows for keyboard focus, not mouse clicks. Screen readers also now announce the cart count as it changes and the "Added to cart" confirmation.
+
 = 3.50.1 =
 * Store (Beta): fix — the cart drawer, floating cart button and product-image lightbox each set their own display in CSS, which overrode the plain "hidden" attribute, so whether they stayed hidden depended on the host theme shipping a reset. They now hide themselves reliably on their own, so the drawer/lightbox open only when opened and the storefront isn't covered on themes without that reset.
 
