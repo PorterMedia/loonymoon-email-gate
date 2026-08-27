@@ -44,26 +44,105 @@ function lmeg_orders_menu_title($count) {
 /* ---------------------------------------------------------------------------
  * Actions: ship a whole order / resend its receipt
  * ------------------------------------------------------------------------- */
+/* Mark one order (all its unshipped paid lines) shipped + notify the buyer.
+ * Shared by the per-order Ship form and the bulk "Mark shipped" action.
+ * Returns true if the order had something to ship. Idempotent: only touches
+ * lines that are still paid+unshipped, so re-running does nothing. */
+function lmeg_ship_okey($okey, $carrier = '', $tracking = '') {
+    if ($okey === '') return false;
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $expr = lmeg_orders_okey_expr('');   // single-table UPDATE — no alias
+    $rep  = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE status='paid' AND fulfillment='unshipped' AND $expr = %s LIMIT 1", $okey));
+    if (!$rep) return false;
+    $wpdb->query($wpdb->prepare("UPDATE $ptbl SET fulfillment='shipped', tracking=%s, carrier=%s WHERE status='paid' AND fulfillment='unshipped' AND $expr = %s", $tracking ?: null, $carrier ?: null, $okey));
+    if ($rep->email && function_exists('lmeg_product_send_shipped')) {
+        $rep->tracking = $tracking ?: null; $rep->carrier = $carrier ?: null;
+        lmeg_product_send_shipped($rep);
+    }
+    return true;
+}
+
 add_action('admin_post_lmeg_ship_group', 'lmeg_handle_ship_group');
 function lmeg_handle_ship_group() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_ship_group', 'lmeg_shipg_nonce');
-    global $wpdb;
-    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
     $okey = sanitize_text_field(wp_unslash($_POST['okey'] ?? ''));
     if ($okey === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-orders')); exit; }
-    $carrier  = sanitize_text_field(wp_unslash($_POST['carrier'] ?? ''));
-    $tracking = sanitize_text_field(wp_unslash($_POST['tracking'] ?? ''));
-    $expr     = lmeg_orders_okey_expr('');   // single-table UPDATE — no alias
-
-    $rep = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ptbl WHERE status='paid' AND fulfillment='unshipped' AND $expr = %s LIMIT 1", $okey));
-    $wpdb->query($wpdb->prepare("UPDATE $ptbl SET fulfillment='shipped', tracking=%s, carrier=%s WHERE status='paid' AND fulfillment='unshipped' AND $expr = %s", $tracking ?: null, $carrier ?: null, $okey));
-    if ($rep && $rep->email && function_exists('lmeg_product_send_shipped')) {
-        $rep->tracking = $tracking ?: null; $rep->carrier = $carrier ?: null;
-        lmeg_product_send_shipped($rep);
-    }
+    lmeg_ship_okey($okey, sanitize_text_field(wp_unslash($_POST['carrier'] ?? '')), sanitize_text_field(wp_unslash($_POST['tracking'] ?? '')));
     delete_transient('lmeg_toship_count');
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&shipped=1' . lmeg_orders_keep_args())); exit;
+}
+
+/* Bulk actions over the orders selected with row checkboxes: mark them all
+ * shipped, or export just those orders to CSV. okeys[] carries the selection. */
+add_action('admin_post_lmeg_bulk_orders', 'lmeg_handle_bulk_orders');
+function lmeg_handle_bulk_orders() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_bulk_orders', 'lmeg_bulk_nonce');
+    $do    = sanitize_key($_POST['do'] ?? '');
+    $okeys = array_values(array_filter(array_map(function ($k) {
+        return sanitize_text_field(wp_unslash($k));
+    }, (array) ($_POST['okeys'] ?? [])), function ($k) { return $k !== ''; }));
+    if (!$okeys) { wp_safe_redirect(admin_url('admin.php?page=lmeg-orders' . lmeg_orders_keep_args())); exit; }
+
+    if ($do === 'export') { lmeg_orders_export_selected($okeys); exit; }   // sends CSV + exits
+
+    // Default action = mark shipped.
+    $carrier = sanitize_text_field(wp_unslash($_POST['carrier'] ?? ''));
+    $n = 0;
+    foreach ($okeys as $k) { if (lmeg_ship_okey($k, $carrier, '')) $n++; }
+    delete_transient('lmeg_toship_count');
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&bulkshipped=' . (int) $n . lmeg_orders_keep_args())); exit;
+}
+
+/* Stream a CSV of the given orders (all their paid/refunded lines, one row per
+ * order). Reuses the formula-injection guard from the to-ship export. */
+function lmeg_orders_export_selected($okeys) {
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $tbl  = $wpdb->prefix . 'lmeg_products';
+    $expr = lmeg_orders_okey_expr('pp.');
+    $rows = [];
+    if ($okeys) {
+        $ph   = implode(',', array_fill(0, count($okeys), '%s'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT pp.*, pr.title, $expr okey FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status IN ('paid','refunded') AND $expr IN ($ph) ORDER BY $expr, pp.id ASC", $okeys));
+    }
+    $ord = [];   // okey => aggregated order
+    foreach ((array) $rows as $r) {
+        if (!isset($ord[$r->okey])) $ord[$r->okey] = ['when' => $r->paid_at, 'email' => $r->email, 'name' => $r->ship_name, 'addr' => $r->ship_address, 'cur' => strtoupper($r->currency ?: 'USD'), 'total' => 0, 'tax' => 0, 'items' => [], 'status' => 'paid', 'ship' => 'digital', 'tracking' => $r->tracking, 'carrier' => $r->carrier];
+        $o =& $ord[$r->okey];
+        $o['total'] += (int) $r->amount_cents;
+        $o['tax']   += (int) ($r->tax_cents ?? 0);
+        $o['items'][] = ((int) ($r->qty ?: 1) > 1 ? (int) $r->qty . '× ' : '') . $r->title . ($r->variant ? ' (' . $r->variant . ')' : '');
+        if ($r->status === 'refunded') $o['status'] = 'refunded';
+        if ($r->fulfillment === 'unshipped') $o['ship'] = 'to ship';
+        elseif ($r->fulfillment === 'shipped') $o['ship'] = 'shipped';
+        if ($r->tracking) { $o['tracking'] = $r->tracking; $o['carrier'] = $r->carrier; }
+        unset($o);
+    }
+    $safe = function ($v) { $v = (string) $v; return ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) ? "'" . $v : $v; };
+    $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fanloop-orders-' . gmdate('Y-m-d') . '.csv"');
+    $fh = fopen('php://output', 'w');
+    fwrite($fh, "\xEF\xBB\xBF");
+    fputcsv($fh, ['Order', 'Date', 'Email', 'Name', 'Address', 'Items', 'Total', 'Tax', 'Currency', 'Status', 'Fulfillment', 'Carrier', 'Tracking']);
+    foreach ($ord as $key => $o) {
+        fputcsv($fh, [
+            '#' . substr((string) $key, -8),
+            $o['when'] ? gmdate('Y-m-d', strtotime($o['when'])) : '',
+            $safe($o['email']), $safe($o['name']),
+            $safe(str_replace("\n", ', ', (string) $o['addr'])),
+            $safe(implode('; ', $o['items'])),
+            $money($o['total']), $money($o['tax']), $o['cur'],
+            $o['status'], $o['ship'], $safe($o['carrier']), $safe($o['tracking']),
+        ]);
+    }
+    fclose($fh);
 }
 
 /* Save a private staff note on an order (applied to all its lines). */
@@ -276,6 +355,45 @@ function lmeg_handle_export_shipping() {
     exit;
 }
 
+/* Client JS for the Orders bulk-select bar. Row checkboxes (.lmeg-obulk) live
+ * in the table (NOT in a form); this collects the checked okeys into the bulk
+ * <form> as okeys[] hidden inputs on submit, so no <form> nests inside another. */
+function lmeg_orders_bulk_js() {
+    ob_start(); ?>
+<script>
+(function(){
+  var form=document.getElementById('lmeg-obulk-form'); if(!form) return;
+  var bar=form, all=document.getElementById('lmeg-obulk-all'),
+      keys=document.getElementById('lmeg-obulk-keys'), doIn=document.getElementById('lmeg-obulk-do'),
+      count=document.getElementById('lmeg-obulk-count');
+  function boxes(){ return Array.prototype.slice.call(document.querySelectorAll('.lmeg-obulk')); }
+  function checked(){ return boxes().filter(function(b){ return b.checked; }); }
+  function sync(){
+    var c=checked().length, n=boxes().length;
+    if(bar) bar.style.display = c>0 ? 'flex' : 'none';
+    if(count) count.textContent = c + ' selected';
+    if(all){ all.checked = c>0 && c===n; all.indeterminate = c>0 && c<n; }
+  }
+  document.addEventListener('change', function(e){
+    if(e.target===all){ boxes().forEach(function(b){ b.checked=all.checked; }); sync(); return; }
+    if(e.target.classList && e.target.classList.contains('lmeg-obulk')) sync();
+  });
+  form.addEventListener('click', function(e){
+    var btn=e.target.closest('button[data-do]'); if(!btn) return;
+    e.preventDefault();
+    var sel=checked(); if(!sel.length) return;
+    if(btn.getAttribute('data-do')==='ship' && !window.confirm('Mark '+sel.length+' order(s) shipped and email those buyers?')) return;
+    keys.innerHTML='';
+    sel.forEach(function(b){ var h=document.createElement('input'); h.type='hidden'; h.name='okeys[]'; h.value=b.value; keys.appendChild(h); });
+    doIn.value=btn.getAttribute('data-do');
+    form.submit();
+  });
+  sync();
+})();
+</script>
+    <?php return ob_get_clean();
+}
+
 function lmeg_admin_orders() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -342,6 +460,7 @@ function lmeg_admin_orders() {
     if (isset($_GET['refunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order marked refunded and removed from revenue. Remember to refund the money in your Stripe/Square dashboard.</p></div>';
     if (isset($_GET['unrefunded'])) echo '<div class="notice notice-success is-dismissible"><p>Order restored to paid.</p></div>';
     if (isset($_GET['noted']))    echo '<div class="notice notice-success is-dismissible"><p>Staff note saved.</p></div>';
+    if (isset($_GET['bulkshipped'])) echo '<div class="notice notice-success is-dismissible"><p>' . (int) $_GET['bulkshipped'] . ' order(s) marked shipped and those buyers notified.</p></div>';
     ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;max-width:720px;margin:12px 0 18px">
         <div class="lmeg-stat"><div class="lmeg-stat__label">Orders</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders_all); ?></div></div>
@@ -371,10 +490,25 @@ function lmeg_admin_orders() {
     </p>
     <?php endif; ?>
 
+    <form id="lmeg-obulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-left:4px solid #E15FA8;border-radius:4px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
+        <?php wp_nonce_field('lmeg_bulk_orders', 'lmeg_bulk_nonce'); ?>
+        <input type="hidden" name="action" value="lmeg_bulk_orders">
+        <input type="hidden" name="do" id="lmeg-obulk-do" value="">
+        <input type="hidden" name="q" value="<?php echo esc_attr($q); ?>">
+        <input type="hidden" name="f" value="<?php echo esc_attr($f); ?>">
+        <input type="hidden" name="paged" value="<?php echo (int) $paged; ?>">
+        <div id="lmeg-obulk-keys"></div>
+        <strong id="lmeg-obulk-count" style="min-width:78px">0 selected</strong>
+        <select name="carrier" style="max-width:120px"><option value="">Carrier (optional)…</option><?php foreach (['USPS','UPS','FedEx','Canada Post','DHL','Other'] as $cc) echo '<option>' . esc_html($cc) . '</option>'; ?></select>
+        <button type="submit" class="button button-primary" data-do="ship">Mark shipped</button>
+        <button type="submit" class="button" data-do="export">Export selected (CSV)</button>
+        <span class="description">Ship marks the selected orders fulfilled and emails those buyers (add per-order tracking below if you have it).</span>
+    </form>
+
     <table class="widefat striped">
-        <thead><tr><th>When</th><th>Buyer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th style="width:2.2em;text-align:center"><input type="checkbox" id="lmeg-obulk-all" title="Select all on this page"></th><th>When</th><th>Buyer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
-        <?php if (!$orders) : ?><tr><td colspan="7">No orders<?php echo $q !== '' || $f !== 'all' ? ' match that filter.' : ' yet.'; ?></td></tr>
+        <?php if (!$orders) : ?><tr><td colspan="8">No orders<?php echo $q !== '' || $f !== 'all' ? ' match that filter.' : ' yet.'; ?></td></tr>
         <?php else : foreach ($orders as $o) :
             $mylines = $lines_by[$o->okey] ?? [];
             $item_str = [];
@@ -389,6 +523,7 @@ function lmeg_admin_orders() {
             $paychip = ['stripe' => 'Stripe', 'square' => 'Square', 'demo' => 'Demo'][$o->processor] ?? esc_html($o->processor);
         ?>
             <tr>
+                <td style="text-align:center"><input type="checkbox" class="lmeg-obulk" value="<?php echo esc_attr($o->okey); ?>" aria-label="Select order"></td>
                 <td style="white-space:nowrap"><?php echo esc_html($o->when_ ? date_i18n('M j, Y', strtotime($o->when_)) : '—'); ?></td>
                 <td><?php echo esc_html($o->email ?: '—'); ?><?php echo $o->ship_name ? '<br><span style="color:#777;font-size:12px">' . esc_html($o->ship_name) . '</span>' : ''; ?></td>
                 <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">📝 ' . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">🔒 ' . esc_html($o->admin_note) . '</span>' : ''; ?></td>
@@ -449,5 +584,6 @@ function lmeg_admin_orders() {
         if ($paged < $pages) echo ' <a class="button" href="' . esc_url(add_query_arg('paged', $paged + 1, $base)) . '">Next →</a>';
         echo '</p>';
     }
+    echo lmeg_orders_bulk_js();
     echo '</div>';
 }
