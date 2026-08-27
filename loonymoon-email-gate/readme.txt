@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.43.0
+Stable tag: 3.44.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.44.0 =
+* Store (Beta): spotlight hero. Add hero="1" to your [fanloop_store] shortcode and your featured product headlines the shop — a big, editorial banner at the top (large image + title + price + full add-to-cart, size picker and quantity all working) with the rest of the catalogue in the grid below. It picks your Featured product automatically (newest if none is pinned), and only appears when there are at least two products so the grid still has something to show.
+
 = 3.43.0 =
 * Store (Beta): flat, modern icon set. Replaced the emoji throughout the store — storefront, product page, cart & checkout, the "Your orders" pages, and the Store/Orders admin — with one cohesive set of clean line icons that inherit their colour and look sharp on any background, light or dark. Emails keep their emoji (icons don't render reliably in inboxes), and meaningful glyphs like the language flags and 🥇🥈🥉 medals are untouched.
 

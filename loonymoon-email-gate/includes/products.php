@@ -878,7 +878,7 @@ add_shortcode('fanloop_store', 'lmeg_shortcode_store');
 add_shortcode('loony_store', 'lmeg_shortcode_store');
 function lmeg_shortcode_store($atts) {
     static $store_n = 0; $store_n++;
-    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto', 'ids' => '', 'tag' => '', 'per' => 0], $atts, 'fanloop_store');
+    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto', 'ids' => '', 'tag' => '', 'per' => 0, 'hero' => ''], $atts, 'fanloop_store');
     global $wpdb;
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
@@ -888,7 +888,17 @@ function lmeg_shortcode_store($atts) {
     if ($curated || trim((string) $atts['tag']) !== '') {
         $rows = lmeg_store_filter_rows($rows, $atts['ids'], $atts['tag']);
     }
-    if (!$rows) {
+    // Spotlight hero: pull one product out to feature large above the grid. Uses
+    // the first featured product (falls back to the newest). Only when hero is
+    // requested, not a curated section, and there are ≥2 products (so the grid
+    // still has something below it).
+    $hero_p = null;
+    if (in_array(strtolower(trim((string) $atts['hero'])), ['1', 'on', 'yes', 'true', 'featured'], true) && !$curated && count($rows) >= 2) {
+        foreach ($rows as $p) { if (!empty($p->featured)) { $hero_p = $p; break; } }
+        if (!$hero_p) $hero_p = $rows[0];
+        $rows = array_values(array_filter($rows, function ($p) use ($hero_p) { return (int) $p->id !== (int) $hero_p->id; }));
+    }
+    if (!$rows && !$hero_p) {
         return '<div style="max-width:420px;margin:20px auto;text-align:center;background:#fff;color:#17141f;border:1px solid rgba(0,0,0,.12);border-radius:16px;padding:34px 26px;box-shadow:0 12px 40px rgba(0,0,0,.08);font-family:inherit">'
             . '<div style="line-height:1;margin-bottom:10px;color:#c3c3cf">' . lmeg_store_icon('bag', 40) . '</div>'
             . '<div style="font-weight:750;font-size:18px;margin-bottom:5px">The shop is warming up</div>'
@@ -994,8 +1004,31 @@ function lmeg_shortcode_store($atts) {
     $hover_css = '<style>@media(hover:hover){#' . $uid . ' .flp-prod{transition:transform .16s ease,box-shadow .16s ease}'
         . '#' . $uid . ' .flp-prod:hover{transform:translateY(-4px);box-shadow:0 22px 50px rgba(0,0,0,.16)}}'
         . '@media(prefers-reduced-motion:reduce){#' . $uid . ' .flp-prod{transition:none}#' . $uid . ' .flp-prod:hover{transform:none}}</style>';
+
+    // Spotlight hero — the featured product shown large above the grid. Reuses the
+    // real product card (so add-to-cart / variant / qty all work identically) and
+    // restyles it to a horizontal, taller layout via scoped CSS.
+    $hero_block = '';
+    if ($hero_p) {
+        // NB: .flp-prod carries INLINE flex-direction:column / width / height, so the
+        // hero overrides that fight those need !important to win over the inline style.
+        $h = '#' . $uid . ' .flp-hero';
+        $hero_css = '<style>'
+            . $h . '{margin:2px 0 26px}'
+            . $h . '-eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8A6CF6;margin-bottom:10px}'
+            . $h . ' .flp-prod{flex-direction:row!important;min-height:340px}'
+            . $h . ' .flp-prod>div:first-child{flex:0 0 clamp(240px,44%,430px)!important;max-width:clamp(240px,44%,430px);align-self:stretch;position:relative}'
+            . $h . ' .flp-prod>div:first-child a,' . $h . ' .flp-prod>div:first-child>div{height:100%}'
+            . $h . ' .flp-prod img{width:100%!important;height:100%!important;aspect-ratio:auto!important;object-fit:cover}'
+            . $h . ' .flp-prod>div:last-child{padding:30px 34px!important;justify-content:center}'
+            . $h . ' .flp-prod .flp-quick{display:none!important}'
+            . '@media(max-width:640px){' . $h . ' .flp-prod{flex-direction:column!important;min-height:0}' . $h . ' .flp-prod>div:first-child{flex:auto!important;max-width:none}' . $h . ' .flp-prod img{aspect-ratio:1/1!important}' . $h . ' .flp-prod>div:last-child{padding:22px 22px!important}}'
+            . '</style>';
+        $hero_block = $hero_css . '<div class="flp-hero"><div class="flp-hero-eyebrow">' . lmeg_store_icon('sparkles', 13) . 'Spotlight</div>' . lmeg_product_card_html($hero_p) . '</div>';
+    }
+
     $out = $hover_css . $chip_css . lmeg_store_banner_html()
-        . '<div class="flp-store-wrap" id="' . $uid . '">' . $controls . $chips
+        . '<div class="flp-store-wrap" id="' . $uid . '">' . $hero_block . $controls . $chips
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p);
