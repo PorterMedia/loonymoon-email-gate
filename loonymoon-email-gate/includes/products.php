@@ -1571,6 +1571,26 @@ function lmeg_admin_top_products_html($rows, $fmt) {
         . '<div style="font-weight:700;color:#17141f;margin-bottom:6px">🏆 Top products</div>' . $items . '</div>';
 }
 
+/**
+ * Small up/down percentage chip comparing $cur to $prev (admin light surface).
+ * Green ▲ for a rise, red ▼ for a drop, a green "▲ new" when there's no prior
+ * period to compare, and '' when both periods are empty.
+ */
+function lmeg_admin_pct_chip($cur, $prev, $suffix = '') {
+    $cur = (int) $cur; $prev = (int) $prev;
+    $tail = $suffix ? ' <span style="opacity:.7;font-weight:500">' . esc_html($suffix) . '</span>' : '';
+    $wrap = function ($col, $bg, $txt) use ($tail) {
+        return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;margin-top:6px;padding:2px 9px;border-radius:999px;color:' . $col . ';background:' . $bg . '">' . $txt . $tail . '</span>';
+    };
+    if ($prev <= 0) {
+        return $cur > 0 ? $wrap('#059669', '#ECFDF5', '▲ new') : '';
+    }
+    $pct = (int) round(($cur - $prev) / $prev * 100);
+    return ($pct >= 0)
+        ? $wrap('#059669', '#ECFDF5', '▲ ' . $pct . '%')
+        : $wrap('#DC2626', '#FEE2E2', '▼ ' . abs($pct) . '%');
+}
+
 function lmeg_admin_products() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -1762,6 +1782,10 @@ function lmeg_admin_products() {
     $aov    = $orders ? (int) round($rev / $orders) : 0;
     $buyers = (int) $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE status = 'paid' AND email IS NOT NULL AND email <> ''");
     $topn   = $wpdb->get_results("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 3");
+    // Revenue this 30 days vs the previous 30 days (for a trend chip).
+    $prev_start = date('Y-m-d H:i:s', $today_ts - 60 * DAY_IN_SECONDS);
+    $rev30      = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $since));
+    $revprev30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $prev_start, $since));
     $revdaily = array_fill(0, 30, 0);
     foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
         $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
@@ -1801,7 +1825,7 @@ function lmeg_admin_products() {
     echo lmeg_store_checklist_html($units);
     ?>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:980px;margin-bottom:14px">
-        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue · 30d trend</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($rev)); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($revdaily, ['color' => '#E15FA8', 'uid' => 'store-rev', 'h' => 44, 'suffix' => ' USD']) : '<div class="lmeg-stat__hint">before processor fees</div>'; ?></div>
+        <div class="lmeg-stat"><div class="lmeg-stat__label">Revenue · 30d trend</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($rev)); ?></div><?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($revdaily, ['color' => '#E15FA8', 'uid' => 'store-rev', 'h' => 44, 'suffix' => ' USD']) : ''; ?><div><?php echo lmeg_admin_pct_chip($rev30, $revprev30, 'vs prev 30d'); ?></div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Orders</div><div class="lmeg-stat__value"><?php echo number_format_i18n($orders); ?></div><div class="lmeg-stat__hint"><?php echo number_format_i18n($units); ?> item<?php echo $units === 1 ? '' : 's'; ?> total</div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Avg order</div><div class="lmeg-stat__value"><?php echo esc_html($fmtc($aov)); ?></div><div class="lmeg-stat__hint">revenue ÷ orders</div></div>
         <div class="lmeg-stat"><div class="lmeg-stat__label">Buyers</div><div class="lmeg-stat__value"><?php echo number_format_i18n($buyers); ?></div><div class="lmeg-stat__hint">unique fans who bought</div></div>
