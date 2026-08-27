@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.30.0
+Stable tag: 3.31.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.31.0 =
+* Store (Beta): win back abandoned carts with a discount. In Settings → Payments you can now add an optional "% off" to the abandoned-cart reminder. When set, the reminder includes a one-time comeback code (single use, expires in 14 days) that's automatically applied when the shopper taps through to finish — a proven way to recover more sales. 0% keeps the plain reminder. Works with both the automatic reminder and the manual "Send reminder" button.
+
 = 3.30.0 =
 * Store (Beta): curated collections. [fanloop_store ids="12,7,3"] shows exactly those products in that order — perfect for a landing page or a hand-picked feature section — and [fanloop_store tag="vinyl"] shows just the products with a given tag as a ready-made section. Mix as many [fanloop_store] blocks as you like across your pages.
 

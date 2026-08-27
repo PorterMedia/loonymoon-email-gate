@@ -421,8 +421,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $cur   = $v['currency'];
     $rjson = wp_json_encode($raw);
 
-    // Discount code (entered on this page, carried through to "place").
-    $code = isset($_POST['code']) ? sanitize_text_field(wp_unslash($_POST['code'])) : '';
+    // Discount code (entered on this page, or carried in a resume/comeback link).
+    $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ($_GET['code'] ?? '')));
     $disc = null; $off = 0; $code_err = '';
     if ($code !== '' && function_exists('lmeg_discount_validate')) {
         $res = lmeg_discount_validate($code, (int) $v['subtotal'], $cur);

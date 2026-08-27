@@ -42,9 +42,40 @@ function lmeg_abandoned_mark_recovered($email) {
     ));
 }
 
-/** Resume link for a saved cart. */
-function lmeg_abandoned_resume_url($token) {
-    return add_query_arg(['lmeg_cart' => 'resume', 'token' => $token], home_url('/'));
+/** Resume link for a saved cart (optionally carrying a comeback code to auto-apply). */
+function lmeg_abandoned_resume_url($token, $code = '') {
+    $args = ['lmeg_cart' => 'resume', 'token' => $token];
+    if ($code !== '') $args['code'] = $code;
+    return add_query_arg($args, home_url('/'));
+}
+
+/**
+ * Get (creating once) a one-time percent "comeback" discount for an abandoned
+ * cart — a per-cart code, single use, expiring in 14 days. Returns '' when the
+ * comeback-discount setting is off. Deterministic per cart token, so re-sending
+ * the reminder reuses the same code (no duplicates).
+ */
+function lmeg_abandoned_comeback_code($row) {
+    $s   = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $pct = max(0, min(90, (int) ($s['store_cart_nudge_pct'] ?? 0)));
+    if ($pct <= 0 || !$row || empty($row->token)) return '';
+    global $wpdb;
+    $tbl  = $wpdb->prefix . 'lmeg_discounts';
+    $stub = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', (string) $row->token), 0, 6));
+    $code = function_exists('lmeg_discount_norm') ? lmeg_discount_norm('BACK' . $stub) : ('BACK' . $stub);
+    if ($code === '') return '';
+    $existing = function_exists('lmeg_discount_get') ? lmeg_discount_get($code)
+        : $wpdb->get_row($wpdb->prepare("SELECT id FROM $tbl WHERE code = %s", $code));
+    if (!$existing) {
+        $wpdb->insert($tbl, [
+            'code' => $code, 'kind' => 'percent', 'value' => $pct,
+            'currency' => strtoupper($row->currency ?: 'USD'),
+            'min_subtotal_cents' => 0, 'max_uses' => 1, 'used' => 0,
+            'expires_at' => date('Y-m-d H:i:s', current_time('timestamp') + 14 * DAY_IN_SECONDS),
+            'status' => 'active', 'created_at' => current_time('mysql'),
+        ]);
+    }
+    return $code;
 }
 
 /** ?lmeg_cart=resume — reopen a saved cart on the checkout page. */
@@ -81,12 +112,21 @@ function lmeg_abandoned_send_nudge($row) {
     $cur   = $v['lines'] ? $v['currency'] : $row->currency;
     if (!$items) $items[] = ['name' => 'Your cart', 'meta' => '', 'amount' => lmeg_cart_money($total, $cur)];
 
+    // Optional "comeback" discount — a one-time code that auto-applies from the button.
+    $ns     = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $pct    = max(0, min(90, (int) ($ns['store_cart_nudge_pct'] ?? 0)));
+    $code   = lmeg_abandoned_comeback_code($row);
+    if (!$code) $pct = 0;
+    $offer  = $code ? lmeg_email_note('🎁 Here\'s <strong>' . $pct . '% off</strong> to finish up — code <strong>' . esc_html($code) . '</strong>, already applied when you tap below.') : '';
+    $subject = $code ? ('Still thinking it over? Here\'s ' . $pct . '% off') : 'You left something in your cart';
+
     $inner = lmeg_email_h('You left something behind 🛒')
         . lmeg_email_p('Your cart with <strong>' . esc_html($artist) . '</strong> is still here — pick up right where you left off.')
         . lmeg_email_order_table($items, lmeg_cart_money($total, $cur))
-        . lmeg_email_button('Complete your order →', lmeg_abandoned_resume_url($row->token))
+        . $offer
+        . lmeg_email_button($code ? 'Finish & save ' . $pct . '% →' : 'Complete your order →', lmeg_abandoned_resume_url($row->token, $code))
         . lmeg_email_note('Changed your mind? No worries — you can ignore this email.');
-    return lmeg_email_deliver($row->email, 'You left something in your cart', $inner, 'Your cart with ' . $artist . ' is still waiting.');
+    return lmeg_email_deliver($row->email, $subject, $inner, 'Your cart with ' . $artist . ' is still waiting.');
 }
 
 /**

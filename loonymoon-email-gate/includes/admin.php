@@ -2654,6 +2654,7 @@ function lmeg_admin_settings() {
             'store_demo'              => !empty($_POST['store_demo']) ? 1 : 0,
             'store_cart_nudge'        => !empty($_POST['store_cart_nudge']) ? 1 : 0,
             'store_cart_nudge_hours'  => max(1, min(72, (int) ($_POST['store_cart_nudge_hours'] ?? 1))),
+            'store_cart_nudge_pct'    => max(0, min(90, (int) ($_POST['store_cart_nudge_pct'] ?? 0))),
             'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
@@ -3351,7 +3352,8 @@ function lmeg_admin_settings() {
                 <tr><th scope="row">Abandoned-cart reminder</th><td>
                     <label><input type="checkbox" name="store_cart_nudge" value="1" <?php checked(!empty($s['store_cart_nudge'])); ?> /> <strong>Automatically email shoppers who don’t finish checkout</strong></label>
                     &nbsp; after <input type="number" name="store_cart_nudge_hours" min="1" max="72" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_hours'] ?? 1); ?>"> hour(s)
-                    <p class="description">Sends one branded reminder (with a link that reopens their exact cart) once a saved cart is this old and hasn’t been recovered. Only fires on live checkout — demo completes instantly. You can also send reminders by hand from the Store’s “Abandoned carts” panel.</p>
+                    &nbsp; with <input type="number" name="store_cart_nudge_pct" min="0" max="90" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_pct'] ?? 0); ?>">% off to sweeten it
+                    <p class="description">Sends one branded reminder (with a link that reopens their exact cart) once a saved cart is this old and hasn’t been recovered. Add an optional <strong>% off</strong> and the reminder includes a one-time comeback code that auto-applies when they tap through (0 = no discount). Only fires on live checkout — demo completes instantly. You can also send reminders by hand from the Store’s “Abandoned carts” panel.</p>
                 </td></tr>
                 <tr><th scope="row">Tax / VAT</th><td>
                     <input type="number" name="store_tax_rate" step="0.01" min="0" max="100" style="width:90px" value="<?php echo esc_attr(rtrim(rtrim(number_format((float) ($s['store_tax_rate'] ?? 0), 2, '.', ''), '0'), '.')); ?>"> %
