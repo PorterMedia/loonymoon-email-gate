@@ -733,7 +733,7 @@ function lmeg_shortcode_store($atts) {
     global $wpdb;
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
-    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY id DESC");
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE $where ORDER BY featured DESC, id DESC");
     if (!$rows) return '<p style="opacity:.7">Nothing in the shop yet — check back soon.</p>';
     $min = max(160, min(360, (int) $atts['min']));
     $uid = 'flpstore' . $store_n;
@@ -837,6 +837,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         echo $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped; ?>
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
+        <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px">⭐ Featured</div><?php endif; ?>
         <div style="font-weight:750;font-size:19px;margin-bottom:4px;color:#17141f"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
@@ -1041,6 +1042,7 @@ function lmeg_handle_save_product() {
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
         'status'          => in_array($_POST['status'] ?? 'active', ['active', 'draft'], true) ? $_POST['status'] : 'active',
         'preorder_at'     => !empty($_POST['preorder_at']) ? (sanitize_text_field($_POST['preorder_at']) . ' 00:00:00') : null,
+        'featured'        => !empty($_POST['featured']) ? 1 : 0,
     ];
 
     // Attach a newly uploaded file, or remove the current one on request.
@@ -1280,7 +1282,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'price_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -1366,6 +1368,7 @@ function lmeg_admin_products() {
                 <tr><th><label>…or unlock link <span style="color:#888;font-weight:400">(digital)</span></label></th><td><input type="url" name="deliver_url" class="regular-text" value="<?php echo esc_attr($p->deliver_url); ?>" placeholder="https://… private stream / Drive / Discord invite"><p class="description">Used only when no file is uploaded above: after paying, the fan is sent to this link through a private, per-buyer access URL.</p></td></tr>
                 <tr><th><label>Limit (stock)</label></th><td><input type="number" name="stock" min="0" style="width:120px" value="<?php echo $p->stock < 0 ? '' : (int) $p->stock; ?>" placeholder="unlimited"><p class="description">Leave blank for unlimited; set a number for a limited drop.</p></td></tr>
                 <tr><th><label>Pre-order until</label></th><td><input type="date" name="preorder_at" value="<?php echo esc_attr(!empty($p->preorder_at) ? date('Y-m-d', strtotime($p->preorder_at)) : ''); ?>"><p class="description">Optional. Set a future release date to sell it as a <strong>pre-order</strong> — fans buy now and it shows “Available &lt;date&gt;”. Digital pre-orders don’t send a download until you release it (upload the file, then use “Send downloads to buyers”); physical pre-orders ship when you’re ready. Leave blank for a normal product.</p></td></tr>
+                <tr><th><label>Featured</label></th><td><label><input type="checkbox" name="featured" value="1" <?php checked(!empty($p->featured)); ?>> Pin to the top of your shop</label><p class="description">Featured products show first in <code>[fanloop_store]</code> and get a ⭐ Featured badge.</p></td></tr>
                 <tr><th><label>Status</label></th><td><select name="status"><option value="active" <?php selected($p->status, 'active'); ?>>Active (buyable)</option><option value="draft" <?php selected($p->status, 'draft'); ?>>Draft (hidden)</option></select></td></tr>
             </table>
             <p><button type="submit" class="button button-primary">Save product</button>
@@ -1460,7 +1463,20 @@ function lmeg_admin_products() {
     <?php if ($units > 0) : ?>
         &nbsp; <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_orders'), 'lmeg_export_orders')); ?>" class="button">⬇ Export orders (CSV)</a>
     <?php endif; ?></p>
-    <p class="description" style="margin:0 0 12px">Show your whole shop on any page with <code>[fanloop_store]</code> (or one item with <code>[fanloop_product id=…]</code>). Let buyers re-download what they bought with <code>[fanloop_purchases]</code> (or link to <code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code>).</p>
+    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
+        <summary style="cursor:pointer;font-weight:600">Shortcodes &amp; links — how to show your shop</summary>
+        <table class="widefat" style="margin:10px 0 4px"><tbody>
+            <tr><td style="width:230px"><code>[fanloop_store]</code></td><td>Your whole shop as a grid.</td></tr>
+            <tr><td><code>[fanloop_store controls="on"]</code></td><td>Force the <strong>search + sort</strong> bar (auto-shows at 5+ products).</td></tr>
+            <tr><td><code>[fanloop_store type="digital"]</code></td><td>Only digital (or <code>type="physical"</code>).</td></tr>
+            <tr><td><code>[fanloop_store min="200"]</code></td><td>Smaller cards / more per row (grid min px).</td></tr>
+            <tr><td><code>[fanloop_product id="<?php echo (int) ($rows[0]->id ?? 1); ?>"]</code></td><td>One product (or <code>slug="…"</code>).</td></tr>
+            <tr><td><code>[fanloop_purchases]</code></td><td>A "find my downloads" box for fans.</td></tr>
+            <tr><td><code><?php echo esc_html(home_url('/?lmeg_product=your-slug')); ?></code></td><td>A product's own shareable page (URL shown on each product's edit screen).</td></tr>
+            <tr><td><code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code></td><td>Direct find-my-purchases link.</td></tr>
+        </tbody></table>
+        <p class="description" style="margin:6px 0 0">Sort options in the bar: Featured · Newest · Price · Best selling · Name. Pin a product to the top with the ⭐ <strong>Featured</strong> checkbox on its edit screen. Every <code>fanloop_</code> code also works as <code>loony_</code>.</p>
+    </details>
     <?php
     $has_samples = false;
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
@@ -1488,7 +1504,7 @@ function lmeg_admin_products() {
                 : (function_exists('lmeg_format_price') ? lmeg_format_price((int)$p->price_cents,$cur) : '$'.number_format($p->price_cents/100,2));
         ?>
             <tr>
-                <td><strong><?php echo esc_html($p->title); ?></strong></td>
+                <td><?php echo !empty($p->featured) ? '⭐ ' : ''; ?><strong><?php echo esc_html($p->title); ?></strong></td>
                 <td><?php echo ($p->type === 'physical') ? '📦 Physical' : '⬇ Digital'; ?></td>
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
