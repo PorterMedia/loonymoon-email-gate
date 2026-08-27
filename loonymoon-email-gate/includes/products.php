@@ -134,6 +134,18 @@ function lmeg_product_is_available($p) {
 }
 
 /**
+ * Was this product added recently? (created_at within the last $days days.)
+ * Drives the "Just added" badge on storefront cards.
+ */
+function lmeg_product_is_new($p, $days = 14) {
+    if (empty($p->created_at)) return false;
+    $t = strtotime($p->created_at);
+    if (!$t) return false;
+    $now = function_exists('current_time') ? current_time('timestamp') : time();
+    return ($now - $t) <= ($days * DAY_IN_SECONDS) && $t <= $now + DAY_IN_SECONDS;
+}
+
+/**
  * Low-stock urgency block for a product card (WHITE surface): a "🔥 Only N left"
  * pill, a claimed-progress bar, and an "X of Y claimed" line. Returns '' when
  * there's no real stock limit. All colours explicit (card never inherits).
@@ -972,6 +984,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
         <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px">⭐ Featured</div><?php endif; ?>
+        <?php if (empty($p->featured) && function_exists('lmeg_product_is_new') && lmeg_product_is_new($p)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#0f766e;background:#CCFBF1;padding:2px 9px;border-radius:999px;margin-bottom:8px">✨ Just added</div><?php endif; ?>
         <?php
         if (!$solo && function_exists('lmeg_bundles_for_product')) {
             $pbundles = lmeg_bundles_for_product($p->id);
