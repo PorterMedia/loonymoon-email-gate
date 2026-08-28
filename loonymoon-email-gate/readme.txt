@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.58.0
+Stable tag: 3.59.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.59.0 =
+* Store (Beta): Storefront UI cleanup + theme-proofing. The [fanloop_store] controls (search box, sort menu), variant pickers and quantity steppers now render correctly on any theme — a scoped style reset re-asserts the shop’s own look so an aggressive host theme can no longer stretch the search/sort to full width, stack the size buttons or inflate the qty box. Variant sizes on grid cards now show as a compact dropdown (cleaner than wrapping pill buttons); the full product page keeps one-tap size swatches. New display controls: cols="N" (fixed 1–6 column grid that steps down on smaller screens), card="minimal" (hides the description, “· ships” label, per-card share button and qty stepper for a tidier grid), tags="off" (hide the tag/category filter chips), and individual desc/share/ships/qty = on|off toggles. Defaults are unchanged, so existing shops look the same until you opt in. No schema change.
+
 = 3.58.0 =
 * Store (Beta): NEW — one-click “Import from Shopify.” If your Fanloop is connected to your Shopify store (Store → Settings → Shopify), a new button pulls your whole product catalogue straight in — titles, descriptions, prices, compare-at prices, images, tags, weights and variants — and creates everything as Drafts to review before publishing. Products are matched by handle/slug, so re-running updates rather than duplicating. Shopify’s multi-option variants (e.g. Size × Colour) are simplified to Fanloop’s single option list, and inventory carries over. It only reads products (needs a token with read_products) and never touches your Shopify orders, customers or checkout. No schema change.
 

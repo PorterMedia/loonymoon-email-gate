@@ -1024,7 +1024,24 @@ add_shortcode('fanloop_store', 'lmeg_shortcode_store');
 add_shortcode('loony_store', 'lmeg_shortcode_store');
 function lmeg_shortcode_store($atts) {
     static $store_n = 0; $store_n++;
-    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto', 'ids' => '', 'tag' => '', 'per' => 0, 'hero' => ''], $atts, 'fanloop_store');
+    $atts = shortcode_atts(['type' => 'all', 'min' => 240, 'controls' => 'auto', 'ids' => '', 'tag' => '', 'per' => 0, 'hero' => '',
+        'cols' => 0, 'card' => '', 'tags' => '', 'desc' => '', 'share' => '', 'qty' => '', 'ships' => ''], $atts, 'fanloop_store');
+    // Card look controls. card="minimal" strips the description, "· ships" label,
+    // per-card share button and qty stepper for a cleaner grid; each can also be
+    // toggled individually (desc/share/qty/ships = on|off). Defaults keep the full card.
+    $minimal = (strtolower(trim((string) $atts['card'])) === 'minimal');
+    $onoff = function ($v, $default) {
+        $v = strtolower(trim((string) $v));
+        if ($v === '') return $default;
+        return !in_array($v, ['off', '0', 'no', 'false', 'hide'], true);
+    };
+    $card_opts = [
+        'desc'  => $onoff($atts['desc'],  !$minimal),
+        'share' => $onoff($atts['share'], !$minimal),
+        'qty'   => $onoff($atts['qty'],   !$minimal),
+        'ships' => $onoff($atts['ships'], !$minimal),
+    ];
+    $show_tags_row = $onoff($atts['tags'], true);   // tag filter chips (default on)
     global $wpdb;
     $where = "status = 'active'";
     if (in_array($atts['type'], ['digital', 'physical'], true)) $where .= $wpdb->prepare(' AND type = %s', $atts['type']);
@@ -1084,7 +1101,7 @@ function lmeg_shortcode_store($atts) {
         if ($a['n'] !== $b['n']) return $b['n'] - $a['n'];
         return strcasecmp($a['label'], $b['label']);
     });
-    $has_tags = count($tag_counts) >= 2;
+    $has_tags = $show_tags_row && count($tag_counts) >= 2;
 
     // "In stock only" toggle — offered only when at least one active product is
     // actually sold out (stock exhausted / all sizes gone), so it's meaningful.
@@ -1170,14 +1187,28 @@ function lmeg_shortcode_store($atts) {
             . $h . ' .flp-prod .flp-quick{display:none!important}'
             . '@media(max-width:640px){' . $h . ' .flp-prod{flex-direction:column!important;min-height:0}' . $h . ' .flp-prod>div:first-child{flex:auto!important;max-width:none}' . $h . ' .flp-prod img{aspect-ratio:1/1!important}' . $h . ' .flp-prod>div:last-child{padding:22px 22px!important}}'
             . '</style>';
-        $hero_block = $hero_css . '<div class="flp-hero"><div class="flp-hero-eyebrow">' . lmeg_store_icon('sparkles', 13) . 'Spotlight</div>' . lmeg_product_card_html($hero_p) . '</div>';
+        $hero_block = $hero_css . '<div class="flp-hero"><div class="flp-hero-eyebrow">' . lmeg_store_icon('sparkles', 13) . 'Spotlight</div>' . lmeg_product_card_html($hero_p, true, false, $card_opts) . '</div>';
     }
 
-    $out = $hover_css . $chip_css . lmeg_store_banner_html()
+    // Column layout: cols="N" (1–6) = a fixed N-up grid that steps down on narrow
+    // viewports; otherwise the responsive auto-fill grid sized by min="px".
+    $cols = max(0, min(6, (int) $atts['cols']));
+    $col_css = '';
+    if ($cols > 0) {
+        $grid_cols = 'repeat(' . $cols . ',minmax(0,1fr))';
+        $c_md = min(3, $cols); $c_sm = min(2, $cols);
+        $col_css = '<style>@media(max-width:900px){#' . $uid . ' .flp-store{grid-template-columns:repeat(' . $c_md . ',minmax(0,1fr))!important}}'
+            . '@media(max-width:640px){#' . $uid . ' .flp-store{grid-template-columns:repeat(' . $c_sm . ',minmax(0,1fr))!important}}'
+            . '@media(max-width:430px){#' . $uid . ' .flp-store{grid-template-columns:1fr!important}}</style>';
+    } else {
+        $grid_cols = 'repeat(auto-fill,minmax(' . $min . 'px,1fr))';
+    }
+
+    $out = lmeg_store_theme_reset_css() . $hover_css . $chip_css . $col_css . lmeg_store_banner_html()
         . '<div class="flp-store-wrap" id="' . $uid . '">' . $hero_block . $controls . $chips
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
-        . '<div class="flp-store" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(' . $min . 'px,1fr));gap:20px;align-items:stretch">';
-    foreach ($rows as $p) $out .= lmeg_product_card_html($p);
+        . '<div class="flp-store" style="display:grid;grid-template-columns:' . $grid_cols . ';gap:20px;align-items:stretch">';
+    foreach ($rows as $p) $out .= lmeg_product_card_html($p, true, false, $card_opts);
     $out .= '</div>' . $more_btn . '</div>';
 
     if ($run_js) {
@@ -1230,11 +1261,51 @@ function lmeg_shortcode_store($atts) {
 }
 
 /**
+ * A scoped CSS reset that neutralizes aggressive host-theme form/button rules
+ * (many themes force width:100% / display:block / big margins on every input,
+ * select and button with !important). Emitted once per request; re-asserts the
+ * storefront's own control styling with equal-or-higher specificity + !important
+ * so the search box, sort/size dropdowns, variant pills and qty stepper render
+ * correctly on any theme. Scoped to .flp-store-wrap / .flp-prod so it can never
+ * leak into the surrounding site.
+ */
+function lmeg_store_theme_reset_css() {
+    if (!empty($GLOBALS['lmeg_reset_css_done'])) return '';
+    $GLOBALS['lmeg_reset_css_done'] = true;
+    $chev = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2317141f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")";
+    $sel = ".flp-store-wrap .flp-store-ctrls{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:10px!important}"
+      . ".flp-store-wrap .flp-q{flex:1 1 200px!important;width:auto!important;min-width:170px!important;display:block!important;height:auto!important;margin:0!important;padding:10px 13px!important;border:1px solid rgba(0,0,0,.18)!important;border-radius:10px!important;background:#fff!important;color:#17141f!important;font-size:14px!important;line-height:1.2!important;box-shadow:none!important;-webkit-appearance:none!important;appearance:none!important;box-sizing:border-box!important}"
+      . ".flp-store-wrap .flp-sort{flex:0 0 auto!important;width:auto!important;min-width:150px!important;display:block!important;height:auto!important;margin:0!important;padding:10px 40px 10px 13px!important;border:1px solid rgba(0,0,0,.18)!important;border-radius:10px!important;background-color:#fff!important;color:#17141f!important;font-size:14px!important;line-height:1.2!important;box-shadow:none!important;cursor:pointer!important;-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;box-sizing:border-box!important;background-image:$chev!important;background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:16px!important}"
+      . ".flp-store-wrap .flp-count{margin:0!important;padding:0!important;border:0!important;background:none!important}"
+      // ---- card internals ----
+      . ".flp-prod input,.flp-prod select,.flp-prod button,.flp-prod textarea{margin:0;font-family:inherit;box-shadow:none;letter-spacing:normal;text-transform:none;min-width:0}"
+      . ".flp-prod .flp-varsel{display:block!important;width:100%!important;height:auto!important;margin:0!important;padding:10px 38px 10px 13px!important;border:1px solid #cfcfd6!important;border-radius:10px!important;background-color:#fff!important;color:#17141f!important;font-size:14px!important;font-weight:600!important;line-height:1.2!important;cursor:pointer!important;-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;box-sizing:border-box!important;background-image:$chev!important;background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:16px!important}"
+      . ".flp-prod .flp-vars{display:flex!important;flex-wrap:wrap!important;gap:7px!important}"
+      . ".flp-prod .flp-var{display:inline-flex!important;align-items:center!important;width:auto!important;height:auto!important;margin:0!important;padding:8px 13px!important;border:1px solid #cfcfd6!important;border-radius:9px!important;background:#fff!important;color:#17141f!important;font-size:13px!important;font-weight:600!important;line-height:1.1!important;cursor:pointer!important;box-sizing:border-box!important}"
+      . ".flp-prod .flp-var.is-active{background:#FCE7F1!important;border-color:#E15FA8!important;color:#B4247E!important}"
+      . ".flp-prod .flp-var:disabled{opacity:.5!important;text-decoration:line-through!important;cursor:not-allowed!important}"
+      . ".flp-prod .flp-qtywrap{display:inline-flex!important;align-items:center!important;width:auto!important;height:auto!important;margin:0 0 11px!important;border:1px solid #d9d9e0!important;border-radius:10px!important;overflow:hidden!important;background:#fff!important}"
+      . ".flp-prod .flp-qty{width:48px!important;height:38px!important;margin:0!important;padding:0!important;text-align:center!important;border:0!important;border-left:1px solid #ededf1!important;border-right:1px solid #ededf1!important;border-radius:0!important;font-size:15px!important;font-weight:700!important;color:#17141f!important;background:#fff!important;line-height:1!important;box-shadow:none!important;-webkit-appearance:none!important;appearance:none!important;box-sizing:border-box!important}"
+      . ".flp-prod .flp-qtir{width:36px!important;height:38px!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#f4f4f6!important;color:#17141f!important;font-size:19px!important;line-height:1!important;cursor:pointer!important;box-sizing:border-box!important}"
+      . ".flp-prod .flp-pers,.flp-prod .flp-amt{width:100%!important;height:auto!important;margin:0!important;padding:10px 12px!important;border:1px solid #d9d9e0!important;border-radius:10px!important;background:#fff!important;color:#17141f!important;font-size:14px!important;line-height:1.2!important;box-shadow:none!important;-webkit-appearance:none!important;appearance:none!important;box-sizing:border-box!important}"
+      . ".flp-prod .flp-amt{width:96px!important}"
+      . ".flp-prod .flp-add{flex:1 1 auto!important;width:auto!important;margin:0!important}"
+      . ".flp-prod .flp-buy{flex:0 0 auto!important;width:auto!important;margin:0!important}"
+      . ".flp-prod .flp-share,.flp-prod .flp-save,.flp-prod .flp-quick{margin:0!important}";
+    return '<style id="flp-theme-reset">' . $sel . '</style>';
+}
+
+/**
  * Render a single product card (fills its container's width/height, so it works
  * standalone or inside the storefront grid). $solo = a single-product context
  * (product page / [fanloop_product]) where the full gallery viewer is shown.
+ * $opts (from [fanloop_store]) can hide card chrome: desc, share, qty, ships.
  */
-function lmeg_product_card_html($p, $link = true, $solo = false) {
+function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
+    $show_desc  = !array_key_exists('desc',  $opts) || $opts['desc'];
+    $show_share = !array_key_exists('share', $opts) || $opts['share'];
+    $show_qty   = !array_key_exists('qty',   $opts) || $opts['qty'];
+    $show_ships = !array_key_exists('ships', $opts) || $opts['ships'];
     $cur      = $p->currency ?: 'USD';
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
     $price    = $fmt($p->price_cents);
@@ -1347,10 +1418,10 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         }
         ?>
         <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">
-          <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
-          <?php if (!$solo) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center"><?php echo lmeg_store_icon('link', 15); ?></button><?php endif; ?>
+          <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical && $show_ships) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
+          <?php if (!$solo && $show_share) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center"><?php echo lmeg_store_icon('link', 15); ?></button><?php endif; ?>
         </div>
-        <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
+        <?php if ($show_desc && !empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <?php echo lmeg_product_preview_html($p); ?>
         <div style="margin-top:auto">
         <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php echo lmeg_product_sale_countdown_html($p); ?><?php endif; ?>
@@ -1358,7 +1429,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?><?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if (!$sold_out) echo lmeg_product_qty_breaks_hint_html($p); ?>
-        <?php if (!$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
+        <?php if ($show_qty && !$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
         <div class="flp-qtywrap" style="display:inline-flex;align-items:center;border:1px solid #d9d9e0;border-radius:10px;overflow:hidden;background:#fff;margin-bottom:11px">
           <button type="button" class="flp-qtir" data-d="-1" aria-label="Decrease quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">−</button>
           <input type="text" inputmode="numeric" pattern="[0-9]*" class="flp-qty" value="1" min="1" <?php echo $qmax ? 'max="' . (int) $qmax . '" ' : ''; ?>aria-label="Quantity" style="width:48px;height:38px;text-align:center;border:0;border-left:1px solid #ededf1;border-right:1px solid #ededf1;font-size:15px;font-weight:700;color:#17141f;background:#fff">
@@ -1386,28 +1457,38 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
             <?php if (!empty($vlist) || $pwyw) : ?>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <?php if (!empty($vlist)) : ?>
+                <?php if ($solo) : /* product page: one-tap size swatches */ ?>
                 <div class="flp-vars" role="group" aria-label="Choose an option" style="display:flex;flex-wrap:wrap;gap:7px">
                   <?php foreach ($vlist as $v) : $av = $v['available']; $lbl = $v['name'] . ($av && $v['stock'] !== null && $v['stock'] <= 5 ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
                     <button type="button" class="flp-var" data-v="<?php echo esc_attr($v['name']); ?>" aria-pressed="false"<?php echo $av ? '' : ' disabled'; ?> title="<?php echo $av ? esc_attr($v['name']) : esc_attr($v['name'] . ' — sold out'); ?>"><?php echo esc_html($lbl); ?></button>
                   <?php endforeach; ?>
                   <input type="hidden" name="variant" value="" class="flp-var-input">
                 </div>
+                <?php else : /* grid card: a compact dropdown reads cleaner than wrapping pills */ ?>
+                <select name="variant" class="flp-varsel" aria-label="Choose an option" required>
+                  <option value="">Choose an option…</option>
+                  <?php foreach ($vlist as $v) : $av = $v['available'];
+                    $ohint = !$av ? ' — sold out' : (($v['stock'] !== null && $v['stock'] <= 5) ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
+                    <option value="<?php echo esc_attr($v['name']); ?>"<?php echo $av ? '' : ' disabled'; ?>><?php echo esc_html($v['name'] . $ohint); ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <?php endif; ?>
               <?php endif; ?>
               <?php if ($pwyw) : ?>
-                <input type="number" name="amount" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff" aria-label="Name your price">
+                <input type="number" name="amount" class="flp-amt" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff" aria-label="Name your price">
               <?php endif; ?>
             </div>
             <?php endif; ?>
             <div style="display:flex;gap:8px;align-items:center">
               <button type="button" <?php echo $data; ?> <?php echo $add_pri; ?>><?php echo $pwyw ? 'Add to cart' : esc_html('Add · ' . $price); ?></button>
-              <button type="submit" <?php echo $buy_sec; ?>>Buy now</button>
+              <button type="submit" class="flp-buy" <?php echo $buy_sec; ?>>Buy now</button>
             </div>
           </form>
           <div style="font-size:12px;color:#6b6b78;margin-top:6px"><?php echo $pwyw ? 'Name your price · min ' . esc_html($fmt($p->min_price_cents)) : ''; ?><?php echo $ship ? ($pwyw ? ' · ' : '') . '+ ' . esc_html($ship) . ' shipping' : ''; ?></div>
         <?php else : ?>
           <div style="display:flex;gap:8px;align-items:center">
             <button type="button" <?php echo $data; ?> <?php echo $add_pri; ?>><?php echo esc_html('Add · ' . $price); ?></button>
-            <a href="<?php echo esc_url(add_query_arg(['lmeg_buy' => $p->id], home_url('/'))); ?>" <?php echo $buy_sec; ?>>Buy now</a>
+            <a href="<?php echo esc_url(add_query_arg(['lmeg_buy' => $p->id], home_url('/'))); ?>" class="flp-buy" <?php echo $buy_sec; ?>>Buy now</a>
           </div>
           <?php if ($ship) : ?><div style="font-size:12px;color:#6b6b78;margin-top:6px">+ <?php echo esc_html($ship); ?> shipping</div><?php endif; ?>
         <?php endif; ?>
@@ -1415,7 +1496,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
       </div>
     </div>
     <?php
-    return ob_get_clean();
+    return lmeg_store_theme_reset_css() . ob_get_clean();
 }
 
 /**
@@ -2666,6 +2747,10 @@ function lmeg_admin_products() {
             <tr><td><code>[fanloop_store controls="on"]</code></td><td>Force the <strong>search + sort</strong> bar (auto-shows at 5+ products).</td></tr>
             <tr><td><code>[fanloop_store type="digital"]</code></td><td>Only digital (or <code>type="physical"</code>).</td></tr>
             <tr><td><code>[fanloop_store min="200"]</code></td><td>Smaller cards / more per row (grid min px).</td></tr>
+            <tr><td><code>[fanloop_store cols="4"]</code></td><td>A fixed <strong>number of columns</strong> (1–6). Steps down automatically on tablet/phone.</td></tr>
+            <tr><td><code>[fanloop_store card="minimal"]</code></td><td>A <strong>cleaner card</strong>: hides the description, "· ships" label, per-card share button and quantity stepper.</td></tr>
+            <tr><td><code>[fanloop_store tags="off"]</code></td><td>Hide the <strong>tag/category filter chips</strong> above the grid.</td></tr>
+            <tr><td><code>[fanloop_store desc="off" share="off" ships="off" qty="off"]</code></td><td>Turn off individual card bits (description / share button / "· ships" / qty stepper). Mix &amp; match with <code>card</code>.</td></tr>
             <tr><td><code>[fanloop_store ids="12,7,3"]</code></td><td>A <strong>curated collection</strong> — just those products, in that order (great for a landing or feature section).</td></tr>
             <tr><td><code>[fanloop_store tag="vinyl"]</code></td><td>Only products with that <strong>tag</strong> — a ready-made section page.</td></tr>
             <tr><td><code>[fanloop_store per="12"]</code></td><td>Show 12 at a time with a <strong>Load more</strong> button (great for big catalogues).</td></tr>
