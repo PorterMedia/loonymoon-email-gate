@@ -2688,6 +2688,13 @@ function lmeg_admin_products() {
                 <button type="submit" class="button button-primary" onclick="return confirm('Import products from this CSV? Existing products with a matching slug will be updated.');">⬆ Import</button>
             </form>
         </p>
+        <?php if (function_exists('lmeg_shop_configured') && lmeg_shop_configured()) : ?>
+        <p style="margin:14px 0 0;padding-top:12px;border-top:1px solid #e2e2e8">
+            <strong><?php echo lmeg_store_icon('bag', 14, ['style' => 'vertical-align:-2px;margin-right:4px']); ?>Import from Shopify</strong>
+            <span class="description" style="display:block;margin:4px 0 8px;max-width:780px">Pull your products straight from your connected Shopify store (<code><?php echo esc_html(lmeg_get_settings()['shopify_domain'] ?? ''); ?></code>) — titles, descriptions, prices, images, tags and variants come across and land as <strong>Drafts</strong> to review before publishing. Matched by handle/slug, so re-running updates instead of duplicating. Shopify's multi-option variants (e.g. Size × Colour) are simplified to one option list. Doesn't touch your Shopify orders, customers or checkout — catalogue only. Needs a token with <code>read_products</code>.</span>
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_shop_import'), 'lmeg_shop_import')); ?>" class="button button-primary" style="display:inline-flex;align-items:center;gap:6px" onclick="return confirm('Import products from your connected Shopify store? They will be created/updated as drafts.');"><?php echo lmeg_store_icon('bag', 14); ?>Import from Shopify</a>
+        </p>
+        <?php endif; ?>
     </details>
     <?php
     // Import result notice.

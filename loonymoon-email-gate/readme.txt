@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.57.0
+Stable tag: 3.58.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,182 +34,185 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.58.0 =
+* Store (Beta): NEW — one-click “Import from Shopify.” If your Fanloop is connected to your Shopify store (Store → Settings → Shopify), a new button pulls your whole product catalogue straight in — titles, descriptions, prices, compare-at prices, images, tags, weights and variants — and creates everything as Drafts to review before publishing. Products are matched by handle/slug, so re-running updates rather than duplicating. Shopify’s multi-option variants (e.g. Size × Colour) are simplified to Fanloop’s single option list, and inventory carries over. It only reads products (needs a token with read_products) and never touches your Shopify orders, customers or checkout. No schema change.
+
 = 3.57.0 =
-* Store (Beta): NEW — product personalization. Give any product a short prompt like "Who should I sign this to?" or "Engraving" and a text box appears on it; whatever the buyer types rides with that cart line, shows on the cart drawer and checkout summary, and lands on the order and the printable packing slip — so you know exactly what to write. Perfect for signed vinyl, posters and engraved merch. Two of the same product with different messages stay as separate cart lines (so a buyer can order one signed to each friend). The message is server-sanitized and capped at 200 characters. Blank prompt = no personalization. Schema: adds a personalization column to the products and purchases tables.
+* Store (Beta): NEW â product personalization. Give any product a short prompt like "Who should I sign this to?" or "Engraving" and a text box appears on it; whatever the buyer types rides with that cart line, shows on the cart drawer and checkout summary, and lands on the order and the printable packing slip â so you know exactly what to write. Perfect for signed vinyl, posters and engraved merch. Two of the same product with different messages stay as separate cart lines (so a buyer can order one signed to each friend). The message is server-sanitized and capped at 200 characters. Blank prompt = no personalization. Schema: adds a personalization column to the products and purchases tables.
 
 = 3.56.0 =
-* Store (Beta): NEW — "Spend & save" automatic order reward. Set a threshold and a percent in Store settings (e.g. spend over $50 → save 10%) and once a cart's item subtotal reaches it, the discount comes off automatically at checkout — no code needed. Shoppers see a live "Spend $X more to save Y%" nudge as they approach it, which is a proven way to lift order value. It's an automatic discount, so it never stacks with a manual code, bundle or quantity deal — checkout applies whichever saves the buyer the most (and, like every discount, it stays within the total). Set either field to 0 to turn it off. No schema change.
+* Store (Beta): NEW â "Spend & save" automatic order reward. Set a threshold and a percent in Store settings (e.g. spend over $50 â save 10%) and once a cart's item subtotal reaches it, the discount comes off automatically at checkout â no code needed. Shoppers see a live "Spend $X more to save Y%" nudge as they approach it, which is a proven way to lift order value. It's an automatic discount, so it never stacks with a manual code, bundle or quantity deal â checkout applies whichever saves the buyer the most (and, like every discount, it stays within the total). Set either field to 0 to turn it off. No schema change.
 
 = 3.55.0 =
-* Store (Beta): NEW — product video. Paste a YouTube or Vimeo link (or a direct .mp4/.webm URL) into a product and it embeds as a responsive 16:9 player on the product page — perfect for a music video, teaser or unboxing. YouTube uses the privacy-friendly no-cookie player and the frame lazy-loads so it never slows the page. Only the recognised video ID / a validated URL is ever emitted, all escaped. Leave blank for none. Schema: adds video_url to the products table.
+* Store (Beta): NEW â product video. Paste a YouTube or Vimeo link (or a direct .mp4/.webm URL) into a product and it embeds as a responsive 16:9 player on the product page â perfect for a music video, teaser or unboxing. YouTube uses the privacy-friendly no-cookie player and the frame lazy-loads so it never slows the page. Only the recognised video ID / a validated URL is ever emitted, all escaped. Leave blank for none. Schema: adds video_url to the products table.
 
 = 3.54.0 =
-* Store (Beta): NEW — quantity price breaks ("buy more, save more"). Give any product tiered discounts like "3:10, 5:20" (buy 3+ save 10%, buy 5+ save 20%). The storefront card shows a "Buy 3 save 10%" hint, and the discount comes off automatically at checkout — calculated on the server per product line, so it's always accurate and can never discount a line below zero. It's an automatic discount, so it doesn't stack with a manual code (checkout uses whichever saves the buyer more) and it stays within the total like every other discount. Not applied to pay-what-you-want products. Blank = no quantity discount. Schema: adds qty_breaks to the products table.
+* Store (Beta): NEW â quantity price breaks ("buy more, save more"). Give any product tiered discounts like "3:10, 5:20" (buy 3+ save 10%, buy 5+ save 20%). The storefront card shows a "Buy 3 save 10%" hint, and the discount comes off automatically at checkout â calculated on the server per product line, so it's always accurate and can never discount a line below zero. It's an automatic discount, so it doesn't stack with a manual code (checkout uses whichever saves the buyer more) and it stays within the total like every other discount. Not applied to pay-what-you-want products. Blank = no quantity discount. Schema: adds qty_breaks to the products table.
 
 = 3.53.0 =
-* Store (Beta): NEW — audio preview player. Give any product an optional "Audio preview URL" (a public link to a short clip) and the storefront card and product page show a clean ▶ Preview player — a play/pause button and a progress bar — so fans can hear it before they buy. Perfect for singles, EPs and beats. Only one preview plays at a time across the page, and it doesn't download anything until a fan actually presses play. Leave the field blank for no preview. Schema: adds preview_url to the products table.
+* Store (Beta): NEW â audio preview player. Give any product an optional "Audio preview URL" (a public link to a short clip) and the storefront card and product page show a clean â¶ Preview player â a play/pause button and a progress bar â so fans can hear it before they buy. Perfect for singles, EPs and beats. Only one preview plays at a time across the page, and it doesn't download anything until a fan actually presses play. Leave the field blank for no preview. Schema: adds preview_url to the products table.
 
 = 3.52.0 =
-* Store (Beta): NEW — limited-time sales with a live countdown. Each product now has an optional "Sale ends" date/time next to its compare-at price. While the sale is running, the storefront shows a "🔥 Sale ends in 2d 04h 11m" countdown that ticks down live to build urgency on drops and flash sales. When the deadline passes, the sale ends automatically — the struck-through price, the −X% badge and the countdown all clear themselves on their own, no need to log in and edit the product (the Price stays as you set it). Leave the field blank for an open-ended sale, exactly like before. Schema: adds sale_ends_at to the products table.
+* Store (Beta): NEW â limited-time sales with a live countdown. Each product now has an optional "Sale ends" date/time next to its compare-at price. While the sale is running, the storefront shows a "ð¥ Sale ends in 2d 04h 11m" countdown that ticks down live to build urgency on drops and flash sales. When the deadline passes, the sale ends automatically â the struck-through price, the âX% badge and the countdown all clear themselves on their own, no need to log in and edit the product (the Price stays as you set it). Leave the field blank for an open-ended sale, exactly like before. Schema: adds sale_ends_at to the products table.
 
 = 3.51.3 =
-* Store (Beta): hardening — the cart and the "saved for later" list read from the browser's local storage. If that value was ever corrupted or tampered into a non-list shape, the reader accepted it and then choked on it, which could stop the cart controls from wiring up on the page. Both readers now verify they got a proper list and fall back to empty otherwise (the same guard the "recently viewed" strip already used), so a bad stored value can never break the cart — it just starts fresh.
+* Store (Beta): hardening â the cart and the "saved for later" list read from the browser's local storage. If that value was ever corrupted or tampered into a non-list shape, the reader accepted it and then choked on it, which could stop the cart controls from wiring up on the page. Both readers now verify they got a proper list and fall back to empty otherwise (the same guard the "recently viewed" strip already used), so a bad stored value can never break the cart â it just starts fresh.
 
 = 3.51.2 =
-* Store (Beta): fix — the cart's quantity picker stops you at what's in stock, but the cart itself lives in the browser, so a determined shopper could hand-edit it to order more than exists (e.g. 20 of a 1-left item) and get charged for copies that could never ship. Checkout now re-checks every line against real stock — per product and per size — and quietly trims the quantity to what's actually available before charging. Unlimited (untracked) items are unaffected.
+* Store (Beta): fix â the cart's quantity picker stops you at what's in stock, but the cart itself lives in the browser, so a determined shopper could hand-edit it to order more than exists (e.g. 20 of a 1-left item) and get charged for copies that could never ship. Checkout now re-checks every line against real stock â per product and per size â and quietly trims the quantity to what's actually available before charging. Unlimited (untracked) items are unaffected.
 
 = 3.51.1 =
-* Store (Beta): fix — a discount code's savings are split across your cart's lines, and on carts where the last line was small (e.g. a cheap sticker added after a shirt) the rounding remainder could hand that line more discount than it was worth. Checkout clamps a line's price at zero, so those extra few cents of discount were dropped and the shopper was charged slightly more than the total shown. The split now caps each line at its own value and spreads any leftover cents onto lines that still have room, so what's charged always equals the displayed total, to the cent.
+* Store (Beta): fix â a discount code's savings are split across your cart's lines, and on carts where the last line was small (e.g. a cheap sticker added after a shirt) the rounding remainder could hand that line more discount than it was worth. Checkout clamps a line's price at zero, so those extra few cents of discount were dropped and the shopper was charged slightly more than the total shown. The split now caps each line at its own value and spreads any leftover cents onto lines that still have room, so what's charged always equals the displayed total, to the cent.
 
 = 3.51.0 =
-* Store (Beta): accessibility polish. Keyboard shoppers now get a clear focus ring (a brand-pink outline) on every storefront control — Add to cart, size pills, Quick look, the heart, quantity buttons, the cart and its buttons — so it's obvious where you are when tabbing through. It only shows for keyboard focus, not mouse clicks. Screen readers also now announce the cart count as it changes and the "Added to cart" confirmation.
+* Store (Beta): accessibility polish. Keyboard shoppers now get a clear focus ring (a brand-pink outline) on every storefront control â Add to cart, size pills, Quick look, the heart, quantity buttons, the cart and its buttons â so it's obvious where you are when tabbing through. It only shows for keyboard focus, not mouse clicks. Screen readers also now announce the cart count as it changes and the "Added to cart" confirmation.
 
 = 3.50.1 =
-* Store (Beta): fix — the cart drawer, floating cart button and product-image lightbox each set their own display in CSS, which overrode the plain "hidden" attribute, so whether they stayed hidden depended on the host theme shipping a reset. They now hide themselves reliably on their own, so the drawer/lightbox open only when opened and the storefront isn't covered on themes without that reset.
+* Store (Beta): fix â the cart drawer, floating cart button and product-image lightbox each set their own display in CSS, which overrode the plain "hidden" attribute, so whether they stayed hidden depended on the host theme shipping a reset. They now hide themselves reliably on their own, so the drawer/lightbox open only when opened and the storefront isn't covered on themes without that reset.
 
 = 3.50.0 =
-* Store (Beta): variant swatches. The size/option dropdown is now a row of tap-friendly pills — one per option, with sold-out ones clearly struck through, and the chosen one highlighted. It's easier to pick a size on a phone, and it works everywhere the product appears (grid, Quick look, and the spotlight hero). Add to cart and Buy now both still make sure an option is chosen first.
+* Store (Beta): variant swatches. The size/option dropdown is now a row of tap-friendly pills â one per option, with sold-out ones clearly struck through, and the chosen one highlighted. It's easier to pick a size on a phone, and it works everywhere the product appears (grid, Quick look, and the spotlight hero). Add to cart and Buy now both still make sure an option is chosen first.
 
 = 3.49.0 =
-* Store (Beta): customers / top buyers. The Orders screen now has a "Customers" panel showing your top buyers by spend — order count, items, total spent, and first/last order date for each — so you can see your biggest fans at a glance. Export the full list to CSV for a mailout or a thank-you. Buyers are matched by email (case-insensitive) and refunded orders are excluded.
+* Store (Beta): customers / top buyers. The Orders screen now has a "Customers" panel showing your top buyers by spend â order count, items, total spent, and first/last order date for each â so you can see your biggest fans at a glance. Export the full list to CSV for a mailout or a thank-you. Buyers are matched by email (case-insensitive) and refunded orders are excluded.
 
 = 3.48.0 =
-* Store (Beta): save for later. Every product now has a heart button — tap it to save the product for later without adding it to the cart. Saved items appear in their own "Saved for later" section inside the cart drawer, each with a one-tap "Add to cart" and a remove button, so fans can build a little wishlist while they browse and come back to it. It's kept in the fan's own browser (nothing tracked server-side) and the heart fills in to show what's saved.
+* Store (Beta): save for later. Every product now has a heart button â tap it to save the product for later without adding it to the cart. Saved items appear in their own "Saved for later" section inside the cart drawer, each with a one-tap "Add to cart" and a remove button, so fans can build a little wishlist while they browse and come back to it. It's kept in the fan's own browser (nothing tracked server-side) and the heart fills in to show what's saved.
 
 = 3.47.0 =
-* Store (Beta): bulk product actions. The product list now has a checkbox on every product (plus a select-all). Tick a few and a bar appears to Activate, Set draft, Feature, Unfeature or Delete them all at once — no more editing one product at a time to launch or hide a whole drop. Delete asks first and also removes any uploaded file, exactly like deleting a single product. (Also swapped the last few emoji in the product list for the flat icon set.)
+* Store (Beta): bulk product actions. The product list now has a checkbox on every product (plus a select-all). Tick a few and a bar appears to Activate, Set draft, Feature, Unfeature or Delete them all at once â no more editing one product at a time to launch or hide a whole drop. Delete asks first and also removes any uploaded file, exactly like deleting a single product. (Also swapped the last few emoji in the product list for the flat icon set.)
 
 = 3.46.0 =
-* Store (Beta): per-product FAQ. Add frequently-asked questions to any product (Store → edit product → "FAQ") — one per line as "Question | Answer". They show as a tidy collapsible accordion on the product page (styled for the dark page, chevron flips open), so buyers get shipping, returns and sizing answers right where they're deciding — fewer "before I buy…" emails. Leave it blank to hide.
+* Store (Beta): per-product FAQ. Add frequently-asked questions to any product (Store â edit product â "FAQ") â one per line as "Question | Answer". They show as a tidy collapsible accordion on the product page (styled for the dark page, chevron flips open), so buyers get shipping, returns and sizing answers right where they're deciding â fewer "before I buyâ¦" emails. Leave it blank to hide.
 
 = 3.45.0 =
-* Store (Beta): sales report export. The Orders screen now has a "Sales report" panel — pick a from/to date range and download a CSV of revenue by day: date, orders, items, revenue, discounts and tax, with a totals row at the bottom. It defaults to the last 30 days, only counts paid orders, and is formula-injection-safe with a UTF-8 BOM so it opens cleanly in Excel/Numbers/Sheets — ready to hand to your bookkeeper.
+* Store (Beta): sales report export. The Orders screen now has a "Sales report" panel â pick a from/to date range and download a CSV of revenue by day: date, orders, items, revenue, discounts and tax, with a totals row at the bottom. It defaults to the last 30 days, only counts paid orders, and is formula-injection-safe with a UTF-8 BOM so it opens cleanly in Excel/Numbers/Sheets â ready to hand to your bookkeeper.
 
 = 3.44.0 =
-* Store (Beta): spotlight hero. Add hero="1" to your [fanloop_store] shortcode and your featured product headlines the shop — a big, editorial banner at the top (large image + title + price + full add-to-cart, size picker and quantity all working) with the rest of the catalogue in the grid below. It picks your Featured product automatically (newest if none is pinned), and only appears when there are at least two products so the grid still has something to show.
+* Store (Beta): spotlight hero. Add hero="1" to your [fanloop_store] shortcode and your featured product headlines the shop â a big, editorial banner at the top (large image + title + price + full add-to-cart, size picker and quantity all working) with the rest of the catalogue in the grid below. It picks your Featured product automatically (newest if none is pinned), and only appears when there are at least two products so the grid still has something to show.
 
 = 3.43.0 =
-* Store (Beta): flat, modern icon set. Replaced the emoji throughout the store — storefront, product page, cart & checkout, the "Your orders" pages, and the Store/Orders admin — with one cohesive set of clean line icons that inherit their colour and look sharp on any background, light or dark. Emails keep their emoji (icons don't render reliably in inboxes), and meaningful glyphs like the language flags and 🥇🥈🥉 medals are untouched.
+* Store (Beta): flat, modern icon set. Replaced the emoji throughout the store â storefront, product page, cart & checkout, the "Your orders" pages, and the Store/Orders admin â with one cohesive set of clean line icons that inherit their colour and look sharp on any background, light or dark. Emails keep their emoji (icons don't render reliably in inboxes), and meaningful glyphs like the language flags and ð¥ð¥ð¥ medals are untouched.
 
 = 3.42.0 =
-* Store (Beta): quantity picker on physical products. Buyers can now choose how many they want with a − / + stepper before adding to the cart, instead of clicking Add several times. It respects your stock — if only 2 are left, the picker won't go past 2 — and merges into the existing cart line. Works inside Quick look too.
+* Store (Beta): quantity picker on physical products. Buyers can now choose how many they want with a â / + stepper before adding to the cart, instead of clicking Add several times. It respects your stock â if only 2 are left, the picker won't go past 2 â and merges into the existing cart line. Works inside Quick look too.
 
 = 3.41.0 =
-* Store (Beta): inventory / low-stock report. The Store admin now shows an "📦 Inventory" panel at a glance — how many products you're tracking, total units on hand, and the value of that stock — plus two lists that sort themselves most-urgent first: "Out of stock" and "Running low" (5 or fewer left). It understands per-size stock too, so a hoodie shows a chip per size (S: 0, M: 2, L: 20) and flags the whole product the moment any size runs out. Click any product to restock it. Untracked (unlimited) products are ignored.
+* Store (Beta): inventory / low-stock report. The Store admin now shows an "ð¦ Inventory" panel at a glance â how many products you're tracking, total units on hand, and the value of that stock â plus two lists that sort themselves most-urgent first: "Out of stock" and "Running low" (5 or fewer left). It understands per-size stock too, so a hoodie shows a chip per size (S: 0, M: 2, L: 20) and flags the whole product the moment any size runs out. Click any product to restock it. Untracked (unlimited) products are ignored.
 
 = 3.40.0 =
-* Store (Beta): product image lightbox. On a product page with more than one photo, tapping the main image now opens it full-screen in a zoom viewer — swipe through every photo with the ‹ › arrows or your keyboard, see a "2 / 3" position counter, and close with ✕, the arrow keys' Esc, or a tap on the backdrop. The thumbnail strip still switches the main image, and the viewer opens on whichever photo you're looking at. Buyers can finally see the details up close.
+* Store (Beta): product image lightbox. On a product page with more than one photo, tapping the main image now opens it full-screen in a zoom viewer â swipe through every photo with the â¹ âº arrows or your keyboard, see a "2 / 3" position counter, and close with â, the arrow keys' Esc, or a tap on the backdrop. The thumbnail strip still switches the main image, and the viewer opens on whichever photo you're looking at. Buyers can finally see the details up close.
 
 = 3.39.0 =
-* Store (Beta): per-product size guide. Add a size chart to any product (Store → edit product → "Size guide") — one row per line with columns separated by "|", first line is the header. It shows on the product page as a tidy, collapsible "📏 Size guide" table (styled for the dark product page), and stays hidden when left blank. Perfect for apparel and anything where fit matters, so buyers pick the right size the first time.
+* Store (Beta): per-product size guide. Add a size chart to any product (Store â edit product â "Size guide") â one row per line with columns separated by "|", first line is the header. It shows on the product page as a tidy, collapsible "ð Size guide" table (styled for the dark product page), and stays hidden when left blank. Perfect for apparel and anything where fit matters, so buyers pick the right size the first time.
 
 = 3.38.0 =
-* Store (Beta): bulk order actions. The Orders screen now has a checkbox on every order (plus a select-all in the header). Tick a few and a bar appears: "Mark shipped" fulfils all of them at once and emails those buyers (with an optional carrier), and "Export selected (CSV)" downloads just the orders you picked — date, buyer, address, items, total, tax, status and tracking. Marking shipped is safe to repeat: already-shipped orders are skipped. Per-order Ship / Resend / Slip / Refund are unchanged.
+* Store (Beta): bulk order actions. The Orders screen now has a checkbox on every order (plus a select-all in the header). Tick a few and a bar appears: "Mark shipped" fulfils all of them at once and emails those buyers (with an optional carrier), and "Export selected (CSV)" downloads just the orders you picked â date, buyer, address, items, total, tax, status and tracking. Marking shipped is safe to repeat: already-shipped orders are skipped. Per-order Ship / Resend / Slip / Refund are unchanged.
 
 = 3.37.0 =
-* Store (Beta): "Quick look" on the storefront. Every product card now has a Quick look button — tapping it opens the product in a pop-up right on the store page, with the image, title, description, price (and any sale), the size/variant picker or name-your-price field, and Add to cart — all without leaving the grid. Add from the pop-up and it drops straight into the cart and closes; close it anytime with the X, the dimmed background, or the Esc key. Faster browsing, fewer page loads.
+* Store (Beta): "Quick look" on the storefront. Every product card now has a Quick look button â tapping it opens the product in a pop-up right on the store page, with the image, title, description, price (and any sale), the size/variant picker or name-your-price field, and Add to cart â all without leaving the grid. Add from the pop-up and it drops straight into the cart and closes; close it anytime with the X, the dimmed background, or the Esc key. Faster browsing, fewer page loads.
 
 = 3.36.0 =
-* Store (Beta): private staff notes on orders. Add an internal note to any order from the Orders screen ("signed copy", "hold for pickup", "replacement sent") — separate from the buyer's gift note and never shown to them. It appears on the order row and prints in its own box on the packing slip, so whoever packs the order sees it.
+* Store (Beta): private staff notes on orders. Add an internal note to any order from the Orders screen ("signed copy", "hold for pickup", "replacement sent") â separate from the buyer's gift note and never shown to them. It appears on the order row and prints in its own box on the packing slip, so whoever packs the order sees it.
 
 = 3.35.0 =
-* Store (Beta): "Recently viewed" on product pages. As a fan browses, each product page now shows a "Recently viewed" strip of the items they looked at before (newest first, up to 8), so it's easy to hop back and compare. It's kept in the fan's own browser only — nothing is tracked server-side — and the current product is never shown in its own strip.
+* Store (Beta): "Recently viewed" on product pages. As a fan browses, each product page now shows a "Recently viewed" strip of the items they looked at before (newest first, up to 8), so it's easy to hop back and compare. It's kept in the fan's own browser only â nothing is tracked server-side â and the current product is never shown in its own strip.
 
 = 3.34.0 =
 * Store (Beta): "On sale" filter. When any product is on sale, an "On sale" chip appears in [fanloop_store] so fans can show just the deals in one tap. Works alongside search, sort, tags and the in-stock toggle, and is remembered across reloads. Only shows when something's actually on sale.
 
 = 3.33.0 =
-* Store (Beta): sale prices. Give any product a "Compare-at price" higher than its price and it goes on sale — the card shows the original struck through, the sale price, and a −X% badge. Fans are charged the (lower) Price; the compare-at is just for show. Included in the product CSV export/import too. Set compare-at to 0 for no sale.
+* Store (Beta): sale prices. Give any product a "Compare-at price" higher than its price and it goes on sale â the card shows the original struck through, the sale price, and a âX% badge. Fans are charged the (lower) Price; the compare-at is just for show. Included in the product CSV export/import too. Set compare-at to 0 for no sale.
 
 = 3.32.0 =
-* Store (Beta): "Load more" pagination. [fanloop_store per="12"] shows a first batch and reveals more on tap — keeps big catalogues fast and tidy. It works hand-in-hand with search, sort and the filters: narrowing the shop resets to the first batch of matches, and Load more only appears while there's more to show. Leave per off to show everything as before.
+* Store (Beta): "Load more" pagination. [fanloop_store per="12"] shows a first batch and reveals more on tap â keeps big catalogues fast and tidy. It works hand-in-hand with search, sort and the filters: narrowing the shop resets to the first batch of matches, and Load more only appears while there's more to show. Leave per off to show everything as before.
 
 = 3.31.0 =
-* Store (Beta): win back abandoned carts with a discount. In Settings → Payments you can now add an optional "% off" to the abandoned-cart reminder. When set, the reminder includes a one-time comeback code (single use, expires in 14 days) that's automatically applied when the shopper taps through to finish — a proven way to recover more sales. 0% keeps the plain reminder. Works with both the automatic reminder and the manual "Send reminder" button.
+* Store (Beta): win back abandoned carts with a discount. In Settings â Payments you can now add an optional "% off" to the abandoned-cart reminder. When set, the reminder includes a one-time comeback code (single use, expires in 14 days) that's automatically applied when the shopper taps through to finish â a proven way to recover more sales. 0% keeps the plain reminder. Works with both the automatic reminder and the manual "Send reminder" button.
 
 = 3.30.0 =
-* Store (Beta): curated collections. [fanloop_store ids="12,7,3"] shows exactly those products in that order — perfect for a landing page or a hand-picked feature section — and [fanloop_store tag="vinyl"] shows just the products with a given tag as a ready-made section. Mix as many [fanloop_store] blocks as you like across your pages.
+* Store (Beta): curated collections. [fanloop_store ids="12,7,3"] shows exactly those products in that order â perfect for a landing page or a hand-picked feature section â and [fanloop_store tag="vinyl"] shows just the products with a given tag as a ready-made section. Mix as many [fanloop_store] blocks as you like across your pages.
 
 = 3.29.0 =
-* Store (Beta): tax / VAT. Set a tax rate (%) and label (HST, VAT, GST…) in Settings → Payments and it's charged at checkout on the item subtotal after any discount (shipping isn't taxed) — shown on the checkout summary, the receipt, and the admin sale email, and collected through Stripe or demo checkout. Collected tax is tracked separately from your revenue (a new tax_cents field) and shows as "incl. $X tax" on the Orders screen, so your sales figures stay clean. You set the right rate for where you sell and remit it. 0% = off.
+* Store (Beta): tax / VAT. Set a tax rate (%) and label (HST, VAT, GSTâ¦) in Settings â Payments and it's charged at checkout on the item subtotal after any discount (shipping isn't taxed) â shown on the checkout summary, the receipt, and the admin sale email, and collected through Stripe or demo checkout. Collected tax is tracked separately from your revenue (a new tax_cents field) and shows as "incl. $X tax" on the Orders screen, so your sales figures stay clean. You set the right rate for where you sell and remit it. 0% = off.
 
 = 3.28.0 =
-* Store (Beta): bulk product import / export (CSV). On the Store screen, "Import / export products (CSV)" lets you download your whole catalogue as a spreadsheet, edit it, and re-import to create and update products in one go — or build a CSV from scratch to launch a shop fast. Rows match by slug (existing slug updates, new/blank creates), imports come in as Drafts unless marked active, and you get a created/updated/skipped summary with per-row errors. Great for migrating a catalogue or editing prices/stock in bulk.
+* Store (Beta): bulk product import / export (CSV). On the Store screen, "Import / export products (CSV)" lets you download your whole catalogue as a spreadsheet, edit it, and re-import to create and update products in one go â or build a CSV from scratch to launch a shop fast. Rows match by slug (existing slug updates, new/blank creates), imports come in as Drafts unless marked active, and you get a created/updated/skipped summary with per-row errors. Great for migrating a catalogue or editing prices/stock in bulk.
 
 = 3.27.0 =
-* Store (Beta): a friendlier empty shop. When [fanloop_store] has no products yet, it now shows a tidy card ("The shop is warming up — new drops are on the way") instead of a bare line. Looks right on both light and dark themes.
+* Store (Beta): a friendlier empty shop. When [fanloop_store] has no products yet, it now shows a tidy card ("The shop is warming up â new drops are on the way") instead of a bare line. Looks right on both light and dark themes.
 
 = 3.26.0 =
 * Store (Beta): a "back to shop" link now sits at the top-left of every product page, so fans can head back without scrolling to the bottom. Subtle pill styling, responsive on mobile.
 
 = 3.25.0 =
-* Store (Beta): a small shipping reassurance line at checkout. Physical orders now show "Packed with care — you'll get a tracking email as soon as it ships" under the address fields. It promises no specific timeframe, so it's accurate whatever your dispatch speed. Digital-only carts don't see it.
+* Store (Beta): a small shipping reassurance line at checkout. Physical orders now show "Packed with care â you'll get a tracking email as soon as it ships" under the address fields. It promises no specific timeframe, so it's accurate whatever your dispatch speed. Digital-only carts don't see it.
 
 = 3.24.0 =
-* Store (Beta): storefront cards now lift gently on hover with a soft shadow — a small touch that makes the shop feel more polished. Only on devices with a mouse (no stuck states on touch), and it respects "reduce motion" accessibility settings.
+* Store (Beta): storefront cards now lift gently on hover with a soft shadow â a small touch that makes the shop feel more polished. Only on devices with a mouse (no stuck states on touch), and it respects "reduce motion" accessibility settings.
 
 = 3.23.0 =
-* Store (Beta): weekly orders KPI. The Store dashboard gains an "Orders · 7d" tile showing how many orders came in over the last 7 days, with a ▲/▼ chip comparing to the week before — a quick pulse on whether the shop is picking up.
+* Store (Beta): weekly orders KPI. The Store dashboard gains an "Orders Â· 7d" tile showing how many orders came in over the last 7 days, with a â²/â¼ chip comparing to the week before â a quick pulse on whether the shop is picking up.
 
 = 3.22.0 =
 * Store (Beta): "you're saving $X" badge at checkout. When a discount code or bundle applies, a green savings badge now appears right above the pay button, reinforcing the deal at the moment fans decide to buy. Only shows when there's an actual saving.
 
 = 3.21.0 =
-* Store (Beta): the shop remembers your filters. A fan's search text, category, in-stock toggle and sort choice now persist across page reloads (saved in their browser only), so browsing a big shop and coming back doesn't reset everything. Restores gracefully — a saved category that no longer exists just falls back to "All".
+* Store (Beta): the shop remembers your filters. A fan's search text, category, in-stock toggle and sort choice now persist across page reloads (saved in their browser only), so browsing a big shop and coming back doesn't reset everything. Restores gracefully â a saved category that no longer exists just falls back to "All".
 
 = 3.20.0 =
-* Store (Beta): live results count. The search + sort bar in [fanloop_store] now shows how many products are showing — "12 items" normally, "3 of 12" while a search or filter is active — so fans know what they're looking at as they narrow things down.
+* Store (Beta): live results count. The search + sort bar in [fanloop_store] now shows how many products are showing â "12 items" normally, "3 of 12" while a search or filter is active â so fans know what they're looking at as they narrow things down.
 
 = 3.19.0 =
-* Store (Beta): "to ship" badge on the Orders menu. The Orders menu item now shows a red count bubble for how many orders are waiting to be shipped — the same at-a-glance badge WordPress uses for comments — so pending fulfilment is visible from anywhere in your dashboard. Updates as you ship.
+* Store (Beta): "to ship" badge on the Orders menu. The Orders menu item now shows a red count bubble for how many orders are waiting to be shipped â the same at-a-glance badge WordPress uses for comments â so pending fulfilment is visible from anywhere in your dashboard. Updates as you ship.
 
 = 3.18.0 =
-* Store (Beta): share button on product cards. Each product in [fanloop_store] now has a small 🔗 button that copies its direct link in one tap (with a "Link copied" confirmation) — so fans can share a specific product straight from the shop grid. Pairs with the rich link previews from 3.14.
+* Store (Beta): share button on product cards. Each product in [fanloop_store] now has a small ð button that copies its direct link in one tap (with a "Link copied" confirmation) â so fans can share a specific product straight from the shop grid. Pairs with the rich link previews from 3.14.
 
 = 3.17.0 =
-* Store (Beta): revenue trend chip. The Revenue tile on the Store dashboard now shows a little ▲/▼ percentage comparing the last 30 days to the 30 days before — green when you're up, red when you're down — so you can tell how the shop is trending at a glance.
+* Store (Beta): revenue trend chip. The Revenue tile on the Store dashboard now shows a little â²/â¼ percentage comparing the last 30 days to the 30 days before â green when you're up, red when you're down â so you can tell how the shop is trending at a glance.
 
 = 3.16.0 =
-* Store (Beta): "Top products" on the dashboard. The Store screen now shows your top 3 products by revenue as a ranked mini bar-chart (🥇🥈🥉 with each product's revenue and sale count), replacing the single top-seller line — so you can see what's actually driving the money at a glance.
+* Store (Beta): "Top products" on the dashboard. The Store screen now shows your top 3 products by revenue as a ranked mini bar-chart (ð¥ð¥ð¥ with each product's revenue and sale count), replacing the single top-seller line â so you can see what's actually driving the money at a glance.
 
 = 3.15.0 =
-* Store (Beta): discount usage bars. Codes with a usage limit now show a little progress bar in the Discounts list — green while there's room, amber as it nears the cap, red and "maxed" when it's spent — so you can see at a glance which codes are running out. Unlimited codes just show their count.
+* Store (Beta): discount usage bars. Codes with a usage limit now show a little progress bar in the Discounts list â green while there's room, amber as it nears the cap, red and "maxed" when it's spent â so you can see at a glance which codes are running out. Unlimited codes just show their count.
 
 = 3.14.0 =
-* Store (Beta): rich link previews for product pages. When a fan shares a product link on social or in a chat, it now unfurls with a large image, the title, description, price and in-stock/sold-out status — via proper Open Graph, Twitter Card and product meta tags. Nicer previews mean more clicks. Automatic on every product page.
+* Store (Beta): rich link previews for product pages. When a fan shares a product link on social or in a chat, it now unfurls with a large image, the title, description, price and in-stock/sold-out status â via proper Open Graph, Twitter Card and product meta tags. Nicer previews mean more clicks. Automatic on every product page.
 
 = 3.13.0 =
 * Store (Beta): "In stock only" filter in [fanloop_store]. When any product is sold out, a toggle appears next to the category chips so fans can hide sold-out items with one tap. Works together with search, sort and the tag filters. Only shows when there's actually something sold out.
 
 = 3.12.0 =
-* Store (Beta): sticky mobile buy bar on product pages. On phones, a slim bar now stays pinned to the bottom of a product page with the title, price and an action button — so fans can add to cart from anywhere on the page without scrolling back up. Simple products add straight to the cart; products with a size or name-your-price get a "Choose options" button that jumps to the picker; sold-out shows a disabled state. Desktop is unchanged.
+* Store (Beta): sticky mobile buy bar on product pages. On phones, a slim bar now stays pinned to the bottom of a product page with the title, price and an action button â so fans can add to cart from anywhere on the page without scrolling back up. Simple products add straight to the cart; products with a size or name-your-price get a "Choose options" button that jumps to the picker; sold-out shows a disabled state. Desktop is unchanged.
 
 = 3.11.0 =
-* Store (Beta): "Just added" badge. Products you added in the last 14 days now show a ✨ Just added pill on their storefront card, so fans spot what's new at a glance. Automatic — no setting; it appears when a product is fresh and disappears on its own after two weeks. (Featured products keep their ⭐ badge instead.)
+* Store (Beta): "Just added" badge. Products you added in the last 14 days now show a â¨ Just added pill on their storefront card, so fans spot what's new at a glance. Automatic â no setting; it appears when a product is fresh and disappears on its own after two weeks. (Featured products keep their â­ badge instead.)
 
 = 3.10.0 =
-* Store (Beta): low-stock urgency bar. When a product with a stock limit is running low (10 or fewer left), its card now shows a "🔥 Only N left" pill above a claimed-progress bar and an "X of Y claimed" line — real, honest scarcity that only appears when you're actually tracking stock. Nudges fans to grab it before it's gone.
+* Store (Beta): low-stock urgency bar. When a product with a stock limit is running low (10 or fewer left), its card now shows a "ð¥ Only N left" pill above a claimed-progress bar and an "X of Y claimed" line â real, honest scarcity that only appears when you're actually tracking stock. Nudges fans to grab it before it's gone.
 
 = 3.9.0 =
-* Store (Beta): free-shipping progress bar in the cart. When you've set a free-shipping threshold (Settings → Payments, with flat zone shipping on), the cart drawer now shows a live progress bar — "Add $X more for free shipping" that fills as fans add items and flips to "🎉 You've unlocked free shipping!" once they qualify. Only shows when the cart has a physical item. A gentle nudge to grow the order.
+* Store (Beta): free-shipping progress bar in the cart. When you've set a free-shipping threshold (Settings â Payments, with flat zone shipping on), the cart drawer now shows a live progress bar â "Add $X more for free shipping" that fills as fans add items and flips to "ð You've unlocked free shipping!" once they qualify. Only shows when the cart has a physical item. A gentle nudge to grow the order.
 
 = 3.8.0 =
-* Store (Beta): a proper "Your orders" page for buyers. The email magic-link (find-my-purchases) now groups everything into orders — each with its date, order number and total, per-item download buttons for digital items, and an order-level shipping status: "Preparing to ship" or "Shipped" with the carrier, tracking number and a Track link. Replaces the old flat list. No setup; the finder link and [fanloop_purchases] shortcode are unchanged.
+* Store (Beta): a proper "Your orders" page for buyers. The email magic-link (find-my-purchases) now groups everything into orders â each with its date, order number and total, per-item download buttons for digital items, and an order-level shipping status: "Preparing to ship" or "Shipped" with the carrier, tracking number and a Track link. Replaces the old flat list. No setup; the finder link and [fanloop_purchases] shortcode are unchanged.
 
 = 3.7.0 =
-* Store (Beta): "Buy the set" storefront merchandising. Product pages now show a "Buy the set & save X%" panel for any product that's part of a bundle — the set's items as tiles, the exact saving, and (when every item is one-tap addable) an "Add the set to cart" button that drops the whole set in the cart so the bundle discount kicks in. Storefront cards for bundled products show a "🎁 Buy the set · save X%" pill. Pairs with the bundle engine from 3.6.
+* Store (Beta): "Buy the set" storefront merchandising. Product pages now show a "Buy the set & save X%" panel for any product that's part of a bundle â the set's items as tiles, the exact saving, and (when every item is one-tap addable) an "Add the set to cart" button that drops the whole set in the cart so the bundle discount kicks in. Storefront cards for bundled products show a "ð Buy the set Â· save X%" pill. Pairs with the bundle engine from 3.6.
 
 = 3.6.0 =
-* Store (Beta): "Buy the set" bundles. Group products into a set with a % off on the Store page (Bundles section). When a fan has every product in the set in their cart, the discount comes off automatically at checkout — no code to type, computed server-side so it can't be faked. The saving shows on the checkout summary and in the receipt. One order discount applies at a time: a code a fan enters wins; the bundle fills in when there's no code. (A storefront "buy the set" prompt on product pages is coming next.)
+* Store (Beta): "Buy the set" bundles. Group products into a set with a % off on the Store page (Bundles section). When a fan has every product in the set in their cart, the discount comes off automatically at checkout â no code to type, computed server-side so it can't be faked. The saving shows on the checkout summary and in the receipt. One order discount applies at a time: a code a fan enters wins; the bundle fills in when there's no code. (A storefront "buy the set" prompt on product pages is coming next.)
 
 = 3.5.0 =
-* Store (Beta): automatic back-in-stock emails. When a sold-out product comes back — you raise its stock, refill a size, or set it active again — everyone on its waitlist is emailed a branded "it's back in stock" note with a buy link automatically. No button to remember. Toggle it in Settings → Payments ("Back-in-stock"); you can still notify manually from the Waitlist section. Sold-out product cards now also show "🔔 N fans waiting" once a few people are in line.
+* Store (Beta): automatic back-in-stock emails. When a sold-out product comes back â you raise its stock, refill a size, or set it active again â everyone on its waitlist is emailed a branded "it's back in stock" note with a buy link automatically. No button to remember. Toggle it in Settings â Payments ("Back-in-stock"); you can still notify manually from the Waitlist section. Sold-out product cards now also show "ð N fans waiting" once a few people are in line.
 
 = 3.4.0 =
-* Store (Beta): product tags / categories + filter chips in [fanloop_store]. Add comma-separated Tags (e.g. Vinyl, Apparel, Digital, Limited) on any product's edit screen. When two or more distinct tags exist, filter chips appear at the top of your shop so fans can browse by category in one tap — ordered by how common each tag is. Works alongside the existing search + sort. No layout change if you don't use tags.
+* Store (Beta): product tags / categories + filter chips in [fanloop_store]. Add comma-separated Tags (e.g. Vinyl, Apparel, Digital, Limited) on any product's edit screen. When two or more distinct tags exist, filter chips appear at the top of your shop so fans can browse by category in one tap â ordered by how common each tag is. Works alongside the existing search + sort. No layout change if you don't use tags.
 
 = 3.3.0 =
-* Store (Beta): post-purchase "You might also like" upsell on the thank-you page. After any checkout, the success page now shows a strip of your best-selling products (the ones they didn't just buy) so fans can keep shopping in one tap. Appears on both the cart thank-you page and the single Buy-now confirmation. No setup — it draws from your active products automatically.
+* Store (Beta): post-purchase "You might also like" upsell on the thank-you page. After any checkout, the success page now shows a strip of your best-selling products (the ones they didn't just buy) so fans can keep shopping in one tap. Appears on both the cart thank-you page and the single Buy-now confirmation. No setup â it draws from your active products automatically.
 
 = 3.2.0 =
 * Store (Beta): gift message / order note at checkout. Buyers can add an optional note or gift message with their order (label switches to "Gift message" for physical carts). It shows up in your sale email, on the order row in Orders, and prints on the packing slip so it goes in the box. Works in cart + single Buy-now, demo and live.
@@ -218,28 +221,28 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Store (Beta): free-shipping threshold + return address on packing slips. Set "Free shipping when the order reaches $X" in Settings -> Payments and orders at or above that get free shipping (with a live "Add $Y more for free shipping" upsell at checkout that flips to "You've unlocked free shipping!"). Your ship-from address now prints on packing slips too.
 
 = 3.0.0 =
-* Store (Beta): flat shipping by zone + product weights. Turn on "Flat rate by zone" in Settings -> Payments and set three shipping fees — Canada, USA, International. At checkout the buyer picks their country and pays the matching flat rate (updates live); it replaces per-product shipping when on. Added a per-product Weight (grams) field that prints on packing slips and appears in the to-ship CSV, ready for buying labels (e.g. Canada Post). Works in cart and single Buy-now, demo and live.
+* Store (Beta): flat shipping by zone + product weights. Turn on "Flat rate by zone" in Settings -> Payments and set three shipping fees â Canada, USA, International. At checkout the buyer picks their country and pays the matching flat rate (updates live); it replaces per-product shipping when on. Added a per-product Weight (grams) field that prints on packing slips and appears in the to-ship CSV, ready for buying labels (e.g. Canada Post). Works in cart and single Buy-now, demo and live.
 
 = 2.99.0 =
-* Store (Beta): fulfilment paperwork. On the Orders screen you can now print packing slips (one clean, print-ready slip per order to drop in the box — or all your to-ship orders at once) and export a to-ship CSV of unshipped orders (name, address, items) to take to Pirate Ship, Shippo or Canada Post to buy and print labels. Paste the tracking number back into the order and the buyer is emailed automatically.
+* Store (Beta): fulfilment paperwork. On the Orders screen you can now print packing slips (one clean, print-ready slip per order to drop in the box â or all your to-ship orders at once) and export a to-ship CSV of unshipped orders (name, address, items) to take to Pirate Ship, Shippo or Canada Post to buy and print labels. Paste the tracking number back into the order and the buyer is emailed automatically.
 
 = 2.98.0 =
-* Store (Beta): feature a product. Tick "Featured" on any product to pin it to the top of your shop with a ⭐ badge. Also added a "Shortcodes & links" reference on the Store screen so the ways to show your shop are always at hand — including [fanloop_store controls="on"] to force the search + sort bar (it otherwise appears automatically once you have 5+ products).
+* Store (Beta): feature a product. Tick "Featured" on any product to pin it to the top of your shop with a â­ badge. Also added a "Shortcodes & links" reference on the Store screen so the ways to show your shop are always at hand â including [fanloop_store controls="on"] to force the search + sort bar (it otherwise appears automatically once you have 5+ products).
 
 = 2.97.0 =
-* Store (Beta): weekly low-stock digest. Turn on "Low-stock digest" in Settings -> Payments and, at most once a week, Fanloop emails you a heads-up listing any product or size with a stock limit that's down to 5 or fewer — so you can restock before it sells out. Off by default; only sends when there's something to report.
+* Store (Beta): weekly low-stock digest. Turn on "Low-stock digest" in Settings -> Payments and, at most once a week, Fanloop emails you a heads-up listing any product or size with a stock limit that's down to 5 or fewer â so you can restock before it sells out. Off by default; only sends when there's something to report.
 
 = 2.96.0 =
-* Store (Beta): waitlist overview. The Store screen now shows a "Waitlist" panel — every sold-out product with people waiting, how many, and how long — with a per-product "Notify them it's back" button and an Export CSV of everyone waiting (product, email, size, date). Appears only when someone's actually waiting.
+* Store (Beta): waitlist overview. The Store screen now shows a "Waitlist" panel â every sold-out product with people waiting, how many, and how long â with a per-product "Notify them it's back" button and an Export CSV of everyone waiting (product, email, size, date). Appears only when someone's actually waiting.
 
 = 2.95.0 =
-* Store (Beta): mark orders refunded. On the Orders screen you can now flag an order as refunded (and undo it). A refunded order drops out of your revenue, KPIs, discount stats and downloads, and shows under a new "Refunded" filter. Note: this records the refund and adjusts your reports — it does not move money, so issue the actual refund in your Stripe or Square dashboard.
+* Store (Beta): mark orders refunded. On the Orders screen you can now flag an order as refunded (and undo it). A refunded order drops out of your revenue, KPIs, discount stats and downloads, and shows under a new "Refunded" filter. Note: this records the refund and adjusts your reports â it does not move money, so issue the actual refund in your Stripe or Square dashboard.
 
 = 2.94.0 =
-* Store (Beta): a getting-started checklist. Until your shop is live, the Store screen shows a short checklist with progress — connect a payment processor, add a product, put the shop on a page, make a test sale — with one-tap links for each. It disappears automatically once everything is done.
+* Store (Beta): a getting-started checklist. Until your shop is live, the Store screen shows a short checklist with progress â connect a payment processor, add a product, put the shop on a page, make a test sale â with one-tap links for each. It disappears automatically once everything is done.
 
 = 2.93.0 =
-* Store (Beta): pre-orders. Give a product a future "Pre-order until" date and fans can buy it now — the card shows "Pre-order · available <date>" and the receipt confirms the pre-order (no download is sent yet for digital). On release day, upload the file and click "Send downloads to buyers" to email everyone their download; physical pre-orders ship when you are ready. Works in the cart and single Buy-now.
+* Store (Beta): pre-orders. Give a product a future "Pre-order until" date and fans can buy it now â the card shows "Pre-order Â· available <date>" and the receipt confirms the pre-order (no download is sent yet for digital). On release day, upload the file and click "Send downloads to buyers" to email everyone their download; physical pre-orders ship when you are ready. Works in the cart and single Buy-now.
 
 = 2.92.0 =
 * Store (Beta): sold-out waitlist. When a product is sold out, fans can leave their email to be notified when it's back. You see how many are waiting (on the product and in the list), and when you restock, one click emails everyone a branded "it's back in stock" message with a link to buy. No one is emailed twice.
@@ -248,407 +251,407 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Store (Beta): a proper Orders screen. New "Orders" menu under Fanloop shows every order (a cart checkout is grouped into one order, not separate line rows) with search by email or product, filters (All / To ship / Digital / Demo), and headline stats (orders, revenue, to-ship). Each order shows its items, buyer, shipping address, total (with any discount), payment method and status. Mark a whole order shipped with a carrier + tracking number in one click (buyer gets the shipped email), or resend the receipt / download links. Paginated.
 
 = 2.90.0 =
-* Store (Beta): duplicate a product. The product edit screen has a new "Duplicate" button that creates a draft copy — same cover, gallery, price, and options, ready to tweak into a new drop. (The uploaded download file isn't copied, so two products never share one file; re-upload it on the copy.)
+* Store (Beta): duplicate a product. The product edit screen has a new "Duplicate" button that creates a draft copy â same cover, gallery, price, and options, ready to tweak into a new drop. (The uploaded download file isn't copied, so two products never share one file; re-upload it on the copy.)
 
 = 2.89.0 =
-* Store (Beta): export orders to CSV. An "Export orders (CSV)" button on the Store admin downloads every sale — date, product, size, quantity, buyer email, amount, discount code, payment method, fulfillment status, tracking, and shipping address — ready for accounting or fulfilment. Opens cleanly in Excel/Sheets (UTF-8), and is hardened against spreadsheet formula injection.
+* Store (Beta): export orders to CSV. An "Export orders (CSV)" button on the Store admin downloads every sale â date, product, size, quantity, buyer email, amount, discount code, payment method, fulfillment status, tracking, and shipping address â ready for accounting or fulfilment. Opens cleanly in Excel/Sheets (UTF-8), and is hardened against spreadsheet formula injection.
 
 = 2.88.0 =
-* Store (Beta): announcement banner. Set a message in Settings → Payments (e.g. "Launch week — use LAUNCH20 for 20% off") and a dismissible bar appears across your storefront and product pages, optionally linking somewhere. Pairs nicely with discount codes. Shoppers can dismiss it, and changing the message brings it back. Leave it blank to hide.
+* Store (Beta): announcement banner. Set a message in Settings â Payments (e.g. "Launch week â use LAUNCH20 for 20% off") and a dismissible bar appears across your storefront and product pages, optionally linking somewhere. Pairs nicely with discount codes. Shoppers can dismiss it, and changing the message brings it back. Leave it blank to hide.
 
 = 2.87.0 =
-* Store (Beta): share buttons on the product page. Each hosted product page now has a Copy link button plus one-tap sharing to X, Facebook and WhatsApp — so fans can spread a release for you. Uses the product's own link and preview image (already set up), no configuration.
+* Store (Beta): share buttons on the product page. Each hosted product page now has a Copy link button plus one-tap sharing to X, Facebook and WhatsApp â so fans can spread a release for you. Uses the product's own link and preview image (already set up), no configuration.
 
 = 2.86.0 =
-* Store (Beta): "More from the shop" on the product page. Each hosted product page now shows up to four other products (best-sellers first) below the item, so a fan who lands on one release can discover the rest of your shop in a tap. Automatic — no setup.
+* Store (Beta): "More from the shop" on the product page. Each hosted product page now shows up to four other products (best-sellers first) below the item, so a fan who lands on one release can discover the rest of your shop in a tap. Automatic â no setup.
 
 = 2.85.0 =
-* Store (Beta): automatic abandoned-cart reminders. Turn on "Abandoned-cart reminder" in Settings → Payments and Fanloop will automatically email a shopper who didn't finish checkout — once, after a delay you choose (1–72 hours) — with the same one-tap link that reopens their exact cart. Off by default; you can still send reminders by hand anytime. Recovered carts are skipped.
+* Store (Beta): automatic abandoned-cart reminders. Turn on "Abandoned-cart reminder" in Settings â Payments and Fanloop will automatically email a shopper who didn't finish checkout â once, after a delay you choose (1â72 hours) â with the same one-tap link that reopens their exact cart. Off by default; you can still send reminders by hand anytime. Recovered carts are skipped.
 
 = 2.84.0 =
 * Store (Beta): abandoned-cart recovery. When a shopper reaches checkout and enters their email but doesn't complete payment, the cart is saved. A new "Abandoned carts" panel on the Store admin lists open carts (email, items, total, age); one click sends a branded "you left something behind" email with a link that reopens their exact cart, email prefilled. Anyone who later buys is cleared automatically. (Demo checkout completes instantly, so this recovers live checkouts that stall before payment.)
 
 = 2.83.0 =
-* Store (Beta): a KPI summary at the top of the Store admin. See Revenue (with a 30-day trend), Orders, Average order value, unique Buyers, and Downloads at a glance — plus a "🏆 Top seller" line showing your best product by revenue. All derived from your sales; no setup needed.
+* Store (Beta): a KPI summary at the top of the Store admin. See Revenue (with a 30-day trend), Orders, Average order value, unique Buyers, and Downloads at a glance â plus a "ð Top seller" line showing your best product by revenue. All derived from your sales; no setup needed.
 
 = 2.82.0 =
-* Store (Beta): discount-code performance. The Discount codes table now shows, per code, the Revenue it drove and the total discount Given — alongside the redemption count you already had. Each sale records which code was used and how much it took off, so you can see which promos actually move product. (New sales only; existing sales show "—".)
+* Store (Beta): discount-code performance. The Discount codes table now shows, per code, the Revenue it drove and the total discount Given â alongside the redemption count you already had. Each sale records which code was used and how much it took off, so you can see which promos actually move product. (New sales only; existing sales show "â".)
 
 = 2.81.0 =
-* Store (Beta): product image galleries. Add multiple photos to a product (front & back, details, lifestyle) straight from your WordPress Media Library — up to 12. The product page and single-product embed show a big main image with a clickable thumbnail strip that swaps it; storefront grid cards get a small "▦ N" photo-count badge on the cover. The cover image stays the main/first shot.
+* Store (Beta): product image galleries. Add multiple photos to a product (front & back, details, lifestyle) straight from your WordPress Media Library â up to 12. The product page and single-product embed show a big main image with a clickable thumbnail strip that swaps it; storefront grid cards get a small "â¦ N" photo-count badge on the cover. The cover image stays the main/first shot.
 
 = 2.80.0 =
-* Store (Beta): order tracking for physical orders. When you mark an order shipped you can now add a carrier (USPS, UPS, FedEx, Canada Post, DHL, or Other) and a tracking number — or just paste a tracking link. The buyer gets a branded "your order shipped 📦" email with a one-tap Track button, and their find-my-purchases page shows "Shipped · Track →". Leave the fields blank to mark shipped without tracking, exactly like before.
+* Store (Beta): order tracking for physical orders. When you mark an order shipped you can now add a carrier (USPS, UPS, FedEx, Canada Post, DHL, or Other) and a tracking number â or just paste a tracking link. The buyer gets a branded "your order shipped ð¦" email with a one-tap Track button, and their find-my-purchases page shows "Shipped Â· Track â". Leave the fields blank to mark shipped without tracking, exactly like before.
 
 = 2.79.0 =
-* Store (Beta): "★ N sold" social-proof badge on product cards, shown once an item has sold 5 or more. A low-stock "🔥 Only N left" badge still takes priority when both apply, so you never show both at once. Nothing appears for brand-new items — social proof only when it's earned.
+* Store (Beta): "â N sold" social-proof badge on product cards, shown once an item has sold 5 or more. A low-stock "ð¥ Only N left" badge still takes priority when both apply, so you never show both at once. Nothing appears for brand-new items â social proof only when it's earned.
 
 = 2.78.0 =
-* Store (Beta): storefront search + sort. When your shop has a handful of items, [fanloop_store] now shows a search box and a sort dropdown (Featured, Newest, Price low→high / high→low, Best selling, Name A–Z). It's instant and client-side — no page reloads. Controls appear automatically once you have 5+ products; force them with [fanloop_store controls="on"] or hide with controls="off".
+* Store (Beta): storefront search + sort. When your shop has a handful of items, [fanloop_store] now shows a search box and a sort dropdown (Featured, Newest, Price lowâhigh / highâlow, Best selling, Name AâZ). It's instant and client-side â no page reloads. Controls appear automatically once you have 5+ products; force them with [fanloop_store controls="on"] or hide with controls="off".
 
 = 2.77.1 =
-* Critical fix: the new store-email helper (added in 2.75) was named the same as the plugin's core mailer (lmeg_email_send), which caused a fatal "Cannot redeclare" error on sites updating to 2.75–2.77. Renamed the helper and routed all store emails (receipts, sale notifications, magic links) through the plugin's configured mailer, so they now send via your provider (e.g. Brevo) like every other email. If you saw a critical error after updating, this resolves it.
+* Critical fix: the new store-email helper (added in 2.75) was named the same as the plugin's core mailer (lmeg_email_send), which caused a fatal "Cannot redeclare" error on sites updating to 2.75â2.77. Renamed the helper and routed all store emails (receipts, sale notifications, magic links) through the plugin's configured mailer, so they now send via your provider (e.g. Brevo) like every other email. If you saw a critical error after updating, this resolves it.
 
 = 2.77.0 =
-* Store (Beta): native discount codes. Create percent-off or fixed-amount codes under Fanloop → Store (with an optional minimum order, usage limit and expiry). Fans type the code at checkout, see the discount and new total instantly, and it carries through to the receipt and your sale notification. Works in demo and live checkout, applies to the item subtotal (not shipping), and the use-count ticks up once per completed order. (For single Buy-now on card, Stripe's own promo codes still work too.)
+* Store (Beta): native discount codes. Create percent-off or fixed-amount codes under Fanloop â Store (with an optional minimum order, usage limit and expiry). Fans type the code at checkout, see the discount and new total instantly, and it carries through to the receipt and your sale notification. Works in demo and live checkout, applies to the item subtotal (not shipping), and the use-count ticks up once per completed order. (For single Buy-now on card, Stripe's own promo codes still work too.)
 
 = 2.76.0 =
 * Store (Beta) fix: product titles were invisible on themes with light-coloured text (the titles inherited the theme colour and disappeared on the white product card). Product cards now set their own dark text colour, so titles, descriptions and options are always readable on any theme.
 
 = 2.75.0 =
-* Store (Beta): beautiful branded emails. Every store email — buyer receipts, your sale notifications, and the "find my purchases" magic link — is now a polished, mobile-friendly HTML design (your logo or name up top, a clean itemized order table with total, per-item download buttons, and a shipping block) instead of plain text. A multi-item cart now sends ONE combined order email with all downloads (not one per item), and your sale notifications are HTML too, with a "ship it / open store" button. Emails use your logo (Settings → Branding) when set.
+* Store (Beta): beautiful branded emails. Every store email â buyer receipts, your sale notifications, and the "find my purchases" magic link â is now a polished, mobile-friendly HTML design (your logo or name up top, a clean itemized order table with total, per-item download buttons, and a shipping block) instead of plain text. A multi-item cart now sends ONE combined order email with all downloads (not one per item), and your sale notifications are HTML too, with a "ship it / open store" button. Emails use your logo (Settings â Branding) when set.
 
 = 2.74.0 =
-* Store (Beta): low-stock urgency. When a product (or a size/variant) has a stock limit set and is running low, the storefront now shows a subtle "🔥 Only N left" badge, and low sizes read "M — 3 left" in the picker. Only appears when you're actually tracking stock and it's genuinely low (≤10 for the item, ≤5 per size) — nothing shows for unlimited items.
+* Store (Beta): low-stock urgency. When a product (or a size/variant) has a stock limit set and is running low, the storefront now shows a subtle "ð¥ Only N left" badge, and low sizes read "M â 3 left" in the picker. Only appears when you're actually tracking stock and it's genuinely low (â¤10 for the item, â¤5 per size) â nothing shows for unlimited items.
 
 = 2.73.0 =
-* Store (Beta): a "find my purchases" page so buyers can always get their downloads back. A fan enters the email they bought with and we send a secure magic link (good for 30 minutes) listing everything they've purchased — fresh download buttons for digital items, and order status (Preparing / Shipped) for physical ones. No login. Embed the finder anywhere with [fanloop_purchases], link to it directly at ?lmeg_purchases=find, and it's linked automatically from every checkout success page. The email is never revealed to whoever types it — we only send a link to an address that actually has orders, and rate-limit to one email every couple of minutes.
+* Store (Beta): a "find my purchases" page so buyers can always get their downloads back. A fan enters the email they bought with and we send a secure magic link (good for 30 minutes) listing everything they've purchased â fresh download buttons for digital items, and order status (Preparing / Shipped) for physical ones. No login. Embed the finder anywhere with [fanloop_purchases], link to it directly at ?lmeg_purchases=find, and it's linked automatically from every checkout success page. The email is never revealed to whoever types it â we only send a link to an address that actually has orders, and rate-limit to one email every couple of minutes.
 
 = 2.72.0 =
-* Store (Beta): a real cart + demo checkout. Every product now has an "Add to cart" button beside Buy now; a floating cart and slide-in drawer let fans add several items, change quantities, and check out together (one Stripe session for the whole cart, digital + physical). New Demo checkout mode (Settings → Payments) lets you complete an order WITHOUT payment, so you can walk the entire flow end-to-end — cart, receipt email, download links, the fan being captured, and physical orders landing in "Orders to ship". Demo sales are tagged so you can spot them, and one click on the Store page clears all test orders (restoring sold counts and any variant stock the tests used). Turn Demo off before you go live.
+* Store (Beta): a real cart + demo checkout. Every product now has an "Add to cart" button beside Buy now; a floating cart and slide-in drawer let fans add several items, change quantities, and check out together (one Stripe session for the whole cart, digital + physical). New Demo checkout mode (Settings â Payments) lets you complete an order WITHOUT payment, so you can walk the entire flow end-to-end â cart, receipt email, download links, the fan being captured, and physical orders landing in "Orders to ship". Demo sales are tagged so you can spot them, and one click on the Store page clears all test orders (restoring sold counts and any variant stock the tests used). Turn Demo off before you go live.
 
 = 2.71.0 =
-* Store (Beta): three upgrades. (1) Every product now has its own shareable URL with a link/social preview — shown on the product's edit screen, and storefront cards link to it. (2) Pick the cover image straight from your WordPress Media Library instead of pasting a URL. (3) Track stock per size/variant — enter options like "S:10, M:5, L:20" and each counts down on every sale, with sold-out options hidden from buyers. Plain "S, M, L" still works for untracked options.
+* Store (Beta): three upgrades. (1) Every product now has its own shareable URL with a link/social preview â shown on the product's edit screen, and storefront cards link to it. (2) Pick the cover image straight from your WordPress Media Library instead of pasting a URL. (3) Track stock per size/variant â enter options like "S:10, M:5, L:20" and each counts down on every sale, with sold-out options hidden from buyers. Plain "S, M, L" still works for untracked options.
 
 = 2.70.3 =
-* Store (Beta): admin sale notifications. You now get an email each time someone buys — digital sales show the item + buyer, and physical orders include the shipping address so you can post them (with a link straight to "Orders to ship"). Buyers already get a receipt (download link for digital, order confirmation for physical). Configure the notification email and toggle under Settings → Payments → Store notifications (blank = site admin email).
+* Store (Beta): admin sale notifications. You now get an email each time someone buys â digital sales show the item + buyer, and physical orders include the shipping address so you can post them (with a link straight to "Orders to ship"). Buyers already get a receipt (download link for digital, order confirmation for physical). Configure the notification email and toggle under Settings â Payments â Store notifications (blank = site admin email).
 
 = 2.70.2 =
-* Store (Beta): a fresh install now arrives with a few editable sample products (a digital single, a pay-what-you-want, a physical tee with sizes, and a limited bundle) so the Store isn't empty. They ship as Drafts — hidden from fans — so you can edit one into your own and set it Active, or just delete them. Added only once, and never to a store that already has products.
+* Store (Beta): a fresh install now arrives with a few editable sample products (a digital single, a pay-what-you-want, a physical tee with sizes, and a limited bundle) so the Store isn't empty. They ship as Drafts â hidden from fans â so you can edit one into your own and set it Active, or just delete them. Added only once, and never to a store that already has products.
 
 = 2.70.1 =
-* Store (Beta): a storefront + download analytics. New [fanloop_store] shortcode lists your whole shop as a responsive product grid (add type="digital" or type="physical" to filter). The Store admin now shows a Downloads total, a 30-day sales trend, and a per-product Downloads column — total accesses plus how many buyers actually downloaded.
+* Store (Beta): a storefront + download analytics. New [fanloop_store] shortcode lists your whole shop as a responsive product grid (add type="digital" or type="physical" to filter). The Store admin now shows a Downloads total, a 30-day sales trend, and a per-product Downloads column â total accesses plus how many buyers actually downloaded.
 
 = 2.70.0 =
-* Store (Beta): sell an actual FILE. Digital products can now have a file uploaded (audio, zip, pdf, video, image, epub) that Fanloop stores privately and streams only through each buyer's personal, count-limited download link — never a public URL. Uploading a file takes priority over the unlock link. (Very large files may need your host's PHP upload limit raised.)
+* Store (Beta): sell an actual FILE. Digital products can now have a file uploaded (audio, zip, pdf, video, image, epub) that Fanloop stores privately and streams only through each buyer's personal, count-limited download link â never a public URL. Uploading a file takes priority over the unlock link. (Very large files may need your host's PHP upload limit raised.)
 
 = 2.69.0 =
-* Store (Beta) now sells PHYSICAL products too, and lets you choose Square OR Stripe per product. Physical items collect a shipping address at checkout, take an optional flat shipping fee and size/variant options, and drop into an "Orders to ship" list where you mark each shipped (the buyer gets a confirmation email and is still captured as a fan with the sale attributed alongside your other revenue). Pick the processor per product under Store; add Square keys (sandbox + production, plus an optional webhook) under Settings → Payments.
+* Store (Beta) now sells PHYSICAL products too, and lets you choose Square OR Stripe per product. Physical items collect a shipping address at checkout, take an optional flat shipping fee and size/variant options, and drop into an "Orders to ship" list where you mark each shipped (the buyer gets a confirmation email and is still captured as a fan with the sale attributed alongside your other revenue). Pick the processor per product under Store; add Square keys (sandbox + production, plus an optional webhook) under Settings â Payments.
 
 = 2.68.0 =
-* New (BETA): Fanloop Store — sell digital drops straight to your fan list. Create a product (fixed price or pay-what-you-want), embed it anywhere with [fanloop_product id=..] or share a direct buy link, and fans check out with card / Apple Pay / Google Pay via Stripe — the money lands in your OWN Stripe. Every buyer is automatically captured as a fan, tagged, and the sale shows up in your revenue, fan timelines and campaign attribution right alongside Shopify. Fans get the goods through a private, per-buyer access link plus an emailed receipt. Digital + direct only by design — physical merch and fulfilment stay on Shopify. Find it under Fanloop → Store (Beta). (Direct file upload/hosting lands in the next update; for now, deliver via an unlisted link.)
+* New (BETA): Fanloop Store â sell digital drops straight to your fan list. Create a product (fixed price or pay-what-you-want), embed it anywhere with [fanloop_product id=..] or share a direct buy link, and fans check out with card / Apple Pay / Google Pay via Stripe â the money lands in your OWN Stripe. Every buyer is automatically captured as a fan, tagged, and the sale shows up in your revenue, fan timelines and campaign attribution right alongside Shopify. Fans get the goods through a private, per-buyer access link plus an emailed receipt. Digital + direct only by design â physical merch and fulfilment stay on Shopify. Find it under Fanloop â Store (Beta). (Direct file upload/hosting lands in the next update; for now, deliver via an unlisted link.)
 
 = 2.67.5 =
-* Faster fan-map geocoding, especially after a big import. The background job now maps ~40 fans a minute (was 10 every 5 minutes), and Subscribers has a new "Geolocate now" button that maps several hundred imported fans per click — so a large imported list lands on the fan map in minutes instead of over a day. (An imported fan's city and map spot always come from their IP; nothing about this sends email.)
+* Faster fan-map geocoding, especially after a big import. The background job now maps ~40 fans a minute (was 10 every 5 minutes), and Subscribers has a new "Geolocate now" button that maps several hundred imported fans per click â so a large imported list lands on the fan map in minutes instead of over a day. (An imported fan's city and map spot always come from their IP; nothing about this sends email.)
 
 = 2.67.4 =
-* Fix: the subscriber CSV import now understands real-world column headers — form-style labels like "Enter your email" and spaced names like "created at" and "user ip" are matched, not just exact names like email/ip/created_at.
+* Fix: the subscriber CSV import now understands real-world column headers â form-style labels like "Enter your email" and spaced names like "created at" and "user ip" are matched, not just exact names like email/ip/created_at.
 
 = 2.67.3 =
-* New: Import subscribers from a CSV (Subscribers → "Import subscribers"). Bring a fan list over from another platform keeping the original IP address and sign-up date, so imported fans behave exactly like fans captured on your site — their city and fan-map location fill in automatically from the IP over the next little while. The import is silent: no welcome emails and no sequences ever fire. Column names are matched loosely (only email is required; ip, created_at, first_name, phone, country, city, region, postal_code and unsubscribed_at are all recognised), and you can tag the whole batch to segment it later.
+* New: Import subscribers from a CSV (Subscribers â "Import subscribers"). Bring a fan list over from another platform keeping the original IP address and sign-up date, so imported fans behave exactly like fans captured on your site â their city and fan-map location fill in automatically from the IP over the next little while. The import is silent: no welcome emails and no sequences ever fire. Column names are matched loosely (only email is required; ip, created_at, first_name, phone, country, city, region, postal_code and unsubscribed_at are all recognised), and you can tag the whole batch to segment it later.
 
 = 2.67.2 =
 * Maps now center on North America when you have fans there, so the continent sits centered instead of the mid-Atlantic (applies to the broadcast maps and the fan map). Cities elsewhere stay reachable by panning.
 
 = 2.67.1 =
 * Broadcast detail: the opens/clicks map now sits right under the subject line, above the email body.
-* Fix: maps no longer show grey panels — the map size is recalculated after the page settles, and the view is zoomed in enough to avoid the far-out "whole world" look (applies to both the broadcast maps and the fan map).
+* Fix: maps no longer show grey panels â the map size is recalculated after the page settles, and the view is zoomed in enough to avoid the far-out "whole world" look (applies to both the broadcast maps and the fan map).
 
 = 2.67.0 =
-* New: Broadcast History redesign — top-level KPI cards (broadcasts, open rate with a 30-day sparkline, click rate, campaign revenue, and deliverability) so the numbers that matter are the first thing you see.
-* New: "Where fans open & click" map — the same look as the fan map (dark map, glowing dots), with pink dots for opens and purple for clicks sized by activity, plus an All / Opens / Clicks toggle. Locations are derived from your fans' cities.
+* New: Broadcast History redesign â top-level KPI cards (broadcasts, open rate with a 30-day sparkline, click rate, campaign revenue, and deliverability) so the numbers that matter are the first thing you see.
+* New: "Where fans open & click" map â the same look as the fan map (dark map, glowing dots), with pink dots for opens and purple for clicks sized by activity, plus an All / Opens / Clicks toggle. Locations are derived from your fans' cities.
 * New: each broadcast's detail view now has its own KPI cards and a per-campaign opens/clicks map.
 * Improved: the broadcast list now shows channel icons, colored status pills, and open/click rate bars at a glance.
 
 = 2.63.1 =
-* Fix (contrast, for real): the admin.css contrast rules weren't loading because an optimization plugin was serving a stale, un-versioned stylesheet. The contrast guard is now printed INLINE in the admin head, so it always loads fresh — every alert/notice and every white card across all Fanloop admin pages now has dark, readable text (verified live on the Instagram page).
+* Fix (contrast, for real): the admin.css contrast rules weren't loading because an optimization plugin was serving a stale, un-versioned stylesheet. The contrast guard is now printed INLINE in the admin head, so it always loads fresh â every alert/notice and every white card across all Fanloop admin pages now has dark, readable text (verified live on the Instagram page).
 
 = 2.63.0 =
-* Fix (contrast): the dark admin theme was making light-background alerts, notices, and white cards inherit near-white text — unreadable. Forced dark, high-contrast text on every notice/alert and every white card across all Fanloop admin pages.
-* New: Social Listening "Preview with demo data" — see the full dashboard (audience, growth, top posts, formats, sentiment, digest) with realistic sample numbers before your accounts are connected.
+* Fix (contrast): the dark admin theme was making light-background alerts, notices, and white cards inherit near-white text â unreadable. Forced dark, high-contrast text on every notice/alert and every white card across all Fanloop admin pages.
+* New: Social Listening "Preview with demo data" â see the full dashboard (audience, growth, top posts, formats, sentiment, digest) with realistic sample numbers before your accounts are connected.
 
 = 2.62.3 =
 * Harden: Social Listening ignores posts with an unparseable timestamp when computing posting cadence and best-day, so a bad value from the API can't skew those stats.
 
 = 2.62.2 =
-* Add: Social Listening "What format works best" — ranks your content types (Reels/Video vs Photos vs Carousels) by average engagement, so you can see which format to lean into.
+* Add: Social Listening "What format works best" â ranks your content types (Reels/Video vs Photos vs Carousels) by average engagement, so you can see which format to lean into.
 
 = 2.62.1 =
-* Add: Social Listening now shows your best day to post — the weekday your own posts have historically landed the most engagement (owned-data heuristic).
+* Add: Social Listening now shows your best day to post â the weekday your own posts have historically landed the most engagement (owned-data heuristic).
 
 = 2.62.0 =
 * Big: Social Listening expanded into a full dashboard. New Audience snapshot (Instagram + Spotify followers + your owned fan list + 30-day story-mention count), richer Growth trends (per-day rate + 30-day change), a Content-performance section (top posts by engagement, engagement rate, average per post, posting cadence), Fan-sentiment now also surfaces fan questions worth answering, and a new AI "Listening digest" that turns everything into a short brief with concrete next actions. Instagram parts light up on connect; Spotify + fan-list work now.
 
 = 2.61.7 =
-* Improve: the Instagram connected status now shows the  (e.g. ) instead of a numeric account ID, so you can see at a glance which account is connected — and a nudge to Reconnect if it's the wrong one.
+* Improve: the Instagram connected status now shows the  (e.g. ) instead of a numeric account ID, so you can see at a glance which account is connected â and a nudge to Reconnect if it's the wrong one.
 
 = 2.61.6 =
-* New: Instagram story mentions. When a fan tags you in their story, Fanloop logs it, tags a known fan "story-mention" (a segmentable UGC list), and can auto-DM a thank-you + repost-permission ask (Settings → Instagram → Story-mention auto-reply). Turns your most enthusiastic fans into UGC + reach. (Laylo/Cobrand "story mentions" feature.)
+* New: Instagram story mentions. When a fan tags you in their story, Fanloop logs it, tags a known fan "story-mention" (a segmentable UGC list), and can auto-DM a thank-you + repost-permission ask (Settings â Instagram â Story-mention auto-reply). Turns your most enthusiastic fans into UGC + reach. (Laylo/Cobrand "story mentions" feature.)
 
 = 2.61.5 =
 * New: Instagram Connect now lets you PICK which account to connect when you manage several. Previously it grabbed the first IG-linked Page on your login; now if there's more than one it shows a chooser so each site connects to the right artist.
 * New: "Save & test Instagram" validates your App ID + App Secret directly (catches a wrong/mismatched secret immediately, instead of failing mid-Connect).
 
 = 2.61.4 =
-* Fix: Instagram "Connect" — dropped the pages_manage_metadata scope from the OAuth request, which Meta rejects as invalid for the Instagram-messaging app type and was blocking the authorize screen. IG messaging + comments + webhooks are unaffected.
+* Fix: Instagram "Connect" â dropped the pages_manage_metadata scope from the OAuth request, which Meta rejects as invalid for the Instagram-messaging app type and was blocking the authorize screen. IG messaging + comments + webhooks are unaffected.
 
 = 2.61.3 =
-* New: Deliverability page (Fanloop → Deliverability). Reads your live Brevo account to show whether your sending domain is authenticated (SPF/DKIM) and lists your senders — with one-time steps to authenticate your domain (DKIM/SPF/DMARC) so emails land in the inbox, not spam. Same idea as Laylo's custom domains.
+* New: Deliverability page (Fanloop â Deliverability). Reads your live Brevo account to show whether your sending domain is authenticated (SPF/DKIM) and lists your senders â with one-time steps to authenticate your domain (DKIM/SPF/DMARC) so emails land in the inbox, not spam. Same idea as Laylo's custom domains.
 
 = 2.61.2 =
-* New: Get Started checklist (Fanloop → Get Started). A setup progress tracker for new (white-labeled) artists — shows what's connected and what to do next (brand, email, first form/broadcast/sequence, plus optional Instagram/Shopify/Spotify/SMS/AI/drop), each linking straight to where to set it up. Makes onboarding a new artist a guided path.
+* New: Get Started checklist (Fanloop â Get Started). A setup progress tracker for new (white-labeled) artists â shows what's connected and what to do next (brand, email, first form/broadcast/sequence, plus optional Instagram/Shopify/Spotify/SMS/AI/drop), each linking straight to where to set it up. Makes onboarding a new artist a guided path.
 
 = 2.61.1 =
-* New: Referrals page (Fanloop → Referrals). Attributes revenue to the fans who bring in other fans — a leaderboard of your best advocates with how many fans they referred, how many bought, and total attributed revenue. Reward your street team. (Owned-data take on Laylo's Affiliates.)
+* New: Referrals page (Fanloop â Referrals). Attributes revenue to the fans who bring in other fans â a leaderboard of your best advocates with how many fans they referred, how many bought, and total attributed revenue. Reward your street team. (Owned-data take on Laylo's Affiliates.)
 
 = 2.61.0 =
-* New: Social Listening (Fanloop → Social Listening). Get a read on the artist's social presence from your OWN connected accounts: follower-growth trend charts (Spotify now; Instagram once connected, snapshotted daily) and AI comment sentiment — reads the comments on your recent Instagram posts and summarizes the mood, top themes, highlights, and anything worth watching. (Sound-usage tracking needs a third-party sound-recognition data provider and isn't sourceable from your own accounts.)
+* New: Social Listening (Fanloop â Social Listening). Get a read on the artist's social presence from your OWN connected accounts: follower-growth trend charts (Spotify now; Instagram once connected, snapshotted daily) and AI comment sentiment â reads the comments on your recent Instagram posts and summarizes the mood, top themes, highlights, and anything worth watching. (Sound-usage tracking needs a third-party sound-recognition data provider and isn't sourceable from your own accounts.)
 
 = 2.60.5 =
-* New: Top Fans leaderboard (Fanloop → Top Fans). Ranks your biggest supporters by a blend of revenue, clicks/opens, on-site visits, and membership — the owned-data answer to Laylo's "Notable Fans." One click tags the top N as VIP so you can target them in Compose or a Sequence (early access, comp tickets, shout-outs).
+* New: Top Fans leaderboard (Fanloop â Top Fans). Ranks your biggest supporters by a blend of revenue, clicks/opens, on-site visits, and membership â the owned-data answer to Laylo's "Notable Fans." One click tags the top N as VIP so you can target them in Compose or a Sequence (early access, comp tickets, shout-outs).
 
 = 2.60.4 =
-* New: "✨ Write with AI" now works on Sequence steps too, not just Compose. Draft any automation step (welcome series, abandoned-cart recovery, win-backs) in the artist's voice from a one-line brief. Also confirmed drop pages already ship a live countdown timer.
+* New: "â¨ Write with AI" now works on Sequence steps too, not just Compose. Draft any automation step (welcome series, abandoned-cart recovery, win-backs) in the artist's voice from a one-line brief. Also confirmed drop pages already ship a live countdown timer.
 
 = 2.60.3 =
-* New: "✨ Write with AI" on the Compose page. Type what a message is about and Fanloop drafts a subject, email, and SMS in the artist's voice — learning from your recent sends, plus optional voice notes (Settings → AI assistant → Artist voice). You review and edit before sending. Matches Laylo's AI message composer.
+* New: "â¨ Write with AI" on the Compose page. Type what a message is about and Fanloop drafts a subject, email, and SMS in the artist's voice â learning from your recent sends, plus optional voice notes (Settings â AI assistant â Artist voice). You review and edit before sending. Matches Laylo's AI message composer.
 
 = 2.60.2 =
-* New: "Notify nearby fans" on tour dates. Each date on the Tour page gets a button that opens Compose pre-targeted to fans within 100km of that city (using your existing radius targeting) with a ready-to-edit show announcement drafted in — email + SMS. You review and send. Laylo-style "announce a date → reach the locals."
+* New: "Notify nearby fans" on tour dates. Each date on the Tour page gets a button that opens Compose pre-targeted to fans within 100km of that city (using your existing radius targeting) with a ready-to-edit show announcement drafted in â email + SMS. You review and send. Laylo-style "announce a date â reach the locals."
 
 = 2.60.1 =
-* New: retargeting pixels (Settings → Retargeting pixels). Add your Meta, Google (GA4/Ads), and/or TikTok IDs and Fanloop loads the pixels on your site's front end to build ad-retargeting audiences — and fires a conversion event (Lead / sign_up / CompleteRegistration) when a fan subscribes. Matches Laylo's pixel-tracking feature.
+* New: retargeting pixels (Settings â Retargeting pixels). Add your Meta, Google (GA4/Ads), and/or TikTok IDs and Fanloop loads the pixels on your site's front end to build ad-retargeting audiences â and fires a conversion event (Lead / sign_up / CompleteRegistration) when a fan subscribes. Matches Laylo's pixel-tracking feature.
 
 = 2.60.0 =
-* New: the drag & drop email builder is now on the Sequences page too — build each automation step with blocks (or Rich text / HTML), exactly like Compose. Steps are now editable (new Edit button) and the builder layout is saved per step so you can reopen and tweak it. Great for building multi-email welcome/nurture journeys.
+* New: the drag & drop email builder is now on the Sequences page too â build each automation step with blocks (or Rich text / HTML), exactly like Compose. Steps are now editable (new Edit button) and the builder layout is saved per step so you can reopen and tweak it. Great for building multi-email welcome/nurture journeys.
 
 = 2.59.3 =
-* Fix: readability — replaced faint opacity-dimmed text on the white Shop Revenue and Instagram cards with solid dark-grey text for proper contrast.
+* Fix: readability â replaced faint opacity-dimmed text on the white Shop Revenue and Instagram cards with solid dark-grey text for proper contrast.
 
 = 2.59.2 =
-* New: import historical Shopify orders from a CSV. The order webhook is forward-only, so Shop Revenue now has an "Import historical orders (CSV)" tool — export from Shopify (Orders → Export → All orders) and upload it to backfill your full order history. Each order is matched to a fan by email/phone, de-duplicated against what's already recorded (safe to re-run), and only money actually collected is counted (pending/voided/refunded skipped). No post-purchase automations fire on import.
+* New: import historical Shopify orders from a CSV. The order webhook is forward-only, so Shop Revenue now has an "Import historical orders (CSV)" tool â export from Shopify (Orders â Export â All orders) and upload it to backfill your full order history. Each order is matched to a fan by email/phone, de-duplicated against what's already recorded (safe to re-run), and only money actually collected is counted (pending/voided/refunded skipped). No post-purchase automations fire on import.
 
 = 2.59.1 =
-* New: one-click "Connect Instagram" in Settings → Instagram. Save your Meta App ID + Secret, click Connect, approve on Meta's screen — Fanloop grabs a long-lived token, finds your Instagram Business account, and auto-subscribes the messages + comments webhook. No more copying tokens or hand-wiring the webhook. Manual token entry is still available under "Connect manually instead."
+* New: one-click "Connect Instagram" in Settings â Instagram. Save your Meta App ID + Secret, click Connect, approve on Meta's screen â Fanloop grabs a long-lived token, finds your Instagram Business account, and auto-subscribes the messages + comments webhook. No more copying tokens or hand-wiring the webhook. Manual token entry is still available under "Connect manually instead."
 
 = 2.59.0 =
-* New: Instagram comment-to-DM — when someone comments your keyword on a post or reel, Fanloop auto-DMs them the link (Meta's private-reply), with an optional public reply on the comment. Turn it on per rule with "Also trigger on comments."
-* New: Instagram DMs capture fans — a rule can "Ask for their email," and when the fan sends it they're created as a real subscriber (welcome email + sequences fire), tagged "Instagram" (plus any custom tag you set), and their whole DM/comment thread is linked to their fan profile and timeline.
-* New: richer auto-replies — merge tags ({subscribe_url}, {community}, {artist}, {home_url}) and optional tap-buttons (quick replies) in DM rules.
+* New: Instagram comment-to-DM â when someone comments your keyword on a post or reel, Fanloop auto-DMs them the link (Meta's private-reply), with an optional public reply on the comment. Turn it on per rule with "Also trigger on comments."
+* New: Instagram DMs capture fans â a rule can "Ask for their email," and when the fan sends it they're created as a real subscriber (welcome email + sequences fire), tagged "Instagram" (plus any custom tag you set), and their whole DM/comment thread is linked to their fan profile and timeline.
+* New: richer auto-replies â merge tags ({subscribe_url}, {community}, {artist}, {home_url}) and optional tap-buttons (quick replies) in DM rules.
 * Note: comment-to-DM needs the instagram_manage_comments permission and the "comments" webhook field subscribed (see the setup guide on the Instagram page).
 
 = 2.58.7 =
 * Fix: Shop Revenue no longer says "Shopify isn't connected" when you're using the order-webhook path. The page now opens whenever orders are arriving (webhook or API), shows a "Receiving orders via webhook" status, and only shows the API "Sync now" button when API credentials are set.
 
 = 2.58.6 =
-* New: Shop Revenue now has a "Contact" column (email, or the phone number for SMS-checkout orders) and the "Customer" column shows the matched fan's email or phone — so you can see who paid, not just "on the list". Orders now store the buyer's phone.
+* New: Shop Revenue now has a "Contact" column (email, or the phone number for SMS-checkout orders) and the "Customer" column shows the matched fan's email or phone â so you can see who paid, not just "on the list". Orders now store the buyer's phone.
 
 = 2.58.5 =
-* New: Shopify orders now match a fan by PHONE as well as email — an SMS-checkout order (no email, just a cell number) is matched to your SMS subscriber by the last 10 digits, so it attributes and shows the customer instead of "guest". The webhook diagnostic also reports whether a phone was present.
+* New: Shopify orders now match a fan by PHONE as well as email â an SMS-checkout order (no email, just a cell number) is matched to your SMS subscriber by the last 10 digits, so it attributes and shows the customer instead of "guest". The webhook diagnostic also reports whether a phone was present.
 
 = 2.58.4 =
 * Diagnostic: the Shop settings now show the structure of the last order webhook (key names only, no customer data) to help confirm whether Shopify is including or redacting the buyer email.
 
 = 2.58.3 =
-* New: connect Shopify revenue with NO app, OAuth, or token — an order webhook. Settings → Shop shows a URL you paste into Shopify → Settings → Notifications → Webhooks (Order creation, JSON). Every new order then flows straight into Fanloop and gets attributed to the broadcast the buyer clicked. Works on any store, including ones locked to the dev dashboard where the API/OAuth route is blocked. Forward-only (orders from when you add it). The order-recording logic is now shared between the API sync and the webhook.
+* New: connect Shopify revenue with NO app, OAuth, or token â an order webhook. Settings â Shop shows a URL you paste into Shopify â Settings â Notifications â Webhooks (Order creation, JSON). Every new order then flows straight into Fanloop and gets attributed to the broadcast the buyer clicked. Works on any store, including ones locked to the dev dashboard where the API/OAuth route is blocked. Forward-only (orders from when you add it). The order-recording logic is now shared between the API sync and the webhook.
 
 = 2.58.2 =
-* Fix: the Shopify connect callback now accepts a custom-distribution app's own signed install link, not just the "Connect with Shopify" button. It still requires Shopify's HMAC signature (the real security), but no longer demands the CSRF state token that the install link doesn't carry — so stores where the plugin's OAuth button returns "Unauthorized" (custom apps can't use it) can connect via the install link instead.
+* Fix: the Shopify connect callback now accepts a custom-distribution app's own signed install link, not just the "Connect with Shopify" button. It still requires Shopify's HMAC signature (the real security), but no longer demands the CSRF state token that the install link doesn't carry â so stores where the plugin's OAuth button returns "Unauthorized" (custom apps can't use it) can connect via the install link instead.
 
 = 2.58.1 =
-* New: a fan's language is now visible and targetable. Each fan gets a �Language: Français� (or English�) auto-tag � shown on their profile (new Language row) and in the fan list, and available in the Compose audience filter under a �Language� group, so you can send a broadcast to only French (or only English) subscribers. Existing fans with a language on file are back-tagged automatically.
-* Improved: the signup language is now captured robustly from the page a fan signs up on (e.g. your French WPML page) even before French UI is switched on in Fanloop � so segmenting by language works right away.
+* New: a fan's language is now visible and targetable. Each fan gets a ï¿½Language: FranÃ§aisï¿½ (or Englishï¿½) auto-tag ï¿½ shown on their profile (new Language row) and in the fan list, and available in the Compose audience filter under a ï¿½Languageï¿½ group, so you can send a broadcast to only French (or only English) subscribers. Existing fans with a language on file are back-tagged automatically.
+* Improved: the signup language is now captured robustly from the page a fan signs up on (e.g. your French WPML page) even before French UI is switched on in Fanloop ï¿½ so segmenting by language works right away.
 
 = 2.58.0 =
-* New: consumer-facing multi-language support (English + French to start, more can be added). Fanloop follows your site's language plugin when one is active (WPML / Polylang detected automatically � no duplicate switcher), and shows its own EN/FR toggle on the forms otherwise. Enable languages + set a default in Settings � Languages, then fill in the French version of your custom copy (headings, consent, success + welcome messages) in the translation panel. Built-in words (Email, Phone, Subscribe�) are translated for you. Each fan's language is saved on signup, and welcome / confirmation emails are sent in their language. First pass covers the signup form, the on-post gate, and automated emails; the bio/drops/contest pages and broadcasts come next.
+* New: consumer-facing multi-language support (English + French to start, more can be added). Fanloop follows your site's language plugin when one is active (WPML / Polylang detected automatically ï¿½ no duplicate switcher), and shows its own EN/FR toggle on the forms otherwise. Enable languages + set a default in Settings ï¿½ Languages, then fill in the French version of your custom copy (headings, consent, success + welcome messages) in the translation panel. Built-in words (Email, Phone, Subscribeï¿½) are translated for you. Each fan's language is saved on signup, and welcome / confirmation emails are sent in their language. First pass covers the signup form, the on-post gate, and automated emails; the bio/drops/contest pages and broadcasts come next.
 
 = 2.57.10 =
-* Fix: the phone country picker was clipping the country name VERTICALLY (you only saw the top of the text) on themes that pin a fixed height on selects — our field padding then squeezed the text line. Fields now grow to fit their content (height:auto), so the whole country name shows. Reverted the previous full-width row change — the original inline layout is back.
+* Fix: the phone country picker was clipping the country name VERTICALLY (you only saw the top of the text) on themes that pin a fixed height on selects â our field padding then squeezed the text line. Fields now grow to fit their content (height:auto), so the whole country name shows. Reverted the previous full-width row change â the original inline layout is back.
 
 = 2.57.9 =
-* Fix: on the subscribe form, the phone country picker was too narrow so country names were cut off. The country selector now gets its own full-width row (dial code + number sit below it), so names like “United Kingdom (+44)” show in full.
-* New: Default country in Settings — pick which country is selected first in the phone & address pickers (it also floats to the top of the list). The dial code + hidden country field follow it automatically.
+* Fix: on the subscribe form, the phone country picker was too narrow so country names were cut off. The country selector now gets its own full-width row (dial code + number sit below it), so names like âUnited Kingdom (+44)â show in full.
+* New: Default country in Settings â pick which country is selected first in the phone & address pickers (it also floats to the top of the list). The dial code + hidden country field follow it automatically.
 
 = 2.57.8 =
-* Improved: admin readability. Added breathing room so the subscriber list no longer touches the bulk-actions/tag-filter toolbar above it (and similar spacing throughout). The Settings and Compose pages now have a sticky “Jump to” section bar and collapsible section headers (click a header to fold it), so you can find and skip to any section fast on the long forms.
+* Improved: admin readability. Added breathing room so the subscriber list no longer touches the bulk-actions/tag-filter toolbar above it (and similar spacing throughout). The Settings and Compose pages now have a sticky âJump toâ section bar and collapsible section headers (click a header to fold it), so you can find and skip to any section fast on the long forms.
 
 = 2.57.7 =
-* Fix: the Placeholder text color never actually reached the subscribe form — the ::placeholder pseudo was only attaching to the last selector in the group, not the embed form's fields. It now applies everywhere.
-* New: two field/card style options in Settings → Colors — "Transparent, borderless email/phone fields" and "Transparent, borderless card" — for a flat look that sits directly on your page with no box or fill.
+* Fix: the Placeholder text color never actually reached the subscribe form â the ::placeholder pseudo was only attaching to the last selector in the group, not the embed form's fields. It now applies everywhere.
+* New: two field/card style options in Settings â Colors â "Transparent, borderless email/phone fields" and "Transparent, borderless card" â for a flat look that sits directly on your page with no box or fill.
 
 = 2.57.6 =
 * Fix: the email/phone pill sat off-center inside its track on themes that add a top margin to buttons (the gap was bigger above than below). The pills now force margin:0 and center themselves in the track, so the padding around the active pill is even on all sides.
-* New: Placeholder text color in Settings → Colors — set the color of the greyed-out hint text inside the email/phone fields. Blank = a muted version of your card text.
+* New: Placeholder text color in Settings â Colors â set the color of the greyed-out hint text inside the email/phone fields. Blank = a muted version of your card text.
 
 = 2.57.5 =
 * Fix: the Email/Phone pill toggle (and inputs/selects) now keep the plugin's own styling even on themes that aggressively restyle form controls. Geoffroy's theme was flattening both pills to identical white squares so you couldn't tell which was selected; the pill track, the muted inactive pill, and the raised active pill are now forced with !important across all form containers, using your card colors so it works on light and dark cards alike.
 
 = 2.57.4 =
 * Fix: the Subscribe/Unlock button now shows your chosen Primary color even when the theme fights it. Themes commonly style every button at higher priority (Geoffroy's was forcing white-on-green); the plugin now forces the primary button's background + text with !important, scoped to solid buttons so outline/ghost styles are untouched.
-* Improved: color settings are now hex-first — type or paste an exact #rrggbb (with or without the #, any case, 3- or 6-digit) into a text field, with a native color swatch beside it that stays in sync. Pasting a brand hex no longer means hunting in the OS color picker.
+* Improved: color settings are now hex-first â type or paste an exact #rrggbb (with or without the #, any case, 3- or 6-digit) into a text field, with a native color swatch beside it that stays in sync. Pasting a brand hex no longer means hunting in the OS color picker.
 
 = 2.57.3 =
-* Fix: the Smart Bio and Release Drops pages told you to paste [loony_bio] / [loony_drop] — now they show the current [fanloop_bio] / [fanloop_drop]. The bio-page auto-detector now recognizes both the new and legacy shortcodes, so the "which page is your bio" link works whichever you use.
+* Fix: the Smart Bio and Release Drops pages told you to paste [loony_bio] / [loony_drop] â now they show the current [fanloop_bio] / [fanloop_drop]. The bio-page auto-detector now recognizes both the new and legacy shortcodes, so the "which page is your bio" link works whichever you use.
 
 = 2.57.2 =
-* Fix: the admin app-bar brand (next to the nav) still read "loonybin" — now shows "Fanloop". Also cleaned the last few stray "loonybin" mentions in the email-template setting label and the UTM-source fallback, which now follow your branding.
+* Fix: the admin app-bar brand (next to the nav) still read "loonybin" â now shows "Fanloop". Also cleaned the last few stray "loonybin" mentions in the email-template setting label and the UTM-source fallback, which now follow your branding.
 
 = 2.57.1 =
-* New: a Shortcodes reference page (Fanloop → Shortcodes) — every shortcode in one place with a plain-English description, click-to-copy codes, an Options list, and examples pre-filled with your own contest/survey/drop IDs. No more hunting across pages to remember what to paste.
+* New: a Shortcodes reference page (Fanloop â Shortcodes) â every shortcode in one place with a plain-English description, click-to-copy codes, an Options list, and examples pre-filled with your own contest/survey/drop IDs. No more hunting across pages to remember what to paste.
 
 = 2.57.0 =
-* White-label: the plugin is now "Fanloop" and every artist can brand their own fan community. New Settings → Branding: a Community name (fan-facing, e.g. "the LOONYBIN") and Artist name (e.g. "LOONY", used in release-drop sign-offs + the AI assistant). All fan-facing copy — signup confirmations, the bio page, welcome text, drop emails — now flows from those fields; blank falls back to your site name. Existing installs are seeded with their current wording so nothing fans see changes. Admin screens and the plugin now read "Fanloop". New shortcode aliases [fanloop_signup]/[fanloop_bio]/[fanloop_drop]/[fanloop_contest]/[fanloop_survey]/[fanloop_tour] — the old [lmeg_*]/[loony_*] shortcodes keep working.
+* White-label: the plugin is now "Fanloop" and every artist can brand their own fan community. New Settings â Branding: a Community name (fan-facing, e.g. "the LOONYBIN") and Artist name (e.g. "LOONY", used in release-drop sign-offs + the AI assistant). All fan-facing copy â signup confirmations, the bio page, welcome text, drop emails â now flows from those fields; blank falls back to your site name. Existing installs are seeded with their current wording so nothing fans see changes. Admin screens and the plugin now read "Fanloop". New shortcode aliases [fanloop_signup]/[fanloop_bio]/[fanloop_drop]/[fanloop_contest]/[fanloop_survey]/[fanloop_tour] â the old [lmeg_*]/[loony_*] shortcodes keep working.
 
 = 2.56.5 =
 * Fix: fatal error ("Cannot use object of type WP_Error as array", spotify.php:107) that could take down the Overview page when Spotify's top-tracks or albums call failed transiently (rate limit/network). The artist call was guarded but the two follow-ups weren't; they now degrade to a partial snapshot instead of crashing.
 
 = 2.56.4 =
-* New: growth cards atop the Subscribers page — New fans today (with ▲/▼ vs yesterday), New fans yesterday (with 7-day total), and Total fans (email / SMS / unsubscribed split). Day boundaries use the site timezone.
+* New: growth cards atop the Subscribers page â New fans today (with â²/â¼ vs yesterday), New fans yesterday (with 7-day total), and Total fans (email / SMS / unsubscribed split). Day boundaries use the site timezone.
 
 = 2.56.3 =
-* Fix: unreadable white-on-light text in the dark admin — the one-tap explainer box on Contests (pre-dark-theme cream background) and the email/SMS body previews on the broadcast detail view now have proper contrast.
+* Fix: unreadable white-on-light text in the dark admin â the one-tap explainer box on Contests (pre-dark-theme cream background) and the email/SMS body previews on the broadcast detail view now have proper contrast.
 
 = 2.56.2 =
-* Fix: contest entries and survey votes now count in fan-type scoring (as "actions", equivalent to email clicks). Previously the scorer only saw opens/clicks/site-visits, so a fan who entered a contest but never opened an email could score "dormant" — nonsensical. 2+ actions = engaged, 1 = at least casual. Types refresh on the next daily recalc, or immediately via Audience → Recalculate.
+* Fix: contest entries and survey votes now count in fan-type scoring (as "actions", equivalent to email clicks). Previously the scorer only saw opens/clicks/site-visits, so a fan who entered a contest but never opened an email could score "dormant" â nonsensical. 2+ actions = engaged, 1 = at least casual. Types refresh on the next daily recalc, or immediately via Audience â Recalculate.
 
 = 2.56.1 =
-* New: "Resend to non-openers" on any completed broadcast — same body, fresh subject, only to fans who received it but never opened (typically +20-30% extra opens). Suppression/confirmation guards apply.
-* New: Smart send times — a Compose checkbox that delivers to each fan at their historically most-active hour (modal open hour; spreads over up to 24h; fans with no history send immediately). Broadcasts wait for every window before completing.
-* New: Monday digest — a weekly 8am email to you: new fans, revenue (with email-attributed split), best send by open rate, top new-fan cities, plus a short AI read when the Anthropic key is set. Toggle + recipient in Settings → Brevo.
-* New: Fan map on the Audience page — every city with fans as a sized dot on a dark world map (Leaflet), popup with fan/superfan counts and a link to those fans. Feeds off the same geocode cache as radius targeting.
+* New: "Resend to non-openers" on any completed broadcast â same body, fresh subject, only to fans who received it but never opened (typically +20-30% extra opens). Suppression/confirmation guards apply.
+* New: Smart send times â a Compose checkbox that delivers to each fan at their historically most-active hour (modal open hour; spreads over up to 24h; fans with no history send immediately). Broadcasts wait for every window before completing.
+* New: Monday digest â a weekly 8am email to you: new fans, revenue (with email-attributed split), best send by open rate, top new-fan cities, plus a short AI read when the Anthropic key is set. Toggle + recipient in Settings â Brevo.
+* New: Fan map on the Audience page â every city with fans as a sized dot on a dark world map (Leaflet), popup with fan/superfan counts and a link to those fans. Feeds off the same geocode cache as radius targeting.
 
 = 2.56.0 =
-* New: deliverability & list health. Paste the plugin's webhook URL (Settings → Brevo) into Brevo and hard bounces/blocked/invalid addresses auto-suppress (skipped on every future send), spam complaints suppress AND unsubscribe, and bounces/complaints land on the fan's timeline. "List health" panel on Broadcast History: 30-day sends, bounce rate (flagged over 2%), complaints, suppressed count.
-* New: optional double opt-in (Settings → Brevo) — new email signups confirm via a one-tap email before receiving broadcasts/sequences/welcome; the gate still unlocks instantly. Everyone already on the list is grandfathered. CASL-friendly.
-* Improved: Contests page — the create/edit form now folds behind a "＋ New contest" toggle instead of dominating the page, and the table is cleaner: Status column (Open / Closed / 🏆 winner), compact dates, copyable merge-tag + shortcode per contest.
+* New: deliverability & list health. Paste the plugin's webhook URL (Settings â Brevo) into Brevo and hard bounces/blocked/invalid addresses auto-suppress (skipped on every future send), spam complaints suppress AND unsubscribe, and bounces/complaints land on the fan's timeline. "List health" panel on Broadcast History: 30-day sends, bounce rate (flagged over 2%), complaints, suppressed count.
+* New: optional double opt-in (Settings â Brevo) â new email signups confirm via a one-tap email before receiving broadcasts/sequences/welcome; the gate still unlocks instantly. Everyone already on the list is grandfathered. CASL-friendly.
+* Improved: Contests page â the create/edit form now folds behind a "ï¼ New contest" toggle instead of dominating the page, and the table is cleaner: Status column (Open / Closed / ð winner), compact dates, copyable merge-tag + shortcode per contest.
 
 = 2.55.31 =
 * Improved: big tag families (City, and eventually Country) cap at the top 20 by audience size with a "Show all N" expander, so the picker stays compact as your cities multiply. A selected tag always stays visible even when it ranks below the cap, and search always sees through the fold.
 
 = 2.55.30 =
-* Redesign: the tag pickers on Compose and Segments. The flat wall of checkbox chips is now a grouped, searchable picker — Your tags first, then Fan type, Channel & plan, Sources & events, with the big geographic families (Country, City) folded behind a count until you need them (auto-open when one is selected). Type-to-filter across everything, biggest audiences sort first, "N picked" badges on every family so folded selections stay visible, empty tags dimmed, native checkboxes hidden (the chip is the control — still keyboard-accessible).
+* Redesign: the tag pickers on Compose and Segments. The flat wall of checkbox chips is now a grouped, searchable picker â Your tags first, then Fan type, Channel & plan, Sources & events, with the big geographic families (Country, City) folded behind a count until you need them (auto-open when one is selected). Type-to-filter across everything, biggest audiences sort first, "N picked" badges on every family so folded selections stay visible, empty tags dimmed, native checkboxes hidden (the chip is the control â still keyboard-accessible).
 
 = 2.55.29 =
-* Fix: the Compose live audience count froze at 0 and ignored tag picks until you'd typed an email/SMS body — because "no body yet" counted as "nobody would receive it". People pick their audience first, so with both bodies empty the count now shows the reachable audience across both channels and updates live as you check tags. (Verified the tag-click → recount → render path end-to-end in a browser harness.)
+* Fix: the Compose live audience count froze at 0 and ignored tag picks until you'd typed an email/SMS body â because "no body yet" counted as "nobody would receive it". People pick their audience first, so with both bodies empty the count now shows the reachable audience across both channels and updates live as you check tags. (Verified the tag-click â recount â render path end-to-end in a browser harness.)
 * Improved: if the count request ever fails, the widget now shows WHY (server error text or network) instead of silently sitting on the old number.
 
 = 2.55.28 =
-* Fix: "Has mailing address" now means a REAL, mailable address — street or postal code on file (the fields only a human form or Shopify order provides). City/region alone no longer qualify, since those can be approximate IP-derived values as of 2.55.25 — the tag would otherwise have crept onto fans you can't actually mail anything to. Fans mis-tagged in the interim are cleaned up automatically in the background.
+* Fix: "Has mailing address" now means a REAL, mailable address â street or postal code on file (the fields only a human form or Shopify order provides). City/region alone no longer qualify, since those can be approximate IP-derived values as of 2.55.25 â the tag would otherwise have crept onto fans you can't actually mail anything to. Fans mis-tagged in the interim are cleaned up automatically in the background.
 
 = 2.55.27 =
-* Changed: fan-type scoring now counts site visits. Engaged = 2+ clicks, 5+ opens, OR visited the site on 2+ separate days in the last 90; casual = at least one open, click, or visit. Visits count distinct DAYS, not raw pageviews, so one long browsing session doesn't inflate to "engaged" — coming back is the signal. A fan who reads the site weekly but never opens email no longer scores dormant.
+* Changed: fan-type scoring now counts site visits. Engaged = 2+ clicks, 5+ opens, OR visited the site on 2+ separate days in the last 90; casual = at least one open, click, or visit. Visits count distinct DAYS, not raw pageviews, so one long browsing session doesn't inflate to "engaged" â coming back is the signal. A fan who reads the site weekly but never opens email no longer scores dormant.
 
 = 2.55.26 =
 * New: identity-linked site analytics on the fan profile. Fans carrying the member cookie (signup, magic link, one-tap link) now get their on-site page views logged (deduped per page per 30 min; band/staff excluded), presale + ticket buttons on the tour listing route through tracked links, and contest entries, survey votes (with the option they chose) and abandoned/recovered carts all appear on the fan timeline alongside emails, clicks and orders.
-* New: "Site interactions" card on the fan profile — visits (30d + total), presale clicks, contests entered, survey votes — next to the existing LTV (shop + membership revenue) card. Anonymous visitors are never tracked; that stays your analytics plugin's job.
+* New: "Site interactions" card on the fan profile â visits (30d + total), presale clicks, contests entered, survey votes â next to the existing LTV (shop + membership revenue) card. Anonymous visitors are never tracked; that stays your analytics plugin's job.
 
 = 2.55.25 =
-* New: approximate city from IP — fans with an IP but no city get city/region (+ country if missing) filled automatically in the background (ipwho.is, free/keyless, cached 30 days per IP), then tagged city:<name>. A real city from a form or Shopify order always wins — IP city only ever fills empty fields. "Add anyway" on the rejected-signups panel now recovers an approximate city from the logged IP too.
-* New: the Compose live audience count now honors the radius filter — type 150 km of Toronto and the count updates to exactly who the send would reach (with a note like "within 150 km of Toronto"), including a warning when the city can't be placed.
+* New: approximate city from IP â fans with an IP but no city get city/region (+ country if missing) filled automatically in the background (ipwho.is, free/keyless, cached 30 days per IP), then tagged city:<name>. A real city from a form or Shopify order always wins â IP city only ever fills empty fields. "Add anyway" on the rejected-signups panel now recovers an approximate city from the logged IP too.
+* New: the Compose live audience count now honors the radius filter â type 150 km of Toronto and the count updates to exactly who the send would reach (with a note like "within 150 km of Toronto"), including a warning when the city can't be placed.
 
 = 2.55.24 =
-* New: city auto-tags — every fan with a city on file gets a city:<name> tag (existing fans backfilled automatically in the background), so you can target a city from the normal tag filter.
-* New: radius targeting in Compose — "Only fans within X km of <city>" (e.g. 150 km of Toronto reaches Mississauga, Hamilton, Oshawa…). Each fan's city is geocoded once via Open-Meteo (free, keyless) and cached permanently; distance is great-circle. Combines with the tag filter; fans with no city on file are excluded while a radius is set. The radius is applied when the send is queued.
+* New: city auto-tags â every fan with a city on file gets a city:<name> tag (existing fans backfilled automatically in the background), so you can target a city from the normal tag filter.
+* New: radius targeting in Compose â "Only fans within X km of <city>" (e.g. 150 km of Toronto reaches Mississauga, Hamilton, Oshawaâ¦). Each fan's city is geocoded once via Open-Meteo (free, keyless) and cached permanently; distance is great-circle. Combines with the tag filter; fans with no city on file are excluded while a radius is set. The radius is applied when the send is queued.
 
 = 2.55.23 =
-* New: the rejected-signups panel now captures and shows each dropped signup's Location and source Tags, and "Add anyway" restores everything the original submission carried — location fields, source tags, and the contest they were entering. Rows logged before this update only stored an IP, so their country is geolocated from it when you add them.
-* New: after "Add anyway", the row shows a green "✓ Added" with whether the welcome email actually went out (stamped only on a confirmed Brevo send) and when — instead of the button.
+* New: the rejected-signups panel now captures and shows each dropped signup's Location and source Tags, and "Add anyway" restores everything the original submission carried â location fields, source tags, and the contest they were entering. Rows logged before this update only stored an IP, so their country is geolocated from it when you add them.
+* New: after "Add anyway", the row shows a green "â Added" with whether the welcome email actually went out (stamped only on a confirmed Brevo send) and when â instead of the button.
 
 = 2.55.22 =
-* Cleanup: the contest confirm-hop parameter added in 2.55.21 was named lmeg_go, which is also the smart-links query var — a latent naming conflict. Renamed it to lmeg_ce_go so the two features can never collide. (Contest flow still won on hook order, and smart URLs were unaffected, so this is hardening, not a behavior change.)
+* Cleanup: the contest confirm-hop parameter added in 2.55.21 was named lmeg_go, which is also the smart-links query var â a latent naming conflict. Renamed it to lmeg_ce_go so the two features can never collide. (Contest flow still won on hook order, and smart URLs were unaffected, so this is hardening, not a behavior change.)
 
 = 2.55.21 =
-* Fix (contest link 404 — the definitive fix): the one-tap link is now a two-step hop. The URL placed in the email (the only one Brevo/Gmail/Outlook fetch to validate + wrap for click tracking) is a completely inert 200 page — it sets no cookie, writes nothing, and never redirects, so no link-scanner can flag it (which is what was 404'ing the tracking wrapper). A real browser runs that page's JavaScript and advances to a second URL (…&lmeg_go=1) that scanners never see, where the fan is actually signed in and entered. Bonus: because entry now only happens on the second (JS-driven) hop, link-scanners pre-fetching the email no longer enter people who never clicked. Resend to get the new link.
+* Fix (contest link 404 â the definitive fix): the one-tap link is now a two-step hop. The URL placed in the email (the only one Brevo/Gmail/Outlook fetch to validate + wrap for click tracking) is a completely inert 200 page â it sets no cookie, writes nothing, and never redirects, so no link-scanner can flag it (which is what was 404'ing the tracking wrapper). A real browser runs that page's JavaScript and advances to a second URL (â¦&lmeg_go=1) that scanners never see, where the fan is actually signed in and entered. Bonus: because entry now only happens on the second (JS-driven) hop, link-scanners pre-fetching the email no longer enter people who never clicked. Resend to get the new link.
 
 = 2.55.20 =
-* Fix (the real one): one-tap contest links no longer 404 through Brevo. Root cause found — Brevo's transactional click-tracker validates each link's destination when it builds the send, and it kills the tracking wrapper (→ 404) for any link that answers with a redirect. The contest link, after signing the fan in and entering them, did a 302 redirect to the contest page. Confirmed by testing: /?ref=<same-token> (a plain 200 page) tracked fine, while /?lmeg_ce= (which 302-redirected) 404'd. The entry handler now always responds with a 200 page and forwards the fan client-side (instant JS + <meta refresh> fallback + a manual "Continue" link) instead of server-redirecting — so Brevo tracks it like any normal link. Resend to get a link that works.
+* Fix (the real one): one-tap contest links no longer 404 through Brevo. Root cause found â Brevo's transactional click-tracker validates each link's destination when it builds the send, and it kills the tracking wrapper (â 404) for any link that answers with a redirect. The contest link, after signing the fan in and entering them, did a 302 redirect to the contest page. Confirmed by testing: /?ref=<same-token> (a plain 200 page) tracked fine, while /?lmeg_ce= (which 302-redirected) 404'd. The entry handler now always responds with a 200 page and forwards the fan client-side (instant JS + <meta refresh> fallback + a manual "Continue" link) instead of server-redirecting â so Brevo tracks it like any normal link. Resend to get a link that works.
 
 = 2.55.19 =
-* Fix: one-tap contest links now use a single query parameter (?lmeg_ce=…) with no "&". Brevo's transactional click tracking (which can't be disabled) was splitting the old multi-parameter link (?lmeg_enter=…&u=…&e=…&t=…) and producing a broken 404 tracking link. The single-param form can't be split, so the link survives Brevo's wrapper. Old-format links still work (handler accepts both). Resend broadcasts/tests to get the new-format link.
+* Fix: one-tap contest links now use a single query parameter (?lmeg_ce=â¦) with no "&". Brevo's transactional click tracking (which can't be disabled) was splitting the old multi-parameter link (?lmeg_enter=â¦&u=â¦&e=â¦&t=â¦) and producing a broken 404 tracking link. The single-param form can't be split, so the link survives Brevo's wrapper. Old-format links still work (handler accepts both). Resend broadcasts/tests to get the new-format link.
 
 = 2.55.18 =
-* Fix: the plugin's own click tracker no longer wraps one-tap contest entry links (lmeg_enter=…). Those carry a signed token that must arrive intact; adding a tracking redirect/UTMs to them invites breakage. (If clicks still 404, it's your Brevo account's own click tracking wrapping the link — turn off "Track clicks" in Brevo's transactional email settings; the plugin already tracks clicks.)
+* Fix: the plugin's own click tracker no longer wraps one-tap contest entry links (lmeg_enter=â¦). Those carry a signed token that must arrive intact; adding a tracking redirect/UTMs to them invites breakage. (If clicks still 404, it's your Brevo account's own click tracking wrapping the link â turn off "Track clicks" in Brevo's transactional email settings; the plugin already tracks clicks.)
 
 = 2.55.17 =
-* Fix: {contest_link:ID} could ship literally (unresolved) in a test email sent to a non-subscriber — there's no fan to personalize for — and Brevo's click tracker then wrapped the literal "{contest_link:2}" as a URL, producing a broken/error link. It now always resolves (falling back to the site URL when there's no subscriber), so no literal merge tag ever goes out. For a real, working personalized link, test to a subscribed address or send the actual broadcast.
+* Fix: {contest_link:ID} could ship literally (unresolved) in a test email sent to a non-subscriber â there's no fan to personalize for â and Brevo's click tracker then wrapped the literal "{contest_link:2}" as a URL, producing a broken/error link. It now always resolves (falling back to the site URL when there's no subscriber), so no literal merge tag ever goes out. For a real, working personalized link, test to a subscribed address or send the actual broadcast.
 
 = 2.55.16 =
-* Fix: sending an email test (or any Compose submit) silently failed when a builder Image/Button block's link field held a merge tag like {contest_link:2}. Those fields were type="url", so the browser rejected the merge tag as an invalid URL and blocked the whole form — and since the field sits in a hidden block with no name, it couldn't show the error ("An invalid form control … is not focusable"). The builder's block fields are now plain text inputs, so merge tags work in block links.
+* Fix: sending an email test (or any Compose submit) silently failed when a builder Image/Button block's link field held a merge tag like {contest_link:2}. Those fields were type="url", so the browser rejected the merge tag as an invalid URL and blocked the whole form â and since the field sits in a hidden block with no name, it couldn't show the error ("An invalid form control â¦ is not focusable"). The builder's block fields are now plain text inputs, so merge tags work in block links.
 
 = 2.55.15 =
 * Fix: the contest entry form now offers Email OR Phone (like the main subscribe form) and uses the standard card styling, instead of an email-only inline form.
-* Fix: the one-tap auto-entry link (?lmeg_enter=…) now shows the contest's own formatted Success message on the confirmation, so the styling/details are kept (previously a bare "You're entered!"). Tip: set the contest's "Contest page URL" so taps land on the actual contest page, where the success message replaces the shortcode in full context.
+* Fix: the one-tap auto-entry link (?lmeg_enter=â¦) now shows the contest's own formatted Success message on the confirmation, so the styling/details are kept (previously a bare "You're entered!"). Tip: set the contest's "Contest page URL" so taps land on the actual contest page, where the success message replaces the shortcode in full context.
 
 = 2.55.14 =
-* New: contest description now supports formatting — bold, italics, links, and line breaks (rich editor in the admin; existing plain descriptions keep their line breaks too).
-* New: custom "Success message" per contest that REPLACES the contest on the page once someone enters (with formatting). Leave blank for a default "You're entered! 🎉".
-* Changed: no sign-in needed to enter. Everyone enters with just their email — people not on the loonybin are added to the list AND entered; people already on the list just get entered (no duplicate). Recognized fans get a one-click enter; the old "sign in to enter" prompt is gone.
+* New: contest description now supports formatting â bold, italics, links, and line breaks (rich editor in the admin; existing plain descriptions keep their line breaks too).
+* New: custom "Success message" per contest that REPLACES the contest on the page once someone enters (with formatting). Leave blank for a default "You're entered! ð".
+* Changed: no sign-in needed to enter. Everyone enters with just their email â people not on the loonybin are added to the list AND entered; people already on the list just get entered (no duplicate). Recognized fans get a one-click enter; the old "sign in to enter" prompt is gone.
 
 = 2.55.13 =
-* New: the contest shortcode now shows a real join-and-enter form to visitors who aren't signed in (instead of just "Join the list to enter — sign in"). They enter their email, and they're both subscribed and entered into the contest in one step.
-* New: signup forms can be prefilled from the URL — ?lmeg_email=you@example.com (or ?lmeg_phone=) fills the field in. Also added a "contest" attribute to [lmeg_signup] so any embedded form can auto-enter a contest on submit.
-* Note on {contest_link}: recipients of a personalized {contest_link} in a broadcast are auto-entered on tap and never see a form — so there's nothing to prefill for them. The new form + prefill are for people arriving without a personalized link.
+* New: the contest shortcode now shows a real join-and-enter form to visitors who aren't signed in (instead of just "Join the list to enter â sign in"). They enter their email, and they're both subscribed and entered into the contest in one step.
+* New: signup forms can be prefilled from the URL â ?lmeg_email=you@example.com (or ?lmeg_phone=) fills the field in. Also added a "contest" attribute to [lmeg_signup] so any embedded form can auto-enter a contest on submit.
+* Note on {contest_link}: recipients of a personalized {contest_link} in a broadcast are auto-entered on tap and never see a form â so there's nothing to prefill for them. The new form + prefill are for people arriving without a personalized link.
 
 = 2.55.12 =
-* Fix: the "Send test" buttons (email + SMS) didn't render merge tags, so a test with {contest_link}, {name}, {referral_link}, etc. sent the raw text instead of the real value. Tests now render merge tags — and if the test recipient is a known subscriber, tags like {contest_link} produce a real, working link (so test your own subscribed number/email to see it work). Real broadcasts already rendered merge tags; this only affected the test button.
+* Fix: the "Send test" buttons (email + SMS) didn't render merge tags, so a test with {contest_link}, {name}, {referral_link}, etc. sent the raw text instead of the real value. Tests now render merge tags â and if the test recipient is a known subscriber, tags like {contest_link} produce a real, working link (so test your own subscribed number/email to see it work). Real broadcasts already rendered merge tags; this only affected the test button.
 
 = 2.55.11 =
-* New: per-contest "Referral bonus" toggle. On by default (current behavior: +3 entries per friend referred, plus the "want more chances to win" prompt on the contest + confirmation). Uncheck it for a straight one-entry-per-fan contest — the prompt is hidden and referral bonuses don't count toward the winner draw, so what fans see matches how entries are weighted.
+* New: per-contest "Referral bonus" toggle. On by default (current behavior: +3 entries per friend referred, plus the "want more chances to win" prompt on the contest + confirmation). Uncheck it for a straight one-entry-per-fan contest â the prompt is hidden and referral bonuses don't count toward the winner draw, so what fans see matches how entries are weighted.
 
 = 2.55.10 =
-* New: edit a contest after creating it. Each contest row has an "Edit" button to change the title, description, end date, and contest page URL — plus an Open/Closed toggle to close entries (or reopen) without drawing a winner.
+* New: edit a contest after creating it. Each contest row has an "Edit" button to change the title, description, end date, and contest page URL â plus an Open/Closed toggle to close entries (or reopen) without drawing a winner.
 
 = 2.55.9 =
-* New: target a specific contest with {contest_link:ID} (bare {contest_link} still means "the newest open contest"). The Contests page now shows each contest's ID and its exact {contest_link:ID} tag to copy, and flags which one plain {contest_link} currently points to — so you always know which contest a link goes to.
+* New: target a specific contest with {contest_link:ID} (bare {contest_link} still means "the newest open contest"). The Contests page now shows each contest's ID and its exact {contest_link:ID} tag to copy, and flags which one plain {contest_link} currently points to â so you always know which contest a link goes to.
 
 = 2.55.8 =
-* New: one-tap contest entry links. Put the {contest_link} merge tag in an email or SMS broadcast — each recipient gets a personalized, signed link that recognizes them, signs them in, and enters them into the newest open contest with a single tap (no typing, no login). Links are HMAC-signed and expire in 60 days. Set an optional "Contest page URL" so taps land back on the contest; otherwise they see a built-in "You're entered!" confirmation with their entry count + referral link.
-* New: the signup form shortcode now shows who it recognizes — "✓ You're on the list as name@email" — when a fan arrives already identified (e.g. via a one-tap link), and uses that email on submit.
+* New: one-tap contest entry links. Put the {contest_link} merge tag in an email or SMS broadcast â each recipient gets a personalized, signed link that recognizes them, signs them in, and enters them into the newest open contest with a single tap (no typing, no login). Links are HMAC-signed and expire in 60 days. Set an optional "Contest page URL" so taps land back on the contest; otherwise they see a built-in "You're entered!" confirmation with their entry count + referral link.
+* New: the signup form shortcode now shows who it recognizes â "â You're on the list as name@email" â when a fan arrives already identified (e.g. via a one-tap link), and uses that email on submit.
 
 = 2.55.7 =
-* New: contest entrants list. Contests already tie every entry to a known fan (you must be a signed-in subscriber to enter), but the admin only showed a count. Now the entrant count on Email Gate → Contests is a link to the full list — who entered, their country, total entries (base + referral bonuses, the same weighting the winner draw uses), and when — each linking to their fan profile, with an "Export entrants CSV" button.
+* New: contest entrants list. Contests already tie every entry to a known fan (you must be a signed-in subscriber to enter), but the admin only showed a count. Now the entrant count on Email Gate â Contests is a link to the full list â who entered, their country, total entries (base + referral bonuses, the same weighting the winner draw uses), and when â each linking to their fan profile, with an "Export entrants CSV" button.
 
 = 2.55.6 =
-* New: search box on the Subscribers page — find fans by email, phone, name, or notes. Works alongside the Free/Paid/Unsubscribed/tag filters and paginates.
-* New: "Add subscribers manually" box — paste one or more emails to add them directly (re-adding an existing email just reactivates it; welcome email + sequences fire if enabled).
+* New: search box on the Subscribers page â find fans by email, phone, name, or notes. Works alongside the Free/Paid/Unsubscribed/tag filters and paginates.
+* New: "Add subscribers manually" box â paste one or more emails to add them directly (re-adding an existing email just reactivates it; welcome email + sequences fire if enabled).
 * New: each row in the "recent signups that didn't get added" panel now has an "Add anyway" button to subscribe that person in one click, plus a "Clear log" button.
 
 = 2.55.5 =
-* Fix: some signups silently never got added. Four causes, all fixed: (1) a stale nonce from full-page caching made every submit fail "Security check failed" — a public opt-in now logs a bad nonce and still saves instead of dropping it; (2) the per-IP rate limiter reset its window on every hit, so a busy/shared IP (mobile CGNAT, offices, venue wifi) could get permanently blocked — it's now a true fixed window with much higher limits (15/10min, 300/day); (3) the email-domain DNS check could reject valid addresses (incl. gmail) when the host's resolver misfired — the major mailbox providers are now always allowed and DNS failures fail open; (4) all four rejection paths (bad nonce, rate limit, honeypot, invalid/blocked email) now write to a rejection log.
-* New: the Subscribers page shows a "recent signups that didn't get added — see why" panel so you can diagnose captures at a glance.
+* Fix: some signups silently never got added. Four causes, all fixed: (1) a stale nonce from full-page caching made every submit fail "Security check failed" â a public opt-in now logs a bad nonce and still saves instead of dropping it; (2) the per-IP rate limiter reset its window on every hit, so a busy/shared IP (mobile CGNAT, offices, venue wifi) could get permanently blocked â it's now a true fixed window with much higher limits (15/10min, 300/day); (3) the email-domain DNS check could reject valid addresses (incl. gmail) when the host's resolver misfired â the major mailbox providers are now always allowed and DNS failures fail open; (4) all four rejection paths (bad nonce, rate limit, honeypot, invalid/blocked email) now write to a rejection log.
+* New: the Subscribers page shows a "recent signups that didn't get added â see why" panel so you can diagnose captures at a glance.
 
 = 2.55.4 =
-* Fix: the Subscribers/Fans list was hard-capped at 500 rows with no way to see the rest. It now paginates (100 per page) with page controls above and below the table and a "showing X–Y of N" count, and the pager keeps your active Free/Paid/Unsubscribed/tag filter. (The "Export all as CSV" button always included everyone regardless.)
+* Fix: the Subscribers/Fans list was hard-capped at 500 rows with no way to see the rest. It now paginates (100 per page) with page controls above and below the table and a "showing XâY of N" count, and the pager keeps your active Free/Paid/Unsubscribed/tag filter. (The "Export all as CSV" button always included everyone regardless.)
 
 = 2.55.3 =
-* New: "Save & test Shopify" now reports the token's granted scopes and warns clearly if read_orders is missing — the definitive diagnosis for the 403 "requires merchant approval for read_orders" order-sync error (it means the token simply doesn't carry that scope; declare it on the app and reconnect to mint a fresh one).
+* New: "Save & test Shopify" now reports the token's granted scopes and warns clearly if read_orders is missing â the definitive diagnosis for the 403 "requires merchant approval for read_orders" order-sync error (it means the token simply doesn't carry that scope; declare it on the app and reconnect to mint a fresh one).
 
 = 2.55.2 =
-* Fix: the Rich text / Builder toggle could stop working entirely. The mode buttons were wired up inside the builder's init code, so if builder.js was slow to load, blocked, or altered by a caching/optimization plugin, the toggle (and typing) died with it. The toggle, submit, and preview handlers now bind immediately and independently of the builder — you can always switch to Rich text and keep composing even if the builder itself doesn't load.
+* Fix: the Rich text / Builder toggle could stop working entirely. The mode buttons were wired up inside the builder's init code, so if builder.js was slow to load, blocked, or altered by a caching/optimization plugin, the toggle (and typing) died with it. The toggle, submit, and preview handlers now bind immediately and independently of the builder â you can always switch to Rich text and keep composing even if the builder itself doesn't load.
 * Fix: builder assets are now cache-busted by file modification time, so an updated builder.js can't be served stale against a newer page (a mismatch between the two was a likely cause of the toggle breaking).
 * If the builder truly can't load, its area now shows a short "use Rich text / hard-refresh" message instead of a blank box.
 
 = 2.55.1 =
-* Fix: you still couldn't type in the drag & drop builder on the live composer. The real cause was TinyMCE — the builder pushed content into the rich editor on every keystroke, and TinyMCE's setContent() steals focus, so your cursor jumped out of the block after the first character. (It worked in isolated testing because no TinyMCE was present there.) The builder now updates TinyMCE only when you switch to Rich text or send/save — never mid-typing. Verified with a TinyMCE-present harness.
-* Fix: sending a test (or any submit) while in Rich text mode reloaded the page back into the builder showing the default "Your heading / Write something" blocks, hiding your rich-text content. The composer now remembers which mode you were in across reloads, and the active editor's content is authoritative on submit — so nothing gets clobbered by the other mode.
+* Fix: you still couldn't type in the drag & drop builder on the live composer. The real cause was TinyMCE â the builder pushed content into the rich editor on every keystroke, and TinyMCE's setContent() steals focus, so your cursor jumped out of the block after the first character. (It worked in isolated testing because no TinyMCE was present there.) The builder now updates TinyMCE only when you switch to Rich text or send/save â never mid-typing. Verified with a TinyMCE-present harness.
+* Fix: sending a test (or any submit) while in Rich text mode reloaded the page back into the builder showing the default "Your heading / Write something" blocks, hiding your rich-text content. The composer now remembers which mode you were in across reloads, and the active editor's content is authoritative on submit â so nothing gets clobbered by the other mode.
 
 = 2.55.0 =
-* New: Abandoned-cart recovery (automated revenue flow #1). The shop sync now pulls abandoned Shopify checkouts, matches them to subscribers, and fires an event:abandoned-cart trigger — create a Sequence on that trigger and fans who leave a checkout get nudged automatically. Use the new {cart_url} merge tag to link them straight back to their cart. The flow auto-stops (and its remaining steps cancel) the moment they complete a purchase. Shop Revenue page shows open vs recovered carts and their value.
-* Note: post-purchase (trigger: customer) and win-back (trigger: fan-type:dormant) flows already work via the Sequences engine — see the recipes list on the Sequences page.
+* New: Abandoned-cart recovery (automated revenue flow #1). The shop sync now pulls abandoned Shopify checkouts, matches them to subscribers, and fires an event:abandoned-cart trigger â create a Sequence on that trigger and fans who leave a checkout get nudged automatically. Use the new {cart_url} merge tag to link them straight back to their cart. The flow auto-stops (and its remaining steps cancel) the moment they complete a purchase. Shop Revenue page shows open vs recovered carts and their value.
+* Note: post-purchase (trigger: customer) and win-back (trigger: fan-type:dormant) flows already work via the Sequences engine â see the recipes list on the Sequences page.
 
 = 2.54.1 =
 * Improved: Shop Revenue page now lists ALL synced orders (not only ones matched to a subscriber), with a running order count + total revenue, whether each buyer is on your list or a guest, and any campaign attribution. So right after connecting + syncing you see every order and the revenue immediately.
 
 = 2.54.0 =
-* New: "Connect with Shopify" (OAuth) for live/paid stores. Shopify's client-credentials grant (v2.53) only works on dev stores — a live store returns a 400. Live stores now connect via the standard authorization-code flow: set your dev-dashboard app to custom distribution, add the shown redirect URL, grant read_orders, then click Connect. You approve in Shopify and land back connected with a permanent offline token (no refresh). Settings → Shop (Shopify).
+* New: "Connect with Shopify" (OAuth) for live/paid stores. Shopify's client-credentials grant (v2.53) only works on dev stores â a live store returns a 400. Live stores now connect via the standard authorization-code flow: set your dev-dashboard app to custom distribution, add the shown redirect URL, grant read_orders, then click Connect. You approve in Shopify and land back connected with a permanent offline token (no refresh). Settings â Shop (Shopify).
 * Improved: the Shopify token error now surfaces Shopify's actual reason (e.g. shop_not_permitted) instead of a bare HTTP 400, with a hint pointing to the right connect method.
 
 = 2.53.0 =
-* New: Shopify connection now supports dev-dashboard apps. Newer Shopify stores create apps in the dev dashboard, which give a Client ID + Secret instead of a static shpat_ token. Paste those two into Settings → Shop (Shopify) and the plugin exchanges them for a 24-hour Admin API token automatically (client credentials grant), refreshing as needed. The legacy static-token field still works and takes precedence if set. Requires the app to be installed on your store with the read_orders scope.
+* New: Shopify connection now supports dev-dashboard apps. Newer Shopify stores create apps in the dev dashboard, which give a Client ID + Secret instead of a static shpat_ token. Paste those two into Settings â Shop (Shopify) and the plugin exchanges them for a 24-hour Admin API token automatically (client credentials grant), refreshing as needed. The legacy static-token field still works and takes precedence if set. Requires the app to be installed on your store with the read_orders scope.
 
 = 2.52.0 =
 * New: true Lifetime Value. Fan revenue now combines attributed Shopify orders with subscription payments (recorded from Stripe invoice.payment_succeeded into a new member_revenue_cents accumulator). The fan profile shows the split (shop vs membership); the Audience "Top fans" table ranks by combined LTV. Membership revenue accumulates from this update forward.
-* New: Tour routing. The Audience page now has a "Your top cities" breakdown from signup address data, ranked by fan count with superfan share per city — so you can see where to book shows.
+* New: Tour routing. The Audience page now has a "Your top cities" breakdown from signup address data, ranked by fan count with superfan share per city â so you can see where to book shows.
 * New: fan profile now shows an engagement card (total opens/clicks across all broadcasts) alongside status, plan, LTV, and referrals.
 
 = 2.51.0 =
-* New: Release Drops. Build a countdown page for an upcoming release with a "Notify me" capture; when the release time passes, everyone who opted in (or all subscribers) is auto-sent an email/SMS with your streaming links. Admin at Email Gate → Release Drops; embed with [loony_drop] or [loony_drop slug="…"]. This is the owned-audience replacement for Spotify pre-saves.
-* New: Smart Bio. A link-in-bio page with a built-in signup form at the top — put [loony_bio] on a page (e.g. /links) and use it in your social bios. Every link is routed through the click tracker and attributed to known fans. Admin at Email Gate → Smart Bio.
+* New: Release Drops. Build a countdown page for an upcoming release with a "Notify me" capture; when the release time passes, everyone who opted in (or all subscribers) is auto-sent an email/SMS with your streaming links. Admin at Email Gate â Release Drops; embed with [loony_drop] or [loony_drop slug="â¦"]. This is the owned-audience replacement for Spotify pre-saves.
+* New: Smart Bio. A link-in-bio page with a built-in signup form at the top â put [loony_bio] on a page (e.g. /links) and use it in your social bios. Every link is routed through the click tracker and attributed to known fans. Admin at Email Gate â Smart Bio.
 * New: signup forms can carry an lmeg_tags field to record where an opt-in came from (drops tag fans as drop:<slug>, the bio page tags them "bio"), which feeds targeted broadcasts.
 
 = 2.50.0 =
-* Fix: you couldn't type into heading or text blocks — selecting a block re-rendered the whole canvas and destroyed the field you'd just clicked into, so the caret never landed. Selection is now a lightweight highlight that leaves the editable text in place, so typing works.
-* New: "Preview email in new tab" button on Compose. It renders your current email through the real branded template (with sample merge values) and opens it in a new browser tab — works from both the drag & drop builder and the Rich text / HTML editor.
+* Fix: you couldn't type into heading or text blocks â selecting a block re-rendered the whole canvas and destroyed the field you'd just clicked into, so the caret never landed. Selection is now a lightweight highlight that leaves the editable text in place, so typing works.
+* New: "Preview email in new tab" button on Compose. It renders your current email through the real branded template (with sample merge values) and opens it in a new browser tab â works from both the drag & drop builder and the Rich text / HTML editor.
 
 = 2.49.0 =
 * Fix: drag & drop in the email builder now works anywhere between blocks. Dropping used to require hitting a 3px target between blocks; a moving pink indicator line now shows exactly where a block will land, and you can drop over the whole gap. Drag a block by its dotted handle, or drag a block type in from the palette.
@@ -656,13 +659,13 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Fix: the image block's two extra fields had no labels. They now read "Alt text (shown if image can't load)" and "Link when clicked (optional)", plus a labelled Image URL field and a "Choose from Media Library" button.
 
 = 2.48.0 =
-* Fix: the drag & drop builder showed an empty area — its init script ran inline before builder.js (footer) had loaded, so LMEGBuilder was undefined. Init now defers to DOMContentLoaded and retries until the script is ready.
-* Fix: v2.47.0 shipped without bumping the main plugin file version (stayed 2.46.0), causing a repeating "update available" prompt and no asset cache-bust. Version is now correct (2.48.0) — this update also refreshes builder.css/js cache-busters so the builder assets reload.
+* Fix: the drag & drop builder showed an empty area â its init script ran inline before builder.js (footer) had loaded, so LMEGBuilder was undefined. Init now defers to DOMContentLoaded and retries until the script is ready.
+* Fix: v2.47.0 shipped without bumping the main plugin file version (stayed 2.46.0), causing a repeating "update available" prompt and no asset cache-bust. Version is now correct (2.48.0) â this update also refreshes builder.css/js cache-busters so the builder assets reload.
 
 = 2.47.0 =
 * Drag & drop email builder on Compose (Mailchimp-style). Block palette: Heading, Text, Image, Button, Divider, Spacer. Click or drag to add, drag handle to reorder, inline editing, per-block controls (move/duplicate/delete), Media Library image picker, merge-tag insert in text blocks, live per-block color from your brand accent.
-* Builder serializes to email-safe inline-styled HTML into the existing body_email field — flows through the branded template, tracking, and send pipeline unchanged.
-* Mode toggle: "Drag & drop builder" ↔ "Rich text / HTML" (TinyMCE) — switch freely; builder is the source of truth while active. Block layout round-trips via a body_email_blocks JSON field.
+* Builder serializes to email-safe inline-styled HTML into the existing body_email field â flows through the branded template, tracking, and send pipeline unchanged.
+* Mode toggle: "Drag & drop builder" â "Rich text / HTML" (TinyMCE) â switch freely; builder is the source of truth while active. Block layout round-trips via a body_email_blocks JSON field.
 * Self-contained vanilla JS (no bundler); builder assets load only on Compose.
 
 = 2.46.0 =
@@ -677,40 +680,40 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Captured column: shows the date, with the exact timestamp on hover.
 
 = 2.44.0 =
-* Overview page — a command-center landing that pulls everything into one screen: headline KPIs (active subscribers + 30d growth sparkline, MRR + paying, campaign revenue, Spotify followers + trend), plus panels for fan types, top countries, last broadcast performance, and Spotify, with quick-action buttons. Now the first item in the menu + app-bar; brand mark links here.
+* Overview page â a command-center landing that pulls everything into one screen: headline KPIs (active subscribers + 30d growth sparkline, MRR + paying, campaign revenue, Spotify followers + trend), plus panels for fan types, top countries, last broadcast performance, and Spotify, with quick-action buttons. Now the first item in the menu + app-bar; brand mark links here.
 
 = 2.43.0 =
 * Spotify daily history: full day-by-day table (followers, popularity, day-over-day deltas) on the Spotify page. A snapshot is captured automatically each day.
-* "Capture today's numbers now" button — record a data point on demand instead of waiting for the daily cron.
+* "Capture today's numbers now" button â record a data point on demand instead of waiting for the daily cron.
 * CSV export of the whole history.
-* CSV import to seed historical data you have from elsewhere (spreadsheets, S4A exports) — format date,followers,popularity. Spotify's API can't backfill past followers, so this is the only way to get history before the connect date.
+* CSV import to seed historical data you have from elsewhere (spreadsheets, S4A exports) â format date,followers,popularity. Spotify's API can't backfill past followers, so this is the only way to get history before the connect date.
 
 = 2.42.0 =
-* Impact analysis on the Spotify page: correlates your initiatives (broadcasts + releases) with Spotify momentum — follower + popularity change in the 7 days after each, vs your baseline growth rate, alongside the clicks & revenue each broadcast drove.
+* Impact analysis on the Spotify page: correlates your initiatives (broadcasts + releases) with Spotify momentum â follower + popularity change in the 7 days after each, vs your baseline growth rate, alongside the clicks & revenue each broadcast drove.
 * Popularity (Spotify's 0-100 recent-stream-velocity score) used as the closest public proxy for streams; the API doesn't expose raw stream counts. Presented as directional, not causal.
 * Impact summary is fed into the AI assistant so "how do my drops impact streams?" gets a data-grounded answer. New suggestion chip added.
 * Needs ~1-2 weeks of daily follower snapshots before lift is measurable (snapshots run automatically once Spotify is connected).
 
 = 2.41.0 =
-* Shared credentials can now live in wp-config.php constants or a .env file instead of being re-entered per artist site. Config values win over the DB and lock those fields in Settings (with a 🔒 badge).
+* Shared credentials can now live in wp-config.php constants or a .env file instead of being re-entered per artist site. Config values win over the DB and lock those fields in Settings (with a ð badge).
 * Reads LMEG_* constants; a .env at wp-content/.env or one level above WP root is auto-loaded (also accepts common aliases like SPOTIFY_CLIENT_ID / ANTHROPIC_API_KEY via real env vars). See .env.example in the repo root.
 * Covers Spotify, Anthropic, Brevo, Twilio, Stripe, Instagram, Shopify credentials. Per-artist values (Spotify artist ID, Shopify domain, from-addresses) stay in the admin.
 
 = 2.40.0 =
-* Spotify analytics (Client Credentials — app-level, no user login, no extended-access wall): followers, popularity, genres, top tracks, recent releases + a daily follower/popularity snapshot for a 30-day trend line. New Spotify admin page. Settings → Spotify: client ID/secret + artist ID.
-* AI assistant (Anthropic): "Ask AI" admin page — chat interface that answers questions grounded in your live plugin data (subscribers, fan types, countries, revenue, broadcast performance, Spotify). Aggregate stats only, no PII lists sent. Settings → AI assistant: API key + model (default claude-haiku-4-5).
+* Spotify analytics (Client Credentials â app-level, no user login, no extended-access wall): followers, popularity, genres, top tracks, recent releases + a daily follower/popularity snapshot for a 30-day trend line. New Spotify admin page. Settings â Spotify: client ID/secret + artist ID.
+* AI assistant (Anthropic): "Ask AI" admin page â chat interface that answers questions grounded in your live plugin data (subscribers, fan types, countries, revenue, broadcast performance, Spotify). Aggregate stats only, no PII lists sent. Settings â AI assistant: API key + model (default claude-haiku-4-5).
 * Both added to the app-bar nav; both have Save & test buttons.
 
 = 2.39.0 =
-* Instagram DM automation (Meta Messaging API): fans DM a keyword → instant auto-reply with your link. Keyword rules CRUD, hit counters, full conversation log, username resolution.
+* Instagram DM automation (Meta Messaging API): fans DM a keyword â instant auto-reply with your link. Keyword rules CRUD, hit counters, full conversation log, username resolution.
 * Webhook receiver at ?lmeg_ig=webhook with Meta handshake + X-Hub-Signature-256 verification; anti-loop reply throttle (1 per user/rule/10min) and inbound flood guard.
-* Settings → Instagram: account ID, Page token, App secret, verify token + "Save & test Instagram".
+* Settings â Instagram: account ID, Page token, App secret, verify token + "Save & test Instagram".
 * Setup guide (Business account, Meta app, webhook subscription, dev-mode vs App Review) printed on the Instagram admin page.
-* Note: Meta permits replies within 24h of a fan's message only — no cold outbound DMs, platform-wide.
+* Note: Meta permits replies within 24h of a fan's message only â no cold outbound DMs, platform-wide.
 
 = 2.38.0 =
 * IP geolocation: email signups now get a country automatically (phone/address country still wins when provided). Cloudflare country header used when present; otherwise api.country.is (free, HTTPS, no key), cached per-IP for a day, fails silently.
-* Backfill: existing subscribers with a stored IP but no country are geolocated in the background (15 every 5 minutes) until the gap closes — country:* tags and the Audience map fill in automatically.
+* Backfill: existing subscribers with a stored IP but no country are geolocated in the background (15 every 5 minutes) until the gap closes â country:* tags and the Audience map fill in automatically.
 * Signup IP capture is now proxy-aware (Cloudflare / X-Forwarded-For) instead of raw REMOTE_ADDR.
 
 = 2.37.0 =
@@ -718,24 +721,24 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 
 = 2.36.0 =
 * Security hardening release.
-* Signup rate limiting: 5 per 10 min + 30/day per IP (tunable via filters) — stops scripted signup floods and welcome-email quota burn.
+* Signup rate limiting: 5 per 10 min + 30/day per IP (tunable via filters) â stops scripted signup floods and welcome-email quota burn.
 * Email-domain DNS check (MX/A) on signup kills made-up domains before a Brevo send is spent; results cached, fails open on DNS timeouts.
-* Magic-link endpoint throttled per IP (5/hr) and per target address (3/hr) — email-bombing protection with silent limits so account existence never leaks.
+* Magic-link endpoint throttled per IP (5/hr) and per target address (3/hr) â email-bombing protection with silent limits so account existence never leaks.
 * Open-redirect fixed: click-tracking tokens now HMAC-bind the destination URL; swapping ?u= invalidates the signature. Invalid tokens land on the homepage.
-* Fix: external click-throughs (Spotify, Shopify links in emails) were being rejected by wp_safe_redirect and bounced to wp-admin — now redirect correctly when the signed token verifies.
+* Fix: external click-throughs (Spotify, Shopify links in emails) were being rejected by wp_safe_redirect and bounced to wp-admin â now redirect correctly when the signed token verifies.
 * Tracking replay cap: max 50 events/day per (broadcast, subscriber, type) so leaked pixel/click URLs can't bloat the events table.
 * NOTE: click links in emails sent before this version will land on the homepage (old tokens lack URL binding). Opens tracking is unaffected.
 
 = 2.35.0 =
-* Tour Listings: dates CRUD in admin + [lmeg_tour] shortcode. Presale links can be members-only — non-members see a locked hint, a built-in reason to join.
+* Tour Listings: dates CRUD in admin + [lmeg_tour] shortcode. Presale links can be members-only â non-members see a locked hint, a built-in reason to join.
 * Surveys: one-question polls, members-only single voting, animated result bars after voting. [lmeg_survey id=N] + admin results.
 * Contests: one-click entry for members, +3 bonus entries per referred friend during the contest, weighted-random "Draw winner" in admin. [lmeg_contest id=N].
-* Automations expanded: new "customer" auto-tag applied on a fan's first shop order — trigger post-purchase journeys from it. Sequences page now lists trigger recipes (welcome, post-purchase, paid onboarding, dormant win-back).
+* Automations expanded: new "customer" auto-tag applied on a fan's first shop order â trigger post-purchase journeys from it. Sequences page now lists trigger recipes (welcome, post-purchase, paid onboarding, dormant win-back).
 * Fan Bios: first name + private notes editable on every fan profile; the {name} merge tag now prefers the stored first name.
 
 = 2.34.0 =
-* Rich HTML broadcasts: Compose and Templates now use the WordPress visual editor (TinyMCE) with Media Library buttons — bold, links, headings, lists, blockquotes, and inline images, no hand-written HTML needed.
-* The branded template inline-styles imgs (max-width, rounded), h1–h3, lists, and blockquotes so rich content renders correctly in Gmail/Apple Mail/Outlook.
+* Rich HTML broadcasts: Compose and Templates now use the WordPress visual editor (TinyMCE) with Media Library buttons â bold, links, headings, lists, blockquotes, and inline images, no hand-written HTML needed.
+* The branded template inline-styles imgs (max-width, rounded), h1âh3, lists, and blockquotes so rich content renders correctly in Gmail/Apple Mail/Outlook.
 * Plain-text alternative now strips markup (better deliverability, matching multipart content).
 * "Load template" and the live word-count/read-time meter sync with the visual editor.
 
@@ -743,13 +746,13 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Fix: dark admin theme could stay dormant if another plugin clobbered the admin_body_class filter. The scope class is now re-applied at maximum filter priority AND via a JS fallback that cannot be filtered away.
 
 = 2.32.0 =
-* Premium dark admin theme (OpenStage-inspired) scoped to the plugin's pages only — deep #0E0F16 canvas, card surfaces, DM Sans, loonybin pink + indigo accents.
+* Premium dark admin theme (OpenStage-inspired) scoped to the plugin's pages only â deep #0E0F16 canvas, card surfaces, DM Sans, loonybin pink + indigo accents.
 * App-style header bar on every plugin page: brand mark + pill navigation (Fans / Audience / Compose / Broadcasts / Revenue / Members / Smartlinks / Sequences / Settings) + View site link.
 * Restyled: stat cards (gradient surfaces, hover glow), tables (rounded cards, uppercase headers, row hover), filter pills, buttons (pink-gradient primary), inputs (focus rings), notices (colored rails), tag chips tuned for dark, audience bars, fan timeline.
 * Rest of wp-admin untouched; prefers-reduced-motion respected.
 
 = 2.31.0 =
-* Fan CRM (OpenStage-inspired): click any subscriber to open their Fan Profile — status, plan, lifetime revenue, referrals, unique code, tags, and a full activity timeline (signup, sends, opens, clicks, orders, soft-paywall reads).
+* Fan CRM (OpenStage-inspired): click any subscriber to open their Fan Profile â status, plan, lifetime revenue, referrals, unique code, tags, and a full activity timeline (signup, sends, opens, clicks, orders, soft-paywall reads).
 * Fan Types: daily auto-scoring into superfan / engaged / casual / dormant (rolling 90d), applied as fan-type:* tags usable in broadcasts and segments. Manual recalc button on the new Audience page.
 * Audience page: fan-type distribution, country breakdown with bars, top fans by revenue, referral leaderboard.
 * Referrals: every fan gets a personal link ({referral_link} merge tag). Signups arriving via ?ref=CODE are credited to the referrer (30-day cookie).
@@ -757,20 +760,20 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Smartlinks: trackable short links at /go/<slug> with click counts, per-fan timeline logging for known members, and QR codes for posters/merch.
 
 = 2.30.0 =
-* Shopify shop connection — measure revenue directly attributable to email campaigns.
+* Shopify shop connection â measure revenue directly attributable to email campaigns.
 * Orders sync from the Shopify Admin API (read_orders token) every ~15 min; each order is matched to a subscriber by email, then attributed last-click to the broadcast they clicked (falling back to opened) within a configurable window (default 7 days).
 * New Shop Revenue admin page: campaign/subscriber/total revenue (30d + 1y), revenue-by-broadcast table, recent attributed orders, manual "Sync orders now".
 * Revenue column on Broadcast History + revenue line on the broadcast detail view.
 * Broadcast links now carry utm_source/utm_medium/utm_campaign so Shopify's own analytics see the traffic too.
-* Settings → Shop (Shopify): store domain, Admin API token, attribution window, UTM source, "Save & test Shopify".
+* Settings â Shop (Shopify): store domain, Admin API token, attribution window, UTM source, "Save & test Shopify".
 
 = 2.29.0 =
-* Branded email template (on by default): cream backdrop, white rounded card, logo header (from Settings → Logo), accent rule + link color from the primary color setting. Applies to broadcasts, welcome, magic links, sequences, and test sends.
+* Branded email template (on by default): cream backdrop, white rounded card, logo header (from Settings â Logo), accent rule + link color from the primary color setting. Applies to broadcasts, welcome, magic links, sequences, and test sends.
 * Body content now renders basic HTML properly (wpautop + make_clickable) instead of escaping it; bare URLs become links automatically.
 * New settings: "Branded template" toggle + "Footer note" line above the unsubscribe link.
 
 = 2.28.0 =
-* Mailgun removed entirely — Brevo is the only email provider. All sends (broadcast, welcome, magic link, sequences, tests) go through Brevo unconditionally.
+* Mailgun removed entirely â Brevo is the only email provider. All sends (broadcast, welcome, magic link, sequences, tests) go through Brevo unconditionally.
 * Migration scrubs the dead provider/Mailgun settings keys so nothing can ever route to Mailgun again ("Mailgun is not configured" errors are gone for good).
 * Settings page: provider dropdown and Mailgun section removed; Brevo is the email section.
 
@@ -778,56 +781,56 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Fix: broadcast batches could stall with rows stuck in "pending" if PHP's max_execution_time killed the cron tick mid-batch (slow provider calls). The tick now requests a 300s runway via set_time_limit + ignore_user_abort, so every row in the batch gets marked sent or failed.
 
 = 2.26.0 =
-* Brevo is now the standard email provider — new default everywhere (settings default, save fallback, send fallback, dropdown order).
+* Brevo is now the standard email provider â new default everywhere (settings default, save fallback, send fallback, dropdown order).
 * Migration: installs whose provider was still "mailgun" with no Mailgun API key configured are auto-flipped to Brevo.
-* Fix: Compose Broadcast heading was hardcoded "Email (Mailgun)" regardless of the active provider — now shows "Email (via Brevo/Mailgun)" dynamically.
+* Fix: Compose Broadcast heading was hardcoded "Email (Mailgun)" regardless of the active provider â now shows "Email (via Brevo/Mailgun)" dynamically.
 
 = 2.25.0 =
-* New "Default test recipient" setting (defaults to ian@portermedia.ca) — pre-fills the "Test email to" field on Compose Broadcast.
+* New "Default test recipient" setting (defaults to ian@portermedia.ca) â pre-fills the "Test email to" field on Compose Broadcast.
 
 = 2.24.0 =
-* Signup success message now defaults to "Thank you for joining the loonybin" (no more "check your inbox" copy — nothing to confirm).
-* New Settings field (Form copy → Signup success message) to customize it site-wide; per-embed `success="…"` attribute still overrides.
+* Signup success message now defaults to "Thank you for joining the loonybin" (no more "check your inbox" copy â nothing to confirm).
+* New Settings field (Form copy â Signup success message) to customize it site-wide; per-embed `success="â¦"` attribute still overrides.
 
 = 2.23.0 =
-* Fix: clicking a tier button was bouncing to wp-login.php instead of Stripe Checkout. Root cause: I was using `wp_safe_redirect()` on the external Stripe URL — that function is only for internal URLs and silently falls back to `/wp-admin/`. Switched to `wp_redirect()` for all four Stripe redirect sites (paywall member fast-path, paywall non-member checkout, member portal, member checkout endpoint).
+* Fix: clicking a tier button was bouncing to wp-login.php instead of Stripe Checkout. Root cause: I was using `wp_safe_redirect()` on the external Stripe URL â that function is only for internal URLs and silently falls back to `/wp-admin/`. Switched to `wp_redirect()` for all four Stripe redirect sites (paywall member fast-path, paywall non-member checkout, member portal, member checkout endpoint).
 
 = 2.22.0 =
-* Update check interval cut to 2 minutes (from 15) — surface new releases much faster during active dev.
-* Interval is now configurable via wp-config.php: `define('LMEG_UPDATE_INTERVAL_MINUTES', 15);` (clamped 1min – 24h).
+* Update check interval cut to 2 minutes (from 15) â surface new releases much faster during active dev.
+* Interval is now configurable via wp-config.php: `define('LMEG_UPDATE_INTERVAL_MINUTES', 15);` (clamped 1min â 24h).
 * On plugins_loaded, the plugin re-schedules its cron event if the stored interval differs from the configured one, so changing the constant takes effect on the next admin load.
 * GitHub API cache TTL now matches the check interval so the cache never out-lives the tick.
 
 = 2.21.0 =
-* `[lmeg_signup]` gained a `tiers` param — combine free signup and paid tier selection in ONE form so email is only entered once.
-* Values: `tiers=""` (default, current behavior — free only), `tiers="all"` (all active tiers below the free button), `tiers="1,2"` (specific tier IDs).
+* `[lmeg_signup]` gained a `tiers` param â combine free signup and paid tier selection in ONE form so email is only entered once.
+* Values: `tiers=""` (default, current behavior â free only), `tiers="all"` (all active tiers below the free button), `tiers="1,2"` (specific tier IDs).
 * New `divider` param controls the text between free button and tiers (default "or").
-* Free submit button now sends `lmeg_after=free` explicitly; tier buttons send `lmeg_after=checkout:<id>:<interval>` — the handler routes accordingly.
+* Free submit button now sends `lmeg_after=free` explicitly; tier buttons send `lmeg_after=checkout:<id>:<interval>` â the handler routes accordingly.
 * Members see a "Signed in as X" line and tier buttons only (no duplicate email input).
 
 = 2.20.0 =
-* Logo above the paywall card — new Logo URL + Logo max-width settings. Media-library picker in the settings page (falls back to plain URL paste).
-* Paid-only posts (Any paid member / specific tier) now show tiers directly — no free email/unlock path, no "Get premium access" toggle. Non-members still enter their email compactly above the tier buttons.
-* Sign-in is now in-place — clicking "Already subscribed? Sign in →" swaps the card contents to the sign-in form via JS. After submit, redirects back with ?lmeg_signin=sent and renders a "Check your inbox" confirmation in the same card. No more full-page nav.
+* Logo above the paywall card â new Logo URL + Logo max-width settings. Media-library picker in the settings page (falls back to plain URL paste).
+* Paid-only posts (Any paid member / specific tier) now show tiers directly â no free email/unlock path, no "Get premium access" toggle. Non-members still enter their email compactly above the tier buttons.
+* Sign-in is now in-place â clicking "Already subscribed? Sign in â" swaps the card contents to the sign-in form via JS. After submit, redirects back with ?lmeg_signin=sent and renders a "Check your inbox" confirmation in the same card. No more full-page nav.
 
 = 2.19.0 =
-* New "Page background" color setting — sets the whole gated-page background (behind the card). Overrides theme CSS with !important.
+* New "Page background" color setting â sets the whole gated-page background (behind the card). Overrides theme CSS with !important.
 * Card + text color settings are now emitted with direct !important overrides instead of CSS variables alone, so they actually beat theme rules that would previously leak through via higher specificity.
-* body.lmeg-page-bg class added when the gate template is active — lets the page-background color extend edge-to-edge.
+* body.lmeg-page-bg class added when the gate template is active â lets the page-background color extend edge-to-edge.
 
 = 2.18.0 =
-* New shortcode `[lmeg_premium]` — embed tier-selection anywhere. Renders paid tier cards with an inline email input for non-members and Stripe Checkout in one hop.
+* New shortcode `[lmeg_premium]` â embed tier-selection anywhere. Renders paid tier cards with an inline email input for non-members and Stripe Checkout in one hop.
 * Params: heading, message, style (card|minimal), tiers (comma-separated tier IDs, default all active).
 * Fix: `[lmeg_signup]` embed's Email/Phone pill toggle now uses explicit dark text so it stays visible on themes that set white body text.
 
 = 2.17.0 =
 * Fix: text was invisible when the theme sets `color: white` on the body (dark themes). Paywall / gate / embed cards now explicitly set their own dark text color instead of inheriting.
-* Fix: unlock icon's SVG stroke was inheriting `currentColor` (white on dark themes → invisible on the light card). Now uses a fixed muted gray.
-* Fix: email/phone tab pills had white text on white active-tab bg → invisible. Now use explicit dark text.
-* New: Card background + Card text color settings so you can flip the paywall to a dark theme to match a dark site. Two new HTML5 color pickers in Settings → Colors.
+* Fix: unlock icon's SVG stroke was inheriting `currentColor` (white on dark themes â invisible on the light card). Now uses a fixed muted gray.
+* Fix: email/phone tab pills had white text on white active-tab bg â invisible. Now use explicit dark text.
+* New: Card background + Card text color settings so you can flip the paywall to a dark theme to match a dark site. Two new HTML5 color pickers in Settings â Colors.
 
 = 2.16.0 =
-* Fix: existing members clicking a tier button no longer got "Please enter a valid email address" — the form doesn't render an email input for signed-in members, so the handler now short-circuits directly to Stripe Checkout.
+* Fix: existing members clicking a tier button no longer got "Please enter a valid email address" â the form doesn't render an email input for signed-in members, so the handler now short-circuits directly to Stripe Checkout.
 * Fix: Stripe Checkout failures are now surfaced as an error page with the actual Stripe error message instead of silently redirecting back to the post. Diagnoses common causes (missing keys, missing price ID).
 
 = 2.15.0 =
@@ -836,9 +839,9 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Cron event auto-unscheduled on deactivation.
 
 = 2.14.0 =
-* Colors section in Settings — customize the primary button color + text, accent (soft paywall tint, focus rings), and card border.
+* Colors section in Settings â customize the primary button color + text, accent (soft paywall tint, focus rings), and card border.
 * Color values are output as scoped CSS custom properties (`--lmeg-primary`, `--lmeg-primary-text`, `--lmeg-accent`, `--lmeg-border`) via `wp_add_inline_style`, so themes and installs without saved colors get the same look as before.
-* Uses HTML5 native color pickers — no jQuery UI dependency.
+* Uses HTML5 native color pickers â no jQuery UI dependency.
 
 = 2.13.0 =
 * GitHub-driven self-updater: WP admin now shows "Update available" whenever a new release is published on GitHub. One-click update, no manual zip uploads.
@@ -849,23 +852,23 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Embeddable `[lmeg_signup]` shortcode for dropping a signup form anywhere: posts, pages, widgets, footers.
 * Three visual styles: `card` (default, boxed), `inline` (horizontal email + button), `minimal` (widget-friendly).
 * Params: `heading`, `message`, `button`, `style`, `phone` (yes/no), `consent` (auto/none/custom), `redirect`, `success`.
-* Signups flow through the same handler as the main gate — auto-tag, member cookie, welcome email, sequences all fire normally.
+* Signups flow through the same handler as the main gate â auto-tag, member cookie, welcome email, sequences all fire normally.
 * Success confirmation renders in-place after submit (query-param + anchor scroll).
 
 = 2.11.0 =
-* New paywall layout: 🔓 icon + centered heading + email/phone form + "Get premium access" collapsible.
+* New paywall layout: ð icon + centered heading + email/phone form + "Get premium access" collapsible.
 * Settings for the paywall heading, unlock button label, and premium button label (defaults: "Unlock <site name>" / "Unlock" / "Get premium access").
 * Premium panel is collapsed by default for non-members (email-first UX), expanded for free members on hard-paid posts.
 * v1 tier-first paywall preserved under `lmeg_paywall_html_v1()`; switch via `add_filter('lmeg_paywall_mode', fn() => 'v1')`.
 
 = 2.10.0 =
-* Tier-first paywall — non-members hitting paid/soft-paid posts see tier cards + email input + "Start free" all in one form. No more two-step gate.
+* Tier-first paywall â non-members hitting paid/soft-paid posts see tier cards + email input + "Start free" all in one form. No more two-step gate.
 * Tier CTAs are `<button>`s inside the same form as the email input, so one submit captures the email AND creates the Stripe Checkout session.
 * Form handler routes on `lmeg_after=checkout:<tier>:<interval>` or `free`; soft-grants are applied automatically for non-members submitting on soft-paid posts.
 * Redesigned tier cards with responsive grid, ghost-button "Start free", "or" divider.
 
 = 2.9.0 =
-* Soft paywall — new post access level "Paid, or continue free". Upgrade CTA shows tier cards + "Not right now, keep reading" link.
+* Soft paywall â new post access level "Paid, or continue free". Upgrade CTA shows tier cards + "Not right now, keep reading" link.
 * Per-(subscriber, post) grants stored in lmeg_soft_grants so the ask reappears on the next soft-paid post.
 * Settings: separate copy fields for hard vs soft paywall heading + message.
 
@@ -884,25 +887,25 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Paid membership tiers (Substack model): create multiple tiers with monthly/annual prices, Stripe-backed.
 * Per-post access meta box: Public / Free members / Any paid member / Specific tier.
 * Passwordless magic-link sign-in for returning members.
-* Signed member cookie (HMAC) — identifies specific subscribers, not just "someone unlocked".
+* Signed member cookie (HMAC) â identifies specific subscribers, not just "someone unlocked".
 * Stripe Checkout for new subs, Stripe Customer Portal for cancel/update card.
 * Stripe webhook receiver with signature verification and idempotency.
 * Gate expands from 2 states to 3: needs_signup / needs_upgrade / ok.
 * Cron sweep reverts cancelled members to free after grace period.
 
 = 2.5.0 =
-* Open + click tracking — HMAC-signed pixel + link rewriter, per-broadcast + per-recipient stats.
-* Saved segments — persist tag filter + match mode by name, load into Compose with one click.
-* Email templates — reusable subject + body pairs with merge tags (`{name}`, `{email}`, `{city}`, `{country}`, `{site_name}`, etc.).
-* Welcome email — auto-send on new email signups, opt-in via Settings.
-* Drip sequences — multi-step time-based email/SMS series triggered by tag attachment; wp_cron processes due steps.
-* Dashboard widget — 30-day signup sparkline + last broadcast summary + opens/clicks.
+* Open + click tracking â HMAC-signed pixel + link rewriter, per-broadcast + per-recipient stats.
+* Saved segments â persist tag filter + match mode by name, load into Compose with one click.
+* Email templates â reusable subject + body pairs with merge tags (`{name}`, `{email}`, `{city}`, `{country}`, `{site_name}`, etc.).
+* Welcome email â auto-send on new email signups, opt-in via Settings.
+* Drip sequences â multi-step time-based email/SMS series triggered by tag attachment; wp_cron processes due steps.
+* Dashboard widget â 30-day signup sparkline + last broadcast summary + opens/clicks.
 * Merge tags applied per-recipient during send.
 
 = 2.4.0 =
-* Native tag-based audience system — no third-party dependency.
+* Native tag-based audience system â no third-party dependency.
 * Auto-tags applied on every signup: channel:email / channel:phone, country:XX, has-address.
-* New "Tags" admin page — create, rename, recolor, delete custom tags. Auto-tags update automatically as subscriber data changes.
+* New "Tags" admin page â create, rename, recolor, delete custom tags. Auto-tags update automatically as subscriber data changes.
 * Subscribers list shows tag chips per row, supports bulk-select + bulk-tag (Add tag / Remove tag) and per-tag filtering via `?tag=<slug>`.
 * Compose: country dropdown removed. New tag picker with Any/All match modes and live audience count via AJAX.
 * `queue_broadcast()` now accepts a `tag_filter` instead of `country_filter` (legacy column kept for backward compat, new `tag_filter` column added).
@@ -911,9 +914,9 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 = 2.3.0 =
 * One-click unsubscribe link auto-appended to every broadcast email (HMAC-signed, no login required, CASL/CAN-SPAM compliant).
 * Unsubscribed subscribers excluded from broadcasts. Re-submitting the form re-activates them.
-* RSS feed and REST API now respect the gate — `the_content_feed`, `the_excerpt_rss`, and `rest_prepare_post` filters return a teaser + permalink instead of full content.
-* "Save & test Mailgun" and "Save & test Twilio" buttons in Settings — verifies credentials against each provider's API.
-* Scheduled broadcasts — Compose has a "Send at" datetime picker; cron picks broadcasts up at the scheduled moment.
+* RSS feed and REST API now respect the gate â `the_content_feed`, `the_excerpt_rss`, and `rest_prepare_post` filters return a teaser + permalink instead of full content.
+* "Save & test Mailgun" and "Save & test Twilio" buttons in Settings â verifies credentials against each provider's API.
+* Scheduled broadcasts â Compose has a "Send at" datetime picker; cron picks broadcasts up at the scheduled moment.
 * Subscribers list shows active/unsubscribed status; broadcast history shows "scheduled" status separately.
 * CSV export includes `unsubscribed_at`.
 
@@ -921,7 +924,7 @@ Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, a
 * Broadcasts now auto-route per subscriber: emails go to email subscribers, texts to SMS subscribers, in one queued send.
 * Compose screen has separate Email body and SMS body fields, plus a "Send test" button for each channel.
 * New `channel` column on broadcast_log so each recipient remembers its own delivery channel.
-* Schema migration is idempotent — pre-2.1 broadcasts keep working unchanged.
+* Schema migration is idempotent â pre-2.1 broadcasts keep working unchanged.
 
 = 2.0.0 =
 * Email or phone toggle on the form.

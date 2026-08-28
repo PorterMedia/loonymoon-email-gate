@@ -822,3 +822,128 @@ function lmeg_shop_totals($days = 30) {
         current_time('mysql'), max(1, (int) $days)
     ));
 }
+
+/* ===========================================================================
+ * Import products from the connected Shopify store into the Fanloop Store.
+ * Reuses the same insert/update-by-slug path as the CSV importer; everything
+ * lands as a DRAFT to review before publishing. Best-effort mapping: Shopify's
+ * multi-dimension variants (Size × Color) flatten to Fanloop's single option
+ * list, and orders/customers/checkout are NOT touched — catalogue only.
+ * ======================================================================== */
+
+/** Map one Shopify REST product to a Fanloop CSV-style import row + gallery. */
+function lmeg_shop_map_to_row($sp, $currency = 'USD') {
+    $variants = isset($sp['variants']) && is_array($sp['variants']) ? $sp['variants'] : [];
+    $v0       = $variants[0] ?? [];
+
+    // Physical unless every variant explicitly opts out of shipping.
+    $physical = false;
+    foreach ($variants as $v) { if (($v['requires_shipping'] ?? true) !== false) { $physical = true; break; } }
+
+    // A real option set? (Shopify single-variant products use "Default Title".)
+    $has_opts = !(count($variants) <= 1 && (($v0['option1'] ?? 'Default Title') === 'Default Title'));
+
+    // Flatten to option1: unique values, summing tracked inventory per value.
+    $variants_field = ''; $prod_stock = '';
+    if ($has_opts) {
+        $by = [];
+        foreach ($variants as $v) {
+            $name = trim((string) ($v['option1'] ?? '')); if ($name === '') continue;
+            if (!isset($by[$name])) $by[$name] = ['tracked' => false, 'qty' => 0];
+            if (($v['inventory_management'] ?? '') === 'shopify') { $by[$name]['tracked'] = true; $by[$name]['qty'] += max(0, (int) ($v['inventory_quantity'] ?? 0)); }
+        }
+        $parts = [];
+        foreach ($by as $name => $info) $parts[] = $info['tracked'] ? ($name . ':' . (int) $info['qty']) : $name;
+        $variants_field = implode(', ', $parts);
+    } else {
+        // Single product — carry its stock if Shopify is tracking it.
+        if (($v0['inventory_management'] ?? '') === 'shopify') $prod_stock = (string) max(0, (int) ($v0['inventory_quantity'] ?? 0));
+    }
+
+    $images  = isset($sp['images']) && is_array($sp['images']) ? array_values(array_filter(array_map(function ($im) { return isset($im['src']) ? esc_url_raw($im['src']) : ''; }, $sp['images']))) : [];
+    $cover   = !empty($sp['image']['src']) ? esc_url_raw($sp['image']['src']) : ($images[0] ?? '');
+    $gallery = array_values(array_diff($images, [$cover]));
+
+    $desc = trim(wp_strip_all_tags(str_replace(['</p>', '<br>', '<br/>', '<br />'], "\n", (string) ($sp['body_html'] ?? ''))));
+
+    $row = [
+        'title'       => (string) ($sp['title'] ?? ''),
+        'slug'        => (string) ($sp['handle'] ?? ''),
+        'description' => $desc,
+        'type'        => $physical ? 'physical' : 'digital',
+        'price'       => (string) ($v0['price'] ?? '0'),
+        'compare at'  => (!empty($v0['compare_at_price']) && (float) $v0['compare_at_price'] > 0) ? (string) $v0['compare_at_price'] : '',
+        'currency'    => strtoupper((string) $currency) ?: 'USD',
+        'shipping'    => '0',
+        'weight (g)'  => (string) (int) ($v0['grams'] ?? 0),
+        'stock'       => $prod_stock,
+        'variants'    => $variants_field,
+        'tags'        => (string) ($sp['tags'] ?? ''),
+        'featured'    => '0',
+        'status'      => 'draft',   // always import as a draft to review
+        'cover url'   => $cover,
+    ];
+    return ['row' => $row, 'gallery' => $gallery];
+}
+
+/** Fetch every product from the connected Shopify store (paged), or WP_Error. */
+function lmeg_shop_fetch_products() {
+    $all = []; $since = 0; $guard = 0;
+    do {
+        $batch = lmeg_shop_request('/products.json', ['limit' => 250, 'since_id' => $since]);
+        if (is_wp_error($batch)) return $batch;
+        $prods = isset($batch['products']) && is_array($batch['products']) ? $batch['products'] : [];
+        foreach ($prods as $pr) { $all[] = $pr; $since = max($since, (int) ($pr['id'] ?? 0)); }
+        $guard++;
+    } while (count($prods) === 250 && $guard < 12 && count($all) < 3000);
+    return $all;
+}
+
+/** Import the connected store's catalogue into lmeg_products as drafts. */
+function lmeg_shop_import_products() {
+    global $wpdb;
+    if (!function_exists('lmeg_products_import_prepare')) return new WP_Error('lmeg_no_importer', 'Product importer unavailable.');
+    $shop = lmeg_shop_request('/shop.json');
+    $currency = (!is_wp_error($shop) && !empty($shop['shop']['currency'])) ? $shop['shop']['currency'] : 'USD';
+
+    $products = lmeg_shop_fetch_products();
+    if (is_wp_error($products)) return $products;
+
+    $tbl = $wpdb->prefix . 'lmeg_products';
+    $created = 0; $updated = 0; $skipped = 0; $errors = [];
+    foreach ($products as $sp) {
+        $m    = lmeg_shop_map_to_row($sp, $currency);
+        $prep = lmeg_products_import_prepare($m['row']);
+        if (empty($prep['ok'])) { $skipped++; if (!empty($prep['error'])) $errors[] = ($m['row']['title'] ?? '?') . ': ' . $prep['error']; continue; }
+        $data = $prep['data'];
+        $data['status']  = 'draft';   // never auto-publish a Shopify import
+        $data['gallery'] = $m['gallery'] ? wp_json_encode($m['gallery']) : null;
+
+        $slug = $prep['slug_in'] ?: sanitize_title($prep['title']);
+        $existing = $wpdb->get_row($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug));
+        if ($existing) {
+            $wpdb->update($tbl, $data, ['id' => (int) $existing->id]);   // keeps slug + sold + created_at
+            $updated++;
+        } else {
+            $base = $slug; $k = 1;
+            while ((int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $tbl WHERE slug = %s", $slug))) $slug = $base . '-' . (++$k);
+            $wpdb->insert($tbl, array_merge($data, ['slug' => $slug, 'sold' => 0, 'created_at' => current_time('mysql')]));
+            $created++;
+        }
+    }
+    return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'errors' => $errors, 'total' => count($products)];
+}
+
+add_action('admin_post_lmeg_shop_import', 'lmeg_handle_shop_import');
+function lmeg_handle_shop_import() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_shop_import');
+    $res = lmeg_shop_import_products();
+    if (is_wp_error($res)) {
+        set_transient('lmeg_import_result', ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => [$res->get_error_message()]], 120);
+    } else {
+        set_transient('lmeg_import_result', $res, 120);
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&imported=shopify'));
+    exit;
+}
