@@ -244,7 +244,7 @@ function lmeg_store_upsell_html($exclude_ids = [], $limit = 3, $heading = 'You m
             . $img
             . '<div style="padding:9px 11px">'
             . '<div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . esc_html($r->title) . '</div>'
-            . '<div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px">' . esc_html($price) . '</div>'
+            . '<div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">' . esc_html($price) . '</div>'
             . '</div></a>';
     }
     return '<div style="width:100%;max-width:720px;margin:34px auto 0">'
@@ -1290,6 +1290,11 @@ function lmeg_hex_rgba($hex, $alpha) {
     $c = lmeg_hex_rgb($hex);
     return 'rgba(' . $c[0] . ',' . $c[1] . ',' . $c[2] . ',' . $alpha . ')';
 }
+/** Perceived brightness 0–255 (used to pick readable text/icon colour over a fill). */
+function lmeg_hex_lum($hex) {
+    $c = lmeg_hex_rgb($hex);
+    return 0.299 * $c[0] + 0.587 * $c[1] + 0.114 * $c[2];
+}
 
 /**
  * Storefront accent theming. Emits :root CSS variables derived from the store's
@@ -1309,16 +1314,22 @@ function lmeg_store_accent_css() {
     $ink  = lmeg_hex_mix($a, '#000000', 0.80);   // dark accent for text on light  (≈ #B4247E from pink)
     $tint = lmeg_hex_mix($a, '#ffffff', 0.11);   // very light background          (≈ #FCE7F1)
     $soft = lmeg_hex_mix($a, '#ffffff', 0.55);   // mid-light accent               (≈ #E7A6CF)
+    // Readable text/icon colour over the accent fills. Thresholds are tuned so the
+    // default pink keeps its current colours (white on the solid accent; dark on
+    // the pink→purple gradient) while genuinely dark accents flip to a light icon.
+    $on_a = lmeg_hex_lum($a) < 165 ? '#ffffff' : '#17141f';
+    $on_g = ((lmeg_hex_lum($a) + lmeg_hex_lum($a2)) / 2) >= 125 ? '#0B0C12' : '#ffffff';
     $vars = ':root{'
         . '--flp-accent:' . $a . ';--flp-accent-2:' . $a2 . ';'
         . '--flp-accent-ink:' . $ink . ';--flp-accent-tint:' . $tint . ';--flp-accent-soft:' . $soft . ';'
+        . '--flp-on-accent:' . $on_a . ';--flp-on-grad:' . $on_g . ';'
         . '--flp-accent-grad:linear-gradient(118deg,' . $a . ',' . $a2 . ');'
         . '--flp-accent-grad-h:linear-gradient(90deg,' . $a . ',' . $a2 . ');'
         . '--flp-accent-a16:' . lmeg_hex_rgba($a, '.16') . ';--flp-accent2-glow:' . lmeg_hex_rgba($a2, '.4') . ';'
         . '}';
     $ov = ''
         // card buttons
-        . '.flp-prod .flp-add{background:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-prod .flp-add{background:var(--flp-accent)!important;color:var(--flp-on-accent)!important}'
         . '.flp-prod .flp-buy{color:var(--flp-accent)!important;border-color:var(--flp-accent)!important}'
         // variant pills (product page) + dropdown focus
         . '.flp-prod .flp-var:hover:not(:disabled){border-color:var(--flp-accent)!important}'
@@ -1327,19 +1338,19 @@ function lmeg_store_accent_css() {
         // save heart
         . '.flp-prod .flp-save.is-saved,.flp-prod .flp-save:hover,#flp-cart-root .flp-save.is-saved{color:var(--flp-accent)!important}'
         // audio preview
-        . '.flp-prod .flp-preview-btn{background:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-prod .flp-preview-btn{background:var(--flp-accent)!important;color:var(--flp-on-accent)!important}'
         . '.flp-prod .flp-preview-fill{background:var(--flp-accent)!important}'
         // tag chips + spotlight eyebrow
         . '.flp-store-wrap .flp-tag:hover{border-color:var(--flp-accent)!important;color:var(--flp-accent)!important}'
-        . '.flp-store-wrap .flp-tag.is-active{background:var(--flp-accent)!important;border-color:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-store-wrap .flp-tag.is-active{background:var(--flp-accent)!important;border-color:var(--flp-accent)!important;color:var(--flp-on-accent)!important}'
         . '.flp-hero .flp-hero-eyebrow{color:var(--flp-accent-2)!important}'
-        // floating cart button + drawer
-        . '#flp-cart-btn{background:var(--flp-accent-grad)!important;box-shadow:0 12px 34px var(--flp-accent2-glow)!important}'
-        . '#flp-cart-root .flp-cart-go,.flp-checkout-go{background:var(--flp-accent-grad)!important}'
+        // floating cart button + drawer (icon inherits currentColor, so --flp-on-grad rescues it on dark accents)
+        . '#flp-cart-btn{background:var(--flp-accent-grad)!important;color:var(--flp-on-grad)!important;box-shadow:0 12px 34px var(--flp-accent2-glow)!important}'
+        . '#flp-cart-root .flp-cart-go,.flp-checkout-go{background:var(--flp-accent-grad)!important;color:var(--flp-on-grad)!important}'
         . '#flp-cart-root .flp-cart-ship:not(.is-free) .flp-ship-fill{background:var(--flp-accent-grad-h)!important}'
         . '#flp-cart-root .flp-saved-add{background:var(--flp-accent-a16)!important;color:var(--flp-accent-soft)!important}'
         // sticky mobile buy bar (product page)
-        . '.flp-sticky-buy .flp-add,.flp-sticky-buy .flp-goto-buy{background:var(--flp-accent-grad)!important;color:#0B0C12!important}'
+        . '.flp-sticky-buy .flp-add,.flp-sticky-buy .flp-goto-buy{background:var(--flp-accent-grad)!important;color:var(--flp-on-grad)!important}'
         . '.flp-sticky-buy .t span{color:var(--flp-accent-soft)!important}'
         // keyboard focus rings
         . '.flp-store-wrap :focus-visible,.flp-prod :focus-visible,#flp-cart-btn:focus-visible,#flp-cart-root [data-act]:focus-visible{outline-color:var(--flp-accent)!important}';
@@ -1641,7 +1652,7 @@ function lmeg_product_sticky_bar_html($p) {
   }
   .flp-sticky-buy .t{flex:1;min-width:0;text-align:left}
   .flp-sticky-buy .t b{display:block;font-size:14px;color:#F4F2F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:650}
-  .flp-sticky-buy .t span{font-size:13px;color:#E7A6CF;font-weight:700}
+  .flp-sticky-buy .t span{font-size:13px;color:var(--flp-accent-soft,#E7A6CF);font-weight:700}
 </style>
 <div class="flp-sticky-buy"><?php echo $thumb; ?><div class="t"><b><?php echo esc_html($p->title); ?></b><span><?php echo esc_html($price); ?></span></div><?php echo $btn; ?></div>
 <script>(function(){var g=document.querySelector('.flp-goto-buy');if(!g)return;g.addEventListener('click',function(){var c=document.querySelector('.flp-prod');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});});})();</script>
@@ -1823,7 +1834,7 @@ function lmeg_product_page() {
           <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
           <div style="padding:9px 11px">
             <div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html($r->title); ?></div>
-            <div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px"><?php echo esc_html(lmeg_product_is_pwyw($r) ? 'Name your price' : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2))); ?></div>
+            <div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px"><?php echo esc_html(lmeg_product_is_pwyw($r) ? 'Name your price' : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2))); ?></div>
           </div>
         </a>
         <?php endforeach; ?>
@@ -1848,7 +1859,7 @@ function lmeg_product_page() {
     var others=list.filter(function(i){return i&&i.id!=CUR.id;}).slice(0,CAP);
     var wrap=document.getElementById("flp-recent");
     if(wrap&&others.length){var h='<div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">Recently viewed</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">';
-    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:#E7A6CF;font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
+    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
     h+="</div>";wrap.innerHTML=h;wrap.style.display="";}
     list=list.filter(function(i){return i&&i.id!=CUR.id;});list.unshift(CUR);list=list.slice(0,CAP);
     try{localStorage.setItem(KEY,JSON.stringify(list));}catch(e){}})();</script>
@@ -2360,7 +2371,7 @@ function lmeg_store_checklist_html($units) {
         $mark = $s['ok']
             ? '<span style="color:#34D399;font-weight:800">✓</span>'
             : '<span style="display:inline-block;width:14px;height:14px;border:2px solid #6C6F82;border-radius:50%"></span>';
-        $cta = (!$s['ok'] && $s['link'] && $s['cta']) ? ' <a href="' . esc_url($s['link']) . '" style="color:#E7A6CF;text-decoration:none;font-weight:600;white-space:nowrap">' . esc_html($s['cta']) . ' →</a>' : '';
+        $cta = (!$s['ok'] && $s['link'] && $s['cta']) ? ' <a href="' . esc_url($s['link']) . '" style="color:var(--flp-accent-soft,#E7A6CF);text-decoration:none;font-weight:600;white-space:nowrap">' . esc_html($s['cta']) . ' →</a>' : '';
         $rows .= '<div style="display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.06)">'
             . '<div style="flex:0 0 16px;margin-top:2px;text-align:center">' . $mark . '</div>'
             . '<div style="flex:1"><div style="font-weight:650;color:' . ($s['ok'] ? '#8B90A0' : '#F4F5F7') . '">' . esc_html($s['label']) . $cta . '</div>'

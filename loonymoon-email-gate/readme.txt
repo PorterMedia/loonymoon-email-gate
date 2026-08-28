@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.61.0
+Stable tag: 3.61.1
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.61.1 =
+* Store (Beta): Store colours — dark-accent polish. When you pick a dark accent, the cart button icon, Add/Buy and checkout button text now switch to a light colour automatically (they were a fixed dark tone and disappeared on dark colours); light accents get dark text. The "More from the shop" and "Recently viewed" strips on the product page now follow your accent too (they were still showing the built-in pink). The default pink is unchanged.
+
 = 3.61.0 =
 * Store (Beta): NEW — Store colours. A “Store colours” setting (Store → Settings) lets each shop pick its own accent colour (and a second gradient colour for the cart/checkout button) so the storefront matches your brand instead of the built-in pink. It recolours the Add-to-cart / Buy buttons, selected sizes, tag chips, focus rings, the floating cart button and gradients across [fanloop_store], product pages and the cart. Lighter tints are derived automatically from your accent. Defaults are unchanged (the original pink), so existing shops look exactly the same until you change it. No schema change.
 
