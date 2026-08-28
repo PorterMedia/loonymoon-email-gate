@@ -1419,7 +1419,9 @@ function lmeg_store_theme_reset_css() {
       . "#flp-cart-root .flp-ci .rm,#flp-cart-root .flp-saved-rm{width:auto!important;padding:4px 0!important;background:transparent!important;border:0!important}"
       . "#flp-cart-root .flp-saved-add{width:auto!important;padding:6px 11px!important}"
       . "#flp-cart-root #flp-cart-x,#flp-qv #flp-qv-x{width:auto!important;padding:0!important;background:transparent!important;border:0!important}"
-      . "#flp-cart-root .flp-cart-go{width:100%!important;padding:14px!important}";
+      . "#flp-cart-root .flp-cart-go{width:100%!important;padding:14px!important}"
+      // hover-swap: reveal the product's second photo when the cover is hovered (hover-capable pointers only)
+      . "@media(hover:hover){.flp-prod .flp-cover:hover .flp-cover2{opacity:1!important}}";
     return lmeg_store_accent_css() . '<style id="flp-theme-reset">' . $sel . '</style>';
 }
 
@@ -1528,7 +1530,9 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         </script>
       <?php elseif (!empty($imgs)) : $img = '<img src="' . esc_url($imgs[0]) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
         $badge = (count($imgs) > 1) ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(11,12,18,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">▦ ' . count($imgs) . '</span>' : '';
-        $wrapped = '<div style="position:relative;display:block">' . $img . $badge . '</div>';
+        // Second photo fades in on hover (the back of the shirt, the flip side of the sleeve).
+        $img2 = (!$solo && count($imgs) > 1) ? '<img src="' . esc_url($imgs[1]) . '" alt="" aria-hidden="true" class="flp-cover2" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s ease;pointer-events:none">' : '';
+        $wrapped = '<div class="flp-cover" style="position:relative;display:block;overflow:hidden">' . $img . $img2 . $badge . '</div>';
         $linked  = $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped;
         $quick   = !$solo ? '<button type="button" class="flp-quick" aria-label="Quick look" style="position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.93);color:#17141f;border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22);display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('search', 13) . 'Quick look</button>' : '';
         echo '<div style="position:relative">' . $linked . $quick . $heart_btn('right:8px;top:8px') . '</div>'; ?>
