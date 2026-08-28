@@ -624,7 +624,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
         . '<input type="hidden" name="code" value="' . esc_attr($disc ? $disc['code'] : '') . '">'
         . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
-        . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
+        . '<input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
         . $shipfields
         . lmeg_cart_dispatch_note($v['has_physical'])
         . $notefield
@@ -652,7 +652,20 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
 
 /** Small labelled input for the shipping block. */
 function lmeg_cart_input($name, $label, $required) {
-    return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '"' . ($required ? ' required' : '')
+    // HTML autocomplete tokens so browsers + password managers autofill the whole
+    // shipping address from the buyer's saved profile (keyless, private, one tap).
+    $ac = [
+        'ship_name'    => 'name',
+        'ship_line1'   => 'address-line1',
+        'ship_line2'   => 'address-line2',
+        'ship_city'    => 'address-level2',
+        'ship_region'  => 'address-level1',
+        'ship_postal'  => 'postal-code',
+        'ship_country' => 'country-name',
+    ];
+    $auto = isset($ac[$name]) ? ' autocomplete="' . $ac[$name] . '"' : '';
+    $cap  = in_array($name, ['ship_name', 'ship_line1', 'ship_line2', 'ship_city', 'ship_region'], true) ? ' autocapitalize="words"' : '';
+    return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '"' . ($required ? ' required' : '') . $auto . $cap
         . ' style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">';
 }
 
@@ -664,7 +677,7 @@ function lmeg_cart_country_select() {
         'CH' => 'Switzerland', 'AT' => 'Austria', 'JP' => 'Japan', 'MX' => 'Mexico', 'BR' => 'Brazil', 'ZZ' => 'Other country'];
     $opts = '<option value="" disabled selected>Country…</option>';
     foreach ($countries as $code => $name) $opts .= '<option value="' . esc_attr($code) . '">' . esc_html($name) . '</option>';
-    return '<select name="ship_country" id="flp-country" required style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>';
+    return '<select name="ship_country" id="flp-country" required autocomplete="country" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>';
 }
 
 /* ---------------------------------------------------------------------------

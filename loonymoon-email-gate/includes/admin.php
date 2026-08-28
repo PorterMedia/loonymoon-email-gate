@@ -2217,7 +2217,7 @@ function lmeg_broadcast_event_geo($broadcast_id = 0, $limit = 200) {
 }
 
 /**
- * Render the opens/clicks map — same Leaflet + dark-CARTO + pink-marker recipe
+ * Render the opens/clicks map — same Leaflet + keyless-OSM + pink-marker recipe
  * as the fan map, with pink = opens, purple = clicks, and an All/Opens/Clicks
  * toggle. $pts from lmeg_broadcast_event_geo().
  */
@@ -2237,6 +2237,7 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
             <button type="button" class="button button-small lmeg-oc-btn" data-layer="clicks" data-map="<?php echo esc_attr($dom_id); ?>">Clicks</button>
         </span>
     </div>
+    <style>#<?php echo esc_attr($dom_id); ?> .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.75)}</style>
     <div id="<?php echo esc_attr($dom_id); ?>" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
     <p class="description" style="max-width:960px;">Dot size = events in that city. Pink = opens, purple = clicks. Click a dot for the breakdown.<?php echo $skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : ''; ?></p>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2246,8 +2247,8 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
         if (!pts.length || typeof L === 'undefined') return;
         function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
         var map = L.map(id, { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12, minZoom: 3
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors', maxZoom: 12, minZoom: 3
         }).addTo(map);
         var opensLayer = L.layerGroup(), clicksLayer = L.layerGroup(), all = [];
         pts.forEach(function (p) {
@@ -5128,6 +5129,8 @@ function lmeg_admin_audience() {
         ?>
         <?php if ($map_pts) : ?>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <style>/* Darken the keyless OSM basemap to match the dark dashboard (tiles only — markers/controls are on other panes). */
+        #lmeg-fanmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.75)}</style>
         <div id="lmeg-fanmap" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
         <p class="description" style="max-width:960px;">Dot size = fans in that city (exact form/Shopify cities plus approximate IP cities). Click a dot for the breakdown and a link to those fans.<?php echo $skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : ''; ?></p>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -5137,8 +5140,8 @@ function lmeg_admin_audience() {
             if (!pts.length || typeof L === 'undefined') return;
             function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
             var map = L.map('lmeg-fanmap', { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 12, minZoom: 3
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors', maxZoom: 12, minZoom: 3
             }).addTo(map);
             var group = [];
             pts.forEach(function (p) {
