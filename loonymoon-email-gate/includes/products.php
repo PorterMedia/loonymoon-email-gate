@@ -1706,6 +1706,35 @@ function lmeg_product_meta_tags($p) {
     $m .= '<meta name="twitter:card" content="' . ($has_img ? 'summary_large_image' : 'summary') . '">' . "\n";
     $m .= '<meta name="twitter:title" content="' . esc_attr($p->title) . '">' . "\n";
     $m .= '<meta name="twitter:description" content="' . esc_attr($desc) . '">' . "\n";
+
+    // JSON-LD Product structured data — makes the product eligible for Google rich
+    // results (price, availability, image shown in search). wp_json_encode escapes
+    // slashes by default, so a stray </script> in the text can't break the block.
+    $avail_url = ($avail === 'oos') ? 'https://schema.org/OutOfStock'
+        : ((function_exists('lmeg_product_is_preorder') && lmeg_product_is_preorder($p)) ? 'https://schema.org/PreOrder' : 'https://schema.org/InStock');
+    $imgs = [];
+    foreach (array_merge([$p->cover_url], function_exists('lmeg_product_gallery') ? lmeg_product_gallery($p) : []) as $u) {
+        $u = trim((string) $u);
+        if ($u !== '' && filter_var($u, FILTER_VALIDATE_URL) && !in_array($u, $imgs, true)) $imgs[] = $u;
+    }
+    $ld = [
+        '@context'    => 'https://schema.org',
+        '@type'       => 'Product',
+        'name'        => (string) $p->title,
+        'description' => $desc,
+        'sku'         => 'FLP-' . (int) $p->id,
+        'brand'       => ['@type' => 'Brand', 'name' => $site],
+        'url'         => $url,
+    ];
+    if ($imgs) $ld['image'] = $imgs;
+    $ld['offers'] = [
+        '@type'         => 'Offer',
+        'url'           => $url,
+        'price'         => number_format(max((int) $p->price_cents, (int) $p->min_price_cents) / 100, 2, '.', ''),
+        'priceCurrency' => $cur,
+        'availability'  => $avail_url,
+    ];
+    $m .= '<script type="application/ld+json">' . wp_json_encode($ld) . '</script>' . "\n";
     return $m;
 }
 
