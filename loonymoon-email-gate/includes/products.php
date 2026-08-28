@@ -87,6 +87,34 @@ function lmeg_product_preview_html($p) {
         . '</div>' . $js;
 }
 
+/**
+ * Product video for the product page — a YouTube / Vimeo embed or a direct video
+ * file (.mp4/.webm). Responsive 16:9. Returns '' when no (recognised) video URL.
+ * Only the video id / a validated URL is ever emitted, all through esc_url.
+ */
+function lmeg_product_video_html($p) {
+    $url = trim((string) ($p->video_url ?? ''));
+    if ($url === '') return '';
+    $embed = ''; $file = '';
+    if (preg_match('~(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})~', $url, $m)) {
+        $embed = 'https://www.youtube-nocookie.com/embed/' . $m[1] . '?rel=0';
+    } elseif (preg_match('~vimeo\.com/(?:video/)?(\d{5,})~', $url, $m)) {
+        $embed = 'https://player.vimeo.com/video/' . $m[1];
+    } elseif (preg_match('~\.(mp4|webm|ogg|mov)(?:\?|#|$)~i', $url) && filter_var($url, FILTER_VALIDATE_URL)) {
+        $file = $url;
+    } else {
+        return '';
+    }
+    $wrap = 'width:100%;max-width:720px;margin:14px auto 0;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.1);background:#000;aspect-ratio:16/9;position:relative';
+    if ($file !== '') {
+        $poster = !empty($p->cover_url) ? ' poster="' . esc_url($p->cover_url) . '"' : '';
+        $inner = '<video controls preload="none"' . $poster . ' style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"><source src="' . esc_url($file) . '"></video>';
+    } else {
+        $inner = '<iframe src="' . esc_url($embed) . '" title="' . esc_attr($p->title) . ' video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>';
+    }
+    return '<div class="flp-video" style="' . $wrap . '">' . $inner . '</div>';
+}
+
 /* ============================================================================
  * Quantity price breaks — "buy N+ of this product, save X%". Stored as a JSON
  * array of {min,pct} tiers on the product; applied server-side as an automatic
@@ -1572,6 +1600,7 @@ function lmeg_product_page() {
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
+      <?php echo lmeg_product_video_html($p); ?>
       <?php if (!empty($p->size_chart) && ($sizeg = lmeg_size_chart_html($p->size_chart, true))) : ?>
       <details class="flp-sizeguide" style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden">
         <summary style="cursor:pointer;list-style:none;padding:13px 16px;font-weight:700;font-size:14px;color:#F4F2F7;display:flex;align-items:center;justify-content:space-between"><span style="display:inline-flex;align-items:center;gap:7px"><?php echo lmeg_store_icon('ruler', 15); ?>Size guide</span><span style="color:#8B90A0;font-size:12px;font-weight:600">tap to open</span></summary>
@@ -1732,6 +1761,7 @@ function lmeg_handle_save_product() {
         'slug'            => $slug,
         'description'     => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
+        'video_url'       => esc_url_raw($_POST['video_url'] ?? ''),
         'preview_url'     => esc_url_raw($_POST['preview_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
@@ -2421,7 +2451,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','video_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2434,6 +2464,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Title</label></th><td><input type="text" name="title" class="regular-text" required value="<?php echo esc_attr($p->title); ?>" placeholder="e.g. Neon Hours (single)"></td></tr>
                 <tr><th><label>Description</label></th><td><textarea name="description" class="large-text" rows="3"><?php echo esc_textarea($p->description); ?></textarea></td></tr>
                 <tr><th><label>Audio preview URL</label></th><td><input type="url" name="preview_url" class="regular-text" value="<?php echo esc_attr($p->preview_url ?? ''); ?>" placeholder="https://… 30-second clip (.mp3 / .m4a)"><p class="description">Optional. A public link to a short audio clip — the product card and page get a <strong>▶ Preview player</strong> so fans can hear it before buying (great for singles, EPs and beats). Only one preview plays at a time. Leave blank for no preview.</p></td></tr>
+                <tr><th><label>Video (product page)</label></th><td><input type="url" name="video_url" class="regular-text" value="<?php echo esc_attr($p->video_url ?? ''); ?>" placeholder="YouTube / Vimeo link, or an .mp4 URL"><p class="description">Optional. Paste a <strong>YouTube</strong> or <strong>Vimeo</strong> link (or a direct <code>.mp4</code>/<code>.webm</code> URL) and it embeds as a responsive player on the product page — perfect for a music video, teaser or unboxing. YouTube uses the privacy-friendly no-cookie player. Leave blank for none.</p></td></tr>
                 <tr><th><label>Cover image</label></th><td>
                     <div id="lmeg-cover-prev" style="margin-bottom:9px;<?php echo empty($p->cover_url) ? 'display:none' : ''; ?>"><img src="<?php echo esc_url($p->cover_url); ?>" style="max-width:170px;height:auto;border-radius:10px;border:1px solid #ddd"></div>
                     <input type="hidden" id="lmeg-cover-url" name="cover_url" value="<?php echo esc_attr($p->cover_url); ?>">
