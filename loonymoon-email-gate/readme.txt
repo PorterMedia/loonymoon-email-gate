@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.51.3
+Stable tag: 3.52.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.52.0 =
+* Store (Beta): NEW — limited-time sales with a live countdown. Each product now has an optional "Sale ends" date/time next to its compare-at price. While the sale is running, the storefront shows a "🔥 Sale ends in 2d 04h 11m" countdown that ticks down live to build urgency on drops and flash sales. When the deadline passes, the sale ends automatically — the struck-through price, the −X% badge and the countdown all clear themselves on their own, no need to log in and edit the product (the Price stays as you set it). Leave the field blank for an open-ended sale, exactly like before. Schema: adds sale_ends_at to the products table.
+
 = 3.51.3 =
 * Store (Beta): hardening — the cart and the "saved for later" list read from the browser's local storage. If that value was ever corrupted or tampered into a non-list shape, the reader accepted it and then choked on it, which could stop the cart controls from wiring up on the page. Both readers now verify they got a proper list and fall back to empty otherwise (the same guard the "recently viewed" strip already used), so a bad stored value can never break the cart — it just starts fresh.
 

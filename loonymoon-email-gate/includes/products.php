@@ -16,9 +16,42 @@ function lmeg_product_get($id)      { global $wpdb; return $wpdb->get_row($wpdb-
 function lmeg_product_by_slug($slug){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_products WHERE slug = %s", (string) $slug)); }
 function lmeg_product_is_pwyw($p)   { return (int) $p->min_price_cents > 0; }
 function lmeg_product_url($p)       { return add_query_arg(['lmeg_product' => $p->slug], home_url('/')); }
-/** On sale = a compare-at price above the (real) price, and not pay-what-you-want. */
+/** On sale = a compare-at price above the (real) price, not pay-what-you-want,
+ *  and — when a sale-end date is set — that date hasn't passed yet (the sale
+ *  auto-expires so the "was" price / badge / countdown clear themselves). */
 function lmeg_product_on_sale($p) {
-    return !lmeg_product_is_pwyw($p) && (int) ($p->compare_at_cents ?? 0) > (int) $p->price_cents && (int) $p->price_cents >= 0 && (int) ($p->compare_at_cents ?? 0) > 0;
+    if (lmeg_product_is_pwyw($p)) return false;
+    if ((int) ($p->compare_at_cents ?? 0) <= (int) $p->price_cents) return false;
+    if ((int) $p->price_cents < 0 || (int) ($p->compare_at_cents ?? 0) <= 0) return false;
+    if (!empty($p->sale_ends_at) && strtotime($p->sale_ends_at) <= current_time('timestamp')) return false;
+    return true;
+}
+/** Seconds until a live sale ends (0 when not on a timed sale). Powers the
+ *  storefront countdown badge — passed as a remaining-seconds delta so the
+ *  visitor's clock/timezone never matters. */
+function lmeg_product_sale_seconds_left($p) {
+    if (empty($p->sale_ends_at) || !lmeg_product_on_sale($p)) return 0;
+    return max(0, strtotime($p->sale_ends_at) - current_time('timestamp'));
+}
+/** Live "Sale ends in Xd Xh Ym" countdown badge for a timed sale, or '' when the
+ *  product isn't on a timed sale. Emits the shared ticker script once per page. */
+function lmeg_product_sale_countdown_html($p) {
+    $left = lmeg_product_sale_seconds_left($p);
+    if ($left <= 0) return '';
+    $js = '';
+    if (empty($GLOBALS['lmeg_countdown_js'])) {
+        $GLOBALS['lmeg_countdown_js'] = true;
+        $js = '<script>(function(){function pad(n){return (n<10?"0":"")+n;}'
+            . 'function tick(){var now=Date.now();document.querySelectorAll(".flp-countdown[data-remain]").forEach(function(el){'
+            . 'if(!el.dataset.until){el.dataset.until=String(now+(parseInt(el.dataset.remain,10)||0)*1000);}'
+            . 'var s=Math.max(0,Math.round((parseInt(el.dataset.until,10)-now)/1000));'
+            . 'if(s<=0){var w=el.closest(".flp-countdown-wrap");if(w)w.style.display="none";else el.style.display="none";return;}'
+            . 'var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;'
+            . 'el.textContent=(d>0?d+"d "+pad(h)+"h "+pad(m)+"m":(h>0?h+"h "+pad(m)+"m "+pad(ss)+"s":m+"m "+pad(ss)+"s"));});}'
+            . 'tick();setInterval(tick,1000);})();</script>';
+    }
+    return '<span class="flp-countdown-wrap" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#B91C1C;background:#FEE2E2;padding:2px 10px;border-radius:999px;margin-bottom:9px">'
+        . lmeg_store_icon('flame', 12) . 'Sale ends in <span class="flp-countdown" data-remain="' . (int) $left . '"></span></span>' . $js;
 }
 /** Percent off vs the compare-at price (0 when not on sale). */
 function lmeg_product_sale_pct($p) {
@@ -1206,7 +1239,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         </div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
         <div style="margin-top:auto">
-        <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php endif; ?>
+        <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php echo lmeg_product_sale_countdown_html($p); ?><?php endif; ?>
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('calendar', 12); ?>Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?><?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
@@ -1630,6 +1663,7 @@ function lmeg_handle_save_product() {
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
         'status'          => in_array($_POST['status'] ?? 'active', ['active', 'draft'], true) ? $_POST['status'] : 'active',
         'preorder_at'     => !empty($_POST['preorder_at']) ? (sanitize_text_field($_POST['preorder_at']) . ' 00:00:00') : null,
+        'sale_ends_at'    => (function () { $v = trim(str_replace('T', ' ', sanitize_text_field(wp_unslash($_POST['sale_ends_at'] ?? '')))); $t = $v !== '' ? strtotime($v) : 0; return $t ? date('Y-m-d H:i:s', $t) : null; })(),
         'featured'        => !empty($_POST['featured']) ? 1 : 0,
         'tags'            => lmeg_product_tags_normalize(sanitize_text_field(wp_unslash($_POST['tags'] ?? ''))) ?: null,
     ];
@@ -2298,7 +2332,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2367,6 +2401,7 @@ function lmeg_admin_products() {
                 </td></tr>
                 <tr><th><label>Price</label></th><td><input type="number" name="price" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->price_cents)); ?>"> <input type="text" name="currency" style="width:64px" maxlength="3" value="<?php echo esc_attr($p->currency ?: 'USD'); ?>"></td></tr>
                 <tr><th><label>Compare-at price</label></th><td><input type="number" name="compare_at" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->compare_at_cents ?? 0)); ?>"><p class="description">Optional “was” price. Set it <strong>higher than the price</strong> to put the product on sale — the card shows the original struck through, the sale price, and a <strong>−X%</strong> badge. Fans are charged the Price above. Leave 0 for no sale.</p></td></tr>
+                <tr><th><label>Sale ends (optional)</label></th><td><input type="datetime-local" name="sale_ends_at" value="<?php echo esc_attr(!empty($p->sale_ends_at) ? date('Y-m-d\TH:i', strtotime($p->sale_ends_at)) : ''); ?>"><p class="description">Optional deadline for the sale above. The storefront shows a live <strong>“Sale ends in …” countdown</strong> to build urgency, and when the time passes the sale ends <strong>automatically</strong> — the struck-through price, −X% badge and countdown all clear themselves (the Price stays as set). Leave blank for an open-ended sale.</p></td></tr>
                 <tr><th><label>Pay what you want</label></th><td><label><input type="checkbox" name="pwyw" value="1" <?php checked((int) $p->min_price_cents > 0); ?>> Let fans choose the price</label> &nbsp; minimum <input type="number" name="min_price" step="0.01" min="0" style="width:110px" value="<?php echo esc_attr($money($p->min_price_cents)); ?>"><p class="description">When on, the price above is the suggested amount and fans can pay the minimum or more.</p></td></tr>
                 <tr><th><label>Type</label></th><td>
                     <label><input type="radio" name="type" value="digital" <?php checked($p->type ?? 'digital', 'digital'); ?>> Digital (download / unlock link)</label> &nbsp;&nbsp;
