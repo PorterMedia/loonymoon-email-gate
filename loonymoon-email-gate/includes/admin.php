@@ -2658,6 +2658,7 @@ function lmeg_admin_settings() {
             'store_cart_nudge_pct'    => max(0, min(90, (int) ($_POST['store_cart_nudge_pct'] ?? 0))),
             'store_banner_text'       => sanitize_text_field(wp_unslash($_POST['store_banner_text'] ?? '')),
             'store_banner_link'       => esc_url_raw(wp_unslash($_POST['store_banner_link'] ?? '')),
+            'store_banner_until'      => sanitize_text_field(wp_unslash($_POST['store_banner_until'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
             'store_waitlist_auto'     => !empty($_POST['store_waitlist_auto']) ? 1 : 0,
             'store_tax_rate'          => max(0, min(100, (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_tax_rate'] ?? 0)))),
@@ -3353,6 +3354,8 @@ function lmeg_admin_settings() {
                     <p class="description">Optional message shown in a dismissible bar across your storefront and product pages. Leave blank to hide it.</p>
                     <input type="url" name="store_banner_link" class="regular-text" value="<?php echo esc_attr($s['store_banner_link'] ?? ''); ?>" placeholder="https://… (optional link)" autocomplete="off" style="margin-top:6px" />
                     <p class="description">Optional — makes the banner a clickable link (e.g. to a specific product).</p>
+                    <p style="margin-top:6px">Count down until <input type="datetime-local" name="store_banner_until" value="<?php echo esc_attr($s['store_banner_until'] ?? ''); ?>" /></p>
+                    <p class="description">Optional — adds a live “ends in 2d 4h” countdown to the banner, and the banner disappears on its own once this time passes. Great for a limited drop or a sale. Leave blank for an always-on banner.</p>
                 </td></tr>
                 <tr><th scope="row">Abandoned-cart reminder</th><td>
                     <label><input type="checkbox" name="store_cart_nudge" value="1" <?php checked(!empty($s['store_cart_nudge'])); ?> /> <strong>Automatically email shoppers who don’t finish checkout</strong></label>

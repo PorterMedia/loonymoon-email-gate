@@ -35,23 +35,25 @@ function lmeg_product_sale_seconds_left($p) {
 }
 /** Live "Sale ends in Xd Xh Ym" countdown badge for a timed sale, or '' when the
  *  product isn't on a timed sale. Emits the shared ticker script once per page. */
+/** The shared live-countdown ticker JS — renders every .flp-countdown[data-remain]
+ * as "Xd Yh Zm" and hides its .flp-countdown-wrap when it reaches zero. Emitted once. */
+function lmeg_countdown_ticker_js() {
+    if (!empty($GLOBALS['lmeg_countdown_js'])) return '';
+    $GLOBALS['lmeg_countdown_js'] = true;
+    return '<script>(function(){function pad(n){return (n<10?"0":"")+n;}'
+        . 'function tick(){var now=Date.now();document.querySelectorAll(".flp-countdown[data-remain]").forEach(function(el){'
+        . 'if(!el.dataset.until){el.dataset.until=String(now+(parseInt(el.dataset.remain,10)||0)*1000);}'
+        . 'var s=Math.max(0,Math.round((parseInt(el.dataset.until,10)-now)/1000));'
+        . 'if(s<=0){var w=el.closest(".flp-countdown-wrap");if(w)w.style.display="none";else el.style.display="none";return;}'
+        . 'var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;'
+        . 'el.textContent=(d>0?d+"d "+pad(h)+"h "+pad(m)+"m":(h>0?h+"h "+pad(m)+"m "+pad(ss)+"s":m+"m "+pad(ss)+"s"));});}'
+        . 'tick();setInterval(tick,1000);})();</script>';
+}
 function lmeg_product_sale_countdown_html($p) {
     $left = lmeg_product_sale_seconds_left($p);
     if ($left <= 0) return '';
-    $js = '';
-    if (empty($GLOBALS['lmeg_countdown_js'])) {
-        $GLOBALS['lmeg_countdown_js'] = true;
-        $js = '<script>(function(){function pad(n){return (n<10?"0":"")+n;}'
-            . 'function tick(){var now=Date.now();document.querySelectorAll(".flp-countdown[data-remain]").forEach(function(el){'
-            . 'if(!el.dataset.until){el.dataset.until=String(now+(parseInt(el.dataset.remain,10)||0)*1000);}'
-            . 'var s=Math.max(0,Math.round((parseInt(el.dataset.until,10)-now)/1000));'
-            . 'if(s<=0){var w=el.closest(".flp-countdown-wrap");if(w)w.style.display="none";else el.style.display="none";return;}'
-            . 'var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;'
-            . 'el.textContent=(d>0?d+"d "+pad(h)+"h "+pad(m)+"m":(h>0?h+"h "+pad(m)+"m "+pad(ss)+"s":m+"m "+pad(ss)+"s"));});}'
-            . 'tick();setInterval(tick,1000);})();</script>';
-    }
     return '<span class="flp-countdown-wrap" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#B91C1C;background:#FEE2E2;padding:2px 10px;border-radius:999px;margin-bottom:9px">'
-        . lmeg_store_icon('flame', 12) . 'Sale ends in <span class="flp-countdown" data-remain="' . (int) $left . '"></span></span>' . $js;
+        . lmeg_store_icon('flame', 12) . 'Sale ends in <span class="flp-countdown" data-remain="' . (int) $left . '"></span></span>' . lmeg_countdown_ticker_js();
 }
 
 /**
@@ -192,17 +194,29 @@ function lmeg_store_banner_html() {
     $s    = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     $text = trim((string) ($s['store_banner_text'] ?? ''));
     if ($text === '') return '';
+    // Optional countdown: once the "until" moment passes the whole banner is gone;
+    // before that it shows a live "ends in Xd Yh" so a drop/sale reads as time-limited.
+    $until = trim((string) ($s['store_banner_until'] ?? ''));
+    $left  = 0;
+    if ($until !== '' && ($uts = strtotime($until))) {
+        $left = $uts - (function_exists('current_time') ? current_time('timestamp') : time());
+        if ($left <= 0) return '';
+    }
     $GLOBALS['lmeg_banner_shown'] = true;
     $link = trim((string) ($s['store_banner_link'] ?? ''));
-    $key  = substr(md5($text . '|' . $link), 0, 12);
+    $key  = substr(md5($text . '|' . $link . '|' . $until), 0, 12);
+    $cd   = $left > 0
+        ? ' <span class="flp-countdown-wrap" style="display:inline-flex;align-items:center;gap:4px;font-weight:800;background:rgba(0,0,0,.16);color:#0B0C12;padding:1px 9px;border-radius:999px;font-size:12.5px;vertical-align:1px">ends in <span class="flp-countdown" data-remain="' . (int) $left . '"></span></span>'
+        : '';
     $inner = esc_html($text) . ($link ? ' <span style="opacity:.85">→</span>' : '');
     $content = $link
         ? '<a href="' . esc_url($link) . '" style="color:inherit;text-decoration:none;font-weight:700">' . $inner . '</a>'
         : '<span style="font-weight:700">' . $inner . '</span>';
     return '<div class="flp-banner" data-key="' . esc_attr($key) . '" style="position:relative;margin:0 0 18px;padding:12px 44px 12px 18px;border-radius:12px;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;text-align:center;font-size:14px;line-height:1.45;font-family:inherit">'
-        . $content
+        . $content . $cd
         . '<button type="button" class="flp-banner-x" aria-label="Dismiss" style="position:absolute;right:9px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.18);border:0;color:#0B0C12;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:15px;line-height:1">×</button></div>'
-        . '<script>(function(){var b=document.currentScript.previousElementSibling;if(!b||!b.classList||!b.classList.contains("flp-banner"))return;var k=b.getAttribute("data-key");try{if(localStorage.getItem("flp_banner_dismissed")===k){b.style.display="none";return;}}catch(e){}var x=b.querySelector(".flp-banner-x");if(x)x.addEventListener("click",function(){b.style.display="none";try{localStorage.setItem("flp_banner_dismissed",k);}catch(e){}});})();</script>';
+        . '<script>(function(){var b=document.currentScript.previousElementSibling;if(!b||!b.classList||!b.classList.contains("flp-banner"))return;var k=b.getAttribute("data-key");try{if(localStorage.getItem("flp_banner_dismissed")===k){b.style.display="none";return;}}catch(e){}var x=b.querySelector(".flp-banner-x");if(x)x.addEventListener("click",function(){b.style.display="none";try{localStorage.setItem("flp_banner_dismissed",k);}catch(e){}});})();</script>'
+        . ($left > 0 ? lmeg_countdown_ticker_js() : '');
 }
 
 /** Up to $limit other active products (best-sellers first) for a "more from the shop" strip. */
