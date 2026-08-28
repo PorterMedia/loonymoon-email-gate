@@ -2166,7 +2166,7 @@ function lmeg_handle_export_orders() {
 
 /** Canonical CSV column order. */
 function lmeg_products_csv_headers() {
-    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Compare at', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Deliver URL', 'Deliver note'];
+    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Compare at', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Gallery', 'Deliver URL', 'Deliver note'];
 }
 
 /** Rebuild a "S:10, M:5, L" variants string from the stored variants + variant_stock JSON. */
@@ -2205,6 +2205,7 @@ function lmeg_products_csv_rows($rows) {
             (($p->status ?? '') === 'draft') ? 'draft' : 'active',
             (!empty($p->preorder_at) && strtotime($p->preorder_at)) ? date('Y-m-d', strtotime($p->preorder_at)) : '',
             $p->cover_url ?? '',
+            implode(' | ', lmeg_product_gallery($p)),
             $p->deliver_url ?? '',
             $safe($p->deliver_note ?? ''),
         ];
@@ -2266,10 +2267,19 @@ function lmeg_products_import_prepare($row) {
     $status = ($st === 'active') ? 'active' : 'draft';   // default draft on import — safer than auto-publishing
     $pre_ts = ($g('preorder date') !== '') ? strtotime($g('preorder date')) : false;
 
+    // Extra product photos: a "gallery" column of image URLs separated by | or newlines (cap 12).
+    $gal = [];
+    foreach (preg_split('/[|\r\n]+/', $g('gallery')) as $gu) {
+        $gu = trim($gu);
+        if ($gu !== '' && filter_var($gu, FILTER_VALIDATE_URL)) $gal[] = (function_exists('esc_url_raw') ? esc_url_raw($gu) : $gu);
+    }
+    $gal = array_slice($gal, 0, 12);
+
     $data = [
         'title'           => $title,
         'description'     => $g('description'),
         'cover_url'       => function_exists('esc_url_raw') ? esc_url_raw($g('cover url')) : $g('cover url'),
+        'gallery'         => $gal ? wp_json_encode($gal) : null,
         'price_cents'     => $to_cents($g('price')),
         'compare_at_cents' => $to_cents($g('compare at')),
         'min_price_cents' => $to_cents($g('min price')),
