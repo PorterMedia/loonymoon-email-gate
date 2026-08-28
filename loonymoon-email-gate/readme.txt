@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.52.0
+Stable tag: 3.53.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.53.0 =
+* Store (Beta): NEW — audio preview player. Give any product an optional "Audio preview URL" (a public link to a short clip) and the storefront card and product page show a clean ▶ Preview player — a play/pause button and a progress bar — so fans can hear it before they buy. Perfect for singles, EPs and beats. Only one preview plays at a time across the page, and it doesn't download anything until a fan actually presses play. Leave the field blank for no preview. Schema: adds preview_url to the products table.
+
 = 3.52.0 =
 * Store (Beta): NEW — limited-time sales with a live countdown. Each product now has an optional "Sale ends" date/time next to its compare-at price. While the sale is running, the storefront shows a "🔥 Sale ends in 2d 04h 11m" countdown that ticks down live to build urgency on drops and flash sales. When the deadline passes, the sale ends automatically — the struck-through price, the −X% badge and the countdown all clear themselves on their own, no need to log in and edit the product (the Price stays as you set it). Leave the field blank for an open-ended sale, exactly like before. Schema: adds sale_ends_at to the products table.
 

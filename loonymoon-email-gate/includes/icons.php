@@ -56,6 +56,8 @@ function lmeg_store_icon_paths() {
         'key'           => ['<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>', false],
         'mail'          => ['<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>', false],
         'headphones'    => ['<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>', false],
+        'play'          => ['<path d="M8 5v14l11-7z"/>', true],
+        'pause'         => ['<path d="M6 5h3.5v14H6zM14.5 5H18v14h-3.5z"/>', true],
         'clock'         => ['<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', false],
         'disc'          => ['<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>', false],
         'heart'         => ['<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>', false],

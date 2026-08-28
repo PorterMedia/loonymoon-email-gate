@@ -53,6 +53,40 @@ function lmeg_product_sale_countdown_html($p) {
     return '<span class="flp-countdown-wrap" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#B91C1C;background:#FEE2E2;padding:2px 10px;border-radius:999px;margin-bottom:9px">'
         . lmeg_store_icon('flame', 12) . 'Sale ends in <span class="flp-countdown" data-remain="' . (int) $left . '"></span></span>' . $js;
 }
+
+/**
+ * Audio preview player for a product ("hear it before you buy" — for music/audio
+ * drops). Shows a play/pause button + progress bar wired to a preload="none"
+ * <audio>. Only one preview plays at a time across the page. Returns '' when the
+ * product has no preview URL. Emits the shared controller script once per page.
+ */
+function lmeg_product_preview_html($p) {
+    $url = trim((string) ($p->preview_url ?? ''));
+    if ($url === '' || !filter_var($url, FILTER_VALIDATE_URL)) return '';
+    $js = '';
+    if (empty($GLOBALS['lmeg_preview_js'])) {
+        $GLOBALS['lmeg_preview_js'] = true;
+        $play  = wp_json_encode(lmeg_store_icon('play', 15, ['fill' => true, 'style' => 'margin-left:1px']));
+        $pause = wp_json_encode(lmeg_store_icon('pause', 15, ['fill' => true]));
+        $js = '<script>(function(){var PLAY=' . $play . ',PAUSE=' . $pause . ';'
+            . 'function setp(b,on){b.innerHTML=on?PAUSE:PLAY;b.setAttribute("aria-pressed",on?"true":"false");b.setAttribute("aria-label",on?"Pause preview":"Play preview");if(on)b.classList.add("is-playing");else b.classList.remove("is-playing");}'
+            . 'document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest(".flp-preview-btn");if(!b)return;e.preventDefault();var w=b.closest(".flp-preview"),au=w&&w.querySelector(".flp-preview-audio");if(!au)return;'
+            . 'document.querySelectorAll(".flp-preview-audio").forEach(function(a){if(a!==au){a.pause();var ww=a.closest(".flp-preview"),bb=ww&&ww.querySelector(".flp-preview-btn");if(bb)setp(bb,false);}});'
+            . 'if(au.paused){var pr=au.play();if(pr&&pr.catch)pr.catch(function(){});setp(b,true);}else{au.pause();setp(b,false);}});'
+            . 'document.addEventListener("timeupdate",function(e){var au=e.target;if(!au.classList||!au.classList.contains("flp-preview-audio"))return;var w=au.closest(".flp-preview"),f=w&&w.querySelector(".flp-preview-fill");if(f&&au.duration)f.style.width=(au.currentTime/au.duration*100)+"%";},true);'
+            . 'document.addEventListener("ended",function(e){var au=e.target;if(!au.classList||!au.classList.contains("flp-preview-audio"))return;var w=au.closest(".flp-preview"),b=w&&w.querySelector(".flp-preview-btn"),f=w&&w.querySelector(".flp-preview-fill");if(b)setp(b,false);if(f)f.style.width="0%";},true);'
+            . '})();</script>';
+    }
+    return '<div class="flp-preview" style="display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:7px 10px 7px 7px;background:#f6f5f8;border:1px solid rgba(0,0,0,.08);border-radius:999px;max-width:100%">'
+        . '<button type="button" class="flp-preview-btn" aria-label="Play preview" aria-pressed="false" style="flex:0 0 auto;width:34px;height:34px;border-radius:50%;border:0;background:#E15FA8;color:#fff;cursor:pointer;display:grid;place-items:center;padding:0">' . lmeg_store_icon('play', 15, ['fill' => true, 'style' => 'margin-left:1px']) . '</button>'
+        . '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">'
+        . '<span style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#8a8a94;display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('headphones', 12) . 'Preview</span>'
+        . '<div class="flp-preview-bar" style="height:4px;background:rgba(0,0,0,.1);border-radius:999px;overflow:hidden"><div class="flp-preview-fill" style="height:100%;width:0%;background:#E15FA8;border-radius:999px;transition:width .15s linear"></div></div>'
+        . '</div>'
+        . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($url) . '"></audio>'
+        . '</div>' . $js;
+}
+
 /** Percent off vs the compare-at price (0 when not on sale). */
 function lmeg_product_sale_pct($p) {
     if (!lmeg_product_on_sale($p)) return 0;
@@ -1238,6 +1272,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           <?php if (!$solo) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center"><?php echo lmeg_store_icon('link', 15); ?></button><?php endif; ?>
         </div>
         <?php if (!empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>
+        <?php echo lmeg_product_preview_html($p); ?>
         <div style="margin-top:auto">
         <?php if ($on_sale && !$sold_out) : ?><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px"><span style="font-size:19px;font-weight:800;color:#17141f"><?php echo esc_html($price); ?></span><span style="font-size:14px;color:#9A9DB0;text-decoration:line-through"><?php echo esc_html($was); ?></span><span style="font-size:12px;font-weight:800;color:#DC2626;background:#FEE2E2;padding:2px 8px;border-radius:999px">−<?php echo (int) $sale_pct; ?>%</span></div><?php echo lmeg_product_sale_countdown_html($p); ?><?php endif; ?>
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('calendar', 12); ?>Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
@@ -1645,6 +1680,7 @@ function lmeg_handle_save_product() {
         'slug'            => $slug,
         'description'     => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
+        'preview_url'     => esc_url_raw($_POST['preview_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
         'faq'             => sanitize_textarea_field(wp_unslash($_POST['faq'] ?? '')),
@@ -2332,7 +2368,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2344,6 +2380,7 @@ function lmeg_admin_products() {
             <table class="form-table">
                 <tr><th><label>Title</label></th><td><input type="text" name="title" class="regular-text" required value="<?php echo esc_attr($p->title); ?>" placeholder="e.g. Neon Hours (single)"></td></tr>
                 <tr><th><label>Description</label></th><td><textarea name="description" class="large-text" rows="3"><?php echo esc_textarea($p->description); ?></textarea></td></tr>
+                <tr><th><label>Audio preview URL</label></th><td><input type="url" name="preview_url" class="regular-text" value="<?php echo esc_attr($p->preview_url ?? ''); ?>" placeholder="https://… 30-second clip (.mp3 / .m4a)"><p class="description">Optional. A public link to a short audio clip — the product card and page get a <strong>▶ Preview player</strong> so fans can hear it before buying (great for singles, EPs and beats). Only one preview plays at a time. Leave blank for no preview.</p></td></tr>
                 <tr><th><label>Cover image</label></th><td>
                     <div id="lmeg-cover-prev" style="margin-bottom:9px;<?php echo empty($p->cover_url) ? 'display:none' : ''; ?>"><img src="<?php echo esc_url($p->cover_url); ?>" style="max-width:170px;height:auto;border-radius:10px;border:1px solid #ddd"></div>
                     <input type="hidden" id="lmeg-cover-url" name="cover_url" value="<?php echo esc_attr($p->cover_url); ?>">
