@@ -2666,6 +2666,8 @@ function lmeg_admin_settings() {
             'store_ship_us'           => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_us'] ?? 0))) * 100)),
             'store_ship_intl'         => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_intl'] ?? 0))) * 100)),
             'store_ship_free_over'    => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_free_over'] ?? 0))) * 100)),
+            'store_spend_over'        => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_spend_over'] ?? 0))) * 100)),
+            'store_spend_pct'         => max(0, min(90, (int) preg_replace('/[^0-9]/', '', (string) ($_POST['store_spend_pct'] ?? 0)))),
             'store_ship_from'         => sanitize_textarea_field(wp_unslash($_POST['store_ship_from'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
@@ -3354,6 +3356,10 @@ function lmeg_admin_settings() {
                     &nbsp; after <input type="number" name="store_cart_nudge_hours" min="1" max="72" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_hours'] ?? 1); ?>"> hour(s)
                     &nbsp; with <input type="number" name="store_cart_nudge_pct" min="0" max="90" style="width:64px" value="<?php echo (int) ($s['store_cart_nudge_pct'] ?? 0); ?>">% off to sweeten it
                     <p class="description">Sends one branded reminder (with a link that reopens their exact cart) once a saved cart is this old and hasn’t been recovered. Add an optional <strong>% off</strong> and the reminder includes a one-time comeback code that auto-applies when they tap through (0 = no discount). Only fires on live checkout — demo completes instantly. You can also send reminders by hand from the Store’s “Abandoned carts” panel.</p>
+                </td></tr>
+                <tr><th scope="row">Spend &amp; save</th><td>
+                    🛍️ Spend over <input type="number" name="store_spend_over" step="0.01" min="0" style="width:100px" value="<?php echo esc_attr($money($s['store_spend_over'] ?? 0)); ?>"> → save <input type="number" name="store_spend_pct" min="0" max="90" style="width:64px" value="<?php echo (int) ($s['store_spend_pct'] ?? 0); ?>">%
+                    <p class="description">An automatic order discount — when a cart's item subtotal reaches this amount, that percentage comes off at checkout (no code needed), and shoppers see a “Spend $X more to save Y%” nudge as they get close. Great for lifting order value. Set either field to <strong>0</strong> to turn it off. It's an automatic discount, so it won't stack with a manual code or a bundle/quantity deal — checkout applies whichever saves the buyer the most.</p>
                 </td></tr>
                 <tr><th scope="row">Tax / VAT</th><td>
                     <input type="number" name="store_tax_rate" step="0.01" min="0" max="100" style="width:90px" value="<?php echo esc_attr(rtrim(rtrim(number_format((float) ($s['store_tax_rate'] ?? 0), 2, '.', ''), '0'), '.')); ?>"> %

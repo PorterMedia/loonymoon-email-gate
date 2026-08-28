@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.55.0
+Stable tag: 3.56.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.56.0 =
+* Store (Beta): NEW — "Spend & save" automatic order reward. Set a threshold and a percent in Store settings (e.g. spend over $50 → save 10%) and once a cart's item subtotal reaches it, the discount comes off automatically at checkout — no code needed. Shoppers see a live "Spend $X more to save Y%" nudge as they approach it, which is a proven way to lift order value. It's an automatic discount, so it never stacks with a manual code, bundle or quantity deal — checkout applies whichever saves the buyer the most (and, like every discount, it stays within the total). Set either field to 0 to turn it off. No schema change.
+
 = 3.55.0 =
 * Store (Beta): NEW — product video. Paste a YouTube or Vimeo link (or a direct .mp4/.webm URL) into a product and it embeds as a responsive 16:9 player on the product page — perfect for a music video, teaser or unboxing. YouTube uses the privacy-friendly no-cookie player and the frame lazy-loads so it never slows the page. Only the recognised video ID / a validated URL is ever emitted, all escaped. Leave blank for none. Schema: adds video_url to the products table.
 

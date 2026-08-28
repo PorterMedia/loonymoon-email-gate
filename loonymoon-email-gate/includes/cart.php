@@ -188,14 +188,40 @@ function lmeg_cart_qty_discount_match($v) {
     return ['id' => 0, 'title' => 'Quantity discount', 'pct' => 0, 'amount_off' => $off, 'product_ids' => []];
 }
 
-/** The best automatic order discount for a cart — the bigger of a matching
- *  bundle or a quantity-break discount (they don't stack; a manual code, handled
- *  separately, takes priority over both). Null when neither applies. */
+/** The store-wide "spend over $X, save Y%" reward, or null. Fires when the item
+ *  subtotal reaches the configured threshold; the percent (1..90) comes off the
+ *  subtotal, clamped to it. Returns the bundle-compatible shape. */
+function lmeg_cart_spend_discount_match($v) {
+    if (empty($v['lines']) || !empty($v['mixed'])) return null;
+    $s    = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $over = (int) ($s['store_spend_over'] ?? 0);
+    $pct  = max(0, min(90, (int) ($s['store_spend_pct'] ?? 0)));
+    if ($over <= 0 || $pct <= 0 || (int) $v['subtotal'] < $over) return null;
+    $off = max(0, min((int) floor((int) $v['subtotal'] * $pct / 100), (int) $v['subtotal']));
+    if ($off <= 0) return null;
+    return ['id' => 0, 'title' => 'Order discount', 'pct' => $pct, 'amount_off' => $off, 'product_ids' => []];
+}
+
+/** How much more the cart needs to unlock the spend-&-save reward (cents), or 0
+ *  if it's off or already unlocked — powers the "spend $X more to save Y%" nudge. */
+function lmeg_cart_spend_remaining($subtotal) {
+    $s    = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $over = (int) ($s['store_spend_over'] ?? 0);
+    $pct  = max(0, min(90, (int) ($s['store_spend_pct'] ?? 0)));
+    if ($over <= 0 || $pct <= 0) return 0;
+    return max(0, $over - (int) $subtotal);
+}
+
+/** The best automatic order discount for a cart — the biggest of a matching
+ *  bundle, a quantity-break discount, or the spend-&-save reward (they don't
+ *  stack; a manual code, handled separately, takes priority over all). Null
+ *  when none applies. */
 function lmeg_cart_auto_discount($v) {
     $best = null;
     $cands = [
         function_exists('lmeg_cart_bundle_match') ? lmeg_cart_bundle_match($v) : null,
         lmeg_cart_qty_discount_match($v),
+        lmeg_cart_spend_discount_match($v),
     ];
     foreach ($cands as $c) {
         if ($c && (int) $c['amount_off'] > 0 && (!$best || (int) $c['amount_off'] > (int) $best['amount_off'])) $best = $c;
@@ -523,6 +549,13 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         $free_hint = $free_now
             ? '<div style="margin-top:8px;font-size:13px;color:#7DD3A8;text-align:center">' . lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:4px']) . 'You\'ve unlocked free shipping!</div>'
             : '<div style="margin-top:8px;font-size:13px;color:#E7C97D;text-align:center">Add ' . esc_html(lmeg_cart_money($free_over - (int) $v['subtotal'], $cur)) . ' more for free shipping</div>';
+    }
+    // Spend-&-save nudge — shown only when the reward is on but not yet unlocked
+    // (once unlocked, the "Order discount" line in the totals shows the saving).
+    $spend_left = lmeg_cart_spend_remaining((int) $v['subtotal']);
+    if ($spend_left > 0 && !$disc) {
+        $spend_pct = max(0, min(90, (int) (lmeg_get_settings()['store_spend_pct'] ?? 0)));
+        $free_hint .= '<div style="margin-top:8px;font-size:13px;color:#C9B6F6;text-align:center">' . lmeg_store_icon('tag', 13, ['style' => 'margin-right:4px']) . 'Spend ' . esc_html(lmeg_cart_money($spend_left, $cur)) . ' more to save ' . $spend_pct . '%</div>';
     }
     $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
