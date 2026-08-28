@@ -164,6 +164,45 @@ function lmeg_cart_validate($raw) {
             'zone_shipping' => ($zone && $phys)];
 }
 
+/**
+ * Automatic "buy N+ save X%" quantity discount for a validated cart, or null.
+ * Each line whose product defines quantity-break tiers and whose qty meets a tier
+ * gets that tier's percent off its own line total; the sum is the order discount,
+ * clamped to the subtotal (so, like every discount, it can never exceed what's
+ * owed). Returns the bundle-compatible shape so it flows through the same
+ * discount_split / tax / total pipeline. Skipped on a mixed-currency cart.
+ */
+function lmeg_cart_qty_discount_match($v) {
+    if (empty($v['lines']) || !empty($v['mixed'])) return null;
+    $off = 0;
+    foreach ($v['lines'] as $ln) {
+        $tiers = function_exists('lmeg_product_qty_breaks') ? lmeg_product_qty_breaks($ln['p']) : [];
+        if (!$tiers) continue;
+        $qty = (int) $ln['qty']; $best = 0;
+        foreach ($tiers as $t) { if ($qty >= (int) $t['min'] && (int) $t['pct'] > $best) $best = (int) $t['pct']; }
+        if ($best <= 0) continue;
+        $off += (int) floor((int) $ln['unit'] * (int) $ln['qty'] * $best / 100);
+    }
+    $off = max(0, min($off, (int) $v['subtotal']));
+    if ($off <= 0) return null;
+    return ['id' => 0, 'title' => 'Quantity discount', 'pct' => 0, 'amount_off' => $off, 'product_ids' => []];
+}
+
+/** The best automatic order discount for a cart — the bigger of a matching
+ *  bundle or a quantity-break discount (they don't stack; a manual code, handled
+ *  separately, takes priority over both). Null when neither applies. */
+function lmeg_cart_auto_discount($v) {
+    $best = null;
+    $cands = [
+        function_exists('lmeg_cart_bundle_match') ? lmeg_cart_bundle_match($v) : null,
+        lmeg_cart_qty_discount_match($v),
+    ];
+    foreach ($cands as $c) {
+        if ($c && (int) $c['amount_off'] > 0 && (!$best || (int) $c['amount_off'] > (int) $best['amount_off'])) $best = $c;
+    }
+    return $best;
+}
+
 /** Money formatter shared by the store pages. */
 function lmeg_cart_money($cents, $cur) {
     return function_exists('lmeg_format_price') ? lmeg_format_price((int) $cents, $cur) : ('$' . number_format($cents / 100, 2));
@@ -440,11 +479,11 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         if (!empty($res['ok'])) { $disc = $res; $off = (int) $res['amount_off']; }
         else { $code_err = $res['error']; $code = ''; }
     }
-    // Automatic "buy the set" bundle — only when no manual code was applied.
+    // Automatic order discount (bundle or quantity-break) — only when no manual code.
     $bundle = null;
-    if (!$disc && function_exists('lmeg_cart_bundle_match')) {
-        $bm = lmeg_cart_bundle_match($v);
-        if ($bm && (int) $bm['amount_off'] > 0) { $bundle = $bm; $off = (int) $bm['amount_off']; }
+    if (!$disc) {
+        $bundle = lmeg_cart_auto_discount($v);
+        if ($bundle) $off = (int) $bundle['amount_off'];
     }
     // Tax on the discounted item subtotal (shipping not taxed).
     $tax       = lmeg_cart_tax(max(0, (int) $v['subtotal'] - $off));
@@ -488,7 +527,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
         . ($disc && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
-        . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>' . lmeg_store_icon('gift', 12, ['style' => 'margin-right:4px']) . esc_html($bundle['title']) . ' (' . (int) $bundle['pct'] . '% off)</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
+        . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>' . lmeg_store_icon((int) $bundle['pct'] > 0 ? 'gift' : 'tag', 12, ['style' => 'margin-right:4px']) . esc_html($bundle['title']) . ((int) $bundle['pct'] > 0 ? ' (' . (int) $bundle['pct'] . '% off)' : '') . '</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
         . $ship_row
         . ($tax > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>' . esc_html(lmeg_store_tax_label()) . ' (' . esc_html(rtrim(rtrim(number_format(lmeg_store_tax_rate(), 2), '0'), '.')) . '%)</span><span>' . esc_html(lmeg_cart_money($tax, $cur)) . '</span></div>' : '')
         . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
@@ -541,7 +580,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $body = '<div class="dot">' . lmeg_store_icon('bag', 26, ['style' => 'color:#0B0C12']) . '</div><h1 style="margin-bottom:4px">Checkout</h1>'
         . '<p style="margin-bottom:18px;color:#8B90A0">' . count($v['lines']) . ' item' . (count($v['lines']) === 1 ? '' : 's') . ' in your cart' . ($demo ? ' · demo' : '') . '</p>'
         . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . $free_hint . '</div>'
-        . ($bundle ? '<div style="margin-top:14px;display:flex;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px"><span style="color:#8fe3b5;font-size:14px;display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('gift', 13) . '<strong>' . esc_html($bundle['title']) . '</strong> applied — buy the set, save ' . (int) $bundle['pct'] . '%</span></div>' : '')
+        . ($bundle && (int) $bundle['pct'] > 0 ? '<div style="margin-top:14px;display:flex;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px"><span style="color:#8fe3b5;font-size:14px;display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('gift', 13) . '<strong>' . esc_html($bundle['title']) . '</strong> applied — buy the set, save ' . (int) $bundle['pct'] . '%</span></div>' : '')
         . $code_ui
         . '<form method="post" action="' . esc_url(add_query_arg(['lmeg_cart' => 'place'], home_url('/'))) . '" style="margin-top:20px;text-align:left">'
         . $errhtml
@@ -636,9 +675,9 @@ function lmeg_cart_place() {
         if (!empty($res['ok'])) { $disc = ['code' => $res['code'], 'amount_off' => (int) $res['amount_off']]; $off = (int) $res['amount_off']; }
         else lmeg_cart_checkout_page($v, $raw, $res['error']);   // back to review with the reason
     }
-    // Automatic "buy the set" bundle — server-authoritative, only when no code.
-    if (!$disc && function_exists('lmeg_cart_bundle_match')) {
-        $bm = lmeg_cart_bundle_match($v);
+    // Automatic order discount (bundle or quantity-break) — server-authoritative, only when no code.
+    if (!$disc) {
+        $bm = lmeg_cart_auto_discount($v);
         if ($bm && (int) $bm['amount_off'] > 0) {
             $disc = ['code' => $bm['title'], 'amount_off' => (int) $bm['amount_off'], 'bundle' => true];
             $off  = (int) $bm['amount_off'];

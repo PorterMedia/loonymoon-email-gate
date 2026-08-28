@@ -87,6 +87,57 @@ function lmeg_product_preview_html($p) {
         . '</div>' . $js;
 }
 
+/* ============================================================================
+ * Quantity price breaks — "buy N+ of this product, save X%". Stored as a JSON
+ * array of {min,pct} tiers on the product; applied server-side as an automatic
+ * order discount (see lmeg_cart_qty_discount_match) so it composes with tax /
+ * shipping and never lets a line be discounted below zero.
+ * ========================================================================== */
+
+/** A product's cleaned quantity-break tiers, sorted by min asc: [['min','pct'],…].
+ *  min ≥ 2, pct clamped 1..90, deduped by min. Empty when none / pay-what-you-want. */
+function lmeg_product_qty_breaks($p) {
+    if (function_exists('lmeg_product_is_pwyw') && lmeg_product_is_pwyw($p)) return [];
+    $raw = $p->qty_breaks ?? '';
+    $arr = is_array($raw) ? $raw : (($raw && ($d = json_decode((string) $raw, true)) && is_array($d)) ? $d : []);
+    $out = [];
+    foreach ($arr as $t) {
+        $min = (int) ($t['min'] ?? 0); $pct = (int) ($t['pct'] ?? 0);
+        if ($min < 2 || $pct < 1) continue;
+        $out[$min] = ['min' => $min, 'pct' => min(90, $pct)];   // keyed by min → dedupe (last wins)
+    }
+    ksort($out);
+    return array_values($out);
+}
+
+/** Parse the admin shorthand "3:10, 5:20" into the {min,pct} JSON we store. */
+function lmeg_product_qty_breaks_from_text($str) {
+    $out = [];
+    foreach (preg_split('/[,\n]+/', (string) $str) as $pair) {
+        $pair = trim($pair); if ($pair === '') continue;
+        $bits = explode(':', $pair, 2);
+        $min = (int) trim($bits[0]); $pct = (int) trim($bits[1] ?? '');
+        if ($min < 2 || $pct < 1) continue;
+        $out[$min] = ['min' => $min, 'pct' => min(90, $pct)];
+    }
+    ksort($out);
+    return array_values($out);
+}
+
+/** Render the tiers back as "3:10, 5:20" for the admin field. */
+function lmeg_product_qty_breaks_field($p) {
+    return implode(', ', array_map(function ($t) { return $t['min'] . ':' . $t['pct']; }, lmeg_product_qty_breaks($p)));
+}
+
+/** Storefront "buy more, save more" hint for a product card. '' when no tiers. */
+function lmeg_product_qty_breaks_hint_html($p) {
+    $tiers = lmeg_product_qty_breaks($p);
+    if (!$tiers) return '';
+    $parts = array_map(function ($t) { return 'Buy ' . (int) $t['min'] . ' save ' . (int) $t['pct'] . '%'; }, $tiers);
+    return '<div style="font-size:12px;font-weight:700;color:#3f6212;background:#ECFCCB;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;margin-bottom:9px">'
+        . lmeg_store_icon('tag', 12) . esc_html(implode(' · ', $parts)) . '</div>';
+}
+
 /** Percent off vs the compare-at price (0 when not on sale). */
 function lmeg_product_sale_pct($p) {
     if (!lmeg_product_on_sale($p)) return 0;
@@ -1278,6 +1329,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
         <?php if (!$sold_out && $preorder) : ?><div style="font-size:12px;font-weight:700;color:#3730A3;background:#EEF2FF;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('calendar', 12); ?>Pre-order · <?php echo esc_html(($physical ? 'ships ' : 'available ') . $predate); ?></div>
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?><?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
+        <?php if (!$sold_out) echo lmeg_product_qty_breaks_hint_html($p); ?>
         <?php if (!$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
         <div class="flp-qtywrap" style="display:inline-flex;align-items:center;border:1px solid #d9d9e0;border-radius:10px;overflow:hidden;background:#fff;margin-bottom:11px">
           <button type="button" class="flp-qtir" data-d="-1" aria-label="Decrease quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">−</button>
@@ -1694,6 +1746,7 @@ function lmeg_handle_save_product() {
         'weight_g'        => max(0, (int) ($_POST['weight_g'] ?? 0)),
         'variants'        => implode(', ', $v_names),
         'variant_stock'   => $v_stock ? wp_json_encode($v_stock) : null,
+        'qty_breaks'      => (function () { $qb = lmeg_product_qty_breaks_from_text($_POST['qty_breaks'] ?? ''); return $qb ? wp_json_encode($qb) : null; })(),
         'deliver_url'     => esc_url_raw($_POST['deliver_url'] ?? ''),
         'deliver_note'    => sanitize_textarea_field(wp_unslash($_POST['deliver_note'] ?? '')),
         'stock'           => ($_POST['stock'] ?? '') === '' ? -1 : max(0, (int) $_POST['stock']),
@@ -2368,7 +2421,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2451,6 +2504,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping. <em>Ignored when flat rate by zone is on (Settings → Payments).</em></p></td></tr>
                 <tr><th><label>Weight <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="weight_g" min="0" step="1" style="width:120px" value="<?php echo (int) ($p->weight_g ?? 0); ?>"> grams<p class="description">Shipping weight (grams). Shows on packing slips and helps when buying labels. Optional.</p></td></tr>
                 <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr(lmeg_product_variants_field($p)); ?>" placeholder="S, M, L, XL"><p class="description">Comma-separated options the buyer picks (e.g. <code>S, M, L</code>). To <strong>track stock per option</strong>, add a quantity: <code>S:10, M:5, L:20</code> — that count is the remaining stock (it counts down on each sale, and sold-out options are hidden from buyers). Mix freely; leave a number off an option for unlimited. Blank = no variants.</p></td></tr>
+                <tr><th><label>Quantity discounts</label></th><td><input type="text" name="qty_breaks" class="regular-text" value="<?php echo esc_attr(lmeg_product_qty_breaks_field($p)); ?>" placeholder="3:10, 5:20"><p class="description">Optional “buy more, save more” tiers as <code>min:percent</code>, comma-separated — e.g. <code>3:10, 5:20</code> = buy 3+ get 10% off, buy 5+ get 20% off <em>that product's line</em>. The card shows a “Buy 3 save 10%” hint and the discount comes off <strong>automatically at checkout</strong> (min 2, max 90%). It’s server-calculated, applies per product line, and doesn't stack with a manual code (the bigger of the two wins). Blank = no quantity discount. (Not for pay-what-you-want products.)</p></td></tr>
                 <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
                     <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>
                     <input type="file" name="product_file">

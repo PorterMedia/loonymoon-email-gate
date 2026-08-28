@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.53.0
+Stable tag: 3.54.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.54.0 =
+* Store (Beta): NEW — quantity price breaks ("buy more, save more"). Give any product tiered discounts like "3:10, 5:20" (buy 3+ save 10%, buy 5+ save 20%). The storefront card shows a "Buy 3 save 10%" hint, and the discount comes off automatically at checkout — calculated on the server per product line, so it's always accurate and can never discount a line below zero. It's an automatic discount, so it doesn't stack with a manual code (checkout uses whichever saves the buyer more) and it stays within the total like every other discount. Not applied to pay-what-you-want products. Blank = no quantity discount. Schema: adds qty_breaks to the products table.
+
 = 3.53.0 =
 * Store (Beta): NEW — audio preview player. Give any product an optional "Audio preview URL" (a public link to a short clip) and the storefront card and product page show a clean ▶ Preview player — a play/pause button and a progress bar — so fans can hear it before they buy. Perfect for singles, EPs and beats. Only one preview plays at a time across the page, and it doesn't download anything until a fan actually presses play. Leave the field blank for no preview. Schema: adds preview_url to the products table.
 
