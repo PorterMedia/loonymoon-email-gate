@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.59.0
+Stable tag: 3.60.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.60.0 =
+* Store (Beta): Two storefront display fixes on themes with aggressive form/button styles. (1) The quantity stepper inside the cart drawer no longer stretches — the +/− buttons were being blown up by the host theme's generic button padding/margins; they're now pinned to a clean compact stepper. (2) The variant "Choose an option" dropdown on grid cards is now a direct child of its form so its width always comes from the card (a percentage width inside a shrink-wrapping flex box could collapse on some themes, parking the dropdown arrow in the middle of the card). No schema change.
+
 = 3.59.0 =
 * Store (Beta): Storefront UI cleanup + theme-proofing. The [fanloop_store] controls (search box, sort menu), variant pickers and quantity steppers now render correctly on any theme — a scoped style reset re-asserts the shop’s own look so an aggressive host theme can no longer stretch the search/sort to full width, stack the size buttons or inflate the qty box. Variant sizes on grid cards now show as a compact dropdown (cleaner than wrapping pill buttons); the full product page keeps one-tap size swatches. New display controls: cols="N" (fixed 1–6 column grid that steps down on smaller screens), card="minimal" (hides the description, “· ships” label, per-card share button and qty stepper for a tidier grid), tags="off" (hide the tag/category filter chips), and individual desc/share/ships/qty = on|off toggles. Defaults are unchanged, so existing shops look the same until you opt in. No schema change.
 

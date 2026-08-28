@@ -1291,7 +1291,16 @@ function lmeg_store_theme_reset_css() {
       . ".flp-prod .flp-amt{width:96px!important}"
       . ".flp-prod .flp-add{flex:1 1 auto!important;width:auto!important;margin:0!important}"
       . ".flp-prod .flp-buy{flex:0 0 auto!important;width:auto!important;margin:0!important}"
-      . ".flp-prod .flp-share,.flp-prod .flp-save,.flp-prod .flp-quick{margin:0!important}";
+      . ".flp-prod .flp-share,.flp-prod .flp-save,.flp-prod .flp-quick{margin:0!important}"
+      // ---- cart drawer + quick-view: same host-theme button rules break the qty stepper ----
+      . "#flp-cart-root button,#flp-qv button{margin:0!important;box-shadow:none!important;text-transform:none!important;letter-spacing:normal!important;min-width:0!important}"
+      . "#flp-cart-root .flp-qty{display:inline-flex!important;align-items:center!important;width:auto!important;height:auto!important;margin:6px 0 0!important;padding:0!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:8px!important;overflow:hidden!important;background:transparent!important}"
+      . "#flp-cart-root .flp-qty button{width:30px!important;height:30px!important;padding:0!important;border:0!important;border-radius:0!important;background:#1B1E2C!important;color:#D8DAE6!important;font-size:16px!important;line-height:1!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;-webkit-appearance:none!important;appearance:none!important}"
+      . "#flp-cart-root .flp-qty span{min-width:34px!important;text-align:center!important;padding:0 4px!important;margin:0!important;font-size:14px!important;font-weight:600!important;color:#F4F2F7!important}"
+      . "#flp-cart-root .flp-ci .rm,#flp-cart-root .flp-saved-rm{width:auto!important;padding:4px 0!important;background:transparent!important;border:0!important}"
+      . "#flp-cart-root .flp-saved-add{width:auto!important;padding:6px 11px!important}"
+      . "#flp-cart-root #flp-cart-x,#flp-qv #flp-qv-x{width:auto!important;padding:0!important;background:transparent!important;border:0!important}"
+      . "#flp-cart-root .flp-cart-go{width:100%!important;padding:14px!important}";
     return '<style id="flp-theme-reset">' . $sel . '</style>';
 }
 
@@ -1454,30 +1463,30 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         <?php elseif ($needs_form) : ?>
           <form method="get" action="<?php echo esc_url(home_url('/')); ?>" style="display:flex;flex-direction:column;gap:9px">
             <input type="hidden" name="lmeg_buy" value="<?php echo (int) $p->id; ?>">
-            <?php if (!empty($vlist) || $pwyw) : ?>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <?php if (!empty($vlist)) : ?>
-                <?php if ($solo) : /* product page: one-tap size swatches */ ?>
-                <div class="flp-vars" role="group" aria-label="Choose an option" style="display:flex;flex-wrap:wrap;gap:7px">
-                  <?php foreach ($vlist as $v) : $av = $v['available']; $lbl = $v['name'] . ($av && $v['stock'] !== null && $v['stock'] <= 5 ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
-                    <button type="button" class="flp-var" data-v="<?php echo esc_attr($v['name']); ?>" aria-pressed="false"<?php echo $av ? '' : ' disabled'; ?> title="<?php echo $av ? esc_attr($v['name']) : esc_attr($v['name'] . ' — sold out'); ?>"><?php echo esc_html($lbl); ?></button>
-                  <?php endforeach; ?>
-                  <input type="hidden" name="variant" value="" class="flp-var-input">
-                </div>
-                <?php else : /* grid card: a compact dropdown reads cleaner than wrapping pills */ ?>
-                <select name="variant" class="flp-varsel" aria-label="Choose an option" required>
-                  <option value="">Choose an option…</option>
-                  <?php foreach ($vlist as $v) : $av = $v['available'];
-                    $ohint = !$av ? ' — sold out' : (($v['stock'] !== null && $v['stock'] <= 5) ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
-                    <option value="<?php echo esc_attr($v['name']); ?>"<?php echo $av ? '' : ' disabled'; ?>><?php echo esc_html($v['name'] . $ohint); ?></option>
-                  <?php endforeach; ?>
-                </select>
-                <?php endif; ?>
+            <?php if (!empty($vlist)) : ?>
+              <?php if ($solo) : /* product page: one-tap size swatches */ ?>
+              <div class="flp-vars" role="group" aria-label="Choose an option" style="display:flex;flex-wrap:wrap;gap:7px">
+                <?php foreach ($vlist as $v) : $av = $v['available']; $lbl = $v['name'] . ($av && $v['stock'] !== null && $v['stock'] <= 5 ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
+                  <button type="button" class="flp-var" data-v="<?php echo esc_attr($v['name']); ?>" aria-pressed="false"<?php echo $av ? '' : ' disabled'; ?> title="<?php echo $av ? esc_attr($v['name']) : esc_attr($v['name'] . ' — sold out'); ?>"><?php echo esc_html($lbl); ?></button>
+                <?php endforeach; ?>
+                <input type="hidden" name="variant" value="" class="flp-var-input">
+              </div>
+              <?php else : /* grid card: a compact dropdown reads cleaner than wrapping pills.
+                             Rendered as a DIRECT form child (not inside a flex wrapper) so its
+                             width comes from the flex-column form's stretch — a percentage width
+                             inside a shrink-wrapping flex box can collapse to near-zero on some
+                             host themes, which parked the dropdown arrow mid-card. */ ?>
+              <select name="variant" class="flp-varsel" aria-label="Choose an option" required>
+                <option value="">Choose an option…</option>
+                <?php foreach ($vlist as $v) : $av = $v['available'];
+                  $ohint = !$av ? ' — sold out' : (($v['stock'] !== null && $v['stock'] <= 5) ? ' · ' . (int) $v['stock'] . ' left' : ''); ?>
+                  <option value="<?php echo esc_attr($v['name']); ?>"<?php echo $av ? '' : ' disabled'; ?>><?php echo esc_html($v['name'] . $ohint); ?></option>
+                <?php endforeach; ?>
+              </select>
               <?php endif; ?>
-              <?php if ($pwyw) : ?>
-                <input type="number" name="amount" class="flp-amt" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff" aria-label="Name your price">
-              <?php endif; ?>
-            </div>
+            <?php endif; ?>
+            <?php if ($pwyw) : ?>
+              <input type="number" name="amount" class="flp-amt" min="<?php echo esc_attr(number_format($p->min_price_cents / 100, 2, '.', '')); ?>" step="0.01" value="<?php echo esc_attr(number_format(max($p->price_cents, $p->min_price_cents) / 100, 2, '.', '')); ?>" style="width:96px;padding:9px;border:1px solid #ccc;border-radius:8px;color:#17141f;background:#fff" aria-label="Name your price">
             <?php endif; ?>
             <div style="display:flex;gap:8px;align-items:center">
               <button type="button" <?php echo $data; ?> <?php echo $add_pri; ?>><?php echo $pwyw ? 'Add to cart' : esc_html('Add · ' . $price); ?></button>
