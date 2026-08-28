@@ -871,7 +871,7 @@ function lmeg_cart_done($stem = '') {
         . '<div style="text-align:left;background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:4px 16px 12px;margin-bottom:8px">' . $items . '</div>'
         . ($any_dl ? '<p style="font-size:12px;color:#6b6b78;margin:2px 0 0">Lose this page? Get your downloads again anytime at <a href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '" style="color:var(--flp-accent-ink,#B4247E)">find my purchases</a>.</p>' : '')
         . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>'
-        . '<script>try{localStorage.removeItem("fanloop_cart")}catch(e){}</script>';
+        . '<script>try{localStorage.removeItem("fanloop_cart");localStorage.removeItem("fanloop_code");}catch(e){}</script>';
 
     // Post-purchase upsell — best-sellers they didn't just buy.
     $bought = array_map(function ($r) { return (int) $r->product_id; }, $rows);
@@ -957,6 +957,7 @@ function lmeg_cart_assets_html() {
       <div id="flp-saved"></div>
     </div>
     <div class="flp-cart-foot">
+      <div id="flp-cart-code" hidden></div>
       <div id="flp-cart-ship" class="flp-cart-ship" hidden>
         <div class="flp-ship-msg"></div>
         <div class="flp-ship-track"><div class="flp-ship-fill"></div></div>
@@ -1023,6 +1024,9 @@ function lmeg_cart_assets_html() {
   .flp-xi .t span{color:#6b6b78;font-size:12px}
   .flp-xi .flp-xadd{background:var(--flp-accent-tint,#FCE7F1);color:var(--flp-accent-ink,#B4247E);border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
   .flp-cart-foot{padding:16px 20px;border-top:1px solid rgba(0,0,0,.1)}
+  #flp-cart-code{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--flp-accent-tint,#FCE7F1);color:var(--flp-accent-ink,#B4247E);border-radius:9px;padding:8px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
+  #flp-cart-code[hidden]{display:none}
+  #flp-cart-code .flp-code-x{background:0;border:0;color:var(--flp-accent-ink,#B4247E);cursor:pointer;font-size:12px;text-decoration:underline;padding:0;font-weight:600;white-space:nowrap}
   .flp-cart-ship{margin-bottom:14px}
   .flp-cart-ship .flp-ship-msg{font-size:13px;color:#6b6b78;margin-bottom:7px;text-align:center}
   .flp-cart-ship .flp-ship-msg b{color:#17141f}
@@ -1044,7 +1048,16 @@ function lmeg_cart_assets_html() {
 <script>
 (function(){
   var KEY='fanloop_cart', root=document.getElementById('flp-cart-root'); if(!root) return;
-  var CHECKOUT=root.getAttribute('data-checkout'), FREEOVER=+root.getAttribute('data-freeover')||0;
+  var CHECKOUT=root.getAttribute('data-checkout'), FREEOVER=+root.getAttribute('data-freeover')||0, CODEKEY='fanloop_code';
+  // Shareable discount links: capture ?code=SAVE20 off the landing URL, remember it,
+  // and tidy it out of the address bar. It re-applies (server-validated) at checkout.
+  try{ var _cm=(location.search||'').match(/[?&]code=([^&#]+)/i);
+    if(_cm){ var _cd=decodeURIComponent(_cm[1]).toUpperCase().replace(/[^A-Z0-9_-]/g,'').slice(0,40);
+      if(_cd){ localStorage.setItem(CODEKEY,_cd); }
+      if(history.replaceState){ var _u=location.href.replace(/([?&])code=[^&#]*(&|$)/i,'$1').replace(/[?&]$/,''); history.replaceState(null,'',_u); } }
+  }catch(e){}
+  function readCode(){ try{ return (localStorage.getItem(CODEKEY)||'').toUpperCase(); }catch(e){ return ''; } }
+  function clearCode(){ try{ localStorage.removeItem(CODEKEY); }catch(e){} renderCode(); }
   var btn=document.getElementById('flp-cart-btn'), cnt=document.getElementById('flp-cart-count'),
       back=document.getElementById('flp-cart-back'), panel=document.getElementById('flp-cart-panel'),
       itemsEl=document.getElementById('flp-cart-items'), totalEl=document.getElementById('flp-cart-total'),
@@ -1081,6 +1094,7 @@ function lmeg_cart_assets_html() {
     var c=read(), n=count(c);
     cnt.textContent=n;
     renderXsell(c);
+    renderCode();
     btn.hidden = (n===0 && !document.querySelector('.flp-add') && savedRead().length===0);   // hide when empty & no products/saved
     if(!c.length){ itemsEl.innerHTML=''; emptyEl.style.display='block'; goBtn.style.display='none'; totalEl.textContent='—'; if(shipEl) shipEl.hidden=true; return; }
     emptyEl.style.display='none'; goBtn.style.display='block';
@@ -1151,6 +1165,14 @@ function lmeg_cart_assets_html() {
     for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(item)){ c[k].qty=(+c[k].qty||1)+1; found=true; break; } }
     if(!found) c.push(item);
     write(c); toast('Added to cart');
+  }
+  // Show the captured discount code so the shopper knows it'll apply (and can drop it).
+  function renderCode(){
+    var box=document.getElementById('flp-cart-code'); if(!box) return;
+    var code=readCode(), c=read();
+    if(!code || !c.length){ box.hidden=true; box.innerHTML=''; return; }
+    box.hidden=false;
+    box.innerHTML='<span>&#127915; Code <b>'+esc(code)+'</b> &mdash; applied at checkout</span><button type="button" class="flp-code-x">Remove</button>';
   }
   function renderSaved(){
     var wrap=document.getElementById('flp-saved-wrap'); if(!wrap) return;
@@ -1237,6 +1259,7 @@ function lmeg_cart_assets_html() {
     var sv=e.target.closest('.flp-save'); if(sv){ e.preventDefault(); e.stopPropagation(); toggleSave(sv); return; }
     var sa=e.target.closest('.flp-saved-add'); if(sa){ e.preventDefault(); savedMoveToCart(+sa.getAttribute('data-id')); return; }
     var xa=e.target.closest('.flp-xadd'); if(xa){ e.preventDefault(); addXsell(xa); return; }
+    var cx=e.target.closest('.flp-code-x'); if(cx){ e.preventDefault(); clearCode(); return; }
     var srm=e.target.closest('.flp-saved-rm'); if(srm){ e.preventDefault(); var rid=+srm.getAttribute('data-id'); savedWrite(savedRead().filter(function(s){return +s.id!==rid;})); return; }
     if(e.target===qvBack||(e.target.closest&&e.target.closest('#flp-qv-x'))){ qvClose(); return; }
     var sh=e.target.closest('.flp-share'); if(sh){ e.preventDefault(); handleShare(sh); return; }
@@ -1260,7 +1283,9 @@ function lmeg_cart_assets_html() {
       var f=document.createElement('form'); f.method='POST'; f.action=CHECKOUT;
       var inp=document.createElement('input'); inp.type='hidden'; inp.name='cart';
       inp.value=JSON.stringify(c.map(function(i){return {id:i.id,variant:i.variant,qty:i.qty,amount:(i.unit/100)};}));
-      f.appendChild(inp); document.body.appendChild(f); f.submit();
+      f.appendChild(inp);
+      var _co=readCode(); if(_co){ var ci=document.createElement('input'); ci.type='hidden'; ci.name='code'; ci.value=_co; f.appendChild(ci); }
+      document.body.appendChild(f); f.submit();
     }
   });
   document.addEventListener('submit', function(e){ var vi=e.target.querySelector&&e.target.querySelector('.flp-var-input'); if(vi && !vi.value){ e.preventDefault(); toast('Choose an option first'); var g=e.target.querySelector('.flp-vars'); if(g&&g.scrollIntoView) g.scrollIntoView({block:'nearest'}); } });
