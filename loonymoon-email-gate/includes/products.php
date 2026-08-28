@@ -1204,8 +1204,14 @@ function lmeg_shortcode_store($atts) {
         $grid_cols = 'repeat(auto-fill,minmax(' . $min . 'px,1fr))';
     }
 
+    // "Clear filters" — shown by JS whenever a search / tag / stock / sale filter is
+    // active, so a remembered filter is always visible and one tap to reset (a fan can
+    // otherwise wonder why the shop looks half-empty on a return visit).
+    $clear_btn = ($show_ctrls || $has_tags || $has_soldout || $has_sale)
+        ? '<button type="button" class="flp-clear" hidden style="margin:2px 0 15px;background:#fff;border:1px solid rgba(0,0,0,.18);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;color:#6b6b78;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.1;transition:border-color .12s,color .12s">' . lmeg_store_icon('x', 12) . 'Clear filters</button>'
+        : '';
     $out = lmeg_store_theme_reset_css() . $hover_css . $chip_css . $col_css . lmeg_store_banner_html()
-        . '<div class="flp-store-wrap" id="' . $uid . '">' . $hero_block . $controls . $chips
+        . '<div class="flp-store-wrap" id="' . $uid . '">' . $hero_block . $controls . $chips . $clear_btn
         . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:' . $grid_cols . ';gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p, true, false, $card_opts);
@@ -1217,6 +1223,7 @@ function lmeg_shortcode_store($atts) {
             . 'var cards=[].slice.call(grid.querySelectorAll(".flp-prod")),orig=cards.slice();'
             . 'var tagBtns=[].slice.call(root.querySelectorAll(".flp-tag")),stockBtn=root.querySelector(".flp-instock"),saleBtn=root.querySelector(".flp-onsale");'
             . 'var countEl=root.querySelector(".flp-count"),total=cards.length;'
+            . 'var clearBtn=root.querySelector(".flp-clear");'
             . 'var moreBtn=root.querySelector(".flp-more"),PER=' . (int) $per . ',shown=PER;'
             . 'function num(c,a){return parseInt(c.getAttribute(a),10)||0;}'
             . 'function activeTag(){var a=root.querySelector(".flp-tag.is-active");return a?(a.getAttribute("data-tag")||""):"";}'
@@ -1239,7 +1246,8 @@ function lmeg_shortcode_store($atts) {
             . 'cards.forEach(function(c){c.style.display="none";});revealed.forEach(function(c){c.style.display="";grid.appendChild(c);});'
             . 'if(none)none.style.display=arr.length?"none":"";'
             . 'if(moreBtn)moreBtn.style.display=(PER>0&&arr.length>revealed.length)?"":"none";'
-            . 'if(countEl)countEl.textContent=(arr.length===total)?(total+" item"+(total===1?"":"s")):(arr.length+" of "+total);save();}'
+            . 'if(countEl)countEl.textContent=(arr.length===total)?(total+" item"+(total===1?"":"s")):(arr.length+" of "+total);'
+            . 'if(clearBtn)clearBtn.hidden=!(t||tg||so||sl);save();}'
             . 'function refilter(){shown=PER;apply();}'
             . 'var SKEY="fanloop_store_filters";'
             . 'function save(){try{localStorage.setItem(SKEY,JSON.stringify({q:q?q.value:"",sort:sort?sort.value:"",tag:activeTag(),stock:inStock(),sale:onSale()}));}catch(e){}}'
@@ -1253,6 +1261,7 @@ function lmeg_shortcode_store($atts) {
             . 'tagBtns.forEach(function(b){b.addEventListener("click",function(){tagBtns.forEach(function(x){x.classList.remove("is-active");});b.classList.add("is-active");refilter();});});'
             . 'if(stockBtn)stockBtn.addEventListener("click",function(){stockBtn.classList.toggle("is-active");stockBtn.setAttribute("aria-pressed",stockBtn.classList.contains("is-active")?"true":"false");refilter();});'
             . 'if(saleBtn)saleBtn.addEventListener("click",function(){saleBtn.classList.toggle("is-active");saleBtn.setAttribute("aria-pressed",saleBtn.classList.contains("is-active")?"true":"false");refilter();});'
+            . 'if(clearBtn)clearBtn.addEventListener("click",function(){if(q)q.value="";tagBtns.forEach(function(x){x.classList.remove("is-active");});if(tagBtns[0])tagBtns[0].classList.add("is-active");if(stockBtn){stockBtn.classList.remove("is-active");stockBtn.setAttribute("aria-pressed","false");}if(saleBtn){saleBtn.classList.remove("is-active");saleBtn.setAttribute("aria-pressed","false");}try{localStorage.removeItem(SKEY);}catch(e){}refilter();});'
             . 'if(q)q.addEventListener("input",refilter);if(sort)sort.addEventListener("change",refilter);'
             . 'if(moreBtn)moreBtn.addEventListener("click",function(){shown+=PER;apply();});'
             . 'if(restore()||PER>0)apply();})();</script>';
@@ -1341,7 +1350,7 @@ function lmeg_store_accent_css() {
         . '.flp-prod .flp-preview-btn{background:var(--flp-accent)!important;color:var(--flp-on-accent)!important}'
         . '.flp-prod .flp-preview-fill{background:var(--flp-accent)!important}'
         // tag chips + spotlight eyebrow
-        . '.flp-store-wrap .flp-tag:hover{border-color:var(--flp-accent)!important;color:var(--flp-accent)!important}'
+        . '.flp-store-wrap .flp-tag:hover,.flp-store-wrap .flp-clear:hover{border-color:var(--flp-accent)!important;color:var(--flp-accent)!important}'
         . '.flp-store-wrap .flp-tag.is-active{background:var(--flp-accent)!important;border-color:var(--flp-accent)!important;color:var(--flp-on-accent)!important}'
         . '.flp-hero .flp-hero-eyebrow{color:var(--flp-accent-2)!important}'
         // floating cart button + drawer (icon inherits currentColor, so --flp-on-grad rescues it on dark accents)
