@@ -126,6 +126,17 @@ function lmeg_cart_validate($raw) {
             $variant = $ok['name'];
         }
 
+        // Clamp qty to what's actually in stock. The client cart is untrusted
+        // (it lives in localStorage and is POSTed wholesale), so the qty stepper's
+        // max is only a UI hint — without this a crafted cart could order 20 of a
+        // 1-in-stock item and be charged for units that can't ship. Untracked
+        // stock (product stock < 0, variant stock null) means unlimited.
+        $avail = ($p->stock >= 0) ? max(0, (int) $p->stock - (int) $p->sold) : null;
+        if (!empty($vlist) && isset($ok) && $ok['stock'] !== null) {
+            $avail = ($avail === null) ? (int) $ok['stock'] : min($avail, (int) $ok['stock']);
+        }
+        if ($avail !== null && $qty > $avail) $qty = max(1, $avail);
+
         // Unit price (fixed, or clamped pay-what-you-want).
         $unit = (int) $p->price_cents;
         if (lmeg_product_is_pwyw($p)) {

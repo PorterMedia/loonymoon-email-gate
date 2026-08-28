@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.51.1
+Stable tag: 3.51.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.51.2 =
+* Store (Beta): fix — the cart's quantity picker stops you at what's in stock, but the cart itself lives in the browser, so a determined shopper could hand-edit it to order more than exists (e.g. 20 of a 1-left item) and get charged for copies that could never ship. Checkout now re-checks every line against real stock — per product and per size — and quietly trims the quantity to what's actually available before charging. Unlimited (untracked) items are unaffected.
+
 = 3.51.1 =
 * Store (Beta): fix — a discount code's savings are split across your cart's lines, and on carts where the last line was small (e.g. a cheap sticker added after a shirt) the rounding remainder could hand that line more discount than it was worth. Checkout clamps a line's price at zero, so those extra few cents of discount were dropped and the shopper was charged slightly more than the total shown. The split now caps each line at its own value and spreads any leftover cents onto lines that still have room, so what's charged always equals the displayed total, to the cent.
 
