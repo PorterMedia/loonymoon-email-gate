@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.62.0
+Stable tag: 3.63.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.63.0 =
+* Store (Beta): The cart drawer and the checkout / thank-you pages are now light (white) instead of dark, so they sit better with light artist sites. Your accent colour still drives the buttons and gradients, and text/inputs are tuned for readability on white. Purely visual — no change to checkout logic. No schema change.
+
 = 3.62.0 =
 * Store (Beta): Product CSV import/export now supports multiple photos. A new "Gallery" column carries a product's extra images (URLs separated by | ), so a full photo set imports at once and round-trips on export. Previously only the cover photo came across via CSV. Up to 12 gallery images per product; re-importing updates existing products by slug. No schema change.
 

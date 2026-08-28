@@ -468,7 +468,7 @@ function lmeg_cart_savings_badge($off, $cur) {
     if ($off <= 0) return '';
     return '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;'
         . 'background:rgba(125,211,168,.14);border:1px solid rgba(125,211,168,.4);border-radius:11px;'
-        . 'padding:11px 14px;color:#7DD3A8;font-weight:800;font-size:15px">' . lmeg_store_icon('check-circle', 16) . ' You\'re saving '
+        . 'padding:11px 14px;color:#0f766e;font-weight:800;font-size:15px">' . lmeg_store_icon('check-circle', 16) . ' You\'re saving '
         . esc_html(lmeg_cart_money($off, $cur)) . ' on this order</div>';
 }
 
@@ -478,7 +478,7 @@ function lmeg_cart_savings_badge($off, $cur) {
  */
 function lmeg_cart_dispatch_note($has_physical) {
     if (!$has_physical) return '';
-    return '<div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#9AA0B4">'
+    return '<div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#6b6b78">'
         . lmeg_store_icon('truck', 15) . ' Packed with care — you\'ll get a tracking email as soon as it ships.</div>';
 }
 
@@ -523,17 +523,17 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $rows = '';
     foreach ($v['lines'] as $line) {
         $p    = $line['p'];
-        $name = esc_html($p->title) . ($line['variant'] ? ' <span style="color:#9AA">· ' . esc_html($line['variant']) . '</span>' : '');
+        $name = esc_html($p->title) . ($line['variant'] ? ' <span style="color:#6b6b78">· ' . esc_html($line['variant']) . '</span>' : '');
         $lt   = lmeg_cart_money($line['unit'] * $line['qty'], $line['cur']);
         $thumb = !empty($p->cover_url)
             ? '<img src="' . esc_url($p->cover_url) . '" alt="" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:0 0 auto">'
-            : '<div style="width:46px;height:46px;border-radius:8px;background:#222536;flex:0 0 auto"></div>';
-        $rows .= '<div style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
+            : '<div style="width:46px;height:46px;border-radius:8px;background:#eef0f4;flex:0 0 auto"></div>';
+        $rows .= '<div style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(0,0,0,.08)">'
               . $thumb
               . '<div style="flex:1;text-align:left;min-width:0"><div style="font-weight:650">' . $name . '</div>'
-              . '<div style="color:#8B90A0;font-size:13px">' . (int) $line['qty'] . ' × ' . esc_html(lmeg_cart_money($line['unit'], $line['cur']))
+              . '<div style="color:#6b6b78;font-size:13px">' . (int) $line['qty'] . ' × ' . esc_html(lmeg_cart_money($line['unit'], $line['cur']))
               . ($line['lship'] ? ' · +' . esc_html(lmeg_cart_money($line['lship'], $line['cur'])) . ' ship' : '') . '</div>'
-              . (!empty($line['pers']) ? '<div style="color:#E7A6CF;font-size:13px;margin-top:2px">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-1px']) . esc_html($line['pers']) . '</div>' : '') . '</div>'
+              . (!empty($line['pers']) ? '<div style="color:var(--flp-accent-ink,#B4247E);font-size:13px;margin-top:2px">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-1px']) . esc_html($line['pers']) . '</div>' : '') . '</div>'
               . '<div style="font-weight:700;white-space:nowrap">' . esc_html($lt) . '</div></div>';
     }
 
@@ -542,7 +542,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $free_now  = ($free_over > 0 && (int) $v['subtotal'] >= $free_over);
     $ship_row  = '';
     if ($zone_ship) {
-        $ship_now = $free_now ? '<span id="flp-ship" style="color:#7DD3A8">Free</span>' : '<span id="flp-ship">select country ↓</span>';
+        $ship_now = $free_now ? '<span id="flp-ship" style="color:#0f766e">Free</span>' : '<span id="flp-ship">select country ↓</span>';
         $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span>' . $ship_now . '</div>';
     } elseif ($v['shipping']) {
         $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span>' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>';
@@ -551,7 +551,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $free_hint = '';
     if ($free_over > 0 && $zone_ship) {
         $free_hint = $free_now
-            ? '<div style="margin-top:8px;font-size:13px;color:#7DD3A8;text-align:center">' . lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:4px']) . 'You\'ve unlocked free shipping!</div>'
+            ? '<div style="margin-top:8px;font-size:13px;color:#0f766e;text-align:center">' . lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:4px']) . 'You\'ve unlocked free shipping!</div>'
             : '<div style="margin-top:8px;font-size:13px;color:#E7C97D;text-align:center">Add ' . esc_html(lmeg_cart_money($free_over - (int) $v['subtotal'], $cur)) . ' more for free shipping</div>';
     }
     // Spend-&-save nudge — shown only when the reward is on but not yet unlocked
@@ -559,27 +559,27 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     $spend_left = lmeg_cart_spend_remaining((int) $v['subtotal']);
     if ($spend_left > 0 && !$disc) {
         $spend_pct = max(0, min(90, (int) (lmeg_get_settings()['store_spend_pct'] ?? 0)));
-        $free_hint .= '<div style="margin-top:8px;font-size:13px;color:#C9B6F6;text-align:center">' . lmeg_store_icon('tag', 13, ['style' => 'margin-right:4px']) . 'Spend ' . esc_html(lmeg_cart_money($spend_left, $cur)) . ' more to save ' . $spend_pct . '%</div>';
+        $free_hint .= '<div style="margin-top:8px;font-size:13px;color:var(--flp-accent-ink,#7c3aed);text-align:center">' . lmeg_store_icon('tag', 13, ['style' => 'margin-right:4px']) . 'Spend ' . esc_html(lmeg_cart_money($spend_left, $cur)) . ' more to save ' . $spend_pct . '%</div>';
     }
-    $totals = '<div style="margin-top:14px;font-size:14px;color:#B9BCC9">'
+    $totals = '<div style="margin-top:14px;font-size:14px;color:#6b6b78">'
         . '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>' . esc_html(lmeg_cart_money($v['subtotal'], $cur)) . '</span></div>'
-        . ($disc && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
-        . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#7DD3A8"><span>' . lmeg_store_icon((int) $bundle['pct'] > 0 ? 'gift' : 'tag', 12, ['style' => 'margin-right:4px']) . esc_html($bundle['title']) . ((int) $bundle['pct'] > 0 ? ' (' . (int) $bundle['pct'] . '% off)' : '') . '</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
+        . ($disc && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#0f766e"><span>Discount (' . esc_html($disc['code']) . ')</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
+        . ($bundle && $off > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0;color:#0f766e"><span>' . lmeg_store_icon((int) $bundle['pct'] > 0 ? 'gift' : 'tag', 12, ['style' => 'margin-right:4px']) . esc_html($bundle['title']) . ((int) $bundle['pct'] > 0 ? ' (' . (int) $bundle['pct'] . '% off)' : '') . '</span><span>−' . esc_html(lmeg_cart_money($off, $cur)) . '</span></div>' : '')
         . $ship_row
         . ($tax > 0 ? '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>' . esc_html(lmeg_store_tax_label()) . ' (' . esc_html(rtrim(rtrim(number_format(lmeg_store_tax_rate(), 2), '0'), '.')) . '%)</span><span>' . esc_html(lmeg_cart_money($tax, $cur)) . '</span></div>' : '')
-        . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(255,255,255,.12);font-size:18px;font-weight:800;color:#fff"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
+        . '<div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid rgba(0,0,0,.12);font-size:18px;font-weight:800;color:#17141f"><span>Total</span><span id="flp-grand">' . esc_html(lmeg_cart_money($grand, $cur)) . '</span></div></div>';
 
     // Discount-code apply / remove UI.
     if ($disc) {
         $code_ui = '<div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px">'
-            . '<span style="color:#8fe3b5;font-size:14px">Code <strong>' . esc_html($disc['code']) . '</strong> applied — ' . esc_html(lmeg_discount_desc($disc['discount'], $cur)) . '</span>'
-            . '<form method="post" action="' . $checkout_action . '" style="margin:0"><input type="hidden" name="cart" value="' . esc_attr($rjson) . '"><button type="submit" style="background:0;border:0;color:#9aa0b4;cursor:pointer;font-size:13px;text-decoration:underline">remove</button></form></div>';
+            . '<span style="color:#0f766e;font-size:14px">Code <strong>' . esc_html($disc['code']) . '</strong> applied — ' . esc_html(lmeg_discount_desc($disc['discount'], $cur)) . '</span>'
+            . '<form method="post" action="' . $checkout_action . '" style="margin:0"><input type="hidden" name="cart" value="' . esc_attr($rjson) . '"><button type="submit" style="background:0;border:0;color:#6b6b78;cursor:pointer;font-size:13px;text-decoration:underline">remove</button></form></div>';
     } else {
         $code_ui = '<form method="post" action="' . $checkout_action . '" style="margin-top:14px;display:flex;gap:8px">'
             . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
-            . '<input type="text" name="code" placeholder="Discount code" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px;text-transform:uppercase">'
-            . '<button type="submit" style="background:#20222E;color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:0 18px;font-weight:700;cursor:pointer">Apply</button></form>'
-            . ($code_err ? '<div style="color:#FCA5A5;font-size:13px;margin-top:6px;text-align:left">' . esc_html($code_err) . '</div>' : '');
+            . '<input type="text" name="code" placeholder="Discount code" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px;text-transform:uppercase">'
+            . '<button type="submit" style="background:#f4f4f6;color:#17141f;border:1px solid #d9d9e0;border-radius:10px;padding:0 18px;font-weight:700;cursor:pointer">Apply</button></form>'
+            . ($code_err ? '<div style="color:#DC2626;font-size:13px;margin-top:6px;text-align:left">' . esc_html($code_err) . '</div>' : '');
     }
 
     // Shipping fields for physical carts.
@@ -596,35 +596,35 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
             . lmeg_cart_input('ship_postal', 'Postal code', true) . $country_field . '</div></div>';
     }
 
-    $errhtml = $err ? '<div style="background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#FCA5A5;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px">' . esc_html($err) . '</div>' : '';
+    $errhtml = $err ? '<div style="background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#DC2626;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px">' . esc_html($err) . '</div>' : '';
     if ($v['mixed'] && !$demo) {
-        $errhtml .= '<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px">Your cart mixes currencies — please check items out separately.</div>';
+        $errhtml .= '<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#b45309;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px">Your cart mixes currencies — please check items out separately.</div>';
     }
 
     // Optional order / gift note.
     $note_ph = $v['has_physical'] ? 'Add a gift message or note for this order (optional)' : 'Add a note with your order (optional)';
-    $notefield = '<label style="display:block;font-size:13px;color:#B9BCC9;margin:14px 0 5px">'
-        . ($v['has_physical'] ? lmeg_store_icon('gift', 13, ['style' => 'margin-right:5px']) . 'Gift message or note' : lmeg_store_icon('edit', 13, ['style' => 'margin-right:5px']) . 'Note') . ' <span style="color:#8B90A0;font-weight:400">— optional</span></label>'
+    $notefield = '<label style="display:block;font-size:13px;color:#6b6b78;margin:14px 0 5px">'
+        . ($v['has_physical'] ? lmeg_store_icon('gift', 13, ['style' => 'margin-right:5px']) . 'Gift message or note' : lmeg_store_icon('edit', 13, ['style' => 'margin-right:5px']) . 'Note') . ' <span style="color:#6b6b78;font-weight:400">— optional</span></label>'
         . '<textarea name="order_note" maxlength="500" rows="2" placeholder="' . esc_attr($note_ph) . '" '
-        . 'style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px;resize:vertical;font-family:inherit">'
+        . 'style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px;resize:vertical;font-family:inherit">'
         . esc_textarea(isset($_POST['order_note']) ? sanitize_textarea_field(wp_unslash($_POST['order_note'])) : '') . '</textarea>';
 
     $cta   = $demo ? 'Place demo order — no payment' : 'Continue to payment →';
     $note  = $demo
-        ? '<div style="margin-top:12px;font-size:12px;color:#F5A9D0;background:rgba(225,95,168,.12);border-radius:9px;padding:9px 11px">Demo mode — no card is charged. This runs the full order flow so you can see receipts, downloads and the fan being captured.</div>'
-        : '<div style="margin-top:12px;font-size:12px;color:#8B90A0">Secure checkout on Stripe. Your card details never touch this site.</div>';
+        ? '<div style="margin-top:12px;font-size:12px;color:var(--flp-accent-ink,#B4247E);background:var(--flp-accent-tint,#FCE7F1);border-radius:9px;padding:9px 11px">Demo mode — no card is charged. This runs the full order flow so you can see receipts, downloads and the fan being captured.</div>'
+        : '<div style="margin-top:12px;font-size:12px;color:#6b6b78">Secure checkout on Stripe. Your card details never touch this site.</div>';
 
-    $body = '<div class="dot">' . lmeg_store_icon('bag', 26, ['style' => 'color:#0B0C12']) . '</div><h1 style="margin-bottom:4px">Checkout</h1>'
-        . '<p style="margin-bottom:18px;color:#8B90A0">' . count($v['lines']) . ' item' . (count($v['lines']) === 1 ? '' : 's') . ' in your cart' . ($demo ? ' · demo' : '') . '</p>'
-        . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . $free_hint . '</div>'
-        . ($bundle && (int) $bundle['pct'] > 0 ? '<div style="margin-top:14px;display:flex;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px"><span style="color:#8fe3b5;font-size:14px;display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('gift', 13) . '<strong>' . esc_html($bundle['title']) . '</strong> applied — buy the set, save ' . (int) $bundle['pct'] . '%</span></div>' : '')
+    $body = '<div class="dot">' . lmeg_store_icon('bag', 26, ['style' => 'color:var(--flp-on-grad,#0B0C12)']) . '</div><h1 style="margin-bottom:4px">Checkout</h1>'
+        . '<p style="margin-bottom:18px;color:#6b6b78">' . count($v['lines']) . ' item' . (count($v['lines']) === 1 ? '' : 's') . ' in your cart' . ($demo ? ' · demo' : '') . '</p>'
+        . '<div style="text-align:left;background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:6px 16px 16px">' . $rows . $totals . $free_hint . '</div>'
+        . ($bundle && (int) $bundle['pct'] > 0 ? '<div style="margin-top:14px;display:flex;align-items:center;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.35);border-radius:10px;padding:10px 13px"><span style="color:#0f766e;font-size:14px;display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('gift', 13) . '<strong>' . esc_html($bundle['title']) . '</strong> applied — buy the set, save ' . (int) $bundle['pct'] . '%</span></div>' : '')
         . $code_ui
         . '<form method="post" action="' . esc_url(add_query_arg(['lmeg_cart' => 'place'], home_url('/'))) . '" style="margin-top:20px;text-align:left">'
         . $errhtml
         . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
         . '<input type="hidden" name="code" value="' . esc_attr($disc ? $disc['code'] : '') . '">'
-        . '<label style="display:block;font-size:13px;color:#B9BCC9;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
-        . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
+        . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
+        . '<input type="email" name="email" required placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
         . $shipfields
         . lmeg_cart_dispatch_note($v['has_physical'])
         . $notefield
@@ -653,7 +653,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
 /** Small labelled input for the shipping block. */
 function lmeg_cart_input($name, $label, $required) {
     return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '"' . ($required ? ' required' : '')
-        . ' style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px">';
+        . ' style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">';
 }
 
 /** Country <select> for zone shipping (values are used to pick the zone fee). */
@@ -664,7 +664,7 @@ function lmeg_cart_country_select() {
         'CH' => 'Switzerland', 'AT' => 'Austria', 'JP' => 'Japan', 'MX' => 'Mexico', 'BR' => 'Brazil', 'ZZ' => 'Other country'];
     $opts = '<option value="" disabled selected>Country…</option>';
     foreach ($countries as $code => $name) $opts .= '<option value="' . esc_attr($code) . '">' . esc_html($name) . '</option>';
-    return '<select name="ship_country" id="flp-country" required style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:14px">' . $opts . '</select>';
+    return '<select name="ship_country" id="flp-country" required style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>';
 }
 
 /* ---------------------------------------------------------------------------
@@ -841,22 +841,22 @@ function lmeg_cart_done($stem = '') {
     $items = ''; $any_dl = false;
     foreach ($rows as $r) {
         $digital = ($r->type !== 'physical');
-        $line = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08)">'
-              . '<div style="text-align:left"><div style="font-weight:650">' . esc_html($r->title) . ($r->variant ? ' · <span style="color:#9AA">' . esc_html($r->variant) . '</span>' : '') . '</div>'
-              . '<div style="color:#8B90A0;font-size:12px">' . esc_html(lmeg_cart_money($r->amount_cents, $r->currency)) . '</div></div>';
+        $line = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid rgba(0,0,0,.08)">'
+              . '<div style="text-align:left"><div style="font-weight:650">' . esc_html($r->title) . ($r->variant ? ' · <span style="color:#6b6b78">' . esc_html($r->variant) . '</span>' : '') . '</div>'
+              . '<div style="color:#6b6b78;font-size:12px">' . esc_html(lmeg_cart_money($r->amount_cents, $r->currency)) . '</div></div>';
         if ($digital && $r->access_token) {
             $any_dl = true;
-            $line .= '<a href="' . esc_url(lmeg_product_access_url($r->access_token)) . '" style="background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:750;text-decoration:none;padding:9px 15px;border-radius:9px;white-space:nowrap;font-size:14px">Download →</a>';
+            $line .= '<a href="' . esc_url(lmeg_product_access_url($r->access_token)) . '" style="background:var(--flp-accent-grad,linear-gradient(118deg,#E15FA8,#8A6CF6));color:var(--flp-on-grad,#0B0C12);font-weight:750;text-decoration:none;padding:9px 15px;border-radius:9px;white-space:nowrap;font-size:14px">Download →</a>';
         } else {
-            $line .= '<span style="color:#7DD3A8;font-size:13px;font-weight:600;white-space:nowrap">Ships to you</span>';
+            $line .= '<span style="color:#0f766e;font-size:13px;font-weight:600;white-space:nowrap">Ships to you</span>';
         }
         $items .= $line . '</div>';
     }
 
     $body = '<div class="dot">✓</div><h1>You\'re in. Thank you!</h1>'
         . '<p>' . ($any_dl ? 'Your downloads are ready below, and a' : 'A') . ' receipt is on its way to your inbox.</p>'
-        . '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:4px 16px 12px;margin-bottom:8px">' . $items . '</div>'
-        . ($any_dl ? '<p style="font-size:12px;color:#8B90A0;margin:2px 0 0">Lose this page? Get your downloads again anytime at <a href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '" style="color:#E7A6CF">find my purchases</a>.</p>' : '')
+        . '<div style="text-align:left;background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:4px 16px 12px;margin-bottom:8px">' . $items . '</div>'
+        . ($any_dl ? '<p style="font-size:12px;color:#6b6b78;margin:2px 0 0">Lose this page? Get your downloads again anytime at <a href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '" style="color:var(--flp-accent-ink,#B4247E)">find my purchases</a>.</p>' : '')
         . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>'
         . '<script>try{localStorage.removeItem("fanloop_cart")}catch(e){}</script>';
 
@@ -877,15 +877,15 @@ function lmeg_store_page($title, $inner, $tab = '') {
     ?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title><?php echo esc_html(($tab ? $tab . ' · ' : '') . $site); ?></title>
     <style>
-      :root{color-scheme:dark}
-      *{box-sizing:border-box;margin:0}body{background:#0B0C12;color:#F4F2F7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
-      .card{width:100%;max-width:520px;text-align:center;background:linear-gradient(160deg,#161826,#12141f);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:38px 30px;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+      :root{color-scheme:light}
+      *{box-sizing:border-box;margin:0}body{background:#f4f5f7;color:#17141f;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
+      .card{width:100%;max-width:520px;text-align:center;background:#ffffff;border:1px solid rgba(0,0,0,.10);border-radius:20px;padding:38px 30px;box-shadow:0 24px 70px rgba(0,0,0,.12)}
       .dot{width:52px;height:52px;border-radius:50%;margin:0 auto 18px;background:var(--flp-accent-grad,linear-gradient(118deg,#E15FA8,#8A6CF6));display:grid;place-items:center;font-size:26px}
       h1{font-size:25px;font-weight:820;letter-spacing:-.02em;margin-bottom:9px}
-      p{color:#B9BCC9;line-height:1.55;margin-bottom:18px}
-      a{color:var(--flp-accent-soft,#E7A6CF)}
-      .home{display:block;margin-top:20px;color:#8B90A0;font-size:13px;text-decoration:none}
-      input::placeholder{color:#5C6070}
+      p{color:#6b6b78;line-height:1.55;margin-bottom:18px}
+      a{color:var(--flp-accent-ink,#B4247E)}
+      .home{display:block;margin-top:20px;color:#8a8a95;font-size:13px;text-decoration:none}
+      input::placeholder{color:#9a9aa5}
     </style><?php echo function_exists('lmeg_store_accent_css') ? lmeg_store_accent_css() : ''; ?></head><body><div class="card"><?php echo $inner; ?></div></body></html><?php
     exit;
 }
@@ -942,7 +942,7 @@ function lmeg_cart_assets_html() {
   #flp-cart-btn[hidden]{display:none}
   #flp-cart-btn #flp-cart-count{background:#0B0C12;color:#fff;min-width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;padding:0 6px}
   #flp-cart-back{position:fixed;inset:0;background:rgba(6,7,12,.62);z-index:99998;backdrop-filter:blur(2px)}
-  #flp-cart-panel{position:fixed;top:0;right:0;height:100%;width:min(390px,92vw);z-index:99999;background:#12141F;color:#F4F2F7;box-shadow:-24px 0 70px rgba(0,0,0,.5);display:flex;flex-direction:column;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;transform:translateX(0)}
+  #flp-cart-panel{position:fixed;top:0;right:0;height:100%;width:min(390px,92vw);z-index:99999;background:#ffffff;color:#17141f;box-shadow:-24px 0 70px rgba(0,0,0,.22);display:flex;flex-direction:column;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;transform:translateX(0)}
   /* The panel/backdrop set display, which overrides the plain [hidden] UA rule —
      re-assert display:none for the hidden state so the drawer is truly closed by
      default and close() works without relying on the host theme's reset. */
@@ -952,18 +952,18 @@ function lmeg_cart_assets_html() {
      (outline-offset) so it stays visible on white cards, dark chrome, and even
      on the pink Add button. :focus-visible = keyboard only (no mouse-click ring). */
   .flp-add:focus-visible,.flp-var:focus-visible,.flp-quick:focus-visible,.flp-save:focus-visible,.flp-qtir:focus-visible,.flp-qty:focus-visible,.flp-share:focus-visible,.flp-tag:focus-visible,.flp-onsale:focus-visible,.flp-instock:focus-visible,.flp-more:focus-visible,.flp-q:focus-visible,.flp-sort:focus-visible,.flp-thumb:focus-visible,.flp-gal-main:focus-visible,.flp-saved-add:focus-visible,.flp-saved-rm:focus-visible,.flp-lb-x:focus-visible,.flp-lb-prev:focus-visible,.flp-lb-next:focus-visible,#flp-cart-btn:focus-visible,#flp-cart-x:focus-visible,#flp-cart-go:focus-visible,#flp-qv-x:focus-visible,#flp-cart-items [data-act]:focus-visible{outline:2px solid #E15FA8!important;outline-offset:2px!important}
-  #flp-cart-panel .flp-cart-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);font-size:17px}
-  #flp-cart-x{background:0;border:0;color:#9AA0B4;font-size:18px;cursor:pointer}
+  #flp-cart-panel .flp-cart-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(0,0,0,.09);font-size:17px}
+  #flp-cart-x{background:0;border:0;color:#6b6b78;font-size:18px;cursor:pointer}
   #flp-cart-items{flex:1;overflow:auto;padding:6px 20px}
-  .flp-ci{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.07)}
-  .flp-ci img,.flp-ci .ph{width:52px;height:52px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:#222536}
+  .flp-ci{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid rgba(0,0,0,.08)}
+  .flp-ci img,.flp-ci .ph{width:52px;height:52px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:#eef0f4}
   .flp-ci .t{flex:1;min-width:0}
   .flp-ci .t b{font-weight:650;font-size:14px;display:block;line-height:1.3}
-  .flp-ci .t span{color:#8B90A0;font-size:12px;display:block;margin:1px 0 2px}
-  .flp-qty{display:inline-flex;align-items:center;gap:0;margin-top:6px;border:1px solid rgba(255,255,255,.16);border-radius:8px;overflow:hidden}
-  .flp-qty button{background:#1B1E2C;color:#D8DAE6;border:0;width:26px;height:26px;cursor:pointer;font-size:15px}
+  .flp-ci .t span{color:#6b6b78;font-size:12px;display:block;margin:1px 0 2px}
+  .flp-qty{display:inline-flex;align-items:center;gap:0;margin-top:6px;border:1px solid rgba(0,0,0,.14);border-radius:8px;overflow:hidden}
+  .flp-qty button{background:#f4f4f6;color:#17141f;border:0;width:26px;height:26px;cursor:pointer;font-size:15px}
   .flp-qty span{min-width:30px;text-align:center;font-size:13px}
-  .flp-ci .rm{background:0;border:0;color:#8B90A0;cursor:pointer;font-size:12px;text-decoration:underline}
+  .flp-ci .rm{background:0;border:0;color:#8a8a95;cursor:pointer;font-size:12px;text-decoration:underline}
   .flp-ci .lt{font-weight:700;white-space:nowrap;font-size:14px}
   .flp-var{background:#fff;color:#17141f;border:1px solid #cfcfd6;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;font-family:inherit}
   .flp-var:hover:not(:disabled){border-color:#E15FA8}
@@ -972,27 +972,27 @@ function lmeg_cart_assets_html() {
   .flp-save.is-saved{color:#E15FA8!important}
   .flp-save.is-saved svg{fill:currentColor}
   .flp-save:hover{color:#E15FA8}
-  #flp-saved-wrap{padding:14px 20px;border-top:1px solid rgba(255,255,255,.1)}
-  .flp-saved-head{display:flex;align-items:center;gap:7px;font-size:14px;color:#F4F2F7;margin-bottom:10px}
-  .flp-saved-head #flp-saved-count{color:#8B90A0;font-weight:400}
+  #flp-saved-wrap{padding:14px 20px;border-top:1px solid rgba(0,0,0,.1)}
+  .flp-saved-head{display:flex;align-items:center;gap:7px;font-size:14px;color:#17141f;margin-bottom:10px}
+  .flp-saved-head #flp-saved-count{color:#6b6b78;font-weight:400}
   .flp-si{display:flex;align-items:center;gap:11px;padding:8px 0}
-  .flp-si img,.flp-si .ph{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.08)}
-  .flp-si .t{flex:1;min-width:0;font-size:13px;color:#F4F2F7}
+  .flp-si img,.flp-si .ph{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:rgba(0,0,0,.06)}
+  .flp-si .t{flex:1;min-width:0;font-size:13px;color:#17141f}
   .flp-si .t b{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .flp-si .t span{color:#8B90A0;font-size:12px}
-  .flp-si .flp-saved-add{background:rgba(225,95,168,.16);color:#E7A6CF;border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
-  .flp-si .flp-saved-rm{background:0;border:0;color:#8B90A0;cursor:pointer;display:inline-flex;padding:4px}
-  .flp-cart-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
+  .flp-si .t span{color:#6b6b78;font-size:12px}
+  .flp-si .flp-saved-add{background:var(--flp-accent-tint,#FCE7F1);color:var(--flp-accent-ink,#B4247E);border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .flp-si .flp-saved-rm{background:0;border:0;color:#8a8a95;cursor:pointer;display:inline-flex;padding:4px}
+  .flp-cart-foot{padding:16px 20px;border-top:1px solid rgba(0,0,0,.1)}
   .flp-cart-ship{margin-bottom:14px}
-  .flp-cart-ship .flp-ship-msg{font-size:13px;color:#B9BCC9;margin-bottom:7px;text-align:center}
-  .flp-cart-ship .flp-ship-msg b{color:#fff}
-  .flp-cart-ship.is-free .flp-ship-msg{color:#7DD3A8;font-weight:700}
-  .flp-cart-ship .flp-ship-track{height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+  .flp-cart-ship .flp-ship-msg{font-size:13px;color:#6b6b78;margin-bottom:7px;text-align:center}
+  .flp-cart-ship .flp-ship-msg b{color:#17141f}
+  .flp-cart-ship.is-free .flp-ship-msg{color:#0f766e;font-weight:700}
+  .flp-cart-ship .flp-ship-track{height:7px;border-radius:999px;background:rgba(0,0,0,.1);overflow:hidden}
   .flp-cart-ship .flp-ship-fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#E15FA8,#8A6CF6);transition:width .3s ease}
   .flp-cart-ship.is-free .flp-ship-fill{background:linear-gradient(90deg,#7DD3A8,#5bbf8c)}
   .flp-cart-tot{display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin-bottom:12px}
   .flp-cart-go{width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:14px;border-radius:11px;font-size:15px;cursor:pointer}
-  .flp-cart-empty{color:#8B90A0;text-align:center;font-size:14px;padding:8px 0}
+  .flp-cart-empty{color:#6b6b78;text-align:center;font-size:14px;padding:8px 0}
   #flp-cart-toast{position:fixed;left:50%;bottom:82px;transform:translateX(-50%);z-index:99999;background:#1B1E2C;color:#fff;border:1px solid rgba(255,255,255,.14);padding:10px 16px;border-radius:999px;font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 30px rgba(0,0,0,.4);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
   #flp-cart-toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
   #flp-qv-back{position:fixed;inset:0;background:rgba(6,7,12,.66);z-index:100000;backdrop-filter:blur(2px)}
@@ -1049,7 +1049,7 @@ function lmeg_cart_assets_html() {
       if(i.type==='physical') hasPhys=true;
       html+='<div class="flp-ci" data-k="'+esc(keyOf(i))+'">'
         + (i.cover?'<img src="'+esc(i.cover)+'" alt="">':'<div class="ph"></div>')
-        + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')+(i.pers?'<span style="color:#E7A6CF">&#9997; '+esc(i.pers)+'</span>':'')
+        + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')+(i.pers?'<span style="color:var(--flp-accent-ink,#B4247E)">&#9997; '+esc(i.pers)+'</span>':'')
         + '<div class="flp-qty"><button type="button" data-act="dec">−</button><span>'+(+i.qty)+'</span><button type="button" data-act="inc">+</button></div> '
         + '<button type="button" class="rm" data-act="rm">remove</button></div>'
         + '<div class="lt">'+money(lt,i.cur)+'</div></div>';
