@@ -46,15 +46,43 @@ function lmeg_discount_validate($code, $subtotal_cents, $currency) {
     return ['ok' => true, 'discount' => $d, 'amount_off' => $off, 'code' => $d->code, 'kind' => $d->kind, 'value' => (int) $d->value];
 }
 
-/** Distribute an order-level discount across lines by item subtotal. */
+/**
+ * Distribute an order-level discount across lines by item subtotal.
+ * Each line's share is capped at that line's own value so the discount can never
+ * exceed a line — the checkout deducts it as max(0, line - share), so an over-cap
+ * share would be clamped away and silently overcharge the customer. Any rounding
+ * remainder is redistributed to lines that still have room; the shares always sum
+ * to $off (given $off <= $items_total) and no share is negative or over its value.
+ */
 function lmeg_discount_split($lines, $off, $items_total) {
-    $out = array_fill(0, count($lines), 0);
-    if ($off <= 0 || $items_total <= 0) return $out;
-    $acc = 0; $last = count($lines) - 1;
+    $n   = count($lines);
+    $out = array_fill(0, $n, 0);
+    if ($off <= 0 || $items_total <= 0 || $n === 0) return $out;
+
+    // First pass: proportional floor, capped at each line's own value and at what's left.
+    $rem = (int) $off;
+    $val = [];
     foreach ($lines as $i => $ln) {
         $si = (int) $ln['unit'] * (int) $ln['qty'];
-        $out[$i] = ($i === $last) ? ($off - $acc) : (int) floor($off * $si / $items_total);
-        $acc += $out[$i];
+        if ($si < 0) $si = 0;
+        $val[$i] = $si;
+        $share = (int) floor($off * $si / $items_total);
+        if ($share > $si)  $share = $si;
+        if ($share > $rem) $share = $rem;
+        $out[$i] = $share;
+        $rem    -= $share;
+    }
+
+    // Redistribute the leftover cents to lines that still have capacity (round-robin).
+    $guard = 0;
+    while ($rem > 0 && $guard < $n * ($rem + 2)) {
+        $moved = false;
+        foreach ($val as $i => $si) {
+            if ($rem <= 0) break;
+            if ($out[$i] < $si) { $out[$i]++; $rem--; $moved = true; }
+        }
+        if (!$moved) break;   // no capacity anywhere (off exceeded total) — leave the rest unassigned
+        $guard++;
     }
     return $out;
 }
