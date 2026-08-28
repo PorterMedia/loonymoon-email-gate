@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.65.0
+Stable tag: 3.66.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.66.0 =
+* Store (Beta): Custom product badges. Add a short badge to any product — e.g. "Limited edition", "Signed", "Tour exclusive", "Last chance" — and it shows as a bold pill in your accent colour on the product card and page. Set it in the product editor (Badge field); it also imports/exports via the product CSV (new Badge column). Adds a small database column on update.
+
 = 3.65.0 =
 * Store (Beta): "Clear filters" in the storefront. The shop remembers a shopper's last search/category/toggle between visits, which could make it look half-empty on a return visit. A "Clear filters" button now appears the moment any filter is active and resets everything in one tap (and the item count already reads "N of M" when filtered), so a stuck filter is always obvious and escapable. No schema change.
 

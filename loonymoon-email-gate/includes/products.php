@@ -1520,6 +1520,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         echo '<div style="position:relative">' . $linked . $quick . $heart_btn('right:8px;top:8px') . '</div>'; ?>
       <?php endif; ?>
       <div style="padding:18px 20px;display:flex;flex-direction:column;flex:1">
+        <?php if (!empty($p->badge)) : ?><div style="align-self:flex-start;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--flp-on-accent,#fff);background:var(--flp-accent,#E15FA8);padding:3px 10px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center"><?php echo esc_html($p->badge); ?></div><?php endif; ?>
         <?php if (!empty($p->featured)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#8a6d00;background:#FEF9C3;padding:2px 9px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?>Featured</div><?php endif; ?>
         <?php if (empty($p->featured) && function_exists('lmeg_product_is_new') && lmeg_product_is_new($p)) : ?><div style="align-self:flex-start;font-size:11px;font-weight:800;color:#0f766e;background:#CCFBF1;padding:2px 9px;border-radius:999px;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px"><?php echo lmeg_store_icon('sparkles', 12); ?>Just added</div><?php endif; ?>
         <?php
@@ -1964,6 +1965,7 @@ function lmeg_handle_save_product() {
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
         'video_url'       => esc_url_raw($_POST['video_url'] ?? ''),
         'personalization' => mb_substr(sanitize_text_field(wp_unslash($_POST['personalization'] ?? '')), 0, 255),
+        'badge'           => (mb_substr(sanitize_text_field(wp_unslash($_POST['badge'] ?? '')), 0, 60) ?: null),
         'preview_url'     => esc_url_raw($_POST['preview_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
@@ -2175,7 +2177,7 @@ function lmeg_handle_export_orders() {
 
 /** Canonical CSV column order. */
 function lmeg_products_csv_headers() {
-    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Compare at', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Gallery', 'Deliver URL', 'Deliver note'];
+    return ['Title', 'Slug', 'Description', 'Type', 'Price', 'Compare at', 'Min price', 'Currency', 'Shipping', 'Weight (g)', 'Stock', 'Variants', 'Tags', 'Badge', 'Featured', 'Status', 'Preorder date', 'Cover URL', 'Gallery', 'Deliver URL', 'Deliver note'];
 }
 
 /** Rebuild a "S:10, M:5, L" variants string from the stored variants + variant_stock JSON. */
@@ -2210,6 +2212,7 @@ function lmeg_products_csv_rows($rows) {
             (((int) ($p->stock ?? -1)) < 0) ? '' : (int) $p->stock,
             $safe(lmeg_products_variants_to_str($p->variants ?? '', $p->variant_stock ?? '')),
             $safe($p->tags ?? ''),
+            $safe($p->badge ?? ''),
             (!empty($p->featured) ? '1' : '0'),
             (($p->status ?? '') === 'draft') ? 'draft' : 'active',
             (!empty($p->preorder_at) && strtotime($p->preorder_at)) ? date('Y-m-d', strtotime($p->preorder_at)) : '',
@@ -2306,6 +2309,7 @@ function lmeg_products_import_prepare($row) {
         'preorder_at'     => $pre_ts ? (date('Y-m-d', $pre_ts) . ' 00:00:00') : null,
         'featured'        => $truthy($g('featured')) ? 1 : 0,
         'tags'            => function_exists('lmeg_product_tags_normalize') ? (lmeg_product_tags_normalize($g('tags')) ?: null) : ($g('tags') ?: null),
+        'badge'           => ($g('badge') !== '') ? mb_substr($g('badge'), 0, 60) : null,
     ];
     return ['ok' => true, 'title' => $title, 'slug_in' => function_exists('sanitize_title') ? sanitize_title($g('slug')) : $g('slug'), 'data' => $data];
 }
@@ -2663,7 +2667,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','video_url'=>'','personalization'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','video_url'=>'','personalization'=>'','badge'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2748,6 +2752,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Weight <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="weight_g" min="0" step="1" style="width:120px" value="<?php echo (int) ($p->weight_g ?? 0); ?>"> grams<p class="description">Shipping weight (grams). Shows on packing slips and helps when buying labels. Optional.</p></td></tr>
                 <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr(lmeg_product_variants_field($p)); ?>" placeholder="S, M, L, XL"><p class="description">Comma-separated options the buyer picks (e.g. <code>S, M, L</code>). To <strong>track stock per option</strong>, add a quantity: <code>S:10, M:5, L:20</code> — that count is the remaining stock (it counts down on each sale, and sold-out options are hidden from buyers). Mix freely; leave a number off an option for unlimited. Blank = no variants.</p></td></tr>
                 <tr><th><label>Personalization</label></th><td><input type="text" name="personalization" class="regular-text" maxlength="255" value="<?php echo esc_attr($p->personalization ?? ''); ?>" placeholder="Who should I sign this to?"><p class="description">Optional. Ask the buyer for a short custom message — e.g. <code>Who should I sign this to?</code> or <code>Engraving (max 200 chars)</code>. A text box appears on the product with this prompt; whatever they type rides with that cart line, shows on the checkout summary, and lands on the order (and packing slip) so you know exactly what to write. Perfect for <strong>signed</strong> or engraved items. Two of the same product with different messages stay as separate lines. Blank = no personalization.</p></td></tr>
+                <tr><th><label>Badge</label></th><td><input type="text" name="badge" class="regular-text" maxlength="60" value="<?php echo esc_attr($p->badge ?? ''); ?>" placeholder="Limited edition"><p class="description">Optional. A short badge shown in your accent colour on the product card and page — e.g. <code>Limited edition</code>, <code>Signed</code>, <code>Tour exclusive</code>, <code>Last chance</code>. Displayed in capitals. Keep it short (a word or two). Blank = no badge.</p></td></tr>
                 <tr><th><label>Quantity discounts</label></th><td><input type="text" name="qty_breaks" class="regular-text" value="<?php echo esc_attr(lmeg_product_qty_breaks_field($p)); ?>" placeholder="3:10, 5:20"><p class="description">Optional “buy more, save more” tiers as <code>min:percent</code>, comma-separated — e.g. <code>3:10, 5:20</code> = buy 3+ get 10% off, buy 5+ get 20% off <em>that product's line</em>. The card shows a “Buy 3 save 10%” hint and the discount comes off <strong>automatically at checkout</strong> (min 2, max 90%). It’s server-calculated, applies per product line, and doesn't stack with a manual code (the bigger of the two wins). Blank = no quantity discount. (Not for pay-what-you-want products.)</p></td></tr>
                 <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
                     <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>

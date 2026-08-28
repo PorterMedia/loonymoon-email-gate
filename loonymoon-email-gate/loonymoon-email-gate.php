@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.65.0
+ * Version:     3.66.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.65.0');
-define('LMEG_DB_VERSION',  '3.57.0');
+define('LMEG_VERSION',     '3.66.0');
+define('LMEG_DB_VERSION',  '3.66.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -643,6 +643,7 @@ function lmeg_create_tables() {
         gallery TEXT,
         video_url VARCHAR(500) DEFAULT NULL,
         personalization VARCHAR(255) DEFAULT NULL,
+        badge VARCHAR(60) DEFAULT NULL,
         size_chart TEXT,
         faq TEXT,
         preorder_at DATETIME DEFAULT NULL,
