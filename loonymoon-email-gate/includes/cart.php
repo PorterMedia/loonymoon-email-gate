@@ -152,8 +152,10 @@ function lmeg_cart_validate($raw) {
         if ($cur === '') $cur = $lcur;
         elseif ($lcur !== $cur) $mixed = true;
 
+        // Personalization (e.g. "sign to Sarah") — only when the product asks for it.
+        $pers = (!empty($p->personalization) && isset($it['pers'])) ? trim(mb_substr(sanitize_text_field((string) $it['pers']), 0, 200)) : '';
         $lines[] = ['p' => $p, 'variant' => $variant, 'qty' => $qty, 'unit' => $unit,
-                    'physical' => $physical, 'lship' => $lship, 'cur' => $lcur];
+                    'physical' => $physical, 'lship' => $lship, 'cur' => $lcur, 'pers' => $pers];
         $sub  += $unit * $qty;
         $ship += $lship;
         if ($physical) $phys = true;
@@ -274,6 +276,7 @@ function lmeg_cart_fulfill_line($line, $email, $ship_name, $ship_addr, $processo
         'discount_code' => !empty($line['discount_code']) ? $line['discount_code'] : null, 'discount_cents' => $disc,
         'tax_cents' => max(0, (int) ($line['tax'] ?? 0)),
         'note' => !empty($line['note']) ? mb_substr((string) $line['note'], 0, 500) : null,
+        'personalization' => !empty($line['pers']) ? mb_substr((string) $line['pers'], 0, 255) : null,
         'processor' => $processor, 'provider_ref' => $ref,
         'variant' => $variant ?: null, 'ship_name' => $ship_name ?: null, 'ship_address' => $ship_addr ?: null,
         'fulfillment' => $physical ? 'unshipped' : 'none', 'status' => 'paid', 'access_token' => $token,
@@ -529,7 +532,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
               . $thumb
               . '<div style="flex:1;text-align:left;min-width:0"><div style="font-weight:650">' . $name . '</div>'
               . '<div style="color:#8B90A0;font-size:13px">' . (int) $line['qty'] . ' × ' . esc_html(lmeg_cart_money($line['unit'], $line['cur']))
-              . ($line['lship'] ? ' · +' . esc_html(lmeg_cart_money($line['lship'], $line['cur'])) . ' ship' : '') . '</div></div>'
+              . ($line['lship'] ? ' · +' . esc_html(lmeg_cart_money($line['lship'], $line['cur'])) . ' ship' : '') . '</div>'
+              . (!empty($line['pers']) ? '<div style="color:#E7A6CF;font-size:13px;margin-top:2px">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-1px']) . esc_html($line['pers']) . '</div>' : '') . '</div>'
               . '<div style="font-weight:700;white-space:nowrap">' . esc_html($lt) . '</div></div>';
     }
 
@@ -1010,7 +1014,7 @@ function lmeg_cart_assets_html() {
   function read(){ try{var x=JSON.parse(localStorage.getItem(KEY));return Array.isArray(x)?x:[]}catch(e){return[]} }
   function write(c){ try{localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}; render(); }
   function count(c){ return c.reduce(function(n,i){return n+(+i.qty||1)},0); }
-  function keyOf(i){ return i.id+'|'+(i.variant||''); }
+  function keyOf(i){ return i.id+'|'+(i.variant||'')+'|'+(i.pers||''); }
   function money(cents,cur){ try{return new Intl.NumberFormat(undefined,{style:'currency',currency:cur||'USD'}).format((cents||0)/100);}catch(e){return '$'+((cents||0)/100).toFixed(2);} }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
@@ -1045,7 +1049,7 @@ function lmeg_cart_assets_html() {
       if(i.type==='physical') hasPhys=true;
       html+='<div class="flp-ci" data-k="'+esc(keyOf(i))+'">'
         + (i.cover?'<img src="'+esc(i.cover)+'" alt="">':'<div class="ph"></div>')
-        + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')
+        + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')+(i.pers?'<span style="color:#E7A6CF">&#9997; '+esc(i.pers)+'</span>':'')
         + '<div class="flp-qty"><button type="button" data-act="dec">−</button><span>'+(+i.qty)+'</span><button type="button" data-act="inc">+</button></div> '
         + '<button type="button" class="rm" data-act="rm">remove</button></div>'
         + '<div class="lt">'+money(lt,i.cur)+'</div></div>';
@@ -1113,9 +1117,10 @@ function lmeg_cart_assets_html() {
     if(pwyw){ var amt=card.querySelector('input[name=amount]'); var val=amt?parseFloat(amt.value):0; var min=(+b.getAttribute('data-min'))/100; if(!(val>0)) val=min; if(val<min) val=min; unit=Math.round(val*100); }
     var qty=1, qi=card.querySelector('.flp-qty');
     if(qi){ qty=parseInt(qi.value,10)||1; if(qty<1) qty=1; var qmx=parseInt(qi.getAttribute('max'),10); if(qmx>=1&&qty>qmx) qty=qmx; }
+    var pers='', pe=card.querySelector('.flp-pers'); if(pe){ pers=(pe.value||'').replace(/\s+/g,' ').trim().slice(0,200); }
     var item={ id:+b.getAttribute('data-id'), slug:b.getAttribute('data-slug'), title:b.getAttribute('data-title'),
       cover:b.getAttribute('data-cover'), unit:unit, cur:b.getAttribute('data-cur')||'USD', variant:variant, qty:qty,
-      type:b.getAttribute('data-type'), ship:+b.getAttribute('data-ship')||0, pwyw:pwyw };
+      type:b.getAttribute('data-type'), ship:+b.getAttribute('data-ship')||0, pwyw:pwyw, pers:pers };
     var c=read(), found=false;
     for(var k=0;k<c.length;k++){ if(keyOf(c[k])===keyOf(item)){ c[k].qty=(+c[k].qty||1)+qty; if(pwyw) c[k].unit=unit; found=true; break; } }
     if(!found) c.push(item);

@@ -300,7 +300,7 @@ function lmeg_handle_packing_slip() {
             <div class="row"><div><div class="lbl">Ship to</div><div class="ship"><?php echo esc_html(($first->ship_name ? $first->ship_name . "\n" : '') . ($first->ship_address ?: '')); ?></div><?php echo $first->email ? '<div style="color:#888;font-size:13px;margin-top:4px">' . esc_html($first->email) . '</div>' : ''; ?></div></div>
             <table><thead><tr><th class="q">Qty</th><th>Item</th></tr></thead><tbody>
             <?php foreach ($lines as $ln) : ?>
-                <tr><td class="q"><?php echo (int) ($ln->qty ?: 1); ?></td><td><?php echo esc_html($ln->title . ($ln->variant ? ' · ' . $ln->variant : '')); ?></td></tr>
+                <tr><td class="q"><?php echo (int) ($ln->qty ?: 1); ?></td><td><?php echo esc_html($ln->title . ($ln->variant ? ' · ' . $ln->variant : '')); ?><?php if (!empty($ln->personalization)) : ?><div style="font-size:12px;font-weight:700;margin-top:2px">✍️ <?php echo esc_html($ln->personalization); ?></div><?php endif; ?></td></tr>
             <?php endforeach; ?>
             </tbody></table>
             <?php $wt = 0; foreach ($lines as $ln) $wt += (int) ($ln->weight_g ?? 0) * (int) ($ln->qty ?: 1); if ($wt > 0) : ?><div style="margin-top:8px;color:#666;font-size:13px">Total weight: <?php echo esc_html(number_format($wt)); ?> g</div><?php endif; ?>
@@ -675,7 +675,7 @@ function lmeg_admin_orders() {
         <?php else : foreach ($orders as $o) :
             $mylines = $lines_by[$o->okey] ?? [];
             $item_str = [];
-            foreach ($mylines as $ln) $item_str[] = $ln->title . ($ln->variant ? ' · ' . $ln->variant : '') . ((int) ($ln->qty ?: 1) > 1 ? ' ×' . (int) $ln->qty : '');
+            foreach ($mylines as $ln) $item_str[] = $ln->title . ($ln->variant ? ' · ' . $ln->variant : '') . ((int) ($ln->qty ?: 1) > 1 ? ' ×' . (int) $ln->qty : '') . (!empty($ln->personalization) ? ' ✍️ “' . $ln->personalization . '”' : '');
             $cur = $o->cur ?: 'USD';
             $refunded = (($o->ostatus ?? 'paid') === 'refunded');
             $digital_only = ((int) $o->physicals === 0);

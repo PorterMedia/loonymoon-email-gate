@@ -1365,6 +1365,12 @@ function lmeg_product_card_html($p, $link = true, $solo = false) {
           <button type="button" class="flp-qtir" data-d="1" aria-label="Increase quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">+</button>
         </div>
         <?php endif; ?>
+        <?php if (!$sold_out && !empty($p->personalization)) : ?>
+        <div style="margin-bottom:11px">
+          <label style="display:block;font-size:12px;font-weight:700;color:#454552;margin-bottom:4px"><?php echo lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-1px']); ?><?php echo esc_html($p->personalization); ?></label>
+          <input type="text" class="flp-pers" maxlength="200" placeholder="<?php echo esc_attr($p->personalization); ?>" style="width:100%;padding:10px 12px;border:1px solid #d9d9e0;border-radius:10px;color:#17141f;background:#fff;font-size:14px">
+        </div>
+        <?php endif; ?>
         <?php if ($sold_out) : ?>
           <div style="font-weight:700;color:#6b6b78">Sold out</div>
           <?php
@@ -1762,6 +1768,7 @@ function lmeg_handle_save_product() {
         'description'     => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'cover_url'       => esc_url_raw($_POST['cover_url'] ?? ''),
         'video_url'       => esc_url_raw($_POST['video_url'] ?? ''),
+        'personalization' => mb_substr(sanitize_text_field(wp_unslash($_POST['personalization'] ?? '')), 0, 255),
         'preview_url'     => esc_url_raw($_POST['preview_url'] ?? ''),
         'gallery'         => $gal ? wp_json_encode(array_slice($gal, 0, 12)) : null,
         'size_chart'      => sanitize_textarea_field(wp_unslash($_POST['size_chart'] ?? '')),
@@ -2451,7 +2458,7 @@ function lmeg_admin_products() {
     /* ----- create / edit form ----- */
     if ($new || $edit) {
         wp_enqueue_media(); // WordPress media library picker for the cover image
-        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','video_url'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
+        $p = $edit ?: (object) ['id'=>0,'title'=>'','slug'=>'','description'=>'','cover_url'=>'','preview_url'=>'','video_url'=>'','personalization'=>'','gallery'=>'','preorder_at'=>null,'sale_ends_at'=>null,'featured'=>0,'tags'=>'','weight_g'=>0,'price_cents'=>0,'compare_at_cents'=>0,'min_price_cents'=>0,'currency'=>'USD','type'=>'digital','processor'=>'stripe','shipping_cents'=>0,'variants'=>'','variant_stock'=>'','qty_breaks'=>'','deliver_url'=>'','deliver_note'=>'','file_path'=>'','file_name'=>'','file_size'=>0,'stock'=>-1,'status'=>'active'];
         $money = function ($c) { return number_format(((int) $c) / 100, 2, '.', ''); };
         if (isset($_GET['err']) && $_GET['err'] === 'file') { echo '<div class="notice notice-error"><p>' . esc_html(get_transient('lmeg_product_file_err') ?: 'That file could not be uploaded.') . '</p></div>'; delete_transient('lmeg_product_file_err'); }
         ?>
@@ -2535,6 +2542,7 @@ function lmeg_admin_products() {
                 <tr><th><label>Shipping fee <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="shipping" step="0.01" min="0" style="width:120px" value="<?php echo esc_attr($money($p->shipping_cents ?? 0)); ?>"><p class="description">Flat shipping added at checkout for physical items. 0 = free shipping. <em>Ignored when flat rate by zone is on (Settings → Payments).</em></p></td></tr>
                 <tr><th><label>Weight <span style="color:#888;font-weight:400">(physical)</span></label></th><td><input type="number" name="weight_g" min="0" step="1" style="width:120px" value="<?php echo (int) ($p->weight_g ?? 0); ?>"> grams<p class="description">Shipping weight (grams). Shows on packing slips and helps when buying labels. Optional.</p></td></tr>
                 <tr><th><label>Variants / sizes</label></th><td><input type="text" name="variants" class="regular-text" value="<?php echo esc_attr(lmeg_product_variants_field($p)); ?>" placeholder="S, M, L, XL"><p class="description">Comma-separated options the buyer picks (e.g. <code>S, M, L</code>). To <strong>track stock per option</strong>, add a quantity: <code>S:10, M:5, L:20</code> — that count is the remaining stock (it counts down on each sale, and sold-out options are hidden from buyers). Mix freely; leave a number off an option for unlimited. Blank = no variants.</p></td></tr>
+                <tr><th><label>Personalization</label></th><td><input type="text" name="personalization" class="regular-text" maxlength="255" value="<?php echo esc_attr($p->personalization ?? ''); ?>" placeholder="Who should I sign this to?"><p class="description">Optional. Ask the buyer for a short custom message — e.g. <code>Who should I sign this to?</code> or <code>Engraving (max 200 chars)</code>. A text box appears on the product with this prompt; whatever they type rides with that cart line, shows on the checkout summary, and lands on the order (and packing slip) so you know exactly what to write. Perfect for <strong>signed</strong> or engraved items. Two of the same product with different messages stay as separate lines. Blank = no personalization.</p></td></tr>
                 <tr><th><label>Quantity discounts</label></th><td><input type="text" name="qty_breaks" class="regular-text" value="<?php echo esc_attr(lmeg_product_qty_breaks_field($p)); ?>" placeholder="3:10, 5:20"><p class="description">Optional “buy more, save more” tiers as <code>min:percent</code>, comma-separated — e.g. <code>3:10, 5:20</code> = buy 3+ get 10% off, buy 5+ get 20% off <em>that product's line</em>. The card shows a “Buy 3 save 10%” hint and the discount comes off <strong>automatically at checkout</strong> (min 2, max 90%). It’s server-calculated, applies per product line, and doesn't stack with a manual code (the bigger of the two wins). Blank = no quantity discount. (Not for pay-what-you-want products.)</p></td></tr>
                 <tr><th><label>Upload file <span style="color:#888;font-weight:400">(digital)</span></label></th><td>
                     <?php if (!empty($p->file_path)) : ?><p style="margin:0 0 7px">📎 <strong><?php echo esc_html($p->file_name); ?></strong> <span style="color:#888">(<?php echo esc_html(size_format((int) $p->file_size)); ?>)</span> &nbsp; <label style="color:#a00"><input type="checkbox" name="remove_file" value="1"> remove</label></p><?php endif; ?>

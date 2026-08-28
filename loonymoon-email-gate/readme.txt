@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.56.0
+Stable tag: 3.57.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.57.0 =
+* Store (Beta): NEW — product personalization. Give any product a short prompt like "Who should I sign this to?" or "Engraving" and a text box appears on it; whatever the buyer types rides with that cart line, shows on the cart drawer and checkout summary, and lands on the order and the printable packing slip — so you know exactly what to write. Perfect for signed vinyl, posters and engraved merch. Two of the same product with different messages stay as separate cart lines (so a buyer can order one signed to each friend). The message is server-sanitized and capped at 200 characters. Blank prompt = no personalization. Schema: adds a personalization column to the products and purchases tables.
+
 = 3.56.0 =
 * Store (Beta): NEW — "Spend & save" automatic order reward. Set a threshold and a percent in Store settings (e.g. spend over $50 → save 10%) and once a cart's item subtotal reaches it, the discount comes off automatically at checkout — no code needed. Shoppers see a live "Spend $X more to save Y%" nudge as they approach it, which is a proven way to lift order value. It's an automatic discount, so it never stacks with a manual code, bundle or quantity deal — checkout applies whichever saves the buyer the most (and, like every discount, it stays within the total). Set either field to 0 to turn it off. No schema change.
 
