@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.60.0
+Stable tag: 3.61.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.61.0 =
+* Store (Beta): NEW — Store colours. A “Store colours” setting (Store → Settings) lets each shop pick its own accent colour (and a second gradient colour for the cart/checkout button) so the storefront matches your brand instead of the built-in pink. It recolours the Add-to-cart / Buy buttons, selected sizes, tag chips, focus rings, the floating cart button and gradients across [fanloop_store], product pages and the cart. Lighter tints are derived automatically from your accent. Defaults are unchanged (the original pink), so existing shops look exactly the same until you change it. No schema change.
+
 = 3.60.0 =
 * Store (Beta): Two storefront display fixes on themes with aggressive form/button styles. (1) The quantity stepper inside the cart drawer no longer stretches — the +/− buttons were being blown up by the host theme's generic button padding/margins; they're now pinned to a clean compact stepper. (2) The variant "Choose an option" dropdown on grid cards is now a direct child of its form so its width always comes from the card (a percentage width inside a shrink-wrapping flex box could collapse on some themes, parking the dropdown arrow in the middle of the card). No schema change.
 

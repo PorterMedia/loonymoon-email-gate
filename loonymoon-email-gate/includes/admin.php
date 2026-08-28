@@ -2668,6 +2668,8 @@ function lmeg_admin_settings() {
             'store_ship_free_over'    => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_ship_free_over'] ?? 0))) * 100)),
             'store_spend_over'        => max(0, (int) round(((float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_spend_over'] ?? 0))) * 100)),
             'store_spend_pct'         => max(0, min(90, (int) preg_replace('/[^0-9]/', '', (string) ($_POST['store_spend_pct'] ?? 0)))),
+            'store_accent'            => sanitize_hex_color(wp_unslash($_POST['store_accent'] ?? '')) ?: '#E15FA8',
+            'store_accent2'           => sanitize_hex_color(wp_unslash($_POST['store_accent2'] ?? '')) ?: '#8A6CF6',
             'store_ship_from'         => sanitize_textarea_field(wp_unslash($_POST['store_ship_from'] ?? '')),
             'member_cookie_days'      => max(1, (int) ($_POST['member_cookie_days'] ?? 30)),
             'magic_link_ttl_hours'    => max(1, (int) ($_POST['magic_link_ttl_hours'] ?? 24)),
@@ -3365,6 +3367,12 @@ function lmeg_admin_settings() {
                     <input type="number" name="store_tax_rate" step="0.01" min="0" max="100" style="width:90px" value="<?php echo esc_attr(rtrim(rtrim(number_format((float) ($s['store_tax_rate'] ?? 0), 2, '.', ''), '0'), '.')); ?>"> %
                     &nbsp; labelled <input type="text" name="store_tax_label" style="width:120px" value="<?php echo esc_attr($s['store_tax_label'] ?? 'Tax'); ?>" placeholder="Tax">
                     <p class="description">Charge tax at checkout as a percentage of the item subtotal (after any discount; shipping isn’t taxed). Set <strong>0</strong> to turn it off. The label (e.g. <code>HST</code>, <code>VAT</code>, <code>GST</code>) shows on the checkout summary and receipt. Collected tax is tracked separately from your revenue. You’re responsible for setting the right rate for where you sell and remitting it.</p>
+                </td></tr>
+                <tr><th scope="row">Store colours</th><td>
+                    <label style="display:inline-flex;align-items:center;gap:7px;margin-right:18px">Accent <input type="color" name="store_accent" value="<?php echo esc_attr($s['store_accent'] ?? '#E15FA8'); ?>" style="width:46px;height:30px;padding:0;border:1px solid #ccc;border-radius:6px;vertical-align:middle;cursor:pointer"></label>
+                    <label style="display:inline-flex;align-items:center;gap:7px">Gradient end <input type="color" name="store_accent2" value="<?php echo esc_attr($s['store_accent2'] ?? '#8A6CF6'); ?>" style="width:46px;height:30px;padding:0;border:1px solid #ccc;border-radius:6px;vertical-align:middle;cursor:pointer"></label>
+                    <button type="button" class="button button-small" onclick="this.form.store_accent.value='#E15FA8';this.form.store_accent2.value='#8A6CF6';" style="margin-left:14px">Reset to default</button>
+                    <p class="description">The <strong>accent</strong> colours your storefront’s buttons, selected sizes, tag chips, focus rings and the floating cart button. The <strong>gradient end</strong> is the second colour of the cart &amp; checkout button gradient — set it the same as the accent for a solid (single-colour) look. Lighter tints (hover backgrounds, “on sale” pill) are derived automatically. Applies across <code>[fanloop_store]</code>, product pages and the cart, so pick colours that match your brand.</p>
                 </td></tr>
                 <tr><th scope="row">Low-stock digest</th><td>
                     <label><input type="checkbox" name="store_lowstock_digest" value="1" <?php checked(!empty($s['store_lowstock_digest'])); ?> /> <strong>Email me a weekly heads-up when products are running low</strong></label>

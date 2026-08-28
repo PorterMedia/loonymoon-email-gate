@@ -629,7 +629,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . lmeg_cart_dispatch_note($v['has_physical'])
         . $notefield
         . lmeg_cart_savings_badge($off, $cur)
-        . '<button type="submit" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
+        . '<button type="submit" class="flp-checkout-go" style="margin-top:16px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:15px;border-radius:12px;font-size:15px;cursor:pointer">' . esc_html($cta) . '</button>'
         . $note
         . '</form>'
         . '<a class="home" href="' . esc_url(home_url('/')) . '">← Keep shopping</a>';
@@ -880,13 +880,13 @@ function lmeg_store_page($title, $inner, $tab = '') {
       :root{color-scheme:dark}
       *{box-sizing:border-box;margin:0}body{background:#0B0C12;color:#F4F2F7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
       .card{width:100%;max-width:520px;text-align:center;background:linear-gradient(160deg,#161826,#12141f);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:38px 30px;box-shadow:0 30px 90px rgba(0,0,0,.5)}
-      .dot{width:52px;height:52px;border-radius:50%;margin:0 auto 18px;background:linear-gradient(118deg,#E15FA8,#8A6CF6);display:grid;place-items:center;font-size:26px}
+      .dot{width:52px;height:52px;border-radius:50%;margin:0 auto 18px;background:var(--flp-accent-grad,linear-gradient(118deg,#E15FA8,#8A6CF6));display:grid;place-items:center;font-size:26px}
       h1{font-size:25px;font-weight:820;letter-spacing:-.02em;margin-bottom:9px}
       p{color:#B9BCC9;line-height:1.55;margin-bottom:18px}
-      a{color:#E7A6CF}
+      a{color:var(--flp-accent-soft,#E7A6CF)}
       .home{display:block;margin-top:20px;color:#8B90A0;font-size:13px;text-decoration:none}
       input::placeholder{color:#5C6070}
-    </style></head><body><div class="card"><?php echo $inner; ?></div></body></html><?php
+    </style><?php echo function_exists('lmeg_store_accent_css') ? lmeg_store_accent_css() : ''; ?></head><body><div class="card"><?php echo $inner; ?></div></body></html><?php
     exit;
 }
 

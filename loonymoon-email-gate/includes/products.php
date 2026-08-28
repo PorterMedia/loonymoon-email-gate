@@ -1260,6 +1260,92 @@ function lmeg_shortcode_store($atts) {
     return $out;
 }
 
+/** The storefront accent colour (from Store settings), default the brand pink. */
+function lmeg_store_accent() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $c = isset($s['store_accent']) ? trim((string) $s['store_accent']) : '';
+    return preg_match('/^#[0-9a-fA-F]{6}$/', $c) ? $c : '#E15FA8';
+}
+/** The second gradient stop for the cart/checkout button, default the brand purple. */
+function lmeg_store_accent2() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $c = isset($s['store_accent2']) ? trim((string) $s['store_accent2']) : '';
+    return preg_match('/^#[0-9a-fA-F]{6}$/', $c) ? $c : '#8A6CF6';
+}
+function lmeg_hex_rgb($hex) {
+    $hex = ltrim((string) $hex, '#');
+    if (strlen($hex) === 3) $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    if (!preg_match('/^[0-9a-fA-F]{6}$/', $hex)) $hex = 'E15FA8';
+    return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
+}
+/** Mix $hex toward $toward by weight $w (1 = all $hex, 0 = all $toward). Returns #RRGGBB. */
+function lmeg_hex_mix($hex, $toward, $w) {
+    $a = lmeg_hex_rgb($hex); $b = lmeg_hex_rgb($toward);
+    return sprintf('#%02X%02X%02X',
+        (int) round($a[0] * $w + $b[0] * (1 - $w)),
+        (int) round($a[1] * $w + $b[1] * (1 - $w)),
+        (int) round($a[2] * $w + $b[2] * (1 - $w)));
+}
+function lmeg_hex_rgba($hex, $alpha) {
+    $c = lmeg_hex_rgb($hex);
+    return 'rgba(' . $c[0] . ',' . $c[1] . ',' . $c[2] . ',' . $alpha . ')';
+}
+
+/**
+ * Storefront accent theming. Emits :root CSS variables derived from the store's
+ * accent colours (lighter tints computed here so any brand colour stays cohesive),
+ * plus a scoped override layer that recolours the storefront's buttons, selected
+ * options, tag chips, cart button and gradients through those variables with
+ * !important. It NEVER edits the hardcoded colour literals — so admin screens and
+ * receipt emails (which don't carry these variables) are untouched, and at the
+ * default pink the overrides reproduce the exact current look. Emitted once per
+ * request from every storefront surface (store, product page, cart).
+ */
+function lmeg_store_accent_css() {
+    if (!empty($GLOBALS['lmeg_accent_css_done'])) return '';
+    $GLOBALS['lmeg_accent_css_done'] = true;
+    $a    = lmeg_store_accent();
+    $a2   = lmeg_store_accent2();
+    $ink  = lmeg_hex_mix($a, '#000000', 0.80);   // dark accent for text on light  (≈ #B4247E from pink)
+    $tint = lmeg_hex_mix($a, '#ffffff', 0.11);   // very light background          (≈ #FCE7F1)
+    $soft = lmeg_hex_mix($a, '#ffffff', 0.55);   // mid-light accent               (≈ #E7A6CF)
+    $vars = ':root{'
+        . '--flp-accent:' . $a . ';--flp-accent-2:' . $a2 . ';'
+        . '--flp-accent-ink:' . $ink . ';--flp-accent-tint:' . $tint . ';--flp-accent-soft:' . $soft . ';'
+        . '--flp-accent-grad:linear-gradient(118deg,' . $a . ',' . $a2 . ');'
+        . '--flp-accent-grad-h:linear-gradient(90deg,' . $a . ',' . $a2 . ');'
+        . '--flp-accent-a16:' . lmeg_hex_rgba($a, '.16') . ';--flp-accent2-glow:' . lmeg_hex_rgba($a2, '.4') . ';'
+        . '}';
+    $ov = ''
+        // card buttons
+        . '.flp-prod .flp-add{background:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-prod .flp-buy{color:var(--flp-accent)!important;border-color:var(--flp-accent)!important}'
+        // variant pills (product page) + dropdown focus
+        . '.flp-prod .flp-var:hover:not(:disabled){border-color:var(--flp-accent)!important}'
+        . '.flp-prod .flp-var.is-active{background:var(--flp-accent-tint)!important;border-color:var(--flp-accent)!important;color:var(--flp-accent-ink)!important}'
+        . '.flp-prod .flp-varsel:focus,.flp-prod .flp-varsel:focus-visible{border-color:var(--flp-accent)!important}'
+        // save heart
+        . '.flp-prod .flp-save.is-saved,.flp-prod .flp-save:hover,#flp-cart-root .flp-save.is-saved{color:var(--flp-accent)!important}'
+        // audio preview
+        . '.flp-prod .flp-preview-btn{background:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-prod .flp-preview-fill{background:var(--flp-accent)!important}'
+        // tag chips + spotlight eyebrow
+        . '.flp-store-wrap .flp-tag:hover{border-color:var(--flp-accent)!important;color:var(--flp-accent)!important}'
+        . '.flp-store-wrap .flp-tag.is-active{background:var(--flp-accent)!important;border-color:var(--flp-accent)!important;color:#fff!important}'
+        . '.flp-hero .flp-hero-eyebrow{color:var(--flp-accent-2)!important}'
+        // floating cart button + drawer
+        . '#flp-cart-btn{background:var(--flp-accent-grad)!important;box-shadow:0 12px 34px var(--flp-accent2-glow)!important}'
+        . '#flp-cart-root .flp-cart-go,.flp-checkout-go{background:var(--flp-accent-grad)!important}'
+        . '#flp-cart-root .flp-cart-ship:not(.is-free) .flp-ship-fill{background:var(--flp-accent-grad-h)!important}'
+        . '#flp-cart-root .flp-saved-add{background:var(--flp-accent-a16)!important;color:var(--flp-accent-soft)!important}'
+        // sticky mobile buy bar (product page)
+        . '.flp-sticky-buy .flp-add,.flp-sticky-buy .flp-goto-buy{background:var(--flp-accent-grad)!important;color:#0B0C12!important}'
+        . '.flp-sticky-buy .t span{color:var(--flp-accent-soft)!important}'
+        // keyboard focus rings
+        . '.flp-store-wrap :focus-visible,.flp-prod :focus-visible,#flp-cart-btn:focus-visible,#flp-cart-root [data-act]:focus-visible{outline-color:var(--flp-accent)!important}';
+    return '<style id="flp-accent">' . $vars . $ov . '</style>';
+}
+
 /**
  * A scoped CSS reset that neutralizes aggressive host-theme form/button rules
  * (many themes force width:100% / display:block / big margins on every input,
@@ -1282,7 +1368,6 @@ function lmeg_store_theme_reset_css() {
       . ".flp-prod .flp-varsel{display:block!important;width:100%!important;height:auto!important;margin:0!important;padding:10px 38px 10px 13px!important;border:1px solid #cfcfd6!important;border-radius:10px!important;background-color:#fff!important;color:#17141f!important;font-size:14px!important;font-weight:600!important;line-height:1.2!important;cursor:pointer!important;-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;box-sizing:border-box!important;background-image:$chev!important;background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:16px!important}"
       . ".flp-prod .flp-vars{display:flex!important;flex-wrap:wrap!important;gap:7px!important}"
       . ".flp-prod .flp-var{display:inline-flex!important;align-items:center!important;width:auto!important;height:auto!important;margin:0!important;padding:8px 13px!important;border:1px solid #cfcfd6!important;border-radius:9px!important;background:#fff!important;color:#17141f!important;font-size:13px!important;font-weight:600!important;line-height:1.1!important;cursor:pointer!important;box-sizing:border-box!important}"
-      . ".flp-prod .flp-var.is-active{background:#FCE7F1!important;border-color:#E15FA8!important;color:#B4247E!important}"
       . ".flp-prod .flp-var:disabled{opacity:.5!important;text-decoration:line-through!important;cursor:not-allowed!important}"
       . ".flp-prod .flp-qtywrap{display:inline-flex!important;align-items:center!important;width:auto!important;height:auto!important;margin:0 0 11px!important;border:1px solid #d9d9e0!important;border-radius:10px!important;overflow:hidden!important;background:#fff!important}"
       . ".flp-prod .flp-qty{width:48px!important;height:38px!important;margin:0!important;padding:0!important;text-align:center!important;border:0!important;border-left:1px solid #ededf1!important;border-right:1px solid #ededf1!important;border-radius:0!important;font-size:15px!important;font-weight:700!important;color:#17141f!important;background:#fff!important;line-height:1!important;box-shadow:none!important;-webkit-appearance:none!important;appearance:none!important;box-sizing:border-box!important}"
@@ -1301,7 +1386,7 @@ function lmeg_store_theme_reset_css() {
       . "#flp-cart-root .flp-saved-add{width:auto!important;padding:6px 11px!important}"
       . "#flp-cart-root #flp-cart-x,#flp-qv #flp-qv-x{width:auto!important;padding:0!important;background:transparent!important;border:0!important}"
       . "#flp-cart-root .flp-cart-go{width:100%!important;padding:14px!important}";
-    return '<style id="flp-theme-reset">' . $sel . '</style>';
+    return lmeg_store_accent_css() . '<style id="flp-theme-reset">' . $sel . '</style>';
 }
 
 /**
@@ -1372,7 +1457,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
           </div>
           <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
             <?php foreach ($imgs as $i => $u) : ?>
-              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" data-idx="<?php echo (int) $i; ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? '#E15FA8' : 'rgba(0,0,0,.12)'; ?>">
+              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" data-idx="<?php echo (int) $i; ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? 'var(--flp-accent,#E15FA8)' : 'rgba(0,0,0,.12)'; ?>">
             <?php endforeach; ?>
           </div>
         </div>
@@ -1393,7 +1478,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
           var lb=document.getElementById(g.id+'lb');
           var limg=lb.querySelector('.flp-lb-img'), cnt=lb.querySelector('.flp-lb-count');
           var idx=0;
-          function setMain(i){ idx=(i+imgs.length)%imgs.length; if(main){main.src=imgs[idx];main.setAttribute('data-idx',idx);} thumbs.forEach(function(t){t.style.borderColor=(+t.getAttribute('data-idx')===idx)?'#E15FA8':'rgba(0,0,0,.12)';}); }
+          function setMain(i){ idx=(i+imgs.length)%imgs.length; if(main){main.src=imgs[idx];main.setAttribute('data-idx',idx);} thumbs.forEach(function(t){t.style.borderColor=(+t.getAttribute('data-idx')===idx)?'var(--flp-accent,#E15FA8)':'rgba(0,0,0,.12)';}); }
           function show(i){ if(!imgs.length)return; idx=(i+imgs.length)%imgs.length; limg.src=imgs[idx]; limg.alt=alt; if(cnt)cnt.textContent=(idx+1)+' / '+imgs.length; }
           function openLb(){ show(idx); lb.hidden=false; }
           function closeLb(){ lb.hidden=true; setMain(idx); }
