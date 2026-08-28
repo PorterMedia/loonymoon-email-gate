@@ -935,7 +935,7 @@ function lmeg_cart_assets_html() {
       goBtn=document.getElementById('flp-cart-go'), emptyEl=document.getElementById('flp-cart-empty'),
       shipEl=document.getElementById('flp-cart-ship');
 
-  function read(){ try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]} }
+  function read(){ try{var x=JSON.parse(localStorage.getItem(KEY));return Array.isArray(x)?x:[]}catch(e){return[]} }
   function write(c){ try{localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}; render(); }
   function count(c){ return c.reduce(function(n,i){return n+(+i.qty||1)},0); }
   function keyOf(i){ return i.id+'|'+(i.variant||''); }
@@ -985,7 +985,7 @@ function lmeg_cart_assets_html() {
 
   // ---- Save for later (wishlist) ----
   var SKEY='fanloop_saved';
-  function savedRead(){ try{return JSON.parse(localStorage.getItem(SKEY))||[]}catch(e){return[]} }
+  function savedRead(){ try{var x=JSON.parse(localStorage.getItem(SKEY));return Array.isArray(x)?x:[]}catch(e){return[]} }
   function savedWrite(l){ try{localStorage.setItem(SKEY,JSON.stringify(l))}catch(e){}; renderSaved(); syncHearts(); }
   function savedHas(id){ return savedRead().some(function(s){return +s.id===+id;}); }
   function saveItemFromBtn(b){
