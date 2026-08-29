@@ -697,10 +697,10 @@ function lmeg_admin_orders() {
             $cur = $o->cur ?: 'USD';
             $refunded = (($o->ostatus ?? 'paid') === 'refunded');
             $digital_only = ((int) $o->physicals === 0);
-            if ($refunded)                    { $status = '<span style="color:#9A9DB0;font-weight:600">↩ Refunded</span>'; }
-            elseif ((int) $o->unshipped > 0)  { $status = '<span style="color:#E7C97D;font-weight:600">To ship</span>'; }
-            elseif (!$digital_only)           { $status = '<span style="color:#7DD3A8;font-weight:600">Shipped</span>' . ($o->tracking && function_exists('lmeg_tracking_url') && lmeg_tracking_url($o->carrier, $o->tracking) ? ' · <a href="' . esc_url(lmeg_tracking_url($o->carrier, $o->tracking)) . '" target="_blank" rel="noopener">track</a>' : ''); }
-            else                              { $status = '<span style="color:#7DD3A8;font-weight:600">Delivered</span>'; }
+            if ($refunded)                    { $status = '<span style="color:#6b7280;font-weight:600">↩ Refunded</span>'; }
+            elseif ((int) $o->unshipped > 0)  { $status = '<span style="color:#B45309;font-weight:600">To ship</span>'; }
+            elseif (!$digital_only)           { $status = '<span style="color:#0f766e;font-weight:600">Shipped</span>' . ($o->tracking && function_exists('lmeg_tracking_url') && lmeg_tracking_url($o->carrier, $o->tracking) ? ' · <a href="' . esc_url(lmeg_tracking_url($o->carrier, $o->tracking)) . '" target="_blank" rel="noopener">track</a>' : ''); }
+            else                              { $status = '<span style="color:#0f766e;font-weight:600">Delivered</span>'; }
             $paychip = ['stripe' => 'Stripe', 'square' => 'Square', 'demo' => 'Demo'][$o->processor] ?? esc_html($o->processor);
             list($o_pk, $o_saddr) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($o->ship_addr ?? '') : [false, $o->ship_addr];
         ?>

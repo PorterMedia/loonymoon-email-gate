@@ -555,7 +555,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     if ($free_over > 0 && $zone_ship) {
         $free_hint = $free_now
             ? '<div style="margin-top:8px;font-size:13px;color:#0f766e;text-align:center">' . lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:4px']) . 'You\'ve unlocked free shipping!</div>'
-            : '<div style="margin-top:8px;font-size:13px;color:#E7C97D;text-align:center">Add ' . esc_html(lmeg_cart_money($free_over - (int) $v['subtotal'], $cur)) . ' more for free shipping</div>';
+            : '<div style="margin-top:8px;font-size:13px;color:#B45309;text-align:center">Add ' . esc_html(lmeg_cart_money($free_over - (int) $v['subtotal'], $cur)) . ' more for free shipping</div>';
     }
     // Spend-&-save nudge — shown only when the reward is on but not yet unlocked
     // (once unlocked, the "Order discount" line in the totals shows the saving).
