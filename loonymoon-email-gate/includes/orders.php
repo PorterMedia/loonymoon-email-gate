@@ -235,6 +235,7 @@ function lmeg_handle_refund_order() {
     }
     $wpdb->query($wpdb->prepare("UPDATE $ptbl SET status = %s WHERE $expr = %s AND status IN ('paid','refunded')", $to, $okey));
     delete_transient('lmeg_toship_count');
+    delete_transient('lmeg_stat_orders_kpi');   // revenue / order / customer totals changed
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&' . ($to === 'refunded' ? 'refunded' : 'unrefunded') . '=1' . lmeg_orders_keep_args())); exit;
 }
 
@@ -572,10 +573,27 @@ function lmeg_admin_orders() {
         foreach ((array) $rows as $ln) $lines_by[$ln->okey][] = $ln;
     }
 
-    // Headline stats (all-time).
-    $rev_all    = (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status='paid'");
-    $orders_all = (int) $wpdb->get_var("SELECT COUNT(DISTINCT " . lmeg_orders_okey_expr('') . ") FROM $ptbl WHERE status='paid'");
-    $toship_all = (int) $wpdb->get_var("SELECT COUNT(DISTINCT " . lmeg_orders_okey_expr('') . ") FROM $ptbl WHERE status='paid' AND fulfillment='unshipped'");
+    // Headline + customers stats (all-time, independent of the page's filter/paging)
+    // in one 3-min cached bundle — these ran full scans + an un-indexable DISTINCT
+    // on the computed order-key every load. Busted on refund (see the refund handler).
+    $okey_ex = lmeg_orders_okey_expr('');
+    $okpi = function_exists('lmeg_stat_cache') ? lmeg_stat_cache('orders_kpi', 3 * MINUTE_IN_SECONDS, function () use ($wpdb, $ptbl, $okey_ex, $OK) {
+        $rev_all    = (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status='paid'");
+        $orders_all = (int) $wpdb->get_var("SELECT COUNT(DISTINCT $okey_ex) FROM $ptbl WHERE status='paid'");
+        $cust_total = (int) $wpdb->get_var("SELECT COUNT(DISTINCT LOWER(pp.email)) FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>''");
+        $top_cust   = $cust_total > 0
+            ? $wpdb->get_results("SELECT MAX(pp.email) email, COUNT(DISTINCT $OK) orders, SUM(pp.qty) items, SUM(pp.amount_cents) spent, MIN(DATE(pp.paid_at)) firstd, MAX(DATE(pp.paid_at)) lastd FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>'' GROUP BY LOWER(pp.email) ORDER BY spent DESC LIMIT 10")
+            : [];
+        return compact('rev_all', 'orders_all', 'cust_total', 'top_cust');
+    }) : [
+        'rev_all'    => (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status='paid'"),
+        'orders_all' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT $okey_ex) FROM $ptbl WHERE status='paid'"),
+        'cust_total' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT LOWER(pp.email)) FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>''"),
+        'top_cust'   => [],
+    ];
+    $rev_all = (int) $okpi['rev_all']; $orders_all = (int) $okpi['orders_all'];
+    $cust_total = (int) $okpi['cust_total']; $top_cust = $okpi['top_cust'];
+    $toship_all = function_exists('lmeg_orders_toship_count') ? lmeg_orders_toship_count() : 0;
     $save = admin_url('admin-post.php');
 
     echo '<div class="wrap"><h1>Fanloop — Orders</h1>';
@@ -604,9 +622,7 @@ function lmeg_admin_orders() {
     </form>
 
     <?php
-    $cust_total = (int) $wpdb->get_var("SELECT COUNT(DISTINCT LOWER(pp.email)) FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>''");
-    if ($cust_total > 0) :
-        $top_cust = $wpdb->get_results("SELECT MAX(pp.email) email, COUNT(DISTINCT $OK) orders, SUM(pp.qty) items, SUM(pp.amount_cents) spent, MIN(DATE(pp.paid_at)) firstd, MAX(DATE(pp.paid_at)) lastd FROM $ptbl pp WHERE pp.status='paid' AND pp.email<>'' GROUP BY LOWER(pp.email) ORDER BY spent DESC LIMIT 10");
+    if ($cust_total > 0) :   // $cust_total + $top_cust come from the cached orders_kpi bundle above
     ?>
     <details style="max-width:820px;margin:0 0 18px;background:#fff;border:1px solid #dcdcde;border-radius:8px" <?php echo $cust_total <= 10 ? 'open' : ''; ?>>
         <summary style="cursor:pointer;list-style:none;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
