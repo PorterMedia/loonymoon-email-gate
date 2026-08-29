@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.76.0
+Stable tag: 3.77.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.77.0 =
+* Store (Beta): Image alt text + accessibility polish. Product photos across the store — the "more from the shop" and recently-viewed cards, and every image in the cart drawer, cross-sell strip, saved-for-later list and checkout summary — now carry the product's name as descriptive alt text, so Google Images can index your merch by name (how a lot of fans find an artist's shop) and screen readers announce each product. The cart drawer's quantity − / + buttons gained proper labels, and the zoom lightbox image got an alt too. Images that are purely decorative (a product's own gallery thumbnails, the hover-swap second photo, the sticky-bar mini thumb) are correctly left unlabelled so screen readers don't repeat the title. No visible change, no schema change.
+
 = 3.76.0 =
 * Store (Beta): Faster-loading storefront (image performance pass). Off-screen product images across the store — the grid covers, the hover-swap second photo, gallery thumbnails, "more from the shop", recently viewed, and the cart drawer — now load lazily and decode asynchronously, so a shop with dozens of products no longer fetches every image at once. The one image that should load immediately — the main product photo on a product page (the page's largest visible element) — is kept eager and given a high fetch priority, so the product page's Largest Contentful Paint isn't slowed down. Purely a loading/performance change: nothing visible moves, and every price, shipping and checkout total is unchanged (money path re-verified). No schema change.
 

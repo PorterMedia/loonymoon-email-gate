@@ -281,7 +281,7 @@ function lmeg_store_upsell_html($exclude_ids = [], $limit = 3, $heading = 'You m
         $price = lmeg_product_is_pwyw($r) ? 'Name your price'
                : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2));
         $img = !empty($r->cover_url)
-            ? '<img src="' . esc_url($r->cover_url) . '" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
+            ? '<img src="' . esc_url($r->cover_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
             : '<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>';
         $cards .= '<a href="' . $rurl . '" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'
             . $img
@@ -1547,7 +1547,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         <div class="flp-lb" id="<?php echo esc_attr($gid); ?>lb" hidden style="position:fixed;inset:0;z-index:100002;background:rgba(6,7,12,.93);display:flex;align-items:center;justify-content:center">
           <button type="button" class="flp-lb-x" aria-label="Close" style="position:absolute;top:14px;right:16px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('x', 20); ?></button>
           <button type="button" class="flp-lb-prev" aria-label="Previous image" style="position:absolute;left:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('chevron-left', 26, ['stroke' => 2.2]); ?></button>
-          <img class="flp-lb-img" src="" alt="" style="max-width:92vw;max-height:86vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 70px rgba(0,0,0,.6)">
+          <img class="flp-lb-img" src="" alt="<?php echo esc_attr($p->title); ?>" style="max-width:92vw;max-height:86vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 70px rgba(0,0,0,.6)">
           <button type="button" class="flp-lb-next" aria-label="Next image" style="position:absolute;right:10px;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:grid;place-items:center"><?php echo lmeg_store_icon('chevron-right', 26, ['stroke' => 2.2]); ?></button>
           <div class="flp-lb-count" style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#CFD2DC;font-size:13px;font-weight:600"></div>
         </div>
@@ -1990,7 +1990,7 @@ function lmeg_product_page() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
         <?php foreach ($rel as $r) : $rurl = esc_url(lmeg_product_url($r)); ?>
         <a href="<?php echo $rurl; ?>" style="text-decoration:none;color:inherit;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">
-          <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
+          <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="<?php echo esc_attr($r->title); ?>" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
           <div style="padding:9px 11px">
             <div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html($r->title); ?></div>
             <div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px"><?php echo esc_html(lmeg_product_is_pwyw($r) ? 'Name your price' : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2))); ?></div>
@@ -2018,7 +2018,7 @@ function lmeg_product_page() {
     var others=list.filter(function(i){return i&&i.id!=CUR.id;}).slice(0,CAP);
     var wrap=document.getElementById("flp-recent");
     if(wrap&&others.length){var h='<div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">Recently viewed</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">';
-    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
+    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="'+esc(i.title)+'" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
     h+="</div>";wrap.innerHTML=h;wrap.style.display="";}
     list=list.filter(function(i){return i&&i.id!=CUR.id;});list.unshift(CUR);list=list.slice(0,CAP);
     try{localStorage.setItem(KEY,JSON.stringify(list));}catch(e){}})();</script>
