@@ -1607,7 +1607,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         }
         ?>
         <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">
-          <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical && $show_ships) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
+          <div style="font-weight:750;font-size:19px;color:#17141f;flex:1;min-width:0;overflow-wrap:break-word"><?php echo $link ? '<a href="' . $url . '" style="color:#17141f;text-decoration:none">' . esc_html($p->title) . '</a>' : esc_html($p->title); ?><?php if ($physical && $show_ships) : ?> <span style="font-size:11px;color:#6b6b78;font-weight:600;vertical-align:middle">· ships</span><?php endif; ?></div>
           <?php if (!$solo && $show_share) : ?><button type="button" class="flp-share" data-url="<?php echo esc_attr($url); ?>" title="Copy link to this product" aria-label="Copy link to this product" style="flex:0 0 auto;background:#fff;border:1px solid rgba(0,0,0,.14);color:#6b6b78;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center"><?php echo lmeg_store_icon('link', 15); ?></button><?php endif; ?>
         </div>
         <?php if ($show_desc && !empty($p->description)) : ?><div style="font-size:14px;color:#454552;line-height:1.5;margin-bottom:14px"><?php echo esc_html($p->description); ?></div><?php endif; ?>

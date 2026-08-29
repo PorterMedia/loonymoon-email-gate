@@ -1008,7 +1008,7 @@ function lmeg_cart_assets_html() {
   .flp-ci{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid rgba(0,0,0,.08)}
   .flp-ci img,.flp-ci .ph{width:52px;height:52px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:#eef0f4}
   .flp-ci .t{flex:1;min-width:0}
-  .flp-ci .t b{font-weight:650;font-size:14px;display:block;line-height:1.3}
+  .flp-ci .t b{font-weight:650;font-size:14px;display:block;line-height:1.3;overflow-wrap:break-word}
   .flp-ci .t span{color:#6b6b78;font-size:12px;display:block;margin:1px 0 2px}
   .flp-qty{display:inline-flex;align-items:center;gap:0;margin-top:6px;border:1px solid rgba(0,0,0,.14);border-radius:8px;overflow:hidden}
   .flp-qty button{background:#f4f4f6;color:#17141f;border:0;width:26px;height:26px;cursor:pointer;font-size:15px}
