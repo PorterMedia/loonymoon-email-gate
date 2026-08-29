@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.98.0
+Stable tag: 3.99.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.99.0 =
+* Performance: Faster Audience page (round 5). The Audience page ran eight aggregations on every load — the fan-type distribution, country and city breakdowns, the superfan-by-city join, the referral leaderboard, and the lifetime-value join across every fan and order. Those now come from one ~3-minute cache and refresh the instant you recalculate fan types (and after the nightly auto-run). No schema change.
+
 = 3.98.0 =
 * Performance: Faster Broadcast History (round 4). The page recomputed its 30-day open/click/bounce/spam counts and the engagement map on every load — the map aggregates your whole event history, the single heaviest query on the page. Those now come from one ~3-minute cache and refresh the moment a broadcast finishes sending. Your broadcast list, per-message open/click counts, and revenue attribution stay live. No schema change.
 

@@ -5007,71 +5007,81 @@ function lmeg_admin_audience() {
 
     $last_run = get_option('lmeg_fan_types_last_run', '');
 
-    // Fan type distribution from tags.
-    $types = $wpdb->get_results(
-        "SELECT t.slug, t.name, t.color, COUNT(st.subscriber_id) AS n
-         FROM {$wpdb->prefix}lmeg_tags t
-         JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id = t.id
-         WHERE t.slug LIKE 'fan-type:%'
-         GROUP BY t.id ORDER BY n DESC"
-    );
+    // Audience aggregations (fan-type distribution, country + city breakdowns,
+    // LTV leaderboard, superfan-by-city, referral leaderboard) — all read-only
+    // displays, in one ~3-min cache. Busted whenever fan types are recalculated
+    // (the manual button and the daily cron both call lmeg_recalculate_fan_types).
+    $aud_compute = function () use ($wpdb, $subs) {
+        // Fan type distribution from tags.
+        $types = $wpdb->get_results(
+            "SELECT t.slug, t.name, t.color, COUNT(st.subscriber_id) AS n
+             FROM {$wpdb->prefix}lmeg_tags t
+             JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id = t.id
+             WHERE t.slug LIKE 'fan-type:%'
+             GROUP BY t.id ORDER BY n DESC"
+        );
+        // Country breakdown.
+        $countries = $wpdb->get_results(
+            "SELECT country, COUNT(*) AS n FROM $subs
+             WHERE country IS NOT NULL AND country <> '' AND unsubscribed_at IS NULL
+             GROUP BY country ORDER BY n DESC LIMIT 30"
+        );
+        $unknown = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE (country IS NULL OR country = '') AND unsubscribed_at IS NULL");
+
+        // Top fans by true lifetime value: attributed shop orders + subscription
+        // payments (member_revenue_cents accumulated from Stripe invoices).
+        $top = $wpdb->get_results(
+            "SELECT s.id, s.email, s.phone,
+                    COALESCE(o.cents, 0)                        AS shop_cents,
+                    s.member_revenue_cents                      AS memb_cents,
+                    (COALESCE(o.cents, 0) + s.member_revenue_cents) AS ltv,
+                    COALESCE(o.orders, 0)                       AS orders
+             FROM $subs s
+             LEFT JOIN (
+                 SELECT subscriber_id, SUM(total_cents) AS cents, COUNT(shopify_order_id) AS orders
+                 FROM {$wpdb->prefix}lmeg_shop_orders GROUP BY subscriber_id
+             ) o ON o.subscriber_id = s.id
+             WHERE (COALESCE(o.cents, 0) + s.member_revenue_cents) > 0
+             ORDER BY ltv DESC LIMIT 15"
+        );
+
+        // Tour routing — top cities (from address blocks), with superfan share.
+        $cities = $wpdb->get_results(
+            "SELECT city, region, country, COUNT(*) AS n FROM $subs
+             WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL
+             GROUP BY city, region, country ORDER BY n DESC LIMIT 25"
+        );
+        $city_known = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL");
+        // Superfan counts keyed by city|region|country.
+        $sf_rows = $wpdb->get_results(
+            "SELECT s.city, s.region, s.country, COUNT(*) AS n
+             FROM $subs s
+             JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.subscriber_id = s.id
+             JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id AND t.slug = 'fan-type:superfan'
+             WHERE s.city IS NOT NULL AND s.city <> '' AND s.unsubscribed_at IS NULL
+             GROUP BY s.city, s.region, s.country"
+        );
+        $sf_map = [];
+        foreach ((array) $sf_rows as $r) {
+            $sf_map[$r->city . '|' . $r->region . '|' . $r->country] = (int) $r->n;
+        }
+
+        // Referral leaderboard.
+        $refs = $wpdb->get_results(
+            "SELECT r.id, r.email, r.phone, COUNT(s.id) AS n
+             FROM $subs s JOIN $subs r ON r.id = s.referred_by
+             GROUP BY r.id ORDER BY n DESC LIMIT 15"
+        );
+        return compact('types', 'countries', 'unknown', 'top', 'cities', 'city_known', 'sf_map', 'refs');
+    };
+    $aud = function_exists('lmeg_stat_cache') ? lmeg_stat_cache('audience', 3 * MINUTE_IN_SECONDS, $aud_compute) : $aud_compute();
+    $types = $aud['types']; $countries = $aud['countries']; $unknown = (int) $aud['unknown'];
+    $top = $aud['top']; $cities = $aud['cities']; $city_known = (int) $aud['city_known'];
+    $sf_map = $aud['sf_map']; $refs = $aud['refs'];
     $type_total = array_sum(array_map(function ($r) { return (int) $r->n; }, (array) $types)) ?: 1;
-
-    // Country breakdown.
-    $countries = $wpdb->get_results(
-        "SELECT country, COUNT(*) AS n FROM $subs
-         WHERE country IS NOT NULL AND country <> '' AND unsubscribed_at IS NULL
-         GROUP BY country ORDER BY n DESC LIMIT 30"
-    );
-    $known   = array_sum(array_map(function ($r) { return (int) $r->n; }, (array) $countries));
-    $unknown = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE (country IS NULL OR country = '') AND unsubscribed_at IS NULL");
-    $cmax    = $countries ? max(array_map(function ($r) { return (int) $r->n; }, $countries)) : 1;
-
-    // Top fans by true lifetime value: attributed shop orders + subscription
-    // payments (member_revenue_cents accumulated from Stripe invoices).
-    $top = $wpdb->get_results(
-        "SELECT s.id, s.email, s.phone,
-                COALESCE(o.cents, 0)                        AS shop_cents,
-                s.member_revenue_cents                      AS memb_cents,
-                (COALESCE(o.cents, 0) + s.member_revenue_cents) AS ltv,
-                COALESCE(o.orders, 0)                       AS orders
-         FROM $subs s
-         LEFT JOIN (
-             SELECT subscriber_id, SUM(total_cents) AS cents, COUNT(shopify_order_id) AS orders
-             FROM {$wpdb->prefix}lmeg_shop_orders GROUP BY subscriber_id
-         ) o ON o.subscriber_id = s.id
-         WHERE (COALESCE(o.cents, 0) + s.member_revenue_cents) > 0
-         ORDER BY ltv DESC LIMIT 15"
-    );
-
-    // Tour routing — top cities (from address blocks), with superfan share.
-    $cities = $wpdb->get_results(
-        "SELECT city, region, country, COUNT(*) AS n FROM $subs
-         WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL
-         GROUP BY city, region, country ORDER BY n DESC LIMIT 25"
-    );
-    $city_max = $cities ? max(array_map(function ($r) { return (int) $r->n; }, $cities)) : 1;
-    $city_known = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE city IS NOT NULL AND city <> '' AND unsubscribed_at IS NULL");
-    // Superfan counts keyed by city|region|country.
-    $sf_rows = $wpdb->get_results(
-        "SELECT s.city, s.region, s.country, COUNT(*) AS n
-         FROM $subs s
-         JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.subscriber_id = s.id
-         JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id AND t.slug = 'fan-type:superfan'
-         WHERE s.city IS NOT NULL AND s.city <> '' AND s.unsubscribed_at IS NULL
-         GROUP BY s.city, s.region, s.country"
-    );
-    $sf_map = [];
-    foreach ((array) $sf_rows as $r) {
-        $sf_map[$r->city . '|' . $r->region . '|' . $r->country] = (int) $r->n;
-    }
-
-    // Referral leaderboard.
-    $refs = $wpdb->get_results(
-        "SELECT r.id, r.email, r.phone, COUNT(s.id) AS n
-         FROM $subs s JOIN $subs r ON r.id = s.referred_by
-         GROUP BY r.id ORDER BY n DESC LIMIT 15"
-    );
+    $known      = array_sum(array_map(function ($r) { return (int) $r->n; }, (array) $countries));
+    $cmax       = $countries ? max(array_map(function ($r) { return (int) $r->n; }, $countries)) : 1;
+    $city_max   = $cities ? max(array_map(function ($r) { return (int) $r->n; }, $cities)) : 1;
     ?>
     <div class="wrap">
         <h1>Fanloop — Audience</h1>

@@ -551,6 +551,7 @@ function lmeg_recalculate_fan_types() {
     }
 
     update_option('lmeg_fan_types_last_run', current_time('mysql'), false);
+    delete_transient('lmeg_stat_audience'); // fan-type tags changed → refresh the Audience page
     return $counts;
 }
 
