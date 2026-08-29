@@ -2049,6 +2049,7 @@ function lmeg_handle_save_product() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_save_product', 'lmeg_product_nonce');
     global $wpdb;
+    delete_transient('lmeg_stat_products_kpi'); // Store KPIs may change (title/top-seller/new product)
     $tbl = $wpdb->prefix . 'lmeg_products';
     $id  = (int) ($_POST['product_id'] ?? 0);
 
@@ -2250,6 +2251,7 @@ function lmeg_handle_clear_demo() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_clear_demo', 'lmeg_demo_nonce');
     global $wpdb;
+    delete_transient('lmeg_stat_products_kpi'); // demo/test purchases removed → KPIs change
     $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
     $tbl  = $wpdb->prefix . 'lmeg_products';
 
@@ -2744,6 +2746,7 @@ function lmeg_handle_bulk_products() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_bulk_products', 'lmeg_pbulk_nonce');
     global $wpdb;
+    delete_transient('lmeg_stat_products_kpi'); // bulk activate/draft/feature/delete → KPIs change
     $tbl = $wpdb->prefix . 'lmeg_products';
     $do  = sanitize_key($_POST['do'] ?? '');
     $ids = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? [])), function ($i) { return $i > 0; }));
@@ -2977,47 +2980,60 @@ function lmeg_admin_products() {
 
     /* ----- list + sales + download analytics ----- */
     $rows  = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC");
-    $units = (int) $wpdb->get_var("SELECT COUNT(*) FROM $ptbl WHERE status = 'paid'");
-    $rev   = (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid'");
-    $dls   = (int) $wpdb->get_var("SELECT COALESCE(SUM(access_count),0) FROM $ptbl WHERE status = 'paid'");
-    $demo_n = (int) $wpdb->get_var("SELECT COUNT(*) FROM $ptbl WHERE processor = 'demo'");
+    // All the Store KPI aggregations (revenue, units, orders, buyers, per-product
+    // stats, sparklines, trends) in one ~3-min cache. The un-indexable
+    // COUNT(DISTINCT okey) checkout math is the main reason to cache. The product
+    // LIST above ($rows) and $aov (derived) stay live. Busted on refund /
+    // clear-demo / product save+delete.
+    $pk_compute = function () use ($wpdb, $tbl, $ptbl) {
+        $units = (int) $wpdb->get_var("SELECT COUNT(*) FROM $ptbl WHERE status = 'paid'");
+        $rev   = (int) $wpdb->get_var("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid'");
+        $dls   = (int) $wpdb->get_var("SELECT COALESCE(SUM(access_count),0) FROM $ptbl WHERE status = 'paid'");
+        $demo_n = (int) $wpdb->get_var("SELECT COUNT(*) FROM $ptbl WHERE processor = 'demo'");
 
-    // Per-product: buyers, downloads, how many buyers actually downloaded.
-    $pstats = [];
-    foreach ((array) $wpdb->get_results("SELECT product_id, COUNT(*) buyers, COALESCE(SUM(access_count),0) dls, SUM(CASE WHEN access_count > 0 THEN 1 ELSE 0 END) downloaders FROM $ptbl WHERE status = 'paid' GROUP BY product_id") as $r) {
-        $pstats[(int) $r->product_id] = $r;
-    }
+        // Per-product: buyers, downloads, how many buyers actually downloaded.
+        $pstats = [];
+        foreach ((array) $wpdb->get_results("SELECT product_id, COUNT(*) buyers, COALESCE(SUM(access_count),0) dls, SUM(CASE WHEN access_count > 0 THEN 1 ELSE 0 END) downloaders FROM $ptbl WHERE status = 'paid' GROUP BY product_id") as $r) {
+            $pstats[(int) $r->product_id] = $r;
+        }
 
-    // 30-day units/day sparkline.
-    $since    = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
-    $daily    = array_fill(0, 30, 0);
-    $today_ts = current_time('timestamp');
-    foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COUNT(*) n FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
-        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
-        if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
-    }
+        // 30-day units/day sparkline.
+        $since    = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
+        $daily    = array_fill(0, 30, 0);
+        $today_ts = current_time('timestamp');
+        foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COUNT(*) n FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
+            $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+            if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
+        }
 
-    // KPI summary: orders (distinct checkouts), average order value, unique
-    // buyers, top seller, and a 30-day revenue sparkline.
-    $orders = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR))) FROM $ptbl WHERE status = 'paid'");
-    $aov    = $orders ? (int) round($rev / $orders) : 0;
-    $buyers = (int) $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE status = 'paid' AND email IS NOT NULL AND email <> ''");
-    $topn   = $wpdb->get_results("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 3");
-    // Revenue this 30 days vs the previous 30 days (for a trend chip).
-    $prev_start = date('Y-m-d H:i:s', $today_ts - 60 * DAY_IN_SECONDS);
-    $rev30      = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $since));
-    $revprev30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $prev_start, $since));
-    // Orders this 7 days vs the previous 7 days (week-over-week).
-    $w1  = date('Y-m-d H:i:s', $today_ts - 7 * DAY_IN_SECONDS);
-    $w2  = date('Y-m-d H:i:s', $today_ts - 14 * DAY_IN_SECONDS);
-    $okd = "COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR)))";
-    $orders7     = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $w1));
-    $ordersprev7 = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $w2, $w1));
-    $revdaily = array_fill(0, 30, 0);
-    foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
-        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
-        if ($idx >= 0 && $idx < 30) $revdaily[$idx] = round(((int) $dr->c) / 100, 2);
-    }
+        // KPI summary: orders (distinct checkouts), unique buyers, top seller,
+        // and a 30-day revenue sparkline.
+        $orders = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR))) FROM $ptbl WHERE status = 'paid'");
+        $buyers = (int) $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE status = 'paid' AND email IS NOT NULL AND email <> ''");
+        $topn   = $wpdb->get_results("SELECT pp.product_id pid, SUM(pp.amount_cents) rev, COUNT(*) n, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status = 'paid' GROUP BY pp.product_id, pr.title ORDER BY rev DESC LIMIT 3");
+        // Revenue this 30 days vs the previous 30 days (for a trend chip).
+        $prev_start = date('Y-m-d H:i:s', $today_ts - 60 * DAY_IN_SECONDS);
+        $rev30      = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $since));
+        $revprev30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(amount_cents),0) FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $prev_start, $since));
+        // Orders this 7 days vs the previous 7 days (week-over-week).
+        $w1  = date('Y-m-d H:i:s', $today_ts - 7 * DAY_IN_SECONDS);
+        $w2  = date('Y-m-d H:i:s', $today_ts - 14 * DAY_IN_SECONDS);
+        $okd = "COUNT(DISTINCT COALESCE(NULLIF(SUBSTRING_INDEX(provider_ref,'#',1),''), stripe_session_id, CAST(id AS CHAR)))";
+        $orders7     = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s", $w1));
+        $ordersprev7 = (int) $wpdb->get_var($wpdb->prepare("SELECT $okd FROM $ptbl WHERE status = 'paid' AND paid_at >= %s AND paid_at < %s", $w2, $w1));
+        $revdaily = array_fill(0, 30, 0);
+        foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT DATE(paid_at) d, COALESCE(SUM(amount_cents),0) c FROM $ptbl WHERE status = 'paid' AND paid_at >= %s GROUP BY DATE(paid_at)", $since)) as $dr) {
+            $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+            if ($idx >= 0 && $idx < 30) $revdaily[$idx] = round(((int) $dr->c) / 100, 2);
+        }
+        return compact('units', 'rev', 'dls', 'demo_n', 'pstats', 'daily', 'orders', 'buyers', 'topn', 'rev30', 'revprev30', 'orders7', 'ordersprev7', 'revdaily');
+    };
+    $pk = function_exists('lmeg_stat_cache') ? lmeg_stat_cache('products_kpi', 3 * MINUTE_IN_SECONDS, $pk_compute) : $pk_compute();
+    $units = (int) $pk['units']; $rev = (int) $pk['rev']; $dls = (int) $pk['dls']; $demo_n = (int) $pk['demo_n'];
+    $pstats = $pk['pstats']; $daily = $pk['daily']; $orders = (int) $pk['orders']; $buyers = (int) $pk['buyers'];
+    $topn = $pk['topn']; $rev30 = (int) $pk['rev30']; $revprev30 = (int) $pk['revprev30'];
+    $orders7 = (int) $pk['orders7']; $ordersprev7 = (int) $pk['ordersprev7']; $revdaily = $pk['revdaily'];
+    $aov  = $orders ? (int) round($rev / $orders) : 0;
     $fmtc = function ($c) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, 'USD') : ('$' . number_format($c / 100, 2)); };
     ?>
     <p style="margin:10px 0 4px"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-products&new=1')); ?>" class="button button-primary">+ New product</a>

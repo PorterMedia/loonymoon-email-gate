@@ -235,7 +235,8 @@ function lmeg_handle_refund_order() {
     }
     $wpdb->query($wpdb->prepare("UPDATE $ptbl SET status = %s WHERE $expr = %s AND status IN ('paid','refunded')", $to, $okey));
     delete_transient('lmeg_toship_count');
-    delete_transient('lmeg_stat_orders_kpi');   // revenue / order / customer totals changed
+    delete_transient('lmeg_stat_orders_kpi');    // revenue / order / customer totals changed
+    delete_transient('lmeg_stat_products_kpi');  // Store KPIs share the same paid rows
     wp_safe_redirect(admin_url('admin.php?page=lmeg-orders&' . ($to === 'refunded' ? 'refunded' : 'unrefunded') . '=1' . lmeg_orders_keep_args())); exit;
 }
 

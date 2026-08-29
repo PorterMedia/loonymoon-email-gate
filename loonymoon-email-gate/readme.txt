@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.96.0
+Stable tag: 3.97.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.97.0 =
+* Performance: Faster Store admin (round 2). The Store page recomputed ~15 sales figures on every load — revenue, orders, buyers, downloads, top sellers, the 7- and 30-day trends — including a distinct-checkout count that can't use an index. Those now come from one ~3-minute cache and refresh instantly when you refund, clear test orders, or add/edit/remove a product. The product list itself stays live. No schema change.
+
 = 3.96.0 =
 * New (Stage 3 of Fan Journey analytics — completes the feature): the journey now shows up on the fan. Each fan profile gains an "On-site journey" summary (pageviews, outbound clicks, last seen, and their handoffs by type — Spotify, Tickets, and so on), and those streams / ticket / merch clicks are woven into the fan's existing Timeline alongside their emails and orders. Plus anonymous→fan stitching: when a visitor signs up or logs in, the journey they built up beforehand — while anonymous — is attached to them, so a fan's history doesn't start blank at signup. No schema change.
 
