@@ -476,3 +476,53 @@ function lmeg_admin_journey() {
     echo '<p style="color:#55555f;font-size:12px;margin-top:14px;">Numbers cached ~3 min · add <code>?lmeg_fresh=1</code> to force-refresh.</p>';
     echo '</div>'; // .wrap
 }
+
+/* ---------------------------------------------------------------------------
+ * Stage 3 — per-fan journey + anonymous→fan stitch
+ * ------------------------------------------------------------------------- */
+
+/** Emoji for a handoff category (shared by the timeline + the profile card). */
+function lmeg_journey_category_icon($cat) {
+    $dsp = lmeg_journey_dsp_categories();
+    if (in_array($cat, $dsp, true) || $cat === 'DSP Button') return '🎧';
+    if ($cat === 'Tickets')         return '🎟';
+    if ($cat === 'Trailer / Video') return '▶️';
+    return '🔗';
+}
+
+/** One fan's on-site journey at a glance (cheap, indexed by subscriber_id). */
+function lmeg_fan_journey_summary($subscriber_id) {
+    global $wpdb;
+    $sid = (int) $subscriber_id;
+    $tbl = $wpdb->prefix . 'lmeg_journey_events';
+    $clicks = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $tbl WHERE subscriber_id = %d AND event_type='outbound'", $sid));
+    $pageviews = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $tbl WHERE subscriber_id = %d AND event_type='pageview'", $sid));
+    $last_seen = $wpdb->get_var($wpdb->prepare(
+        "SELECT MAX(created_at) FROM $tbl WHERE subscriber_id = %d", $sid));
+    $by_cat = $wpdb->get_results($wpdb->prepare(
+        "SELECT category, COUNT(*) c FROM $tbl
+         WHERE subscriber_id = %d AND event_type='outbound' AND category IS NOT NULL
+         GROUP BY category ORDER BY c DESC", $sid), ARRAY_A) ?: [];
+    return compact('clicks', 'pageviews', 'last_seen', 'by_cat');
+}
+
+/**
+ * Attach a fan's PRE-signup anonymous journey to them. Fires the moment we learn
+ * who a visitor is (email capture or member login): the events they generated
+ * while anonymous — keyed by the first-party lmeg_vid cookie — get stamped with
+ * their subscriber_id, so their journey doesn't start blank at signup.
+ */
+function lmeg_journey_claim($subscriber_id) {
+    global $wpdb;
+    $sid = (int) $subscriber_id;
+    if ($sid <= 0) return 0;
+    $vid = isset($_COOKIE['lmeg_vid']) ? preg_replace('/[^a-f0-9]/', '', (string) $_COOKIE['lmeg_vid']) : '';
+    if (strlen($vid) !== 32) return 0;
+    $tbl = $wpdb->prefix . 'lmeg_journey_events';
+    return (int) $wpdb->query($wpdb->prepare(
+        "UPDATE $tbl SET subscriber_id = %d WHERE subscriber_id IS NULL AND anon_id = %s",
+        $sid, $vid));
+}
+add_action('lmeg_subscriber_created', 'lmeg_journey_claim');

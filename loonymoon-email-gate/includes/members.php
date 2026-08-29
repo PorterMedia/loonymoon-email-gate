@@ -51,6 +51,8 @@ function lmeg_set_member_cookie($sub_id, $tier_id) {
     $val  = lmeg_member_cookie_value($sub_id, $tier_id, $exp);
     setcookie(LMEG_MEMBER_COOKIE, $val, $exp, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
     $_COOKIE[LMEG_MEMBER_COOKIE] = $val; // available same-request
+    // Now that we know who this visitor is, attach their pre-login anon journey.
+    if (function_exists('lmeg_journey_claim')) lmeg_journey_claim($sub_id);
 }
 
 function lmeg_clear_member_cookie() {

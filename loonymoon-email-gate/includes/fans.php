@@ -758,6 +758,32 @@ function lmeg_fan_timeline($subscriber_id, $limit = 100) {
         ];
     }
 
+    // On-site journey — classified outbound handoffs (streams, tickets, merch).
+    if (function_exists('lmeg_journey_category_icon')) {
+        $jtbl = $wpdb->prefix . 'lmeg_journey_events';
+        $dsp  = function_exists('lmeg_journey_dsp_categories') ? lmeg_journey_dsp_categories() : [];
+        $jevs = $wpdb->get_results($wpdb->prepare(
+            "SELECT created_at, category, url FROM $jtbl
+             WHERE subscriber_id = %d AND event_type = 'outbound'
+             ORDER BY created_at DESC LIMIT 40", $sid
+        ));
+        foreach ((array) $jevs as $r) {
+            $host = strtolower((string) wp_parse_url((string) $r->url, PHP_URL_HOST));
+            $host = preg_replace('/^www\./', '', $host);
+            $cat  = (string) $r->category;
+            if (in_array($cat, $dsp, true) || $cat === 'DSP Button') {
+                $label = 'Streamed — ' . ($cat === 'DSP Button' ? ($host ?: 'a streaming link') : $cat);
+            } elseif ($cat === 'Tickets') {
+                $label = 'Clicked a ticket link' . ($host ? ' — ' . $host : '');
+            } elseif ($cat === 'Trailer / Video') {
+                $label = 'Watched a video' . ($host ? ' — ' . $host : '');
+            } else {
+                $label = 'Clicked out to ' . ($host ?: 'an external link');
+            }
+            $items[] = ['at' => $r->created_at, 'icon' => lmeg_journey_category_icon($cat), 'label' => $label];
+        }
+    }
+
     usort($items, function ($a, $b) { return strcmp($b['at'] ?? '', $a['at'] ?? ''); });
     return array_slice($items, 0, $limit);
 }

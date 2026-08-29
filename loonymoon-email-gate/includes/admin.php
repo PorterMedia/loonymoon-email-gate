@@ -4934,6 +4934,26 @@ function lmeg_admin_fan_profile($fan_id) {
             <p><button type="submit" class="button button-primary">Save bio</button></p>
         </form>
 
+        <?php $fj = function_exists('lmeg_fan_journey_summary') ? lmeg_fan_journey_summary($fan_id) : null;
+        if ($fj && ((int) $fj['clicks'] || (int) $fj['pageviews'])) : ?>
+        <h2>On-site journey</h2>
+        <div style="max-width:760px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:16px 18px;margin-bottom:22px;">
+            <div style="font-size:14px;color:#17141f;margin-bottom:<?php echo !empty($fj['by_cat']) ? '11px' : '0'; ?>;">
+                <strong style="font-variant-numeric:tabular-nums;"><?php echo (int) $fj['pageviews']; ?></strong> pageviews ·
+                <strong style="font-variant-numeric:tabular-nums;"><?php echo (int) $fj['clicks']; ?></strong> outbound clicks
+                <?php if (!empty($fj['last_seen'])) : ?><span style="color:#55555f;"> · last seen <?php echo esc_html($fj['last_seen']); ?></span><?php endif; ?>
+            </div>
+            <?php if (!empty($fj['by_cat'])) : ?>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <?php foreach ($fj['by_cat'] as $c) :
+                    $ic = function_exists('lmeg_journey_category_icon') ? lmeg_journey_category_icon($c['category']) : '🔗'; ?>
+                    <span style="font:600 12px/1 system-ui;background:#f3f1fb;border:1px solid rgba(0,0,0,.08);color:#17141f;padding:5px 10px;border-radius:999px;white-space:nowrap;"><?php echo esc_html($ic . ' ' . $c['category'] . ' · ' . (int) $c['c']); ?></span>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <h2>Timeline</h2>
         <?php if (empty($timeline)) : ?>
             <p>No activity yet.</p>
