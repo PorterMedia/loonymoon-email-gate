@@ -866,12 +866,27 @@ function lmeg_cart_done($stem = '') {
         $items .= $line . '</div>';
     }
 
+    // Post-purchase share — peak-engagement moment; one tap for a fan to send a
+    // friend to the shop. Native share sheet on mobile (Instagram, Messages…),
+    // clipboard fallback on desktop. No tracking, no new dependency.
+    $artist = function_exists('lmeg_brand_raw') ? trim((string) lmeg_brand_raw('artist_name')) : '';
+    if ($artist === '') $artist = trim((string) get_bloginfo('name'));
+    $share_url    = (function_exists('lmeg_store_shop_url') && lmeg_store_shop_url()) ? lmeg_store_shop_url() : home_url('/');
+    $share_text   = $artist !== '' ? ('Just grabbed something from ' . $artist . ' — take a look:') : 'Check out this shop:';
+    $share_prompt = $artist !== '' ? ('Loving ' . $artist . '? Send a friend their way.') : 'Enjoying the shop? Send a friend along.';
+    $share_card = '<div style="margin:12px 0 4px;padding:13px 15px;background:var(--flp-accent-tint,#FCEBF5);border:1px solid var(--flp-accent-soft,#E7A6CF);border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+        . '<span style="font-weight:650;color:#17141f;text-align:left;font-size:14px">' . esc_html($share_prompt) . '</span>'
+        . '<button type="button" class="flp-share-done" data-url="' . esc_attr($share_url) . '" data-text="' . esc_attr($share_text) . '" style="background:var(--flp-accent-grad,linear-gradient(118deg,#E15FA8,#8A6CF6));color:var(--flp-on-grad,#0B0C12);border:0;border-radius:10px;padding:9px 15px;font-weight:750;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap">' . lmeg_store_icon('share', 15) . '<span class="flp-share-t">Tell your friends</span></button>'
+        . '</div>';
+
     $body = '<div class="dot">✓</div><h1>You\'re in. Thank you!</h1>'
         . '<p>' . ($any_dl ? 'Your downloads are ready below, and a' : 'A') . ' receipt is on its way to your inbox.</p>'
         . '<div style="text-align:left;background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:4px 16px 12px;margin-bottom:8px">' . $items . '</div>'
+        . $share_card
         . ($any_dl ? '<p style="font-size:12px;color:#6b6b78;margin:2px 0 0">Lose this page? Get your downloads again anytime at <a href="' . esc_url(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))) . '" style="color:var(--flp-accent-ink,#B4247E)">find my purchases</a>.</p>' : '')
         . '<a class="home" href="' . esc_url(home_url('/')) . '">' . lmeg_store_icon('arrow-left', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Back to site</a>'
-        . '<script>try{localStorage.removeItem("fanloop_cart");localStorage.removeItem("fanloop_code");}catch(e){}</script>';
+        . '<script>try{localStorage.removeItem("fanloop_cart");localStorage.removeItem("fanloop_code");}catch(e){}'
+        . '(function(){var b=document.querySelector(".flp-share-done");if(!b)return;b.addEventListener("click",function(){var u=b.getAttribute("data-url")||"",t=b.getAttribute("data-text")||"";if(navigator.share){navigator.share({title:t,text:t,url:u}).catch(function(){});return;}var full=(t?t+" ":"")+u,s=b.querySelector(".flp-share-t");function flash(m){if(!s)return;var o=s.textContent;s.textContent=m;setTimeout(function(){s.textContent=o;},1600);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(full).then(function(){flash("Link copied!");},function(){window.prompt("Copy this",full);});}else{window.prompt("Copy this",full);}});})();</script>';
 
     // Post-purchase upsell — best-sellers they didn't just buy.
     $bought = array_map(function ($r) { return (int) $r->product_id; }, $rows);

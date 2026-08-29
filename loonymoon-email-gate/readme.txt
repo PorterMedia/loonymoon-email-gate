@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.77.0
+Stable tag: 3.78.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.78.0 =
+* Store (Beta): "Tell your friends" share on the order-confirmation page. Right after a fan checks out — the highest-intent moment there is — the thank-you page now shows a friendly "Loving [artist]? Send a friend their way." card with a one-tap share button. On phones it opens the native share sheet (Instagram, Messages, WhatsApp, wherever they share), and on desktop it copies a ready-to-paste link with a "Link copied!" confirmation. The artist name comes from your settings and the link points at your shop page. No tracking, no new dependency, no schema change — just free word-of-mouth reach at the moment a fan is most excited. (Also adds a reusable "share" icon to the store icon set.)
+
 = 3.77.0 =
 * Store (Beta): Image alt text + accessibility polish. Product photos across the store — the "more from the shop" and recently-viewed cards, and every image in the cart drawer, cross-sell strip, saved-for-later list and checkout summary — now carry the product's name as descriptive alt text, so Google Images can index your merch by name (how a lot of fans find an artist's shop) and screen readers announce each product. The cart drawer's quantity − / + buttons gained proper labels, and the zoom lightbox image got an alt too. Images that are purely decorative (a product's own gallery thumbnails, the hover-swap second photo, the sticky-bar mini thumb) are correctly left unlabelled so screen readers don't repeat the title. No visible change, no schema change.
 
