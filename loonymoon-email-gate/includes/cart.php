@@ -912,7 +912,7 @@ function lmeg_store_page($title, $inner, $tab = '') {
       h1{font-size:25px;font-weight:820;letter-spacing:-.02em;margin-bottom:9px}
       p{color:#6b6b78;line-height:1.55;margin-bottom:18px}
       a{color:var(--flp-accent-ink,#B4247E)}
-      .home{display:block;margin-top:20px;color:#8a8a95;font-size:13px;text-decoration:none}
+      .home{display:block;margin-top:20px;color:#6b6b78;font-size:13px;text-decoration:none}
       input::placeholder{color:#9a9aa5}
       /* iOS Safari zooms the page when a focused input is under 16px — keep checkout fields at 16px on phones so tapping a field never lurches the page. */
       @media(max-width:640px){.card input,.card select,.card textarea{font-size:16px!important}}
@@ -1013,7 +1013,7 @@ function lmeg_cart_assets_html() {
   .flp-qty{display:inline-flex;align-items:center;gap:0;margin-top:6px;border:1px solid rgba(0,0,0,.14);border-radius:8px;overflow:hidden}
   .flp-qty button{background:#f4f4f6;color:#17141f;border:0;width:26px;height:26px;cursor:pointer;font-size:15px}
   .flp-qty span{min-width:30px;text-align:center;font-size:13px}
-  .flp-ci .rm{background:0;border:0;color:#8a8a95;cursor:pointer;font-size:12px;text-decoration:underline}
+  .flp-ci .rm{background:0;border:0;color:#6b6b78;cursor:pointer;font-size:12px;text-decoration:underline}
   .flp-ci .lt{font-weight:700;white-space:nowrap;font-size:14px}
   .flp-var{background:#fff;color:#17141f;border:1px solid #cfcfd6;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.1;font-family:inherit}
   .flp-var:hover:not(:disabled){border-color:#E15FA8}
@@ -1031,7 +1031,7 @@ function lmeg_cart_assets_html() {
   .flp-si .t b{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .flp-si .t span{color:#6b6b78;font-size:12px}
   .flp-si .flp-saved-add{background:var(--flp-accent-tint,#FCE7F1);color:var(--flp-accent-ink,#B4247E);border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
-  .flp-si .flp-saved-rm{background:0;border:0;color:#8a8a95;cursor:pointer;display:inline-flex;padding:4px}
+  .flp-si .flp-saved-rm{background:0;border:0;color:#6b6b78;cursor:pointer;display:inline-flex;padding:4px}
   #flp-xsell{padding:12px 20px;border-top:1px solid rgba(0,0,0,.08)}
   .flp-xsell-head{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6b6b78;margin-bottom:8px}
   .flp-xi{display:flex;align-items:center;gap:11px;padding:7px 0}

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.83.0
+Stable tag: 3.84.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.84.0 =
+* Store (Beta): Readability — darker "remove" / "back" links. The cart drawer's "remove" links (and the "Back to site / Keep shopping" link on the order pages) were a pale grey that sat right at the edge of legibility on white. They're now a darker grey that comfortably passes accessibility contrast. Came out of a contrast audit against a dark shop accent colour — which the rest of the store handled correctly (buttons, cart button, badges and chips all stayed readable). No schema change.
+
 = 3.83.0 =
 * Store (Beta): Quick-view close button is now visible and tappable. On the "Quick look" pop-up, the close (X) button had turned into a white icon on a transparent background — invisible against the white card — and it overlapped the save-heart, so shoppers couldn't tell how to close it. It's back to a clear dark circle in the top corner (a proper 44px-ish tap target), and the save-heart is hidden inside quick-view so nothing sits on top of the close. Display only, no schema change.
 
