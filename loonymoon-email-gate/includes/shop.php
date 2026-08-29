@@ -808,6 +808,12 @@ function lmeg_shop_revenue_by_broadcast() {
 }
 
 function lmeg_shop_totals($days = 30) {
+    $days = max(1, (int) $days);
+    return function_exists('lmeg_stat_cache')
+        ? lmeg_stat_cache('shop_totals_' . $days, 5 * MINUTE_IN_SECONDS, function () use ($days) { return lmeg_shop_totals_query($days); })
+        : lmeg_shop_totals_query($days);
+}
+function lmeg_shop_totals_query($days = 30) {
     global $wpdb;
     $tbl = $wpdb->prefix . 'lmeg_shop_orders';
     return $wpdb->get_row($wpdb->prepare(

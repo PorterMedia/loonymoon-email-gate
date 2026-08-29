@@ -5308,21 +5308,37 @@ function lmeg_admin_overview() {
     global $wpdb;
     $subs = $wpdb->prefix . LMEG_TABLE;
 
-    // --- headline numbers ---
-    $active = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL");
-    $new30  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-    $unsub30= (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
-
-    // MRR + paying
-    $mrr = 0; $paying = 0; $cur = 'USD';
-    if (function_exists('lmeg_all_tiers')) {
-        $by = []; foreach (lmeg_all_tiers() as $t) { $by[(int)$t->id] = $t; $cur = $t->currency; }
-        foreach ($wpdb->get_results("SELECT member_tier_id, billing_interval FROM $subs WHERE member_status='active' AND member_tier_id IS NOT NULL AND stripe_subscription_id IS NOT NULL") as $p) {
-            $paying++; $t = $by[(int)$p->member_tier_id] ?? null; if (!$t) continue;
-            if ($p->billing_interval === 'year' && $t->price_annual) $mrr += (int) round($t->price_annual/12);
-            elseif ($t->price_monthly) $mrr += (int) $t->price_monthly;
+    // All the dashboard's DB aggregations in ONE 3-minute cached bundle (headline
+    // counts, MRR, sparkline, fan types, countries, last-broadcast open/click).
+    // Dashboard numbers tolerate a few minutes of lag; ?lmeg_fresh=1 forces a recompute.
+    $ov = lmeg_stat_cache('overview', 3 * MINUTE_IN_SECONDS, function () use ($wpdb, $subs) {
+        $active = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL");
+        $new30  = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        $unsub30= (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        $mrr = 0; $paying = 0; $cur = 'USD';
+        if (function_exists('lmeg_all_tiers')) {
+            $by = []; foreach (lmeg_all_tiers() as $t) { $by[(int)$t->id] = $t; $cur = $t->currency; }
+            foreach ($wpdb->get_results("SELECT member_tier_id, billing_interval FROM $subs WHERE member_status='active' AND member_tier_id IS NOT NULL AND stripe_subscription_id IS NOT NULL") as $p) {
+                $paying++; $t = $by[(int)$p->member_tier_id] ?? null; if (!$t) continue;
+                if ($p->billing_interval === 'year' && $t->price_annual) $mrr += (int) round($t->price_annual/12);
+                elseif ($t->price_monthly) $mrr += (int) $t->price_monthly;
+            }
         }
-    }
+        $daily = $wpdb->get_results("SELECT DATE(created_at) d, COUNT(*) n FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 29 DAY) GROUP BY DATE(created_at)");
+        $types = $wpdb->get_results("SELECT t.name,t.color,COUNT(st.subscriber_id) n FROM {$wpdb->prefix}lmeg_tags t JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id=t.id WHERE t.slug LIKE 'fan-type:%' GROUP BY t.id ORDER BY n DESC");
+        $countries = $wpdb->get_results("SELECT country,COUNT(*) n FROM $subs WHERE country<>'' AND country IS NOT NULL AND unsubscribed_at IS NULL GROUP BY country ORDER BY n DESC LIMIT 5");
+        $last = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lmeg_broadcasts WHERE status='completed' ORDER BY id DESC LIMIT 1");
+        $l_open = $l_click = $l_rev = 0;
+        if ($last) {
+            $ev = $wpdb->prefix.'lmeg_broadcast_events';
+            $l_open = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='open'",$last->id));
+            $l_click= (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='click'",$last->id));
+            if (function_exists('lmeg_shop_revenue_by_broadcast')) { $rm=lmeg_shop_revenue_by_broadcast(); $l_rev = isset($rm[(int)$last->id])?(int)$rm[(int)$last->id]['cents']:0; }
+        }
+        return compact('active','new30','unsub30','mrr','paying','cur','daily','types','countries','last','l_open','l_click','l_rev');
+    });
+    $active = (int) $ov['active']; $new30 = (int) $ov['new30']; $unsub30 = (int) $ov['unsub30'];
+    $mrr = (int) $ov['mrr']; $paying = (int) $ov['paying']; $cur = $ov['cur'];
 
     // Campaign revenue 30d
     $camp = 0; $camp_orders = 0;
@@ -5342,8 +5358,8 @@ function lmeg_admin_overview() {
         }
     }
 
-    // signup sparkline 30d
-    $daily = $wpdb->get_results("SELECT DATE(created_at) d, COUNT(*) n FROM $subs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 29 DAY) GROUP BY DATE(created_at)");
+    // signup sparkline 30d (from the cached bundle)
+    $daily = $ov['daily'];
     $byday = []; for ($i=29;$i>=0;$i--) $byday[date('Y-m-d', strtotime("-$i days"))] = 0;
     foreach ($daily as $d) $byday[$d->d] = (int) $d->n;
     $counts = array_values($byday); $max = max($counts) ?: 1;
@@ -5352,23 +5368,13 @@ function lmeg_admin_overview() {
     foreach ($counts as $i=>$n){ $pts[] = round($i*$step,1).','.round($h-($n/$max)*($h-4)-2,1); }
     $spark = implode(' ', $pts);
 
-    // fan types
-    $types = $wpdb->get_results("SELECT t.name,t.color,COUNT(st.subscriber_id) n FROM {$wpdb->prefix}lmeg_tags t JOIN {$wpdb->prefix}lmeg_subscriber_tags st ON st.tag_id=t.id WHERE t.slug LIKE 'fan-type:%' GROUP BY t.id ORDER BY n DESC");
+    // fan types / countries / last broadcast (from the cached bundle)
+    $types = $ov['types'];
     $tt_total = array_sum(array_map(function($r){return (int)$r->n;}, (array)$types)) ?: 1;
-
-    // countries
-    $countries = $wpdb->get_results("SELECT country,COUNT(*) n FROM $subs WHERE country<>'' AND country IS NOT NULL AND unsubscribed_at IS NULL GROUP BY country ORDER BY n DESC LIMIT 5");
+    $countries = $ov['countries'];
     $c_max = $countries ? max(array_map(function($r){return (int)$r->n;}, $countries)) : 1;
-
-    // last broadcast
-    $last = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lmeg_broadcasts WHERE status='completed' ORDER BY id DESC LIMIT 1");
-    $l_open=$l_click=$l_rev=0;
-    if ($last) {
-        $ev = $wpdb->prefix.'lmeg_broadcast_events';
-        $l_open = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='open'",$last->id));
-        $l_click= (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE broadcast_id=%d AND event_type='click'",$last->id));
-        if (function_exists('lmeg_shop_revenue_by_broadcast')) { $rm=lmeg_shop_revenue_by_broadcast(); $l_rev = isset($rm[(int)$last->id])?(int)$rm[(int)$last->id]['cents']:0; }
-    }
+    $last = $ov['last'];
+    $l_open = (int) $ov['l_open']; $l_click = (int) $ov['l_click']; $l_rev = (int) $ov['l_rev'];
     $fmt = function($c) use ($cur){ return function_exists('lmeg_format_price') ? lmeg_format_price($c,$cur) : ('$'.number_format($c/100,2)); };
     ?>
     <div class="wrap">

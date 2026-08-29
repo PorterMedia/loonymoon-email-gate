@@ -639,6 +639,14 @@ function lmeg_admin_surveys() {
     }
 
     $rows = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
+    // Tally every survey's votes in ONE grouped query (was a query per survey).
+    $tally_by = [];
+    if ($rows) {
+        $svids = implode(',', array_map(function ($r) { return (int) $r->id; }, $rows));
+        foreach ($wpdb->get_results("SELECT survey_id, option_idx, COUNT(*) n FROM {$wpdb->prefix}lmeg_survey_votes WHERE survey_id IN ($svids) GROUP BY survey_id, option_idx") as $t) {
+            $tally_by[(int) $t->survey_id][(int) $t->option_idx] = (int) $t->n;
+        }
+    }
     ?>
     <div class="wrap">
         <h1>Fanloop — Surveys</h1>
@@ -662,13 +670,9 @@ function lmeg_admin_surveys() {
             <?php if (empty($rows)) : ?>
                 <tr><td colspan="6">No surveys yet.</td></tr>
             <?php else : foreach ($rows as $s) :
-                $opts    = json_decode($s->options_json, true) ?: [];
-                $tallies = $wpdb->get_results($wpdb->prepare(
-                    "SELECT option_idx, COUNT(*) AS n FROM {$wpdb->prefix}lmeg_survey_votes WHERE survey_id = %d GROUP BY option_idx", $s->id
-                ));
-                $by_idx = [];
-                foreach ((array) $tallies as $t) $by_idx[(int) $t->option_idx] = (int) $t->n;
-                $total = array_sum($by_idx);
+                $opts   = json_decode($s->options_json, true) ?: [];
+                $by_idx = $tally_by[(int) $s->id] ?? [];
+                $total  = array_sum($by_idx);
                 $summary = [];
                 foreach ($opts as $i => $o) $summary[] = esc_html($o) . ': <strong>' . (int) ($by_idx[$i] ?? 0) . '</strong>';
             ?>
@@ -755,6 +759,20 @@ function lmeg_admin_contests() {
     $rows    = $wpdb->get_results("SELECT * FROM $tbl ORDER BY id DESC LIMIT 100");
     $active  = function_exists('lmeg_current_open_contest') ? lmeg_current_open_contest() : null;
     $editing = !empty($_GET['edit']) ? $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE id = %d", (int) $_GET['edit'])) : null;
+    // Batch entrant counts + winner rows in two queries (was 2 queries per contest).
+    $entrants_by = []; $winner_by = [];
+    if ($rows) {
+        $cids = implode(',', array_map(function ($r) { return (int) $r->id; }, $rows));
+        foreach ($wpdb->get_results("SELECT contest_id, COUNT(*) n FROM {$wpdb->prefix}lmeg_contest_entries WHERE contest_id IN ($cids) GROUP BY contest_id") as $e) {
+            $entrants_by[(int) $e->contest_id] = (int) $e->n;
+        }
+        $wids = array_values(array_filter(array_map(function ($r) { return (int) $r->winner_subscriber_id; }, $rows)));
+        if ($wids) {
+            foreach ($wpdb->get_results("SELECT id, email, phone FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id IN (" . implode(',', $wids) . ")") as $w) {
+                $winner_by[(int) $w->id] = $w;
+            }
+        }
+    }
     ?>
     <div class="wrap">
         <h1>Fanloop — Contests</h1>
@@ -820,12 +838,8 @@ function lmeg_admin_contests() {
             <?php if (empty($rows)) : ?>
                 <tr><td colspan="6">No contests yet.</td></tr>
             <?php else : foreach ($rows as $c) :
-                $n = (int) $wpdb->get_var($wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_contest_entries WHERE contest_id = %d", $c->id
-                ));
-                $winner = $c->winner_subscriber_id
-                    ? $wpdb->get_row($wpdb->prepare("SELECT id, email, phone FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $c->winner_subscriber_id))
-                    : null;
+                $n = (int) ($entrants_by[(int) $c->id] ?? 0);
+                $winner = $c->winner_subscriber_id ? ($winner_by[(int) $c->winner_subscriber_id] ?? null) : null;
                 $ended  = !$c->is_open || ($c->ends_at && $c->ends_at < current_time('mysql'));
             ?>
                 <tr>

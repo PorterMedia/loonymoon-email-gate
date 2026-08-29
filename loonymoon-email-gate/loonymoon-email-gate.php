@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.91.0
+ * Version:     3.92.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.91.0');
-define('LMEG_DB_VERSION',  '3.86.0');
+define('LMEG_VERSION',     '3.92.0');
+define('LMEG_DB_VERSION',  '3.92.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -252,7 +252,9 @@ function lmeg_create_tables() {
         KEY idx_member (member_tier_id, member_status),
         KEY idx_stripe_sub (stripe_subscription_id),
         KEY idx_stripe_cust (stripe_customer_id),
-        KEY idx_referred_by (referred_by)
+        KEY idx_referred_by (referred_by),
+        KEY idx_created (created_at),
+        KEY idx_country (country)
     ) $charset;");
 
     dbDelta("CREATE TABLE $broadcasts (
@@ -307,7 +309,8 @@ function lmeg_create_tables() {
         PRIMARY KEY  (id),
         KEY idx_bcast_type (broadcast_id, event_type),
         KEY idx_source (source, source_ref, event_type),
-        KEY idx_sub (subscriber_id)
+        KEY idx_sub (subscriber_id),
+        KEY idx_type_created (event_type, created_at)
     ) $charset;");
 
     $tags     = $wpdb->prefix . 'lmeg_tags';
@@ -713,7 +716,8 @@ function lmeg_create_tables() {
         KEY idx_product (product_id),
         KEY idx_sub (subscriber_id),
         KEY idx_fulfil (fulfillment),
-        KEY idx_token (access_token)
+        KEY idx_token (access_token),
+        KEY idx_status_paid (status, paid_at)
     ) $charset;");
 
     $waitlist = $wpdb->prefix . 'lmeg_waitlist';
@@ -1011,6 +1015,24 @@ function lmeg_env_managed_keys() {
         if (lmeg_env_value($k) !== null) $keys[] = $k;
     }
     return $keys;
+}
+
+/**
+ * Remember an expensive admin-dashboard read for $ttl seconds. Read-only stat
+ * caching: use ONLY where a few minutes of staleness is fine (headline counts,
+ * revenue totals, aggregate breakdowns) — never for money math or writes.
+ * The computed value is wrapped so a legitimately-cached 0/''/[]/false is not
+ * mistaken for a cache miss. Bypass with ?lmeg_fresh=1 (admins) to force a recompute.
+ */
+function lmeg_stat_cache($key, $ttl, callable $compute) {
+    $full = 'lmeg_stat_' . $key;
+    if (empty($_GET['lmeg_fresh'])) {
+        $hit = get_transient($full);
+        if (is_array($hit) && array_key_exists('v', $hit)) return $hit['v'];
+    }
+    $val = $compute();
+    set_transient($full, ['v' => $val], max(1, (int) $ttl));
+    return $val;
 }
 
 function lmeg_get_settings() {

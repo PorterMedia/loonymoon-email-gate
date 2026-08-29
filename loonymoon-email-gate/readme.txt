@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.91.0
+Stable tag: 3.92.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.92.0 =
+* Performance: Faster admin pages (round 1). The admin dashboards were re-querying the database from scratch on every load. This adds (1) database indexes on the biggest tables (orders/purchases by status+date, email events by type+date, subscribers by signup date and country) so the stat queries stop scanning whole tables; (2) a short cache on the Overview dashboard — all its numbers now load from one 3-minute cache instead of ~12 live queries (append ?lmeg_fresh=1 to any admin URL to force fresh numbers); (3) a cache on the store revenue totals; and (4) fixes to the Surveys and Contests admin pages, which were running one query per row (100–200 queries) and now run two. New indexes are added automatically on update — the first load after updating may take a moment while they build. More admin pages get the same caching treatment next.
+
 = 3.91.0 =
 * Store (Beta): Pick-up orders read cleanly in the Orders admin + CSV. On the main Orders page and in the orders CSV export, a "pick up at a show" order was showing the raw internal marker ("PICKUP::…") in the address column. It now reads "Pick up: [venue] — [date]" everywhere — matching the packing slip, receipt, and order confirmation, which were already correct. Shipping orders and non-pick-up addresses are unchanged. No schema change.
 
