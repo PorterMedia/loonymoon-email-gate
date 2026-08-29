@@ -39,7 +39,7 @@ function lmeg_purchases_form_html($dark = false) {
     $action = esc_url(add_query_arg(['lmeg_purchases' => 'request'], home_url('/')));
     if ($dark) {
         return '<form method="post" action="' . $action . '" style="margin:6px 0 2px;text-align:left">'
-            . '<input type="email" name="email" required placeholder="you@email.com" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#0E1017;color:#fff;font-size:15px">'
+            . '<input type="email" name="email" required placeholder="you@email.com" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
             . '<button type="submit" style="margin-top:12px;width:100%;background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:800;border:0;padding:14px;border-radius:12px;font-size:15px;cursor:pointer">Email me my downloads</button>'
             . '</form>';
     }
@@ -124,7 +124,7 @@ function lmeg_purchases_orders_html($rows) {
     // Group lines into orders, preserving newest-first order.
     $orders = [];
     foreach ((array) $rows as $r) { $orders[$r->okey][] = $r; }
-    if (!$orders) return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px;color:#8B90A0">No purchases found under this email yet.</div>';
+    if (!$orders) return '<div style="background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:20px;color:#6b6b78">No purchases found under this email yet.</div>';
 
     $out = '';
     foreach ($orders as $okey => $lines) {
@@ -150,15 +150,15 @@ function lmeg_purchases_orders_html($rows) {
             if ($digital && $r->access_token) {
                 $used = ((int) $r->access_count >= (int) $r->access_limit);
                 $right = $used
-                    ? '<span style="color:#F0A0A0;font-size:12px">download limit reached — reply to your receipt</span>'
+                    ? '<span style="color:#DC2626;font-size:12px">download limit reached — reply to your receipt</span>'
                     : '<a href="' . esc_url(lmeg_product_access_url($r->access_token)) . '" style="background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12;font-weight:750;text-decoration:none;padding:8px 14px;border-radius:9px;white-space:nowrap;font-size:13px">Download →</a>';
             } elseif ($digital) {
-                $right = '<span style="color:#8B90A0;font-size:12px">no file yet</span>';
+                $right = '<span style="color:#6b6b78;font-size:12px">no file yet</span>';
             }
             $qty = (int) ($r->qty ?: 1);
-            $itemhtml .= '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">'
-                . '<div style="text-align:left;min-width:0"><div style="font-weight:600;font-size:14px">' . ($qty > 1 ? $qty . '× ' : '') . esc_html($r->title ?: 'Item') . ($r->variant ? ' <span style="color:#9AA">· ' . esc_html($r->variant) . '</span>' : '') . '</div>'
-                . '<div style="color:#8B90A0;font-size:12px">' . esc_html($money($r->amount_cents, $cur)) . '</div></div>'
+            $itemhtml .= '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(0,0,0,.07)">'
+                . '<div style="text-align:left;min-width:0"><div style="font-weight:600;font-size:14px">' . ($qty > 1 ? $qty . '× ' : '') . esc_html($r->title ?: 'Item') . ($r->variant ? ' <span style="color:#6b6b78">· ' . esc_html($r->variant) . '</span>' : '') . '</div>'
+                . '<div style="color:#6b6b78;font-size:12px">' . esc_html($money($r->amount_cents, $cur)) . '</div></div>'
                 . $right . '</div>';
         }
 
@@ -168,17 +168,17 @@ function lmeg_purchases_orders_html($rows) {
             if ($all_shipped) {
                 $turl = ($track && function_exists('lmeg_tracking_url')) ? lmeg_tracking_url($carrier, $track) : '';
                 $line = lmeg_store_icon('check-circle', 14, ['style' => 'margin-right:5px;vertical-align:-2px']) . 'Shipped' . ($carrier ? ' · ' . esc_html($carrier) : '') . ($track ? ' · ' . esc_html($track) : '');
-                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.3);border-radius:9px;font-size:13px;color:#8fe3b5">' . $line
-                    . ($turl ? ' <a href="' . esc_url($turl) . '" target="_blank" rel="noopener" style="color:#8fe3b5;font-weight:700">Track →</a>' : '') . '</div>';
+                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(125,211,168,.12);border:1px solid rgba(125,211,168,.3);border-radius:9px;font-size:13px;color:#0f766e">' . $line
+                    . ($turl ? ' <a href="' . esc_url($turl) . '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">Track →</a>' : '') . '</div>';
             } else {
-                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(231,201,125,.1);border:1px solid rgba(231,201,125,.3);border-radius:9px;font-size:13px;color:#E7C97D;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('truck', 15) . 'Preparing to ship — you\'ll get tracking by email.</div>';
+                $ship = '<div style="margin-top:10px;padding:9px 12px;background:rgba(231,201,125,.1);border:1px solid rgba(231,201,125,.3);border-radius:9px;font-size:13px;color:#B45309;display:flex;align-items:center;gap:6px">' . lmeg_store_icon('truck', 15) . 'Preparing to ship — you\'ll get tracking by email.</div>';
             }
         }
 
-        $out .= '<div style="text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 16px;margin-bottom:12px">'
+        $out .= '<div style="text-align:left;background:#f7f7f9;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:14px 16px;margin-bottom:12px">'
             . '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">'
-            . '<div style="font-size:12px;color:#8B90A0;letter-spacing:.04em">ORDER #' . esc_html($ref) . ($when ? ' · ' . esc_html($when) : '') . '</div>'
-            . '<div style="font-weight:800;color:#fff">' . esc_html($money($total, $cur)) . '</div></div>'
+            . '<div style="font-size:12px;color:#6b6b78;letter-spacing:.04em">ORDER #' . esc_html($ref) . ($when ? ' · ' . esc_html($when) : '') . '</div>'
+            . '<div style="font-weight:800;color:#17141f">' . esc_html($money($total, $cur)) . '</div></div>'
             . $itemhtml . $ship . '</div>';
     }
     return $out;
