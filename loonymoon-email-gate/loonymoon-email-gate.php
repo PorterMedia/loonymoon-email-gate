@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.85.0
+ * Version:     3.86.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.85.0');
-define('LMEG_DB_VERSION',  '3.66.0');
+define('LMEG_VERSION',     '3.86.0');
+define('LMEG_DB_VERSION',  '3.86.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -92,6 +92,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/abandoned.php';
 require_once LMEG_PLUGIN_DIR . 'includes/orders.php';
 require_once LMEG_PLUGIN_DIR . 'includes/waitlist.php';
 require_once LMEG_PLUGIN_DIR . 'includes/bundles.php';
+require_once LMEG_PLUGIN_DIR . 'includes/shows.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
@@ -696,6 +697,7 @@ function lmeg_create_tables() {
         variant VARCHAR(120) DEFAULT NULL,
         ship_name VARCHAR(190) DEFAULT NULL,
         ship_address TEXT,
+        pickup_show VARCHAR(255) DEFAULT NULL,
         tracking VARCHAR(190) DEFAULT NULL,
         carrier VARCHAR(40) DEFAULT NULL,
         fulfillment VARCHAR(12) NOT NULL DEFAULT 'none',
@@ -775,6 +777,26 @@ function lmeg_create_tables() {
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         KEY idx_active (active)
+    ) $charset;");
+
+    // Tour dates — powers "pick up at the show" (manual + Bandsintown sync).
+    $shows = $wpdb->prefix . 'lmeg_shows';
+    dbDelta("CREATE TABLE $shows (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        venue VARCHAR(190) NOT NULL DEFAULT '',
+        city VARCHAR(120) NOT NULL DEFAULT '',
+        region VARCHAR(120) NOT NULL DEFAULT '',
+        country VARCHAR(2) NOT NULL DEFAULT '',
+        show_date DATETIME DEFAULT NULL,
+        pickup_note VARCHAR(255) NOT NULL DEFAULT '',
+        source VARCHAR(12) NOT NULL DEFAULT 'manual',
+        bit_id VARCHAR(64) DEFAULT NULL,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        KEY idx_active (active),
+        KEY idx_date (show_date),
+        KEY idx_bit (bit_id)
     ) $charset;");
 }
 
@@ -863,6 +885,7 @@ function lmeg_default_settings() {
         'store_waitlist_auto'      => 1,
         // Store (Beta) flat shipping by zone (Canada / USA / International)
         'store_ship_zones'         => 0,
+        'store_pickup_enabled'     => 0,
         'store_ship_ca'            => 0,
         'store_ship_us'            => 0,
         'store_ship_intl'          => 0,
