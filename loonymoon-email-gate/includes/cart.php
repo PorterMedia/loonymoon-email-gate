@@ -526,7 +526,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         $name = esc_html($p->title) . ($line['variant'] ? ' <span style="color:#6b6b78">· ' . esc_html($line['variant']) . '</span>' : '');
         $lt   = lmeg_cart_money($line['unit'] * $line['qty'], $line['cur']);
         $thumb = !empty($p->cover_url)
-            ? '<img src="' . esc_url($p->cover_url) . '" alt="" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:0 0 auto">'
+            ? '<img src="' . esc_url($p->cover_url) . '" alt="" loading="lazy" decoding="async" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:0 0 auto">'
             : '<div style="width:46px;height:46px;border-radius:8px;background:#eef0f4;flex:0 0 auto"></div>';
         $rows .= '<div style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(0,0,0,.08)">'
               . $thumb
@@ -1103,7 +1103,7 @@ function lmeg_cart_assets_html() {
       var lt=(+i.unit)*(+i.qty); sub+=lt; ship+=(+i.ship||0);
       if(i.type==='physical') hasPhys=true;
       html+='<div class="flp-ci" data-k="'+esc(keyOf(i))+'">'
-        + (i.cover?'<img src="'+esc(i.cover)+'" alt="">':'<div class="ph"></div>')
+        + (i.cover?'<img src="'+esc(i.cover)+'" alt="" loading="lazy" decoding="async">':'<div class="ph"></div>')
         + '<div class="t"><b>'+esc(i.title)+'</b>'+(i.variant?'<span>'+esc(i.variant)+'</span>':'')+(i.pers?'<span style="color:var(--flp-accent-ink,#B4247E)">&#9997; '+esc(i.pers)+'</span>':'')
         + '<div class="flp-qty"><button type="button" data-act="dec">−</button><span>'+(+i.qty)+'</span><button type="button" data-act="inc">+</button></div> '
         + '<button type="button" class="rm" data-act="rm">remove</button></div>'
@@ -1150,7 +1150,7 @@ function lmeg_cart_assets_html() {
     wrap.hidden=false;
     box.innerHTML=picks.map(function(p){
       return '<div class="flp-xi">'
-        + (p.cover?'<img src="'+esc(p.cover)+'" alt="">':'<div class="ph"></div>')
+        + (p.cover?'<img src="'+esc(p.cover)+'" alt="" loading="lazy" decoding="async">':'<div class="ph"></div>')
         + '<div class="t"><b>'+esc(p.title)+'</b><span>'+money(p.unit,p.cur)+'</span></div>'
         + '<button type="button" class="flp-xadd" data-id="'+(+p.id)+'" data-slug="'+esc(p.slug)+'" data-title="'+esc(p.title)
         + '" data-cover="'+esc(p.cover||'')+'" data-price="'+(+p.unit)+'" data-cur="'+esc(p.cur)+'" data-type="'+esc(p.type)+'" data-ship="'+(+p.ship||0)+'">Add</button></div>';
@@ -1182,7 +1182,7 @@ function lmeg_cart_assets_html() {
     wrap.hidden=false; if(cEl)cEl.textContent='('+l.length+')';
     box.innerHTML=l.map(function(s){
       return '<div class="flp-si" data-id="'+(+s.id)+'">'
-        + (s.cover?'<img src="'+esc(s.cover)+'" alt="">':'<div class="ph"></div>')
+        + (s.cover?'<img src="'+esc(s.cover)+'" alt="" loading="lazy" decoding="async">':'<div class="ph"></div>')
         + '<div class="t"><b>'+esc(s.title)+'</b><span>'+(s.pwyw?'Name your price':money(s.unit,s.cur))+'</span></div>'
         + '<button type="button" class="flp-saved-add" data-id="'+(+s.id)+'">Add to cart</button>'
         + '<button type="button" class="flp-saved-rm" data-id="'+(+s.id)+'" aria-label="Remove">'+<?php echo wp_json_encode(lmeg_store_icon('x', 15)); ?>+'</button></div>';

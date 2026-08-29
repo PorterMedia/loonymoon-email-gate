@@ -281,7 +281,7 @@ function lmeg_store_upsell_html($exclude_ids = [], $limit = 3, $heading = 'You m
         $price = lmeg_product_is_pwyw($r) ? 'Name your price'
                : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2));
         $img = !empty($r->cover_url)
-            ? '<img src="' . esc_url($r->cover_url) . '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
+            ? '<img src="' . esc_url($r->cover_url) . '" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">'
             : '<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>';
         $cards .= '<a href="' . $rurl . '" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'
             . $img
@@ -1534,13 +1534,13 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         $mid = 'flpmain' . (int) $p->id; $gid = 'flpgal' . (int) $p->id; ?>
         <div class="flp-gal" id="<?php echo esc_attr($gid); ?>" data-imgs="<?php echo esc_attr(wp_json_encode(array_values($imgs))); ?>" data-alt="<?php echo esc_attr($p->title); ?>">
           <div style="position:relative">
-            <img id="<?php echo esc_attr($mid); ?>" class="flp-gal-main" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" data-idx="0" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover;cursor:zoom-in">
+            <img id="<?php echo esc_attr($mid); ?>" class="flp-gal-main" src="<?php echo esc_url($imgs[0]); ?>" alt="<?php echo esc_attr($p->title); ?>" data-idx="0" fetchpriority="high" decoding="async" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover;cursor:zoom-in">
             <span class="flp-gal-zoom" aria-hidden="true" style="position:absolute;right:10px;top:10px;background:rgba(11,12,18,.62);color:#fff;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;pointer-events:none;display:inline-flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('maximize', 12); ?>Zoom</span>
             <?php echo $heart_btn('left:10px;top:10px'); ?>
           </div>
           <div style="display:flex;gap:7px;padding:9px 10px;overflow-x:auto;background:#faf9fc">
             <?php foreach ($imgs as $i => $u) : ?>
-              <img src="<?php echo esc_url($u); ?>" alt="" data-main="<?php echo esc_attr($mid); ?>" data-idx="<?php echo (int) $i; ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? 'var(--flp-accent,#E15FA8)' : 'rgba(0,0,0,.12)'; ?>">
+              <img src="<?php echo esc_url($u); ?>" alt="" loading="lazy" decoding="async" data-main="<?php echo esc_attr($mid); ?>" data-idx="<?php echo (int) $i; ?>" class="flp-thumb" style="width:54px;height:54px;object-fit:cover;border-radius:8px;cursor:pointer;flex:0 0 auto;border:2px solid <?php echo $i === 0 ? 'var(--flp-accent,#E15FA8)' : 'rgba(0,0,0,.12)'; ?>">
             <?php endforeach; ?>
           </div>
         </div>
@@ -1575,10 +1575,10 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
           setMain(0);
         })();
         </script>
-      <?php elseif (!empty($imgs)) : $img = '<img src="' . esc_url($imgs[0]) . '" alt="' . esc_attr($p->title) . '" style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
+      <?php elseif (!empty($imgs)) : $img = '<img src="' . esc_url($imgs[0]) . '" alt="' . esc_attr($p->title) . '" ' . ($solo ? 'fetchpriority="high" decoding="async"' : 'loading="lazy" decoding="async"') . ' style="width:100%;display:block;aspect-ratio:1/1;object-fit:cover">';
         $badge = (count($imgs) > 1) ? '<span style="position:absolute;right:8px;bottom:8px;background:rgba(11,12,18,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">▦ ' . count($imgs) . '</span>' : '';
         // Second photo fades in on hover (the back of the shirt, the flip side of the sleeve).
-        $img2 = (!$solo && count($imgs) > 1) ? '<img src="' . esc_url($imgs[1]) . '" alt="" aria-hidden="true" class="flp-cover2" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s ease;pointer-events:none">' : '';
+        $img2 = (!$solo && count($imgs) > 1) ? '<img src="' . esc_url($imgs[1]) . '" alt="" aria-hidden="true" loading="lazy" decoding="async" class="flp-cover2" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s ease;pointer-events:none">' : '';
         $wrapped = '<div class="flp-cover" style="position:relative;display:block;overflow:hidden">' . $img . $img2 . $badge . '</div>';
         $linked  = $link ? '<a href="' . $url . '" style="display:block">' . $wrapped . '</a>' : $wrapped;
         $quick   = !$solo ? '<button type="button" class="flp-quick" aria-label="Quick look" style="position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.93);color:#17141f;border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.22);display:inline-flex;align-items:center;gap:5px">' . lmeg_store_icon('search', 13) . 'Quick look</button>' : '';
@@ -1716,7 +1716,7 @@ function lmeg_product_sticky_bar_html($p) {
     } else {
         $btn = '<button type="button" class="flp-goto-buy" style="' . $bs . ';background:linear-gradient(118deg,#E15FA8,#8A6CF6);color:#0B0C12">' . (($physical || $vlist) ? 'Choose options' : 'Buy now') . '</button>';
     }
-    $thumb = !empty($p->cover_url) ? '<img src="' . esc_url($p->cover_url) . '" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto">' : '';
+    $thumb = !empty($p->cover_url) ? '<img src="' . esc_url($p->cover_url) . '" alt="" loading="lazy" decoding="async" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto">' : '';
 
     ob_start(); ?>
 <style>
@@ -1990,7 +1990,7 @@ function lmeg_product_page() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
         <?php foreach ($rel as $r) : $rurl = esc_url(lmeg_product_url($r)); ?>
         <a href="<?php echo $rurl; ?>" style="text-decoration:none;color:inherit;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">
-          <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
+          <?php if (!empty($r->cover_url)) : ?><img src="<?php echo esc_url($r->cover_url); ?>" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block"><?php endif; ?>
           <div style="padding:9px 11px">
             <div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html($r->title); ?></div>
             <div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px"><?php echo esc_html(lmeg_product_is_pwyw($r) ? 'Name your price' : (function_exists('lmeg_format_price') ? lmeg_format_price((int) $r->price_cents, $r->currency ?: 'USD') : '$' . number_format($r->price_cents / 100, 2))); ?></div>
@@ -2018,7 +2018,7 @@ function lmeg_product_page() {
     var others=list.filter(function(i){return i&&i.id!=CUR.id;}).slice(0,CAP);
     var wrap=document.getElementById("flp-recent");
     if(wrap&&others.length){var h='<div style="color:#8B90A0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;text-align:center">Recently viewed</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">';
-    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
+    others.forEach(function(i){h+='<a href="'+esc(i.url)+'" style="text-decoration:none;display:block;background:#12141f;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">'+(i.cover?'<img src="'+esc(i.cover)+'" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">':'<div style="width:100%;aspect-ratio:1/1;background:#20222E"></div>')+'<div style="padding:9px 11px"><div style="color:#F4F2F7;font-weight:650;font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(i.title)+'</div><div style="color:var(--flp-accent-soft,#E7A6CF);font-size:12px;font-weight:700;margin-top:2px">'+esc(i.price)+'</div></div></a>';});
     h+="</div>";wrap.innerHTML=h;wrap.style.display="";}
     list=list.filter(function(i){return i&&i.id!=CUR.id;});list.unshift(CUR);list=list.slice(0,CAP);
     try{localStorage.setItem(KEY,JSON.stringify(list));}catch(e){}})();</script>

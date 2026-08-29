@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.75.0
+Stable tag: 3.76.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.76.0 =
+* Store (Beta): Faster-loading storefront (image performance pass). Off-screen product images across the store — the grid covers, the hover-swap second photo, gallery thumbnails, "more from the shop", recently viewed, and the cart drawer — now load lazily and decode asynchronously, so a shop with dozens of products no longer fetches every image at once. The one image that should load immediately — the main product photo on a product page (the page's largest visible element) — is kept eager and given a high fetch priority, so the product page's Largest Contentful Paint isn't slowed down. Purely a loading/performance change: nothing visible moves, and every price, shipping and checkout total is unchanged (money path re-verified). No schema change.
+
 = 3.75.0 =
 * Store (Beta): "New in" filter. The storefront now offers a "New in" chip (next to On sale / In stock) so shoppers can filter to just your recent arrivals. Appears automatically when you have newly added products; the choice is remembered and resets with Clear filters. No schema change.
 
