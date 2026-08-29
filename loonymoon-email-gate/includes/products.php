@@ -181,6 +181,22 @@ function lmeg_store_ship_free_hint_html($p) {
         . lmeg_store_icon('truck', 12) . 'Free shipping over ' . esc_html($amt) . '</div>';
 }
 
+/** A subtle trust row for the product page — secure checkout + "direct from the artist"
+ * (Fanloop's whole pitch). Uses the artist name from branding settings. */
+function lmeg_product_trust_row_html($p) {
+    $artist = '';
+    if (function_exists('lmeg_brand_raw')) $artist = trim((string) lmeg_brand_raw('artist_name', ''));
+    if ($artist === '') { $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : []; $artist = trim((string) ($s['artist_name'] ?? '')); }
+    if ($artist === '') $artist = (string) get_bloginfo('name');
+    $items = [
+        lmeg_store_icon('lock', 13) . 'Secure checkout',
+        lmeg_store_icon('heart', 13, ['fill' => true, 'style' => 'color:var(--flp-accent,#E15FA8)']) . 'Direct from ' . esc_html($artist),
+    ];
+    $html = '';
+    foreach ($items as $it) $html .= '<span style="display:inline-flex;align-items:center;gap:5px">' . $it . '</span>';
+    return '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,.09);font-size:12.5px;color:#6b6b78;font-weight:600">' . $html . '</div>';
+}
+
 /** Percent off vs the compare-at price (0 when not on sale). */
 function lmeg_product_sale_pct($p) {
     if (!lmeg_product_on_sale($p)) return 0;
@@ -1639,6 +1655,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
           </div>
           <?php if ($ship) : ?><div style="font-size:12px;color:#6b6b78;margin-top:6px">+ <?php echo esc_html($ship); ?> shipping</div><?php endif; ?>
         <?php endif; ?>
+        <?php if ($solo && !$sold_out) echo lmeg_product_trust_row_html($p); ?>
         </div>
       </div>
     </div>
