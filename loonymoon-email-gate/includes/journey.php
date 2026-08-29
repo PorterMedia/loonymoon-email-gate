@@ -350,7 +350,7 @@ function lmeg_admin_journey() {
         $on = $k === $days;
         echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-journey&days=' . $k)) . '" style="'
            . 'font:600 13px/1 system-ui;padding:7px 13px;border-radius:8px;text-decoration:none;border:1px solid '
-           . ($on ? $accent : 'rgba(0,0,0,.12)') . ';color:' . ($on ? '#fff' : '#17141f') . ';background:' . ($on ? $accent : '#fff') . ';">'
+           . ($on ? esc_attr($accent) : 'rgba(0,0,0,.12)') . ';color:' . ($on ? '#fff' : '#17141f') . ';background:' . ($on ? esc_attr($accent) : '#fff') . ';">'
            . esc_html($label) . '</a>';
     }
     echo '</div>';

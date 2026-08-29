@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.99.1
+Stable tag: 3.99.2
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.99.2 =
+* Hardening: the Journey report's date-range buttons now escape the accent colour through esc_attr() like the rest of the page, for consistent output escaping. (The value was already colour-sanitised on save; this is defence-in-depth.) Also verified the Journey report lays out cleanly on mobile.
+
 = 3.99.1 =
 * Performance: the Shop Revenue page counted its total number of orders twice per load (the same query ran once near the top and again for the "Recent orders" heading). It now counts once and reuses the result. Completes the admin performance pass.
 
