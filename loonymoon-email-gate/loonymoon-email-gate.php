@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.93.0
+ * Version:     3.94.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.93.0');
-define('LMEG_DB_VERSION',  '3.92.0');
+define('LMEG_VERSION',     '3.94.0');
+define('LMEG_DB_VERSION',  '3.94.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -94,6 +94,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/waitlist.php';
 require_once LMEG_PLUGIN_DIR . 'includes/bundles.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shows.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
+require_once LMEG_PLUGIN_DIR . 'includes/journey.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
 require_once LMEG_PLUGIN_DIR . 'includes/spotify.php';
@@ -802,6 +803,33 @@ function lmeg_create_tables() {
         KEY idx_date (show_date),
         KEY idx_bit (bit_id)
     ) $charset;");
+
+    // Fan journey events — pageviews + classified outbound clicks, tied to the
+    // known fan (subscriber_id) when we can, else the anon visitor cookie.
+    $journey = $wpdb->prefix . 'lmeg_journey_events';
+    dbDelta("CREATE TABLE $journey (
+        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        subscriber_id BIGINT(20) UNSIGNED DEFAULT NULL,
+        anon_id VARCHAR(32) NOT NULL DEFAULT '',
+        event_type VARCHAR(16) NOT NULL DEFAULT 'pageview',
+        category VARCHAR(32) DEFAULT NULL,
+        url VARCHAR(500) DEFAULT NULL,
+        link_text VARCHAR(190) DEFAULT NULL,
+        page_url VARCHAR(500) DEFAULT NULL,
+        referrer VARCHAR(500) DEFAULT NULL,
+        utm_source VARCHAR(120) NOT NULL DEFAULT '',
+        utm_medium VARCHAR(120) NOT NULL DEFAULT '',
+        utm_campaign VARCHAR(190) NOT NULL DEFAULT '',
+        country VARCHAR(2) NOT NULL DEFAULT '',
+        ip VARCHAR(45) NOT NULL DEFAULT '',
+        user_agent VARCHAR(255) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY  (id),
+        KEY idx_sub (subscriber_id),
+        KEY idx_anon (anon_id),
+        KEY idx_type_created (event_type, created_at),
+        KEY idx_cat (category)
+    ) $charset;");
 }
 
 /* ---------------------------------------------------------------------------
@@ -890,6 +918,8 @@ function lmeg_default_settings() {
         // Store (Beta) flat shipping by zone (Canada / USA / International)
         'store_ship_zones'         => 0,
         'store_pickup_enabled'     => 0,
+        // Fan journey analytics — pageview + classified outbound-click tracking
+        'journey_enabled'          => 0,
         'store_ship_ca'            => 0,
         'store_ship_us'            => 0,
         'store_ship_intl'          => 0,
