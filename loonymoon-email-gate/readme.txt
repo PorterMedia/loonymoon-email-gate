@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.90.0
+Stable tag: 3.91.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.91.0 =
+* Store (Beta): Pick-up orders read cleanly in the Orders admin + CSV. On the main Orders page and in the orders CSV export, a "pick up at a show" order was showing the raw internal marker ("PICKUP::…") in the address column. It now reads "Pick up: [venue] — [date]" everywhere — matching the packing slip, receipt, and order confirmation, which were already correct. Shipping orders and non-pick-up addresses are unchanged. No schema change.
+
 = 3.90.0 =
 * Store (Beta): Fixed the "find my purchases" page. The re-download page (where a fan enters their email to get their orders and download links) was still styled for the old dark background, so on the current light page the order totals were invisible (white on white), the order cards had no visible outline, and some text was too faint. It now uses the same clean light styling as checkout — visible totals, defined order cards, readable shipped/tracking and "preparing to ship" labels, and a matching email field. No schema change.
 

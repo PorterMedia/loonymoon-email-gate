@@ -136,7 +136,7 @@ function lmeg_orders_export_selected($okeys) {
             '#' . substr((string) $key, -8),
             $o['when'] ? gmdate('Y-m-d', strtotime($o['when'])) : '',
             $safe($o['email']), $safe($o['name']),
-            $safe(str_replace("\n", ', ', (string) $o['addr'])),
+            $safe(str_replace(["\n", 'PICKUP::'], [', ', 'Pickup: '], (string) $o['addr'])),
             $safe(implode('; ', $o['items'])),
             $money($o['total']), $money($o['tax']), $o['cur'],
             $o['status'], $o['ship'], $safe($o['carrier']), $safe($o['tracking']),
@@ -347,7 +347,7 @@ function lmeg_handle_export_shipping() {
             '#' . substr((string) $key, -8),
             $safe($o['name']),
             $safe($o['email']),
-            $safe(str_replace("\n", ', ', (string) $o['addr'])),
+            $safe(str_replace(["\n", 'PICKUP::'], [', ', 'Pickup: '], (string) $o['addr'])),
             $safe(implode('; ', $o['items'])),
             (int) $o['weight'] ?: '',
         ]);
@@ -685,12 +685,13 @@ function lmeg_admin_orders() {
             elseif (!$digital_only)           { $status = '<span style="color:#7DD3A8;font-weight:600">Shipped</span>' . ($o->tracking && function_exists('lmeg_tracking_url') && lmeg_tracking_url($o->carrier, $o->tracking) ? ' · <a href="' . esc_url(lmeg_tracking_url($o->carrier, $o->tracking)) . '" target="_blank" rel="noopener">track</a>' : ''); }
             else                              { $status = '<span style="color:#7DD3A8;font-weight:600">Delivered</span>'; }
             $paychip = ['stripe' => 'Stripe', 'square' => 'Square', 'demo' => 'Demo'][$o->processor] ?? esc_html($o->processor);
+            list($o_pk, $o_saddr) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($o->ship_addr ?? '') : [false, $o->ship_addr];
         ?>
             <tr>
                 <td style="text-align:center"><input type="checkbox" class="lmeg-obulk" value="<?php echo esc_attr($o->okey); ?>" aria-label="Select order"></td>
                 <td style="white-space:nowrap"><?php echo esc_html($o->when_ ? date_i18n('M j, Y', strtotime($o->when_)) : '—'); ?></td>
                 <td><?php echo esc_html($o->email ?: '—'); ?><?php echo $o->ship_name ? '<br><span style="color:#777;font-size:12px">' . esc_html($o->ship_name) . '</span>' : ''; ?></td>
-                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o->ship_addr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . esc_html($o->ship_addr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">' . lmeg_store_icon('lock', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->admin_note) . '</span>' : ''; ?></td>
+                <td style="max-width:280px"><?php echo esc_html(implode(', ', $item_str)); ?><?php echo $o_saddr ? '<br><span style="color:#888;font-size:12px;white-space:pre-line">' . ($o_pk ? '<strong style="color:#B4247E">Pick up:</strong> ' : '') . esc_html($o_saddr) . '</span>' : ''; ?><?php echo !empty($o->note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#FBF3D9;border:1px solid #E7D9A8;border-radius:6px;color:#6B5A1E;font-size:12px;white-space:pre-line">' . lmeg_store_icon('edit', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->note) . '</span>' : ''; ?><?php echo !empty($o->admin_note) ? '<br><span style="display:inline-block;margin-top:5px;padding:4px 8px;background:#E9F0FB;border:1px solid #BcCFEA;border-radius:6px;color:#274472;font-size:12px;white-space:pre-line">' . lmeg_store_icon('lock', 12, ['style' => 'margin-right:4px;vertical-align:-2px']) . esc_html($o->admin_note) . '</span>' : ''; ?></td>
                 <td style="white-space:nowrap"><?php echo esc_html(lmeg_orders_money((int) $o->total + (int) ($o->tax ?? 0), $cur)); ?><?php echo (int) ($o->tax ?? 0) > 0 ? '<br><span style="color:#777;font-size:12px">incl. ' . esc_html(lmeg_orders_money((int) $o->tax, $cur)) . ' tax</span>' : ''; ?><?php echo (int) $o->disc > 0 ? '<br><span style="color:#1a8a4a;font-size:12px">' . esc_html($o->code ? $o->code . ' ' : '') . '−' . esc_html(lmeg_orders_money($o->disc, $cur)) . '</span>' : ''; ?></td>
                 <td><?php echo esc_html($paychip); ?></td>
                 <td><?php echo $status; ?></td>
