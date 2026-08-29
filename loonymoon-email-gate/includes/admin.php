@@ -2444,27 +2444,40 @@ function lmeg_admin_broadcasts() {
     $now     = current_time('mysql');
     $rev_map = function_exists('lmeg_shop_revenue_by_broadcast') ? lmeg_shop_revenue_by_broadcast() : [];
 
-    // ---- Top-level KPIs (last 30 days) ----
+    // ---- Top-level KPIs (last 30 days) — one ~3-min cache of the read-only
+    // stats (opens/clicks/bounce/spam DISTINCT counts + opens sparkline + the
+    // heavy engagement-map aggregation). The broadcast list ($rows), the
+    // per-broadcast open/click map ($ocmap) and the revenue attribution
+    // ($rev30 — money) stay live. Busted when a broadcast finishes sending.
     $ev_t   = $wpdb->prefix . 'lmeg_broadcast_events';
     $since  = date('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
-    $sent30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log_tbl WHERE status = 'sent' AND sent_at >= %s", $since));
-    $bc30    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $bcast_tbl WHERE status = 'completed' AND completed_at >= %s", $since));
-    $opens30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'open'   AND created_at >= %s", $since));
-    $clk30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'click'  AND created_at >= %s", $since));
-    $bnc30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'bounce' AND created_at >= %s", $since));
-    $spam30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'spam'   AND created_at >= %s", $since));
+    $bk_compute = function () use ($wpdb, $log_tbl, $bcast_tbl, $ev_t, $since) {
+        $sent30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log_tbl WHERE status = 'sent' AND sent_at >= %s", $since));
+        $bc30    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $bcast_tbl WHERE status = 'completed' AND completed_at >= %s", $since));
+        $opens30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'open'   AND created_at >= %s", $since));
+        $clk30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev_t WHERE event_type = 'click'  AND created_at >= %s", $since));
+        $bnc30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'bounce' AND created_at >= %s", $since));
+        $spam30  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev_t WHERE event_type = 'spam'   AND created_at >= %s", $since));
+
+        // daily opens for the 30-day sparkline
+        $daily = array_fill(0, 30, 0);
+        $drows = $wpdb->get_results($wpdb->prepare("SELECT DATE(created_at) d, COUNT(*) n FROM $ev_t WHERE event_type = 'open' AND created_at >= %s GROUP BY DATE(created_at)", $since));
+        $today_ts = current_time('timestamp');
+        foreach ((array) $drows as $dr) {
+            $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
+            if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
+        }
+        // engagement map points (all broadcasts) — the heaviest aggregation here
+        list($map_pts, $map_skipped) = function_exists('lmeg_broadcast_event_geo') ? lmeg_broadcast_event_geo(0, 200) : [[], 0];
+        return compact('sent30', 'bc30', 'opens30', 'clk30', 'bnc30', 'spam30', 'daily', 'map_pts', 'map_skipped');
+    };
+    $bk = function_exists('lmeg_stat_cache') ? lmeg_stat_cache('broadcasts_kpi', 3 * MINUTE_IN_SECONDS, $bk_compute) : $bk_compute();
+    $sent30 = (int) $bk['sent30']; $bc30 = (int) $bk['bc30']; $opens30 = (int) $bk['opens30'];
+    $clk30 = (int) $bk['clk30']; $bnc30 = (int) $bk['bnc30']; $spam30 = (int) $bk['spam30'];
+    $daily = $bk['daily']; $map_pts = $bk['map_pts']; $map_skipped = $bk['map_skipped'];
     $orate30 = $sent30 ? round($opens30 / $sent30 * 100, 1) : 0;
     $crate30 = $sent30 ? round($clk30   / $sent30 * 100, 1) : 0;
     $brate30 = $sent30 ? round($bnc30   / $sent30 * 100, 1) : 0;
-
-    // daily opens for the 30-day sparkline
-    $daily = array_fill(0, 30, 0);
-    $drows = $wpdb->get_results($wpdb->prepare("SELECT DATE(created_at) d, COUNT(*) n FROM $ev_t WHERE event_type = 'open' AND created_at >= %s GROUP BY DATE(created_at)", $since));
-    $today_ts = current_time('timestamp');
-    foreach ((array) $drows as $dr) {
-        $idx = 29 - (int) floor(($today_ts - strtotime($dr->d . ' 00:00:00')) / DAY_IN_SECONDS);
-        if ($idx >= 0 && $idx < 30) $daily[$idx] = (int) $dr->n;
-    }
 
     // 30-day campaign revenue = orders attributed to broadcasts completed in the window
     $rev30 = ['cents' => 0, 'orders' => 0];
@@ -2488,8 +2501,7 @@ function lmeg_admin_broadcasts() {
         foreach ((array) $ocr as $o) { $ocmap[(int) $o->broadcast_id] = ['opens' => (int) $o->opens, 'clicks' => (int) $o->clicks]; }
     }
 
-    // opens/clicks map points (all broadcasts)
-    list($map_pts, $map_skipped) = lmeg_broadcast_event_geo(0, 200);
+    // ($map_pts / $map_skipped come from the cached bundle above.)
 
     lmeg_broadcast_styles();
     ?>

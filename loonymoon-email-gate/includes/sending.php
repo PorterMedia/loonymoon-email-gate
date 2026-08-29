@@ -790,6 +790,7 @@ function lmeg_process_broadcast_tick() {
             'status'       => 'completed',
             'completed_at' => current_time('mysql'),
         ], ['id' => $bcast->id]);
+        delete_transient('lmeg_stat_broadcasts_kpi'); // finished sending → refresh Broadcast KPIs
         return;
     }
 
@@ -861,6 +862,7 @@ function lmeg_process_broadcast_tick() {
             'status'       => 'completed',
             'completed_at' => current_time('mysql'),
         ], ['id' => $bcast->id]);
+        delete_transient('lmeg_stat_broadcasts_kpi'); // finished sending → refresh Broadcast KPIs
     }
 }
 
