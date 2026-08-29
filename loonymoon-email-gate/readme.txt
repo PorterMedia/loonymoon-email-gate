@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.71.0
+Stable tag: 3.72.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.72.0 =
+* Store (Beta): "Free shipping over $X" hint. When you've set a free-shipping threshold (zone shipping), physical products now show a green "Free shipping over $X" badge on the card and product page — a proven nudge that lifts order value. Shows automatically, in the product's currency; nothing appears if you haven't set a threshold. No schema change.
+
 = 3.71.0 =
 * Store (Beta): Hover to see the second photo. On the storefront grid, hovering a product with more than one photo now fades to its second image — the back of the shirt, the flip side of the sleeve — a small touch that makes merch cards feel alive. Hover-capable devices only; nothing changes on touch. No schema change.
 

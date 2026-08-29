@@ -168,6 +168,19 @@ function lmeg_product_qty_breaks_hint_html($p) {
         . lmeg_store_icon('tag', 12) . esc_html(implode(' · ', $parts)) . '</div>';
 }
 
+/** "Free shipping over $X" nudge for a physical product — only when zone shipping and a
+ * free-shipping threshold are set. Uses the product's currency. '' otherwise. */
+function lmeg_store_ship_free_hint_html($p) {
+    if (($p->type ?? '') !== 'physical') return '';
+    if (!function_exists('lmeg_store_ship_zones') || !lmeg_store_ship_zones()) return '';
+    $over = function_exists('lmeg_store_ship_free_over') ? (int) lmeg_store_ship_free_over() : 0;
+    if ($over <= 0) return '';
+    $cur = $p->currency ?: 'USD';
+    $amt = function_exists('lmeg_format_price') ? lmeg_format_price($over, $cur) : ('$' . number_format($over / 100, 2));
+    return '<div style="font-size:12px;font-weight:700;color:#0f766e;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;margin-bottom:9px">'
+        . lmeg_store_icon('truck', 12) . 'Free shipping over ' . esc_html($amt) . '</div>';
+}
+
 /** Percent off vs the compare-at price (0 when not on sale). */
 function lmeg_product_sale_pct($p) {
     if (!lmeg_product_on_sale($p)) return 0;
@@ -1562,6 +1575,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
         <?php elseif (!$sold_out && $low_stock) : ?><?php echo lmeg_product_lowstock_html($p->sold, $p->stock); ?>
         <?php elseif (!$sold_out && (int) $p->sold >= 5) : ?><div style="font-size:12px;font-weight:700;color:#047857;background:#ECFDF5;display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;margin-bottom:9px"><?php echo lmeg_store_icon('star', 12, ['fill' => true]); ?><?php echo esc_html(number_format((int) $p->sold)); ?> sold</div><?php endif; ?>
         <?php if (!$sold_out) echo lmeg_product_qty_breaks_hint_html($p); ?>
+        <?php if (!$sold_out) echo lmeg_store_ship_free_hint_html($p); ?>
         <?php if ($show_qty && !$sold_out && $physical && !$pwyw) : $qmax = ((int) $p->stock >= 0) ? max(1, (int) $remaining) : 0; ?>
         <div class="flp-qtywrap" style="display:inline-flex;align-items:center;border:1px solid #d9d9e0;border-radius:10px;overflow:hidden;background:#fff;margin-bottom:11px">
           <button type="button" class="flp-qtir" data-d="-1" aria-label="Decrease quantity" style="width:36px;height:38px;border:0;background:#f4f4f6;color:#17141f;font-size:19px;line-height:1;cursor:pointer;padding:0">−</button>
