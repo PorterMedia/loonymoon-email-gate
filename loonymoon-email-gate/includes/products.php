@@ -1472,7 +1472,9 @@ function lmeg_store_theme_reset_css() {
       . "#flp-cart-root .flp-qty span{min-width:34px!important;text-align:center!important;padding:0 4px!important;margin:0!important;font-size:14px!important;font-weight:600!important;color:#17141f!important}"
       . "#flp-cart-root .flp-ci .rm,#flp-cart-root .flp-saved-rm{width:auto!important;padding:4px 0!important;background:transparent!important;border:0!important}"
       . "#flp-cart-root .flp-saved-add{width:auto!important;padding:6px 11px!important}"
-      . "#flp-cart-root #flp-cart-x,#flp-qv #flp-qv-x{width:auto!important;padding:0!important;background:transparent!important;border:0!important}"
+      . "#flp-cart-root #flp-cart-x{width:auto!important;padding:0!important;background:transparent!important;border:0!important}"
+      // Quick-view close keeps its dark circle so the white X stays visible over the card's photo (or a white top) — a bare transparent bg made it white-on-white.
+      . "#flp-qv #flp-qv-x{width:34px!important;height:34px!important;padding:0!important;border:0!important;border-radius:50%!important;background:rgba(11,12,18,.55)!important;color:#fff!important}"
       . "#flp-cart-root .flp-cart-go{width:100%!important;padding:14px!important}"
       // hover-swap: reveal the product's second photo when the cover is hovered (hover-capable pointers only)
       . "@media(hover:hover){.flp-prod .flp-cover:hover .flp-cover2{opacity:1!important}}";

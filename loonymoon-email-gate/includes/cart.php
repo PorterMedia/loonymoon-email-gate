@@ -1264,6 +1264,7 @@ function lmeg_cart_assets_html() {
     var clone=card.cloneNode(true);
     clone.style.margin='0'; clone.style.width='100%'; clone.style.height='auto';
     var q=clone.querySelector('.flp-quick'); if(q) q.parentNode.removeChild(q);
+    var sv=clone.querySelector('.flp-save'); if(sv) sv.parentNode.removeChild(sv);   // drop the save-heart so it doesn't collide with the modal's close X
     qvBody.innerHTML=''; qvBody.appendChild(clone);
     qvBack.hidden=false; qvPanel.hidden=false;
   }
