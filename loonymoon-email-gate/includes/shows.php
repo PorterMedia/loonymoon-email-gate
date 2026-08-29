@@ -230,6 +230,78 @@ function lmeg_bit_maybe_schedule() {
  * Admin — the "Shows & pickup" section, embedded on the Store page.
  * ------------------------------------------------------------------------- */
 
+/**
+ * "Pick-ups to bring" — every paid order that chose pick-up, grouped by show,
+ * so the artist has a collect-list per date (who + what to bring). Reads the
+ * "PICKUP::<label>" marker stored on the order; soonest show first.
+ */
+function lmeg_pickups_admin_section() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $ptbl = $wpdb->prefix . 'lmeg_product_purchases';
+    $prod = $wpdb->prefix . 'lmeg_products';
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT pp.email, pp.ship_name, pp.ship_address, pp.variant, pp.qty, pr.title
+         FROM $ptbl pp LEFT JOIN $prod pr ON pr.id = pp.product_id
+         WHERE pp.status = 'paid' AND pp.ship_address LIKE %s
+         ORDER BY pp.id ASC",
+        $wpdb->esc_like('PICKUP::') . '%'
+    ));
+    if (!$rows) return;
+
+    // Group: show label -> buyer (by email) -> line items.
+    $shows = [];
+    foreach ($rows as $r) {
+        list($is_pickup, $label) = lmeg_pickup_parse($r->ship_address);
+        if (!$is_pickup) continue;
+        $label = trim(explode("\n", $label)[0]);   // first line = the show; drop any note
+        if ($label === '') $label = 'Pick-up';
+        if (!isset($shows[$label])) $shows[$label] = ['buyers' => [], 'qty' => 0];
+        $key = strtolower($r->email ?: ($r->ship_name ?: 'guest'));
+        if (!isset($shows[$label]['buyers'][$key])) {
+            $shows[$label]['buyers'][$key] = ['name' => (string) $r->ship_name, 'email' => (string) $r->email, 'items' => []];
+        }
+        $shows[$label]['buyers'][$key]['items'][] = ['title' => (string) $r->title, 'variant' => (string) $r->variant, 'qty' => max(1, (int) $r->qty)];
+        $shows[$label]['qty'] += max(1, (int) $r->qty);
+    }
+    if (!$shows) return;
+
+    // Sort soonest-first using the live shows' dates (unknown/deleted shows last).
+    $date_of = [];
+    foreach (lmeg_shows_all() as $s) { $date_of[lmeg_show_label($s)] = $s->show_date; }
+    uksort($shows, function ($a, $b) use ($date_of) {
+        $da = $date_of[$a] ?? null; $db = $date_of[$b] ?? null;
+        if ($da === $db) return strcmp($a, $b);
+        if ($da === null) return 1;
+        if ($db === null) return -1;
+        return strcmp($da, $db);
+    });
+    ?>
+    <h2 id="pickups" style="margin-top:30px">Pick-ups to bring <span style="font-size:13px;font-weight:400;color:#646970">— what to pack for each show</span></h2>
+    <?php foreach ($shows as $label => $g) :
+        $buyers = $g['buyers']; ?>
+        <div style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                <strong style="font-size:15px;color:#1d2327"><?php echo lmeg_store_icon('bag', 15, ['style' => 'margin-right:6px;vertical-align:-2px']); ?><?php echo esc_html($label); ?></strong>
+                <span style="background:#F0E6F5;color:#7c3aed;font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px"><?php echo count($buyers); ?> pick-up<?php echo count($buyers) === 1 ? '' : 's'; ?> &middot; <?php echo (int) $g['qty']; ?> item<?php echo (int) $g['qty'] === 1 ? '' : 's'; ?></span>
+            </div>
+            <table class="widefat striped" style="margin:0">
+                <thead><tr><th style="width:230px">For</th><th>Items to bring</th></tr></thead>
+                <tbody>
+                <?php foreach ($buyers as $b) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($b['name'] ?: '—'); ?></strong><?php echo $b['email'] ? '<br><span style="color:#646970;font-size:12px">' . esc_html($b['email']) . '</span>' : ''; ?></td>
+                        <td><?php $parts = [];
+                            foreach ($b['items'] as $it) { $parts[] = '<span style="display:inline-block;margin:0 8px 4px 0"><strong>' . (int) $it['qty'] . '&times;</strong> ' . esc_html($it['title'] ?: 'Item') . ($it['variant'] ? ' <span style="color:#646970">(' . esc_html($it['variant']) . ')</span>' : '') . '</span>'; }
+                            echo implode('', $parts); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endforeach;
+}
+
 function lmeg_shows_admin_section() {
     if (!current_user_can('manage_options')) return;
     $rows     = lmeg_shows_all();
@@ -247,6 +319,7 @@ function lmeg_shows_admin_section() {
     if (isset($_GET['biterr']))      echo '<div class="notice notice-error"><p>Bandsintown sync failed: ' . esc_html(sanitize_text_field(wp_unslash($_GET['biterr']))) . '</p></div>';
     ?>
     <p class="description" style="margin:0 0 12px;max-width:820px">Add your upcoming shows, then let fans choose <strong>&ldquo;pick up at a show&rdquo;</strong> at checkout instead of paying shipping — you bring their order to the merch table. Great for tours: no postage, and it pulls the sale online instead of hoping they stop by.</p>
+    <?php lmeg_pickups_admin_section(); ?>
 
     <?php $bit_artist = $settings['store_bandsintown_artist'] ?? ''; $bit_appid = $settings['store_bandsintown_appid'] ?? ''; ?>
     <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px;margin-bottom:14px">

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.88.0
+Stable tag: 3.89.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.89.0 =
+* Store (Beta): Per-show pick-up list — "what to bring." The Shows & pick-up page now shows a "Pick-ups to bring" section that groups every paid pick-up order by show, soonest first: for each date, a packing list of who's collecting (name + email) and exactly which items (with size/variant and quantity), plus a count of pick-ups and items. This completes "pick up at the show" — add your dates (manually or via Bandsintown), fans choose free pick-up at checkout, and here's your merch-table list for each night. No schema change.
+
 = 3.88.0 =
 * Store (Beta): Bandsintown tour-date sync. In "Shows & pick-up" you can now add your Bandsintown artist name/id + app_id and pull your upcoming shows in automatically — "Sync from Bandsintown now", plus a daily background sync. Synced shows are tagged Bandsintown and update in place on re-sync (no duplicates); your manually added shows are never touched. Sync failures are handled gracefully (a clear message, nothing breaks). Manual entry still works exactly as before. No schema change.
 
