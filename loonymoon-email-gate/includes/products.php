@@ -1730,6 +1730,8 @@ function lmeg_product_sticky_bar_html($p) {
   .flp-sticky-buy{display:none}
   @media(max-width:640px){
     body{padding-bottom:84px}
+    /* Lift the floating cart button above the sticky buy bar so it never covers the Add button. */
+    #flp-cart-btn{bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}
     .flp-sticky-buy{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:99997;align-items:center;gap:12px;
       padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(14,16,23,.95);backdrop-filter:blur(8px);
       border-top:1px solid rgba(255,255,255,.1);box-shadow:0 -10px 30px rgba(0,0,0,.45)}
