@@ -2661,6 +2661,7 @@ function lmeg_admin_settings() {
             'store_banner_until'      => sanitize_text_field(wp_unslash($_POST['store_banner_until'] ?? '')),
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
             'store_waitlist_auto'     => !empty($_POST['store_waitlist_auto']) ? 1 : 0,
+            'journey_enabled'         => !empty($_POST['journey_enabled']) ? 1 : 0,
             'store_tax_rate'          => max(0, min(100, (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_tax_rate'] ?? 0)))),
             'store_tax_label'         => (sanitize_text_field(wp_unslash($_POST['store_tax_label'] ?? '')) ?: 'Tax'),
             'store_ship_zones'        => !empty($_POST['store_ship_zones']) ? 1 : 0,
@@ -3337,6 +3338,14 @@ function lmeg_admin_settings() {
                 <tr><th scope="row">Ship-from address</th><td>
                     <textarea name="store_ship_from" class="large-text" rows="3" placeholder="Your name / return address"><?php echo esc_textarea($s['store_ship_from'] ?? ''); ?></textarea>
                     <p class="description">Optional — your return address, for packing slips and label services.</p>
+                </td></tr>
+            </table>
+
+            <h2>Fan Journey analytics</h2>
+            <table class="form-table" role="presentation">
+                <tr><th scope="row">Track fan journeys</th><td>
+                    <label><input type="checkbox" name="journey_enabled" value="1" <?php checked(!empty($s['journey_enabled'])); ?> /> <strong>Record pageviews and outbound clicks on your site</strong></label>
+                    <p class="description">Classifies where fans go when they leave (Spotify, Apple Music, Tickets, …) and, because Fanloop knows your members, ties those journeys to the actual fan. See it under <strong>Fanloop → Journey</strong>. No effect on your store, checkout, or emails.</p>
                 </td></tr>
             </table>
 

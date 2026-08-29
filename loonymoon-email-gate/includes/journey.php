@@ -204,3 +204,275 @@ function lmeg_journey_enqueue() {
         'host' => lmeg_journey_site_host(),
     ]);
 }
+
+/* ---------------------------------------------------------------------------
+ * Stage 2 — the Journey report (admin) + enable toggle
+ * ------------------------------------------------------------------------- */
+
+add_action('admin_menu', 'lmeg_journey_admin_menu');
+function lmeg_journey_admin_menu() {
+    add_submenu_page('lmeg', 'Journey', 'Journey', 'manage_options', 'lmeg-journey', 'lmeg_admin_journey');
+}
+
+/** Flip journey tracking on/off from the report page (own nonce + cap). */
+add_action('admin_post_lmeg_journey_toggle', 'lmeg_journey_handle_toggle');
+function lmeg_journey_handle_toggle() {
+    if (!current_user_can('manage_options')) wp_die('Not allowed');
+    check_admin_referer('lmeg_journey_toggle');
+    $opts = lmeg_get_settings();
+    $opts['journey_enabled'] = empty($opts['journey_enabled']) ? 1 : 0;
+    update_option(LMEG_OPTION, $opts);
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-journey&toggled=' . $opts['journey_enabled']));
+    exit;
+}
+
+/**
+ * All the numbers the report needs, in one cached bundle. Read-only stats only.
+ * The fan funnel is the differentiator — it joins journey activity to the
+ * subscriber-attributed shop_orders, so "source → action → purchase" is measured
+ * on IDENTIFIED fans, not anonymous sessions.
+ */
+function lmeg_journey_report_data($days) {
+    $build = function () use ($days) {
+        global $wpdb;
+        $je    = $wpdb->prefix . 'lmeg_journey_events';
+        $so    = $wpdb->prefix . 'lmeg_shop_orders';
+        $since = gmdate('Y-m-d H:i:s', current_time('timestamp') - $days * DAY_IN_SECONDS);
+
+        // Headline volume.
+        $pageviews = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $je WHERE event_type='pageview' AND created_at >= %s", $since));
+        $clicks = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $je WHERE event_type='outbound' AND created_at >= %s", $since));
+        $visitors = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(DISTINCT anon_id) FROM $je WHERE anon_id <> '' AND created_at >= %s", $since));
+        $fans_seen = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(DISTINCT subscriber_id) FROM $je WHERE subscriber_id IS NOT NULL AND created_at >= %s", $since));
+
+        // Outbound handoffs by category (Spotify / Tickets / DSP Button / …).
+        $by_cat = $wpdb->get_results($wpdb->prepare(
+            "SELECT category, COUNT(*) c FROM $je
+             WHERE event_type='outbound' AND category IS NOT NULL AND created_at >= %s
+             GROUP BY category ORDER BY c DESC", $since), ARRAY_A) ?: [];
+
+        // Top outbound destinations.
+        $top_dest = $wpdb->get_results($wpdb->prepare(
+            "SELECT url, category, COUNT(*) c FROM $je
+             WHERE event_type='outbound' AND url <> '' AND created_at >= %s
+             GROUP BY url, category ORDER BY c DESC LIMIT 12", $since), ARRAY_A) ?: [];
+
+        // Traffic sources — UTM first, else referrer host, else Direct (reduced in PHP).
+        $utm_src = $wpdb->get_results($wpdb->prepare(
+            "SELECT utm_source s, COUNT(*) c FROM $je
+             WHERE event_type='pageview' AND utm_source <> '' AND created_at >= %s
+             GROUP BY utm_source ORDER BY c DESC LIMIT 10", $since), ARRAY_A) ?: [];
+        $ref_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT referrer, COUNT(*) c FROM $je
+             WHERE event_type='pageview' AND created_at >= %s
+             GROUP BY referrer ORDER BY c DESC LIMIT 60", $since), ARRAY_A) ?: [];
+
+        // Fan funnel: known fans active → of those, clicked out → of those, purchased.
+        $fan_clicked = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(DISTINCT subscriber_id) FROM $je
+             WHERE event_type='outbound' AND subscriber_id IS NOT NULL AND created_at >= %s", $since));
+        $fan_bought = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(DISTINCT o.subscriber_id) FROM $so o
+             JOIN (SELECT DISTINCT subscriber_id FROM $je
+                   WHERE subscriber_id IS NOT NULL AND created_at >= %s) j
+               ON j.subscriber_id = o.subscriber_id
+             WHERE o.subscriber_id IS NOT NULL AND o.ordered_at >= %s", $since, $since));
+        $fan_revenue = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(o.total_cents),0) FROM $so o
+             JOIN (SELECT DISTINCT subscriber_id FROM $je
+                   WHERE subscriber_id IS NOT NULL AND created_at >= %s) j
+               ON j.subscriber_id = o.subscriber_id
+             WHERE o.subscriber_id IS NOT NULL AND o.ordered_at >= %s", $since, $since));
+
+        return compact('pageviews', 'clicks', 'visitors', 'fans_seen', 'by_cat',
+                       'top_dest', 'utm_src', 'ref_rows', 'fan_clicked', 'fan_bought', 'fan_revenue');
+    };
+    return function_exists('lmeg_stat_cache')
+        ? lmeg_stat_cache('journey_' . (int) $days, 3 * MINUTE_IN_SECONDS, $build)
+        : $build();
+}
+
+/** Reduce raw referrer URLs to a host→count map, with a Direct bucket. */
+function lmeg_journey_sources($ref_rows) {
+    $host = strtolower((string) lmeg_journey_site_host());
+    $out  = [];
+    foreach ($ref_rows as $r) {
+        $ref = (string) $r['referrer'];
+        $c   = (int) $r['c'];
+        if ($ref === '') { $out['Direct / none'] = ($out['Direct / none'] ?? 0) + $c; continue; }
+        $h = strtolower((string) parse_url($ref, PHP_URL_HOST));
+        if ($h === '' || strpos($h, $host) !== false) continue; // internal referrers aren't a "source"
+        $h = preg_replace('/^www\./', '', $h);
+        $out[$h] = ($out[$h] ?? 0) + $c;
+    }
+    arsort($out);
+    return array_slice($out, 0, 8, true);
+}
+
+function lmeg_admin_journey() {
+    if (!current_user_can('manage_options')) return;
+    $enabled = lmeg_journey_enabled();
+    $toggle_url = wp_nonce_url(admin_url('admin-post.php?action=lmeg_journey_toggle'), 'lmeg_journey_toggle');
+
+    echo '<div class="wrap"><h1 style="display:flex;align-items:center;gap:12px;">Journey'
+       . '<span style="font:600 11px/1 system-ui;letter-spacing:.08em;text-transform:uppercase;color:#6b21a8;background:#f3e8ff;border:1px solid #e9d5ff;padding:4px 8px;border-radius:999px;">Fan analytics</span></h1>';
+    echo '<p style="max-width:680px;color:#3a3a44;font-size:14px;">Where fans go when they leave your site — every stream, ticket link and merch click — and, because Fanloop knows who they are, which of those journeys end in a purchase.</p>';
+
+    if (!$enabled) {
+        echo '<div style="max-width:680px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:28px;margin-top:14px;">'
+           . '<h2 style="margin:0 0 8px;color:#17141f;">Tracking is off</h2>'
+           . '<p style="color:#3a3a44;margin:0 0 18px;">Turn it on to start recording pageviews and outbound clicks (classified into Spotify, Apple Music, Tickets, and so on). Nothing is collected until you do. It has no effect on your store, checkout, or emails.</p>'
+           . '<a href="' . esc_url($toggle_url) . '" class="button button-primary button-hero">Enable journey tracking</a>'
+           . '</div></div>';
+        return;
+    }
+
+    // Date window.
+    $days  = (int) ($_GET['days'] ?? 30);
+    if (!in_array($days, [7, 30, 90], true)) $days = 30;
+    $d = lmeg_journey_report_data($days);
+
+    $ctr   = $d['pageviews'] > 0 ? round($d['clicks'] / $d['pageviews'] * 100, 1) : 0;
+    $money = function ($c) { return '$' . number_format(((int) $c) / 100, 2); };
+    $nf    = function ($n) { return number_format_i18n((int) $n); };
+    $accent  = '#8A6CF6';
+    $s = lmeg_get_settings();
+    if (!empty($s['store_accent2'])) $accent = $s['store_accent2'];
+
+    // ---- controls -------------------------------------------------------
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:16px 0 12px;flex-wrap:wrap;">';
+    echo '<div style="display:flex;gap:6px;">';
+    foreach ([7 => '7 days', 30 => '30 days', 90 => '90 days'] as $k => $label) {
+        $on = $k === $days;
+        echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-journey&days=' . $k)) . '" style="'
+           . 'font:600 13px/1 system-ui;padding:7px 13px;border-radius:8px;text-decoration:none;border:1px solid '
+           . ($on ? $accent : 'rgba(0,0,0,.12)') . ';color:' . ($on ? '#fff' : '#17141f') . ';background:' . ($on ? $accent : '#fff') . ';">'
+           . esc_html($label) . '</a>';
+    }
+    echo '</div>';
+    echo '<a href="' . esc_url($toggle_url) . '" style="font:500 13px/1 system-ui;color:#3a3a44;text-decoration:none;border:1px solid rgba(0,0,0,.12);background:#fff;padding:7px 13px;border-radius:8px;">Tracking on · turn off</a>';
+    echo '</div>';
+
+    // ---- KPI strip (plain type + hairlines, no cards) -------------------
+    $kpis = [
+        ['Pageviews',        $nf($d['pageviews'])],
+        ['Outbound clicks',  $nf($d['clicks'])],
+        ['Click rate',       $ctr . '%'],
+        ['Visitors',         $nf($d['visitors'])],
+        ['Known fans seen',  $nf($d['fans_seen'])],
+    ];
+    echo '<div style="display:flex;flex-wrap:wrap;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;overflow:hidden;">';
+    $i = 0;
+    foreach ($kpis as $k) {
+        $bl = $i++ > 0 ? 'border-left:1px solid rgba(0,0,0,.08);' : '';
+        echo '<div style="flex:1 1 150px;padding:18px 20px;' . $bl . '">'
+           . '<div style="font:700 30px/1.05 system-ui;color:#17141f;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">' . esc_html($k[1]) . '</div>'
+           . '<div style="font:600 11px/1 system-ui;letter-spacing:.07em;text-transform:uppercase;color:#55555f;margin-top:7px;">' . esc_html($k[0]) . '</div>'
+           . '</div>';
+    }
+    echo '</div>';
+
+    // ---- Fan funnel (the differentiator) --------------------------------
+    $stages = [
+        ['Known fans active',   (int) $d['fans_seen'],    'saw them on the site'],
+        ['Clicked out',         (int) $d['fan_clicked'],  'streamed / ticket / merch link'],
+        ['Purchased',           (int) $d['fan_bought'],   $money($d['fan_revenue']) . ' from these fans'],
+    ];
+    $fmax = max(1, $d['fans_seen']);
+    echo '<div style="background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;margin-top:16px;">';
+    echo '<h2 style="margin:0 0 4px;color:#17141f;font-size:16px;">Fan funnel · source → action → purchase</h2>';
+    echo '<p style="margin:0 0 16px;color:#55555f;font-size:13px;">Identified fans only — the path an anonymous pixel can’t follow.</p>';
+    foreach ($stages as $n => $st) {
+        $pct  = round($st[1] / $fmax * 100);
+        $conv = $n > 0 && $stages[0][1] > 0 ? round($st[1] / $stages[0][1] * 100) : ($n === 0 ? 100 : 0);
+        echo '<div style="margin-bottom:12px;">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
+           . '<span style="font:600 14px/1 system-ui;color:#17141f;">' . esc_html($st[0]) . '</span>'
+           . '<span style="font:600 14px/1 system-ui;color:#17141f;font-variant-numeric:tabular-nums;">' . $nf($st[1])
+           . ' <span style="color:#55555f;font-weight:500;">· ' . esc_html($st[2]) . '</span></span></div>';
+        echo '<div style="height:12px;background:#f1eef8;border-radius:6px;overflow:hidden;">'
+           . '<div style="height:100%;width:' . max(2, $pct) . '%;background:' . esc_attr($accent) . ';border-radius:6px;"></div></div>';
+        if ($n > 0) echo '<div style="font:500 12px/1 system-ui;color:#55555f;margin-top:4px;">' . $conv . '% of active fans</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+
+    // ---- Two columns: categories + destinations -------------------------
+    echo '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">';
+
+    // Handoffs by category.
+    $catmax = 1; foreach ($d['by_cat'] as $r) $catmax = max($catmax, (int) $r['c']);
+    $dsp = function_exists('lmeg_journey_dsp_categories') ? lmeg_journey_dsp_categories() : [];
+    echo '<div style="flex:1 1 320px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;">';
+    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Handoffs by destination type</h2>';
+    if (!$d['by_cat']) {
+        echo '<p style="color:#55555f;font-size:13px;margin:0;">No outbound clicks recorded yet in this window.</p>';
+    } else {
+        foreach ($d['by_cat'] as $r) {
+            $isdsp = in_array($r['category'], $dsp, true);
+            $pct = round((int) $r['c'] / $catmax * 100);
+            echo '<div style="margin-bottom:11px;">';
+            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#17141f;margin-bottom:4px;">'
+               . '<span>' . esc_html($r['category']) . ($isdsp ? ' <span style="color:#1DB954;">♪</span>' : '') . '</span>'
+               . '<span style="font-variant-numeric:tabular-nums;">' . $nf($r['c']) . '</span></div>';
+            echo '<div style="height:9px;background:#f1eef8;border-radius:5px;overflow:hidden;">'
+               . '<div style="height:100%;width:' . max(3, $pct) . '%;background:' . ($isdsp ? '#1DB954' : esc_attr($accent)) . ';border-radius:5px;"></div></div>';
+            echo '</div>';
+        }
+    }
+    echo '</div>';
+
+    // Top destinations.
+    echo '<div style="flex:1 1 320px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;">';
+    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Top outbound links</h2>';
+    if (!$d['top_dest']) {
+        echo '<p style="color:#55555f;font-size:13px;margin:0;">Nothing yet.</p>';
+    } else {
+        echo '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+        foreach ($d['top_dest'] as $r) {
+            $u = (string) $r['url'];
+            $short = preg_replace('#^https?://(www\.)?#', '', $u);
+            if (strlen($short) > 46) $short = substr($short, 0, 45) . '…';
+            echo '<tr style="border-top:1px solid rgba(0,0,0,.07);">'
+               . '<td style="padding:8px 0;color:#17141f;"><a href="' . esc_url($u) . '" target="_blank" rel="noopener" style="color:#17141f;text-decoration:none;">' . esc_html($short) . '</a>'
+               . '<div style="color:#55555f;font-size:11px;">' . esc_html((string) $r['category']) . '</div></td>'
+               . '<td style="padding:8px 0;text-align:right;color:#17141f;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;">' . $nf($r['c']) . '</td></tr>';
+        }
+        echo '</table>';
+    }
+    echo '</div>';
+    echo '</div>'; // end columns
+
+    // ---- Traffic sources ------------------------------------------------
+    $sources = lmeg_journey_sources($d['ref_rows']);
+    foreach ($d['utm_src'] as $u) { // fold UTM campaigns in as named sources
+        $key = 'utm: ' . $u['s'];
+        $sources[$key] = ($sources[$key] ?? 0) + (int) $u['c'];
+    }
+    arsort($sources);
+    $sources = array_slice($sources, 0, 10, true);
+    $smax = 1; foreach ($sources as $c) $smax = max($smax, $c);
+    echo '<div style="background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;margin-top:16px;max-width:640px;">';
+    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Where visitors came from</h2>';
+    if (!$sources) {
+        echo '<p style="color:#55555f;font-size:13px;margin:0;">No pageviews recorded yet in this window.</p>';
+    } else {
+        foreach ($sources as $name => $c) {
+            $pct = round($c / $smax * 100);
+            echo '<div style="margin-bottom:10px;">';
+            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#17141f;margin-bottom:4px;">'
+               . '<span>' . esc_html($name) . '</span><span style="font-variant-numeric:tabular-nums;">' . $nf($c) . '</span></div>';
+            echo '<div style="height:8px;background:#eef1f6;border-radius:5px;overflow:hidden;">'
+               . '<div style="height:100%;width:' . max(3, $pct) . '%;background:#3a3a44;border-radius:5px;"></div></div>';
+            echo '</div>';
+        }
+    }
+    echo '</div>';
+
+    echo '<p style="color:#55555f;font-size:12px;margin-top:14px;">Numbers cached ~3 min · add <code>?lmeg_fresh=1</code> to force-refresh.</p>';
+    echo '</div>'; // .wrap
+}
