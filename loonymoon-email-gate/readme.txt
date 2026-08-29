@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.86.0
+Stable tag: 3.87.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.87.0 =
+* Store (Beta): "Pick up at a show" is live at checkout. When you have upcoming shows and the pick-up toggle is on, fans buying physical merch now see a "Ship it / Pick up · free" choice. Choosing pick-up hides the address, drops shipping to Free, and lets them pick which show to collect at — the order records the show and their receipt says "Pick up at [venue] — [date]" instead of a shipping address. Their order confirmation, your admin Orders view, and the packing slip all show the pick-up clearly. Shipping orders are unchanged. The show can't be spoofed — it's re-checked against your live upcoming shows on the server, and pick-up is always free. (Next: Bandsintown auto-sync + a per-show pick-up list.)
+
 = 3.86.0 =
 * Store (Beta): Shows & pick-up — foundation. New "Shows & pick-up" section on the Store admin page where you add your tour dates (venue, city, date, and a note for fans like "find us at the merch table"). This is step one of "pick up at the show": add your dates now, and the next update wires a "Pick up at a show — free" option into checkout so fans can collect merch on the road instead of paying shipping. Includes an on/off toggle for the pick-up option and per-show enable. New database tables are created automatically on update. (Bandsintown auto-sync and the per-show pick-up list are coming in follow-up updates.)
 

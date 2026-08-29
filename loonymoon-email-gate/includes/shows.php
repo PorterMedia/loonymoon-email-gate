@@ -62,6 +62,17 @@ function lmeg_show_label($s) {
     return $label;
 }
 
+/**
+ * Orders store a pick-up as a "PICKUP::<label>" marker in the shipping-address
+ * field (so it rides through the existing receipt / admin / order plumbing).
+ * Returns [is_pickup (bool), display text without the marker].
+ */
+function lmeg_pickup_parse($addr) {
+    $addr = (string) $addr;
+    if (strpos($addr, 'PICKUP::') === 0) return [true, trim(substr($addr, 8))];
+    return [false, $addr];
+}
+
 /** Is "pick up at a show" available? On by setting AND at least one upcoming show. */
 function lmeg_pickup_enabled() {
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];

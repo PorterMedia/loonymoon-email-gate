@@ -129,11 +129,13 @@ function lmeg_email_download_block($dls) {
         . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $inner . '</table></div>';
 }
 
-/** Shipping address block. */
+/** Shipping-address block — or a "Pick up at a show" block for pick-up orders. */
 function lmeg_email_ship_block($name, $addr) {
+    $pickup = false;
+    if (function_exists('lmeg_pickup_parse')) { list($pickup, $addr) = lmeg_pickup_parse($addr); }
     $lines = $name ? '<div style="font-weight:650;color:#1a1622">' . esc_html($name) . '</div>' : '';
     if ($addr) foreach (explode("\n", $addr) as $l) { if (trim($l) !== '') $lines .= '<div style="color:#514b5e;font-size:14px;line-height:1.5">' . esc_html($l) . '</div>'; }
-    return '<div style="margin:2px 0 16px">' . lmeg_email_label('Shipping to') . $lines . '</div>';
+    return '<div style="margin:2px 0 16px">' . lmeg_email_label($pickup ? 'Pick up at' : 'Shipping to') . $lines . '</div>';
 }
 
 /** Subtle info note. */

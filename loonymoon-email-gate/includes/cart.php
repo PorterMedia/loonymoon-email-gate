@@ -428,12 +428,15 @@ function lmeg_cart_fulfill_from_session($session) {
 
     $email = sanitize_email($session['customer_details']['email'] ?? ($stash['email'] ?? ''));
     $sd    = $session['shipping_details'] ?? ($session['shipping'] ?? []);
-    $ship_name = sanitize_text_field($sd['name'] ?? ($stash['ship_name'] ?? ''));
-    $ship_addr = lmeg_product_fmt_addr($sd['address'] ?? []) ?: (string) ($stash['ship_addr'] ?? '');
+    $pickup    = !empty($stash['pickup']);
+    // Pick-up keeps the stashed "PICKUP::" marker; shipped orders may carry Stripe's collected address.
+    $ship_name = $pickup ? (string) ($stash['ship_name'] ?? '') : sanitize_text_field($sd['name'] ?? ($stash['ship_name'] ?? ''));
+    $ship_addr = $pickup ? (string) ($stash['ship_addr'] ?? '') : (lmeg_product_fmt_addr($sd['address'] ?? []) ?: (string) ($stash['ship_addr'] ?? ''));
     $discount  = !empty($stash['discount']) ? $stash['discount'] : null;
     $note      = (string) ($stash['note'] ?? '');
     $tax       = (int) ($stash['tax'] ?? 0);
-    if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $stash['ship_country'] ?? '');
+    if ($pickup) { $v['shipping'] = 0; $v['total'] = (int) $v['subtotal']; }
+    elseif (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $stash['ship_country'] ?? '');
 
     lmeg_cart_fulfill_all($v, $email, $ship_name, $ship_addr, 'stripe', $sess_id, $discount, $note, $tax);
     if (function_exists('lmeg_abandoned_mark_recovered')) lmeg_abandoned_mark_recovered($email);
@@ -545,7 +548,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         $ship_now = $free_now ? '<span id="flp-ship" style="color:#0f766e">Free</span>' : '<span id="flp-ship">select country ↓</span>';
         $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span>' . $ship_now . '</div>';
     } elseif ($v['shipping']) {
-        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span>' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>';
+        $ship_row = '<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Shipping</span><span id="flp-ship">' . esc_html(lmeg_cart_money($v['shipping'], $cur)) . '</span></div>';
     }
     // Free-shipping upsell hint.
     $free_hint = '';
@@ -596,6 +599,24 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
             . lmeg_cart_input('ship_postal', 'Postal code', true) . $country_field . '</div></div>';
     }
 
+    // Ship-it vs pick-up-at-a-show choice (only for physical carts when pick-up is on).
+    $fulfil_ui = ''; $pickup_ok = ($v['has_physical'] && function_exists('lmeg_pickup_enabled') && lmeg_pickup_enabled());
+    if ($pickup_ok) {
+        $opts = '';
+        foreach (lmeg_shows_upcoming() as $sh) { $opts .= '<option value="' . (int) $sh->id . '">' . esc_html(lmeg_show_label($sh)) . '</option>'; }
+        $rl = 'display:flex;align-items:center;justify-content:center;gap:7px;flex:1;border:1px solid #d9d9e0;border-radius:10px;padding:11px 10px;cursor:pointer;font-size:14px;font-weight:650;color:#17141f;text-align:center';
+        $fulfil_ui = '<div style="margin-top:14px;display:flex;gap:8px" id="flp-fulfil">'
+            . '<label class="flp-ff" style="' . $rl . '"><input type="radio" name="fulfillment_method" value="ship" checked style="margin:0">' . lmeg_store_icon('truck', 15) . 'Ship it</label>'
+            . '<label class="flp-ff" style="' . $rl . '"><input type="radio" name="fulfillment_method" value="pickup" style="margin:0">' . lmeg_store_icon('bag', 15) . 'Pick up <span style="color:#0f766e;font-weight:800">· free</span></label>'
+            . '</div>'
+            . '<div id="flp-pickup-panel" style="display:none;margin-top:10px">'
+            . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Which show?</label>'
+            . '<select name="pickup_show" id="flp-pickup-select" disabled style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>'
+            . '<input type="text" name="ship_name" disabled placeholder="Your name (for pick-up)" autocomplete="name" autocapitalize="words" style="width:100%;margin-top:9px;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">'
+            . '<div style="margin-top:8px;font-size:12.5px;color:#6b6b78;line-height:1.5">' . lmeg_store_icon('bag', 13, ['style' => 'margin-right:5px;vertical-align:-2px']) . 'No shipping — collect your order at the merch table. We&rsquo;ll email you the details.</div>'
+            . '</div>';
+    }
+
     $errhtml = $err ? '<div style="background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#DC2626;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:14px">' . esc_html($err) . '</div>' : '';
     if ($v['mixed'] && !$demo) {
         $errhtml .= '<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#b45309;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px">Your cart mixes currencies — please check items out separately.</div>';
@@ -625,7 +646,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . '<input type="hidden" name="code" value="' . esc_attr($disc ? $disc['code'] : '') . '">'
         . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
         . '<input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
-        . $shipfields
+        . $fulfil_ui
+        . '<div id="flp-shipfields">' . $shipfields . '</div>'
         . lmeg_cart_dispatch_note($v['has_physical'])
         . $notefield
         . lmeg_cart_savings_badge($off, $cur)
@@ -645,6 +667,27 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
             . 'function upd(){var f;if(FREE>0&&SUB>=FREE){f=0;}else if(!sel||!sel.value){if(shipEl)shipEl.textContent="select country ↓";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+TAX);return;}else{f=FEES[zone(sel.value)]||0;}'
             . 'if(shipEl)shipEl.textContent=f?money(f):"Free";if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+f+TAX);}'
             . 'if(sel){sel.addEventListener("change",upd);}upd();})();</script>';
+    }
+
+    // Ship-it / pick-up toggle: swap the fields, disable the hidden set (so hidden
+    // "required" inputs never block submit), and flip the shipping line to free.
+    if ($pickup_ok) {
+        $body .= '<script>(function(){'
+            . 'var ff=document.getElementById("flp-fulfil");if(!ff)return;'
+            . 'var wrap=document.getElementById("flp-shipfields"),panel=document.getElementById("flp-pickup-panel"),shipEl=document.getElementById("flp-ship"),grandEl=document.getElementById("flp-grand");'
+            . 'var SUB=' . (int) $v['subtotal'] . ',OFF=' . (int) $off . ',TAX=' . (int) $tax . ',CUR=' . wp_json_encode($cur) . ';'
+            . 'function money(c){try{return new Intl.NumberFormat(undefined,{style:"currency",currency:CUR}).format(c/100);}catch(e){return "$"+(c/100).toFixed(2);}}'
+            . 'function dis(el,on){if(!el)return;el.querySelectorAll("input,select,textarea").forEach(function(f){f.disabled=on;});}'
+            . 'var oShip=shipEl?shipEl.textContent:"",oShipCol=shipEl?shipEl.style.color:"",oGrand=grandEl?grandEl.textContent:"";'
+            . 'function apply(pk){'
+            . 'if(wrap){wrap.style.display=pk?"none":"";dis(wrap,pk);}'
+            . 'if(panel){panel.style.display=pk?"":"none";dis(panel,!pk);}'
+            . 'if(pk){if(shipEl){shipEl.textContent="Free";shipEl.style.color="#0f766e";}if(grandEl)grandEl.textContent=money(Math.max(0,SUB-OFF)+TAX);}'
+            . 'else{if(shipEl){shipEl.textContent=oShip;shipEl.style.color=oShipCol;}if(grandEl)grandEl.textContent=oGrand;}'
+            . 'ff.querySelectorAll(".flp-ff").forEach(function(l){var r=l.querySelector("input"),on=r&&r.checked;l.style.borderColor=on?"var(--flp-accent,#E15FA8)":"#d9d9e0";l.style.background=on?"var(--flp-accent-tint,#FCEDF5)":"#fff";});'
+            . '}'
+            . 'ff.querySelectorAll("input[name=fulfillment_method]").forEach(function(r){r.addEventListener("change",function(){apply(this.value==="pickup");});});'
+            . 'apply(false);})();</script>';
     }
 
     lmeg_store_page('Checkout', $body, 'Checkout');
@@ -692,9 +735,19 @@ function lmeg_cart_place() {
     if (empty($v['lines']))     { lmeg_cart_checkout_page($v, $raw, 'Your cart is empty or those items are no longer available.'); }
     if (!$email || !is_email($email)) { lmeg_cart_checkout_page($v, $raw, 'Please enter a valid email address.'); }
 
-    // Shipping details for physical carts.
+    // Pick-up at a show — collect physical merch on the road instead of shipping.
+    // Validated against the LIVE upcoming-shows list; the client can't spoof it.
+    $pickup = null;
+    if ($v['has_physical'] && function_exists('lmeg_pickup_enabled') && lmeg_pickup_enabled()
+        && ($_POST['fulfillment_method'] ?? '') === 'pickup') {
+        $sid = (int) ($_POST['pickup_show'] ?? 0);
+        foreach (lmeg_shows_upcoming() as $sh) { if ((int) $sh->id === $sid) { $pickup = $sh; break; } }
+        if (!$pickup) { lmeg_cart_checkout_page($v, $raw, 'Please choose a show to pick up at.'); }
+    }
+
+    // Shipping details for physical carts (skipped for pick-up).
     $ship_name = ''; $ship_addr = '';
-    if ($v['has_physical']) {
+    if ($v['has_physical'] && !$pickup) {
         $ship_name = sanitize_text_field(wp_unslash($_POST['ship_name'] ?? ''));
         $line1 = sanitize_text_field(wp_unslash($_POST['ship_line1'] ?? ''));
         $city  = sanitize_text_field(wp_unslash($_POST['ship_city'] ?? ''));
@@ -708,14 +761,24 @@ function lmeg_cart_place() {
             'city'  => $city,  'state' => sanitize_text_field(wp_unslash($_POST['ship_region'] ?? '')),
             'postal_code' => $postal, 'country' => $ctry,
         ]);
+    } elseif ($pickup) {
+        // The collector's name (optional) + a "PICKUP::" marker carrying the show.
+        $ship_name = sanitize_text_field(wp_unslash($_POST['ship_name'] ?? ''));
+        $ship_addr = 'PICKUP::' . lmeg_show_label($pickup)
+                   . (!empty($pickup->pickup_note) ? "\n" . $pickup->pickup_note : '');
     }
     $ship_country = isset($ctry) ? $ctry : '';
 
     // Optional order / gift note.
     $onote = isset($_POST['order_note']) ? mb_substr(sanitize_textarea_field(wp_unslash($_POST['order_note'])), 0, 500) : '';
 
-    // Zone flat shipping — set the order's shipping from the destination country.
-    if (!empty($v['zone_shipping'])) lmeg_cart_apply_zone_shipping($v, $ship_country);
+    // Shipping — pick-up is always free; otherwise the destination-based zone fee.
+    if ($pickup) {
+        $v['shipping'] = 0;
+        $v['total']    = (int) $v['subtotal'];
+    } elseif (!empty($v['zone_shipping'])) {
+        lmeg_cart_apply_zone_shipping($v, $ship_country);
+    }
 
     // Discount code — re-validate at place time (it may have expired/hit its cap).
     $code = sanitize_text_field(wp_unslash($_POST['code'] ?? ''));
@@ -763,7 +826,7 @@ function lmeg_cart_place() {
     $token = wp_generate_password(24, false, false);
     set_transient('lmeg_cart_' . $token, [
         'raw' => $raw, 'email' => $email, 'ship_name' => $ship_name, 'ship_addr' => $ship_addr, 'discount' => $disc,
-        'ship_country' => $ship_country, 'note' => $onote, 'tax' => $tax,
+        'ship_country' => $ship_country, 'note' => $onote, 'tax' => $tax, 'pickup' => $pickup ? 1 : 0,
     ], 2 * HOUR_IN_SECONDS);
 
     // Save the cart so it can be recovered if they don't complete payment.
@@ -857,9 +920,12 @@ function lmeg_cart_done($stem = '') {
         $line = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid rgba(0,0,0,.08)">'
               . '<div style="text-align:left"><div style="font-weight:650">' . esc_html($r->title) . ($r->variant ? ' · <span style="color:#6b6b78">' . esc_html($r->variant) . '</span>' : '') . '</div>'
               . '<div style="color:#6b6b78;font-size:12px">' . esc_html(lmeg_cart_money($r->amount_cents, $r->currency)) . '</div></div>';
+        list($is_pickup, $pickup_where) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($r->ship_address ?? '') : [false, ''];
         if ($digital && $r->access_token) {
             $any_dl = true;
             $line .= '<a href="' . esc_url(lmeg_product_access_url($r->access_token)) . '" style="background:var(--flp-accent-grad,linear-gradient(118deg,#E15FA8,#8A6CF6));color:var(--flp-on-grad,#0B0C12);font-weight:750;text-decoration:none;padding:9px 15px;border-radius:9px;white-space:nowrap;font-size:14px">Download →</a>';
+        } elseif ($is_pickup) {
+            $line .= '<span title="' . esc_attr($pickup_where) . '" style="color:var(--flp-accent-ink,#B4247E);font-size:13px;font-weight:650;white-space:nowrap">Pick up at the show</span>';
         } else {
             $line .= '<span style="color:#0f766e;font-size:13px;font-weight:600;white-space:nowrap">Ships to you</span>';
         }

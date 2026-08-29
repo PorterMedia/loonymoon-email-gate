@@ -297,7 +297,8 @@ function lmeg_handle_packing_slip() {
                 <div><div class="lbl">Order</div><?php echo esc_html('#' . substr((string) $key, -8)); ?></div>
                 <div><div class="lbl">Date</div><?php echo esc_html($first->paid_at ? date_i18n('M j, Y', strtotime($first->paid_at)) : '—'); ?></div>
             </div>
-            <div class="row"><div><div class="lbl">Ship to</div><div class="ship"><?php echo esc_html(($first->ship_name ? $first->ship_name . "\n" : '') . ($first->ship_address ?: '')); ?></div><?php echo $first->email ? '<div style="color:#888;font-size:13px;margin-top:4px">' . esc_html($first->email) . '</div>' : ''; ?></div></div>
+            <?php list($o_pick, $o_addr) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($first->ship_address ?? '') : [false, $first->ship_address]; ?>
+            <div class="row"><div><div class="lbl"><?php echo $o_pick ? 'Pick up at' : 'Ship to'; ?></div><div class="ship"><?php echo esc_html(($first->ship_name ? $first->ship_name . "\n" : '') . ($o_addr ?: '')); ?></div><?php echo $first->email ? '<div style="color:#888;font-size:13px;margin-top:4px">' . esc_html($first->email) . '</div>' : ''; ?></div></div>
             <table><thead><tr><th class="q">Qty</th><th>Item</th></tr></thead><tbody>
             <?php foreach ($lines as $ln) : ?>
                 <tr><td class="q"><?php echo (int) ($ln->qty ?: 1); ?></td><td><?php echo esc_html($ln->title . ($ln->variant ? ' · ' . $ln->variant : '')); ?><?php if (!empty($ln->personalization)) : ?><div style="font-size:12px;font-weight:700;margin-top:2px">✍️ <?php echo esc_html($ln->personalization); ?></div><?php endif; ?></td></tr>

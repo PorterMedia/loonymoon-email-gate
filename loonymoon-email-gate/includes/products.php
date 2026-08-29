@@ -3155,7 +3155,8 @@ function lmeg_admin_products() {
                 <tr>
                     <td><?php echo esc_html($o->paid_at); ?></td>
                     <td><?php echo esc_html($o->title); ?><?php echo $o->variant ? ' · <strong>' . esc_html($o->variant) . '</strong>' : ''; ?></td>
-                    <td><?php echo esc_html($o->ship_name ?: '—'); ?><?php echo $o->email ? ' · ' . esc_html($o->email) : ''; ?><?php echo $o->ship_address ? '<br><span style="white-space:pre-line;color:#666;font-size:12px">' . esc_html($o->ship_address) . '</span>' : ''; ?></td>
+                    <?php list($o_pick, $o_addr) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($o->ship_address ?? '') : [false, $o->ship_address]; ?>
+                    <td><?php echo esc_html($o->ship_name ?: '—'); ?><?php echo $o->email ? ' · ' . esc_html($o->email) : ''; ?><?php echo $o_addr ? '<br><span style="white-space:pre-line;color:#666;font-size:12px">' . ($o_pick ? '<strong style="color:#B4247E">Pick up:</strong> ' : '') . esc_html($o_addr) . '</span>' : ''; ?></td>
                     <td><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int)$o->amount_cents, $o->currency) : '$'.number_format($o->amount_cents/100,2)); ?></td>
                     <td><form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><?php wp_nonce_field('lmeg_ship_order', 'lmeg_ship_nonce'); ?><input type="hidden" name="action" value="lmeg_ship_order"><input type="hidden" name="purchase_id" value="<?php echo (int) $o->id; ?>">
                         <select name="carrier" style="max-width:120px"><option value="">Carrier…</option><?php foreach (['USPS','UPS','FedEx','Canada Post','DHL','Other'] as $cc) : ?><option value="<?php echo esc_attr($cc); ?>"><?php echo esc_html($cc); ?></option><?php endforeach; ?></select>
