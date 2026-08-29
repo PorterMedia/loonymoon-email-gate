@@ -914,6 +914,8 @@ function lmeg_store_page($title, $inner, $tab = '') {
       a{color:var(--flp-accent-ink,#B4247E)}
       .home{display:block;margin-top:20px;color:#8a8a95;font-size:13px;text-decoration:none}
       input::placeholder{color:#9a9aa5}
+      /* iOS Safari zooms the page when a focused input is under 16px — keep checkout fields at 16px on phones so tapping a field never lurches the page. */
+      @media(max-width:640px){.card input,.card select,.card textarea{font-size:16px!important}}
     </style><?php echo function_exists('lmeg_store_accent_css') ? lmeg_store_accent_css() : ''; ?></head><body><div class="card"><?php echo $inner; ?></div></body></html><?php
     exit;
 }

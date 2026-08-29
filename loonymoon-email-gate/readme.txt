@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.81.0
+Stable tag: 3.82.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.82.0 =
+* Store (Beta): Checkout fields no longer trigger iPhone zoom. On iOS Safari, tapping a form field whose text is smaller than 16px makes the page zoom in (and it doesn't zoom back out) — a jarring stutter right in the middle of checkout. The checkout and order pages now render their fields at 16px on phones, so tapping email, address, discount code, or the gift note stays smooth. Mobile only; desktop and every price/total are unchanged (money path re-verified). No schema change.
+
 = 3.81.0 =
 * Store (Beta): Mobile fix — floating cart button no longer covers "Add to cart". On phones, the product page shows a sticky buy bar pinned to the bottom, and the floating cart button was overlapping its "Add to cart" button — obscuring (and hijacking taps on) the main buy action. The cart button now lifts above the sticky bar on small screens, so both are fully visible and tappable. Product-page mobile only; the storefront's cart button is unchanged. No schema change.
 
