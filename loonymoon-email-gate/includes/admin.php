@@ -4790,7 +4790,7 @@ function lmeg_admin_shop() {
 
         <h2>Recent orders</h2>
         <?php
-        $order_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_shop_orders");
+        $order_count = $has_orders; // identical COUNT already run at the top of this page — reuse it
         $order_total = (int) $wpdb->get_var("SELECT COALESCE(SUM(total_cents), 0) FROM {$wpdb->prefix}lmeg_shop_orders");
         $recent = $wpdb->get_results(
             "SELECT o.*, s.email AS sub_email, s.phone AS sub_phone
