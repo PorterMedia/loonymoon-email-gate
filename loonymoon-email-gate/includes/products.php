@@ -1974,6 +1974,7 @@ function lmeg_product_page() {
       $pill   = 'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#F4F2F7;font-size:13px;font-weight:650;padding:9px 14px;border-radius:999px;text-decoration:none;cursor:pointer;font-family:inherit';
       ?>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px">
+        <button type="button" id="flp-nativeshare" data-url="<?php echo esc_attr($share_url); ?>" data-title="<?php echo esc_attr($p->title); ?>" data-text="<?php echo esc_attr($share_txt); ?>" hidden style="<?php echo $pill; ?>;align-items:center;gap:7px"><?php echo lmeg_store_icon('share', 15); ?><span>Share</span></button>
         <button type="button" id="flp-copy" data-url="<?php echo esc_attr($share_url); ?>" style="<?php echo $pill; ?>;display:inline-flex;align-items:center;gap:7px"><?php echo lmeg_store_icon('link', 15); ?><span class="flp-copy-t">Copy link</span></button>
         <a href="<?php echo esc_url($x_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Share on X</a>
         <a href="<?php echo esc_url($fb_url); ?>" target="_blank" rel="noopener" style="<?php echo $pill; ?>">Facebook</a>
@@ -1981,6 +1982,7 @@ function lmeg_product_page() {
       </div>
       <script>
       (function(){var b=document.getElementById('flp-copy');if(!b)return;var lbl=b.querySelector('.flp-copy-t')||b;b.addEventListener('click',function(){var u=b.getAttribute('data-url');function done(){var t=lbl.textContent;lbl.textContent='Copied';setTimeout(function(){lbl.textContent=t;},1600);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u).then(done,function(){window.prompt('Copy this link:',u);});}else{window.prompt('Copy this link:',u);}});})();
+      (function(){var s=document.getElementById('flp-nativeshare');if(!s||!navigator.share)return;s.hidden=false;s.style.display='inline-flex';s.addEventListener('click',function(){navigator.share({title:s.getAttribute('data-title')||'',text:s.getAttribute('data-text')||'',url:s.getAttribute('data-url')||''}).catch(function(){});});})();
       </script>
       <a class="back" href="<?php echo esc_url(home_url('/')); ?>" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('arrow-left', 14); ?><?php echo esc_html($site); ?></a>
     </div>
