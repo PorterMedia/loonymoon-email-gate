@@ -1784,6 +1784,7 @@ function lmeg_product_meta_tags($p) {
         'availability'  => $avail_url,
     ];
     $m .= '<script type="application/ld+json">' . wp_json_encode($ld) . '</script>' . "\n";
+    if (function_exists('lmeg_product_breadcrumb_jsonld')) $m .= lmeg_product_breadcrumb_jsonld($p);
     return $m;
 }
 
@@ -1858,6 +1859,57 @@ function lmeg_faq_html($text, $dark = true) {
     return $out;
 }
 
+/** The storefront's public URL (first published page/post carrying a [fanloop_store]
+ * shortcode). Cached for an hour. '' when the shop hasn't been placed on a page. */
+function lmeg_store_shop_url() {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    $t = get_transient('lmeg_shop_url');
+    if ($t !== false) { $cached = (string) $t; return $cached; }
+    global $wpdb;
+    $id  = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_status = 'publish' AND (post_content LIKE '%[fanloop_store%' OR post_content LIKE '%[loony_store%') ORDER BY ID ASC LIMIT 1");
+    $url = ($id && function_exists('get_permalink')) ? (string) get_permalink($id) : '';
+    set_transient('lmeg_shop_url', $url, defined('HOUR_IN_SECONDS') ? HOUR_IN_SECONDS : 3600);
+    $cached = $url;
+    return $cached;
+}
+
+/** Breadcrumb trail for a product: Home › [Shop] › Product. Shared by the visible
+ * nav and the JSON-LD so they always match. Returns [['name'=>..,'url'=>..], ...]. */
+function lmeg_product_breadcrumb_items($p) {
+    $site  = (string) get_bloginfo('name');
+    $items = [['name' => ($site !== '' ? $site : 'Home'), 'url' => home_url('/')]];
+    $shop  = function_exists('lmeg_store_shop_url') ? lmeg_store_shop_url() : '';
+    if ($shop !== '') $items[] = ['name' => 'Shop', 'url' => $shop];
+    $items[] = ['name' => (string) $p->title, 'url' => lmeg_product_url($p)];
+    return $items;
+}
+
+/** Visible breadcrumb nav for the (dark) product page. */
+function lmeg_product_breadcrumb_html($p) {
+    $items = lmeg_product_breadcrumb_items($p);
+    $last  = count($items) - 1;
+    $parts = [];
+    foreach ($items as $i => $it) {
+        $parts[] = ($i === $last)
+            ? '<span aria-current="page" style="color:#8B90A0">' . esc_html($it['name']) . '</span>'
+            : '<a href="' . esc_url($it['url']) . '" style="color:#B9BCC9;text-decoration:none">' . esc_html($it['name']) . '</a>';
+    }
+    return '<nav aria-label="Breadcrumb" style="margin-bottom:14px;font-size:12.5px;color:#8B90A0;line-height:1.6;text-align:center">'
+        . implode(' <span style="opacity:.45">/</span> ', $parts) . '</nav>';
+}
+
+/** BreadcrumbList JSON-LD (matches the visible breadcrumb). */
+function lmeg_product_breadcrumb_jsonld($p) {
+    $list = [];
+    foreach (lmeg_product_breadcrumb_items($p) as $i => $it) {
+        $list[] = ['@type' => 'ListItem', 'position' => $i + 1, 'name' => $it['name'], 'item' => $it['url']];
+    }
+    return '<script type="application/ld+json">' . wp_json_encode([
+        '@context' => 'https://schema.org', '@type' => 'BreadcrumbList', 'itemListElement' => $list,
+    ]) . '</script>' . "\n";
+}
+
 function lmeg_product_page() {
     $p = lmeg_product_by_slug(sanitize_title(wp_unslash($_GET['lmeg_product'])));
     if (!$p || $p->status !== 'active') { status_header(404); nocache_headers(); wp_die('This product is not available.', 'Not found', ['response' => 404]); }
@@ -1879,6 +1931,7 @@ function lmeg_product_page() {
     <a class="topback" href="<?php echo esc_url(home_url('/')); ?>"><?php echo lmeg_store_icon('arrow-left', 14); ?><?php echo esc_html($site); ?></a>
     <div class="wrap">
       <?php echo lmeg_store_banner_html(); ?>
+      <?php echo lmeg_product_breadcrumb_html($p); ?>
       <?php echo lmeg_product_card_html($p, false, true); ?>
       <?php echo lmeg_product_video_html($p); ?>
       <?php if (!empty($p->size_chart) && ($sizeg = lmeg_size_chart_html($p->size_chart, true))) : ?>
