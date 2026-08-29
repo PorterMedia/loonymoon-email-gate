@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.99.3
+Stable tag: 3.99.4
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.99.4 =
+* Accessibility: every field on the checkout page now has a proper label for screen readers and password-manager autofill. The shipping address inputs, discount code, country, email, order note and pick-up fields previously relied on placeholder text alone (which disappears as you type and isn't announced by assistive tech). Purely additive — no visual change, and order totals/fulfilment are untouched.
+
 = 3.99.3 =
 * Readability: the order status labels ("To ship", "Shipped", "Delivered") and the checkout "add more for free shipping" hint were drawn in pale colours left over from a dark theme — they were washed out and hard to read on the white Orders table and checkout page. They now use dark, high-contrast colours (amber for "to ship", teal for shipped/delivered), so status is legible at a glance. Display only; order totals and fulfilment are unchanged.
 

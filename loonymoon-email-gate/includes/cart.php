@@ -580,7 +580,7 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
     } else {
         $code_ui = '<form method="post" action="' . $checkout_action . '" style="margin-top:14px;display:flex;gap:8px">'
             . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
-            . '<input type="text" name="code" placeholder="Discount code" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px;text-transform:uppercase">'
+            . '<input type="text" name="code" placeholder="Discount code" aria-label="Discount code" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px;text-transform:uppercase">'
             . '<button type="submit" style="background:#f4f4f6;color:#17141f;border:1px solid #d9d9e0;border-radius:10px;padding:0 18px;font-weight:700;cursor:pointer">Apply</button></form>'
             . ($code_err ? '<div style="color:#DC2626;font-size:13px;margin-top:6px;text-align:left">' . esc_html($code_err) . '</div>' : '');
     }
@@ -611,8 +611,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
             . '</div>'
             . '<div id="flp-pickup-panel" style="display:none;margin-top:10px">'
             . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Which show?</label>'
-            . '<select name="pickup_show" id="flp-pickup-select" disabled style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>'
-            . '<input type="text" name="ship_name" disabled placeholder="Your name (for pick-up)" autocomplete="name" autocapitalize="words" style="width:100%;margin-top:9px;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">'
+            . '<select name="pickup_show" id="flp-pickup-select" disabled aria-label="Pick-up show" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>'
+            . '<input type="text" name="ship_name" disabled placeholder="Your name (for pick-up)" aria-label="Your name (for pick-up)" autocomplete="name" autocapitalize="words" style="width:100%;margin-top:9px;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">'
             . '<div style="margin-top:8px;font-size:12.5px;color:#6b6b78;line-height:1.5">' . lmeg_store_icon('bag', 13, ['style' => 'margin-right:5px;vertical-align:-2px']) . 'No shipping — collect your order at the merch table. We&rsquo;ll email you the details.</div>'
             . '</div>';
     }
@@ -624,9 +624,9 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
 
     // Optional order / gift note.
     $note_ph = $v['has_physical'] ? 'Add a gift message or note for this order (optional)' : 'Add a note with your order (optional)';
-    $notefield = '<label style="display:block;font-size:13px;color:#6b6b78;margin:14px 0 5px">'
+    $notefield = '<label for="flp-order-note" style="display:block;font-size:13px;color:#6b6b78;margin:14px 0 5px">'
         . ($v['has_physical'] ? lmeg_store_icon('gift', 13, ['style' => 'margin-right:5px']) . 'Gift message or note' : lmeg_store_icon('edit', 13, ['style' => 'margin-right:5px']) . 'Note') . ' <span style="color:#6b6b78;font-weight:400">— optional</span></label>'
-        . '<textarea name="order_note" maxlength="500" rows="2" placeholder="' . esc_attr($note_ph) . '" '
+        . '<textarea id="flp-order-note" name="order_note" maxlength="500" rows="2" placeholder="' . esc_attr($note_ph) . '" '
         . 'style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px;resize:vertical;font-family:inherit">'
         . esc_textarea(isset($_POST['order_note']) ? sanitize_textarea_field(wp_unslash($_POST['order_note'])) : '') . '</textarea>';
 
@@ -644,8 +644,8 @@ function lmeg_cart_checkout_page($v = null, $raw = null, $err = '', $prefill_ema
         . $errhtml
         . '<input type="hidden" name="cart" value="' . esc_attr($rjson) . '">'
         . '<input type="hidden" name="code" value="' . esc_attr($disc ? $disc['code'] : '') . '">'
-        . '<label style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
-        . '<input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
+        . '<label for="flp-email" style="display:block;font-size:13px;color:#6b6b78;margin-bottom:5px">Email — where your ' . ($v['has_physical'] ? 'confirmation goes' : 'downloads go') . '</label>'
+        . '<input type="email" id="flp-email" name="email" required autocomplete="email" inputmode="email" placeholder="you@email.com" value="' . esc_attr($prefill_email) . '" style="width:100%;padding:12px 13px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:15px">'
         . $fulfil_ui
         . '<div id="flp-shipfields">' . $shipfields . '</div>'
         . lmeg_cart_dispatch_note($v['has_physical'])
@@ -708,7 +708,7 @@ function lmeg_cart_input($name, $label, $required) {
     ];
     $auto = isset($ac[$name]) ? ' autocomplete="' . $ac[$name] . '"' : '';
     $cap  = in_array($name, ['ship_name', 'ship_line1', 'ship_line2', 'ship_city', 'ship_region'], true) ? ' autocapitalize="words"' : '';
-    return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '"' . ($required ? ' required' : '') . $auto . $cap
+    return '<input type="text" name="' . esc_attr($name) . '" placeholder="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"' . ($required ? ' required' : '') . $auto . $cap
         . ' style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">';
 }
 
@@ -720,7 +720,7 @@ function lmeg_cart_country_select() {
         'CH' => 'Switzerland', 'AT' => 'Austria', 'JP' => 'Japan', 'MX' => 'Mexico', 'BR' => 'Brazil', 'ZZ' => 'Other country'];
     $opts = '<option value="" disabled selected>Country…</option>';
     foreach ($countries as $code => $name) $opts .= '<option value="' . esc_attr($code) . '">' . esc_html($name) . '</option>';
-    return '<select name="ship_country" id="flp-country" required autocomplete="country" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>';
+    return '<select name="ship_country" id="flp-country" required autocomplete="country" aria-label="Country" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid #d9d9e0;background:#fff;color:#17141f;font-size:14px">' . $opts . '</select>';
 }
 
 /* ---------------------------------------------------------------------------
