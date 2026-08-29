@@ -138,9 +138,92 @@ function lmeg_handle_save_pickup() {
     if (!current_user_can('manage_options')) wp_die('nope');
     check_admin_referer('lmeg_save_pickup', 'lmeg_pickup_nonce');
     $opts = (array) get_option(LMEG_OPTION, []);
-    $opts['store_pickup_enabled'] = empty($_POST['store_pickup_enabled']) ? 0 : 1;
+    $opts['store_pickup_enabled']     = empty($_POST['store_pickup_enabled']) ? 0 : 1;
+    $opts['store_bandsintown_artist'] = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['store_bandsintown_artist'] ?? ''))), 0, 190);
+    $opts['store_bandsintown_appid']  = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['store_bandsintown_appid'] ?? ''))), 0, 190);
     update_option(LMEG_OPTION, $opts);
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&pickupsaved=1#shows')); exit;
+}
+
+/* ---------------------------------------------------------------------------
+ * Bandsintown sync (optional) — pull the artist's upcoming shows automatically.
+ * Needs a Bandsintown app_id (a free public identifier, not a secret key).
+ * ------------------------------------------------------------------------- */
+
+/** Fetch upcoming events from Bandsintown's public REST API, or WP_Error. */
+function lmeg_bandsintown_fetch($artist, $app_id) {
+    $artist = trim((string) $artist); $app_id = trim((string) $app_id);
+    if ($artist === '') return new WP_Error('lmeg_bit_noartist', 'Add your Bandsintown artist name or id first.');
+    if ($app_id === '') return new WP_Error('lmeg_bit_noappid', 'Add a Bandsintown app_id first.');
+    $url = 'https://rest.bandsintown.com/artists/' . rawurlencode($artist) . '/events';
+    $url = add_query_arg(['app_id' => rawurlencode($app_id), 'date' => 'upcoming'], $url);
+    $res = wp_remote_get($url, ['timeout' => 12, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res)) return $res;
+    $code = (int) wp_remote_retrieve_response_code($res);
+    if ($code !== 200) return new WP_Error('lmeg_bit_http', 'Bandsintown returned HTTP ' . $code . '.');
+    $data = json_decode(wp_remote_retrieve_body($res), true);
+    if (is_array($data) && isset($data['errorMessage'])) return new WP_Error('lmeg_bit_api', sanitize_text_field((string) $data['errorMessage']));
+    if (!is_array($data)) $data = [];
+    return array_values(array_filter($data, 'is_array'));
+}
+
+/**
+ * Upsert Bandsintown upcoming events into the shows table, keyed on bit_id so a
+ * re-sync updates rather than duplicates. Manual shows are never touched.
+ * Returns [added, updated] or WP_Error.
+ */
+function lmeg_bandsintown_sync() {
+    global $wpdb;
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $events = lmeg_bandsintown_fetch($s['store_bandsintown_artist'] ?? '', $s['store_bandsintown_appid'] ?? '');
+    if (is_wp_error($events)) return $events;
+    $tbl = $wpdb->prefix . 'lmeg_shows';
+    $added = 0; $updated = 0;
+    foreach ($events as $e) {
+        $bid = isset($e['id']) ? mb_substr(sanitize_text_field((string) $e['id']), 0, 64) : '';
+        if ($bid === '') continue;
+        $venue = (isset($e['venue']) && is_array($e['venue'])) ? $e['venue'] : [];
+        $data = [
+            'venue'     => mb_substr(sanitize_text_field((string) ($venue['name'] ?? '')), 0, 190),
+            'city'      => mb_substr(sanitize_text_field((string) ($venue['city'] ?? '')), 0, 120),
+            'region'    => mb_substr(sanitize_text_field((string) ($venue['region'] ?? '')), 0, 120),
+            'country'   => strtoupper(substr(preg_replace('/[^A-Za-z]/', '', (string) ($venue['country'] ?? '')), 0, 2)),
+            'show_date' => !empty($e['datetime']) ? date('Y-m-d H:i:s', strtotime((string) $e['datetime'])) : null,
+            'source'    => 'bandsintown',
+        ];
+        $existing = $wpdb->get_row($wpdb->prepare("SELECT id FROM $tbl WHERE bit_id = %s", $bid));
+        if ($existing) { $wpdb->update($tbl, $data, ['id' => (int) $existing->id]); $updated++; }
+        else {
+            $data['bit_id']     = $bid;
+            $data['active']     = 1;
+            $data['created_at'] = current_time('mysql');
+            $wpdb->insert($tbl, $data);
+            $added++;
+        }
+    }
+    return [$added, $updated];
+}
+
+add_action('admin_post_lmeg_sync_bandsintown', 'lmeg_handle_sync_bandsintown');
+function lmeg_handle_sync_bandsintown() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_sync_bit', 'lmeg_bit_nonce');
+    $r = lmeg_bandsintown_sync();
+    if (is_wp_error($r)) {
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-products&biterr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&bitok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
+}
+
+/** Daily background sync (only when configured). Scheduled on load. */
+add_action('lmeg_bit_sync_cron', 'lmeg_bandsintown_sync');
+add_action('plugins_loaded', 'lmeg_bit_maybe_schedule');
+function lmeg_bit_maybe_schedule() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $on = !empty($s['store_bandsintown_artist']) && !empty($s['store_bandsintown_appid']);
+    $scheduled = wp_next_scheduled('lmeg_bit_sync_cron');
+    if ($on && !$scheduled)  wp_schedule_event(time() + 3600, 'daily', 'lmeg_bit_sync_cron');
+    if (!$on && $scheduled)  wp_unschedule_event($scheduled, 'lmeg_bit_sync_cron');
 }
 
 /* ---------------------------------------------------------------------------
@@ -160,19 +243,35 @@ function lmeg_shows_admin_section() {
     if (isset($_GET['showdeleted'])) echo '<div class="notice notice-success is-dismissible"><p>Show removed.</p></div>';
     if (isset($_GET['pickupsaved'])) echo '<div class="notice notice-success is-dismissible"><p>Pick-up setting saved.</p></div>';
     if (isset($_GET['showerr']))     echo '<div class="notice notice-error"><p>Add at least a venue or a city.</p></div>';
+    if (isset($_GET['bitok'])) { $n = array_map('intval', explode('-', (string) $_GET['bitok'])); echo '<div class="notice notice-success is-dismissible"><p>Bandsintown sync: ' . (int) ($n[0] ?? 0) . ' added, ' . (int) ($n[1] ?? 0) . ' updated.</p></div>'; }
+    if (isset($_GET['biterr']))      echo '<div class="notice notice-error"><p>Bandsintown sync failed: ' . esc_html(sanitize_text_field(wp_unslash($_GET['biterr']))) . '</p></div>';
     ?>
     <p class="description" style="margin:0 0 12px;max-width:820px">Add your upcoming shows, then let fans choose <strong>&ldquo;pick up at a show&rdquo;</strong> at checkout instead of paying shipping — you bring their order to the merch table. Great for tours: no postage, and it pulls the sale online instead of hoping they stop by.</p>
 
-    <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <?php $bit_artist = $settings['store_bandsintown_artist'] ?? ''; $bit_appid = $settings['store_bandsintown_appid'] ?? ''; ?>
+    <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px;margin-bottom:14px">
         <?php wp_nonce_field('lmeg_save_pickup', 'lmeg_pickup_nonce'); ?>
         <input type="hidden" name="action" value="lmeg_save_pickup">
         <label style="font-weight:600;display:inline-flex;align-items:center;gap:8px">
             <input type="checkbox" name="store_pickup_enabled" value="1" <?php checked($enabled); ?>>
             Offer &ldquo;pick up at a show&rdquo; at checkout
         </label>
-        <span class="description">Only appears when you have an upcoming show below.</span>
-        <button type="submit" class="button">Save</button>
+        <span class="description">&nbsp;Only appears when you have an upcoming show.</span>
+        <table class="form-table" role="presentation" style="margin-top:6px">
+            <tr><th style="width:210px"><label>Bandsintown artist</label></th><td><input type="text" name="store_bandsintown_artist" class="regular-text" value="<?php echo esc_attr($bit_artist); ?>" placeholder="Your artist name or id_12345"> <span class="description">optional — auto-import your tour dates</span></td></tr>
+            <tr><th><label>Bandsintown app_id</label></th><td><input type="text" name="store_bandsintown_appid" class="regular-text" value="<?php echo esc_attr($bit_appid); ?>" placeholder="your Bandsintown app_id"> <span class="description">a free public id from your Bandsintown account (not a secret)</span></td></tr>
+        </table>
+        <p style="margin:4px 0 0"><button type="submit" class="button button-primary">Save</button></p>
     </form>
+
+    <?php if ($bit_artist !== '' && $bit_appid !== '') : ?>
+    <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;margin:-6px 0 14px">
+        <?php wp_nonce_field('lmeg_sync_bit', 'lmeg_bit_nonce'); ?>
+        <input type="hidden" name="action" value="lmeg_sync_bandsintown">
+        <button type="submit" class="button">&#8635; Sync from Bandsintown now</button>
+        <span class="description">&nbsp;Also runs automatically once a day.</span>
+    </form>
+    <?php endif; ?>
 
     <table class="widefat striped" style="max-width:900px;margin-bottom:14px">
         <thead><tr><th>Venue</th><th>City</th><th>Date</th><th>Note for fans</th><th>Status</th><th></th></tr></thead>

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.87.0
+Stable tag: 3.88.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.88.0 =
+* Store (Beta): Bandsintown tour-date sync. In "Shows & pick-up" you can now add your Bandsintown artist name/id + app_id and pull your upcoming shows in automatically — "Sync from Bandsintown now", plus a daily background sync. Synced shows are tagged Bandsintown and update in place on re-sync (no duplicates); your manually added shows are never touched. Sync failures are handled gracefully (a clear message, nothing breaks). Manual entry still works exactly as before. No schema change.
+
 = 3.87.0 =
 * Store (Beta): "Pick up at a show" is live at checkout. When you have upcoming shows and the pick-up toggle is on, fans buying physical merch now see a "Ship it / Pick up · free" choice. Choosing pick-up hides the address, drops shipping to Free, and lets them pick which show to collect at — the order records the show and their receipt says "Pick up at [venue] — [date]" instead of a shipping address. Their order confirmation, your admin Orders view, and the packing slip all show the pick-up clearly. Shipping orders are unchanged. The show can't be spoofed — it's re-checked against your live upcoming shows on the server, and pick-up is always free. (Next: Bandsintown auto-sync + a per-show pick-up list.)
 
