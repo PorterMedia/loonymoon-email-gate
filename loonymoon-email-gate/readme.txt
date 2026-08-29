@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.79.0
+Stable tag: 3.80.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+= 3.80.0 =
+* Store (Beta): Friendlier "no results" state. When a shopper's search or filter matches nothing, the storefront used to show a thin grey line. It now shows a proper empty state — a search icon, a clear "No matches" heading in high-contrast text, and a one-tap "Clear filters" button that resets everything and brings the products back. Also fixes the old low-contrast grey message. Storefront display only, no schema change.
+
 = 3.79.0 =
 * Store (Beta): Native share button on product pages. The product page already had Copy-link / X / Facebook / WhatsApp buttons; it now leads with a "Share" pill that opens the phone's native share sheet — Instagram, Messages, AirDrop, whatever the fan uses — pre-filled with the product name and link. It only appears on devices that support it (progressive enhancement), so desktop is unchanged and still shows the existing buttons. Lets a fan share a product they love before they even buy. No schema change.
 

@@ -1269,7 +1269,12 @@ function lmeg_shortcode_store($atts) {
         : '';
     $out = lmeg_store_theme_reset_css() . $hover_css . $chip_css . $col_css . lmeg_store_banner_html()
         . '<div class="flp-store-wrap" id="' . $uid . '">' . $hero_block . $controls . $chips . $clear_btn
-        . '<p class="flp-store-none" style="display:none;color:#6b6b78;padding:6px 2px">No products match your search.</p>'
+        . '<div class="flp-store-none" style="display:none;text-align:center;padding:38px 16px 30px;color:#17141f">'
+        . '<div style="width:46px;height:46px;border-radius:50%;background:var(--flp-accent-tint,#FCEDF5);display:inline-grid;place-items:center;margin-bottom:12px;color:var(--flp-accent,#E15FA8)">' . lmeg_store_icon('search', 20) . '</div>'
+        . '<div style="font-size:16px;font-weight:750;color:#17141f;margin-bottom:3px">No matches</div>'
+        . '<div style="font-size:13.5px;color:#4b4b56;margin-bottom:15px">Nothing here fits those filters — try clearing them.</div>'
+        . '<button type="button" class="flp-none-clear" style="background:var(--flp-accent,#E15FA8);color:var(--flp-on-accent,#fff);border:0;border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">' . lmeg_store_icon('x', 13) . 'Clear filters</button>'
+        . '</div>'
         . '<div class="flp-store" style="display:grid;grid-template-columns:' . $grid_cols . ';gap:20px;align-items:stretch">';
     foreach ($rows as $p) $out .= lmeg_product_card_html($p, true, false, $card_opts);
     $out .= '</div>' . $more_btn . '</div>';
@@ -1322,7 +1327,9 @@ function lmeg_shortcode_store($atts) {
             . 'if(stockBtn)stockBtn.addEventListener("click",function(){stockBtn.classList.toggle("is-active");stockBtn.setAttribute("aria-pressed",stockBtn.classList.contains("is-active")?"true":"false");refilter();});'
             . 'if(saleBtn)saleBtn.addEventListener("click",function(){saleBtn.classList.toggle("is-active");saleBtn.setAttribute("aria-pressed",saleBtn.classList.contains("is-active")?"true":"false");refilter();});'
             . 'if(newBtn)newBtn.addEventListener("click",function(){newBtn.classList.toggle("is-active");newBtn.setAttribute("aria-pressed",newBtn.classList.contains("is-active")?"true":"false");refilter();});'
-            . 'if(clearBtn)clearBtn.addEventListener("click",function(){if(q)q.value="";tagBtns.forEach(function(x){x.classList.remove("is-active");});if(tagBtns[0])tagBtns[0].classList.add("is-active");if(stockBtn){stockBtn.classList.remove("is-active");stockBtn.setAttribute("aria-pressed","false");}if(saleBtn){saleBtn.classList.remove("is-active");saleBtn.setAttribute("aria-pressed","false");}if(newBtn){newBtn.classList.remove("is-active");newBtn.setAttribute("aria-pressed","false");}try{localStorage.removeItem(SKEY);}catch(e){}refilter();});'
+            . 'function doClear(){if(q)q.value="";tagBtns.forEach(function(x){x.classList.remove("is-active");});if(tagBtns[0])tagBtns[0].classList.add("is-active");if(stockBtn){stockBtn.classList.remove("is-active");stockBtn.setAttribute("aria-pressed","false");}if(saleBtn){saleBtn.classList.remove("is-active");saleBtn.setAttribute("aria-pressed","false");}if(newBtn){newBtn.classList.remove("is-active");newBtn.setAttribute("aria-pressed","false");}try{localStorage.removeItem(SKEY);}catch(e){}refilter();}'
+            . 'if(clearBtn)clearBtn.addEventListener("click",doClear);'
+            . 'var noneClear=root.querySelector(".flp-none-clear");if(noneClear)noneClear.addEventListener("click",doClear);'
             . 'if(q)q.addEventListener("input",refilter);if(sort)sort.addEventListener("change",refilter);'
             . 'if(moreBtn)moreBtn.addEventListener("click",function(){shown+=PER;apply();});'
             . 'if(restore()||PER>0)apply();})();</script>';
