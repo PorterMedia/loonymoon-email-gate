@@ -2674,6 +2674,7 @@ function lmeg_admin_settings() {
             'store_lowstock_digest'   => !empty($_POST['store_lowstock_digest']) ? 1 : 0,
             'store_waitlist_auto'     => !empty($_POST['store_waitlist_auto']) ? 1 : 0,
             'journey_enabled'         => !empty($_POST['journey_enabled']) ? 1 : 0,
+            'brain_token'             => sanitize_text_field(wp_unslash($_POST['brain_token'] ?? '')),
             'store_tax_rate'          => max(0, min(100, (float) preg_replace('/[^0-9.]/', '', (string) ($_POST['store_tax_rate'] ?? 0)))),
             'store_tax_label'         => (sanitize_text_field(wp_unslash($_POST['store_tax_label'] ?? '')) ?: 'Tax'),
             'store_ship_zones'        => !empty($_POST['store_ship_zones']) ? 1 : 0,
@@ -3358,6 +3359,15 @@ function lmeg_admin_settings() {
                 <tr><th scope="row">Track fan journeys</th><td>
                     <label><input type="checkbox" name="journey_enabled" value="1" <?php checked(!empty($s['journey_enabled'])); ?> /> <strong>Record pageviews and outbound clicks on your site</strong></label>
                     <p class="description">Classifies where fans go when they leave (Spotify, Apple Music, Tickets, …) and, because Fanloop knows your members, ties those journeys to the actual fan. See it under <strong>Fanloop → Journey</strong>. No effect on your store, checkout, or emails.</p>
+                </td></tr>
+            </table>
+
+            <h2>Central brain</h2>
+            <table class="form-table" role="presentation">
+                <tr><th scope="row">Brain export token</th><td>
+                    <input type="text" name="brain_token" class="regular-text" value="<?php echo esc_attr($s['brain_token'] ?? ''); ?>" placeholder="a long random secret — blank turns it off" autocomplete="off" />
+                    <p class="description">Lets your central hub (Porter Brain) pull this site's numbers, fans and activity through a <strong>read-only</strong> endpoint. Paste the same secret into the hub. Blank = off.
+                    <?php if (!empty($s['brain_token'])) : ?><br>Endpoint: <code><?php echo esc_html(add_query_arg('lmeg_brain', 'export', home_url('/'))); ?></code></p><?php else : ?></p><?php endif; ?>
                 </td></tr>
             </table>
 

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.99.4
+Stable tag: 3.100.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,10 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+
+= 3.100.0 =
+* New: Central brain export. A read-only endpoint (Settings → Central brain) lets a central hub — Porter Brain — pull this site's headline numbers, fans and recent activity through one token-protected URL, so all your artists/sites can be seen and queried in one place. Off until you set a token; nothing is written, and it never touches the store, checkout or emails.
+
 = 3.99.4 =
 * Accessibility: every field on the checkout page now has a proper label for screen readers and password-manager autofill. The shipping address inputs, discount code, country, email, order note and pick-up fields previously relied on placeholder text alone (which disappears as you type and isn't announced by assistive tech). Purely additive — no visual change, and order totals/fulfilment are untouched.
 

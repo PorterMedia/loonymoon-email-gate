@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.99.4
+ * Version:     3.100.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.99.4');
+define('LMEG_VERSION',     '3.100.0');
 define('LMEG_DB_VERSION',  '3.94.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -95,6 +95,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/bundles.php';
 require_once LMEG_PLUGIN_DIR . 'includes/shows.php';
 require_once LMEG_PLUGIN_DIR . 'includes/purchases.php';
 require_once LMEG_PLUGIN_DIR . 'includes/journey.php';
+require_once LMEG_PLUGIN_DIR . 'includes/brain.php';
 require_once LMEG_PLUGIN_DIR . 'includes/engage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/instagram.php';
 require_once LMEG_PLUGIN_DIR . 'includes/spotify.php';
@@ -920,6 +921,8 @@ function lmeg_default_settings() {
         'store_pickup_enabled'     => 0,
         // Fan journey analytics — pageview + classified outbound-click tracking
         'journey_enabled'          => 0,
+        // Central brain — shared secret for the read-only ?lmeg_brain=export endpoint (blank = off)
+        'brain_token'              => '',
         'store_ship_ca'            => 0,
         'store_ship_us'            => 0,
         'store_ship_intl'          => 0,
