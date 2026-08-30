@@ -293,31 +293,34 @@ function lmeg_gigpress_fetch() {
     }
     $sc = lmeg_gigpress_columns($shows);
     $vc = lmeg_gigpress_columns($venues);
-    if (empty($sc['gp_id']) || empty($sc['gp_date']) || empty($sc['gp_venue']) || empty($vc['gp_venue_id']) || empty($vc['gp_venue'])) {
-        return new WP_Error('lmeg_gp_schema', 'GigPress tables were found but their columns (gp_id / gp_date / gp_venue) don\'t look standard — tell us your GigPress version and we\'ll map it.');
+    // GigPress uses show_*/venue_* column names — stable across its history and
+    // the Modern Tribe / StellarWP fork. show_venue_id → venues.venue_id.
+    if (empty($sc['show_id']) || empty($sc['show_date']) || empty($sc['show_venue_id'])
+        || empty($vc['venue_id']) || empty($vc['venue_name'])) {
+        return new WP_Error('lmeg_gp_schema', 'GigPress tables were found but their columns (show_id / show_date / show_venue_id) don\'t look standard — tell us your GigPress version and we\'ll map it.');
     }
     // Only reference columns we've confirmed exist; blank-literal the rest.
-    $time_sel  = !empty($sc['gp_time'])    ? 's.gp_time'    : "''";
-    $stat_sel  = !empty($sc['gp_status'])  ? 's.gp_status'  : "''";
-    $city_sel  = !empty($vc['gp_city'])    ? 'v.gp_city'    : "''";
-    $state_sel = !empty($vc['gp_state'])   ? 'v.gp_state'   : "''";
-    $ctry_sel  = !empty($vc['gp_country']) ? 'v.gp_country' : "''";
+    $time_sel  = !empty($sc['show_time'])     ? 's.show_time'     : "''";
+    $stat_sel  = !empty($sc['show_status'])   ? 's.show_status'   : "''";
+    $city_sel  = !empty($vc['venue_city'])    ? 'v.venue_city'    : "''";
+    $state_sel = !empty($vc['venue_state'])   ? 'v.venue_state'   : "''";
+    $ctry_sel  = !empty($vc['venue_country']) ? 'v.venue_country' : "''";
 
-    $sql = "SELECT s.gp_id AS ext_id, s.gp_date AS gp_date, $time_sel AS gp_time,
-                   $stat_sel AS gp_status, v.gp_venue AS venue,
+    $sql = "SELECT s.show_id AS ext_id, s.show_date AS gp_date, $time_sel AS gp_time,
+                   $stat_sel AS gp_status, v.venue_name AS venue,
                    $city_sel AS city, $state_sel AS region, $ctry_sel AS country
             FROM `$shows` s
-            LEFT JOIN `$venues` v ON v.gp_venue_id = s.gp_venue
-            WHERE s.gp_date >= CURDATE()
-            ORDER BY s.gp_date ASC, s.gp_id ASC
+            LEFT JOIN `$venues` v ON v.venue_id = s.show_venue_id
+            WHERE s.show_date >= CURDATE()
+            ORDER BY s.show_date ASC, s.show_id ASC
             LIMIT 500";
     $rows = $wpdb->get_results($sql);
     if (!is_array($rows)) $rows = [];
-    // Drop shows GigPress marks cancelled/hidden (status values vary by version — be permissive).
+    // Drop shows GigPress marks deleted/cancelled/hidden (status values vary — be permissive).
     $out = [];
     foreach ($rows as $r) {
         $st = strtolower(trim((string) ($r->gp_status ?? '')));
-        if ($st !== '' && (strpos($st, 'cancel') !== false || $st === 'inactive' || $st === 'hidden' || $st === 'draft')) continue;
+        if ($st !== '' && (strpos($st, 'cancel') !== false || $st === 'deleted' || $st === 'inactive' || $st === 'hidden' || $st === 'draft')) continue;
         $out[] = $r;
     }
     return $out;

@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.102.0
+Stable tag: 3.103.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+
+= 3.103.0 =
+* Fix: the GigPress tour-date import (added in 3.102.0) read the wrong table columns and reported "schema not recognised" instead of importing. It now uses GigPress's real column names (show_id / show_date / show_venue_id joined to the venues table's venue_name / venue_city / venue_state / venue_country) and skips deleted/cancelled dates. If you tried "Sync from GigPress" and it failed, click it again after updating — your upcoming shows will import.
 
 = 3.102.0 =
 * New: "Pick up at a show" can now auto-import your tour dates from **GigPress**. If GigPress is installed on the same site, the Shows & pick-up panel shows a "Sync from GigPress now" button and an optional "auto-import daily" toggle — your upcoming GigPress dates are copied straight into the pick-up list (re-syncs update, never duplicate), with no API or keys needed. Sits right alongside the existing manual and Bandsintown options; your GigPress listings are read-only and never modified. Column names are detected automatically so it adapts to your GigPress version, and if the tables aren't recognised it reports a clear message instead of failing. (Schema: adds a generic `ext_id` column to the shows table for external-source keying.)
