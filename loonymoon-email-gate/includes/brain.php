@@ -60,6 +60,20 @@ function lmeg_brain_person_payload($sid) {
     $orders    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ord WHERE $ordWhere", $sid, $email));
     $spend     = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM $ord WHERE $ordWhere", $sid, $email));
 
+    // Time on site — active-dwell (ms) captured client-side, summed over their
+    // page views; and how often they visit (sessions split on a 30-min gap).
+    $dwellMs    = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(dwell_ms),0) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
+    $timeOnSite = (int) round($dwellMs / 1000);   // seconds
+    $times = (array) $wpdb->get_col($wpdb->prepare("SELECT created_at FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview' ORDER BY created_at ASC", $sid));
+    $sessions = 0; $prevTs = null;
+    foreach ($times as $t) {
+        $ts = strtotime((string) $t);
+        if ($ts === false) continue;
+        if ($prevTs === null || ($ts - $prevTs) > 1800) $sessions++;
+        $prevTs = $ts;
+    }
+    $avgVisit = $sessions ? (int) round($timeOnSite / $sessions) : 0;
+
     // Pages they land on.
     $pages = [];
     foreach ((array) $wpdb->get_results($wpdb->prepare(
@@ -99,12 +113,15 @@ function lmeg_brain_person_payload($sid) {
         'first_visit' => $firstV ? gmdate('c', strtotime($firstV)) : null,
         'last_visit'  => $lastV ? gmdate('c', strtotime($lastV)) : null,
         'metrics'     => [
-            ['key' => 'pageviews',    'label' => 'Page views',   'value' => $pv,        'unit' => 'count'],
-            ['key' => 'visit_days',   'label' => 'Days visited', 'value' => $visitDays, 'unit' => 'count'],
-            ['key' => 'email_opens',  'label' => 'Email opens',  'value' => $opens,     'unit' => 'count'],
-            ['key' => 'email_clicks', 'label' => 'Email clicks', 'value' => $clicks,    'unit' => 'count'],
-            ['key' => 'orders',       'label' => 'Orders',       'value' => $orders,    'unit' => 'count'],
-            ['key' => 'spend',        'label' => 'Spend',        'value' => $spend,     'unit' => 'cents'],
+            ['key' => 'pageviews',    'label' => 'Page views',    'value' => $pv,         'unit' => 'count'],
+            ['key' => 'visits',       'label' => 'Visits',        'value' => $sessions,   'unit' => 'count'],
+            ['key' => 'visit_days',   'label' => 'Days visited',  'value' => $visitDays,  'unit' => 'count'],
+            ['key' => 'time_on_site', 'label' => 'Time on site',  'value' => $timeOnSite, 'unit' => 'seconds'],
+            ['key' => 'avg_visit',    'label' => 'Avg visit',     'value' => $avgVisit,   'unit' => 'seconds'],
+            ['key' => 'email_opens',  'label' => 'Email opens',   'value' => $opens,      'unit' => 'count'],
+            ['key' => 'email_clicks', 'label' => 'Email clicks',  'value' => $clicks,     'unit' => 'count'],
+            ['key' => 'orders',       'label' => 'Orders',        'value' => $orders,     'unit' => 'count'],
+            ['key' => 'spend',        'label' => 'Spend',         'value' => $spend,      'unit' => 'cents'],
         ],
         'top_pages'     => $pages,
         'visits_by_day' => $byDay,
@@ -141,15 +158,21 @@ function lmeg_brain_export_payload() {
     $sent30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $log WHERE status = 'sent' AND sent_at >= %s", $since));
     $open30 = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $ev WHERE event_type = 'open' AND created_at >= %s", $since));
     $openRate = $sent30 ? round($open30 / $sent30 * 100, 1) : 0;
+    // On-site engagement (identified fans): page views in the last 30d and the
+    // average active time-on-page across all page views that have a measurement.
+    $pv30   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE event_type = 'pageview' AND created_at >= %s", $since));
+    $avgTos = (int) $wpdb->get_var("SELECT COALESCE(ROUND(AVG(dwell_ms) / 1000), 0) FROM $ev WHERE event_type = 'pageview' AND dwell_ms > 0");
 
     $metrics = [
-        ['key' => 'fans_total',     'label' => 'Fans',                'value' => $fans,     'unit' => 'count'],
-        ['key' => 'new_30d',        'label' => 'New fans (30d)',      'value' => $new30,    'unit' => 'count'],
-        ['key' => 'members_paying', 'label' => 'Paying members',      'value' => $paying,   'unit' => 'count'],
-        ['key' => 'revenue_all',    'label' => 'Revenue (all-time)',  'value' => $revAll,   'unit' => $unit],
-        ['key' => 'revenue_30d',    'label' => 'Revenue (30d)',       'value' => $rev30,    'unit' => $unit],
-        ['key' => 'orders_30d',     'label' => 'Orders (30d)',        'value' => $ord30,    'unit' => 'count'],
-        ['key' => 'open_rate_30d',  'label' => 'Open rate (30d)',     'value' => $openRate, 'unit' => 'percent'],
+        ['key' => 'fans_total',       'label' => 'Fans',                'value' => $fans,     'unit' => 'count'],
+        ['key' => 'new_30d',          'label' => 'New fans (30d)',      'value' => $new30,    'unit' => 'count'],
+        ['key' => 'members_paying',   'label' => 'Paying members',      'value' => $paying,   'unit' => 'count'],
+        ['key' => 'revenue_all',      'label' => 'Revenue (all-time)',  'value' => $revAll,   'unit' => $unit],
+        ['key' => 'revenue_30d',      'label' => 'Revenue (30d)',       'value' => $rev30,    'unit' => $unit],
+        ['key' => 'orders_30d',       'label' => 'Orders (30d)',        'value' => $ord30,    'unit' => 'count'],
+        ['key' => 'open_rate_30d',    'label' => 'Open rate (30d)',     'value' => $openRate, 'unit' => 'percent'],
+        ['key' => 'pageviews_30d',    'label' => 'Page views (30d)',    'value' => $pv30,     'unit' => 'count'],
+        ['key' => 'avg_time_on_site', 'label' => 'Avg time on site',    'value' => $avgTos,   'unit' => 'seconds'],
     ];
 
     // ---- people (top window by value; lifetime value = membership + shop) ----

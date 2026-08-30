@@ -133,19 +133,31 @@ add_action('init', 'lmeg_journey_router');
 function lmeg_journey_router() {
     if (!isset($_GET['lmeg_journey'])) return;
     if (sanitize_key($_GET['lmeg_journey']) !== 'collect') return;
-    if (!lmeg_journey_enabled()) { status_header(204); exit; }
 
     // Beacon body: JSON (sendBeacon Blob) or form-encoded, best-effort.
     $raw = file_get_contents('php://input');
     $b   = $raw ? json_decode($raw, true) : null;
     if (!is_array($b)) $b = $_POST;
-
     $type = sanitize_key($b['t'] ?? '');
-    if (!in_array($type, ['pageview', 'outbound'], true)) { status_header(204); exit; }
 
     // Cheap bot filter — skip obvious crawlers.
     $ua = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
     if ($ua === '' || preg_match('/bot|crawl|spider|slurp|preview|monitor|curl|wget|headless/i', $ua)) { status_header(204); exit; }
+
+    // Time-on-page is member-only, identity-linked — recorded even when
+    // anonymous journey tracking is off (it complements the always-on member
+    // page-view logger rather than the anonymous capture below).
+    if ($type === 'dwell') {
+        lmeg_journey_record_dwell(
+            isset($b['page']) ? esc_url_raw((string) $b['page']) : '',
+            (int) ($b['ms'] ?? 0)
+        );
+        status_header(204); exit;
+    }
+
+    // Anonymous / full journey capture requires the toggle.
+    if (!lmeg_journey_enabled()) { status_header(204); exit; }
+    if (!in_array($type, ['pageview', 'outbound'], true)) { status_header(204); exit; }
 
     $siteHost = lmeg_journey_site_host();
     $href     = isset($b['url'])  ? esc_url_raw((string) $b['url'])  : '';
@@ -191,13 +203,44 @@ function lmeg_journey_record($data) {
     $wpdb->insert($wpdb->prefix . 'lmeg_journey_events', $row);
 }
 
+/**
+ * Record time-on-page for an identified fan by attaching the active-dwell (ms)
+ * to their most recent on-site page-view for that URL. The member page-view
+ * logger (lmeg_track_member_pageview) already created that row on load; this
+ * just fills in how long they stayed. Anonymous visitors are skipped. Beacons
+ * re-send a growing total, so we keep the largest value seen (GREATEST).
+ */
+function lmeg_journey_record_dwell($page, $ms) {
+    global $wpdb;
+    $ms  = (int) $ms;
+    if ($ms <= 0) return;
+    $ms  = min($ms, 30 * 60 * 1000);                 // clamp to the 30-min client cap
+    $sid = (int) (lmeg_journey_subscriber_id() ?: 0);
+    if (!$sid) return;                               // members only
+    $url = strtok((string) $page, '?');              // same query-stripped URL the logger stores
+    if ($url === '' ) return;
+    if (strlen($url) > 500) $url = substr($url, 0, 500);
+    $tbl = $wpdb->prefix . 'lmeg_broadcast_events';
+    $wpdb->query($wpdb->prepare(
+        "UPDATE $tbl SET dwell_ms = GREATEST(COALESCE(dwell_ms, 0), %d)
+         WHERE subscriber_id = %d AND event_type = 'pageview' AND source = 'site'
+           AND url = %s AND created_at >= (NOW() - INTERVAL 2 HOUR)
+         ORDER BY id DESC LIMIT 1",
+        $ms, $sid, $url
+    ));
+}
+
 /* ---------------------------------------------------------------------------
  * Front-end beacon script (enqueued only when tracking is on)
  * ------------------------------------------------------------------------- */
 
 add_action('wp_enqueue_scripts', 'lmeg_journey_enqueue');
 function lmeg_journey_enqueue() {
-    if (!lmeg_journey_enabled() || is_admin()) return;
+    if (is_admin()) return;
+    // Load for full anonymous journey tracking, or for a signed-in fan so their
+    // time-on-page is measured even when anonymous tracking is off.
+    $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
+    if (!lmeg_journey_enabled() && !$member) return;
     wp_enqueue_script('lmeg-journey', LMEG_PLUGIN_URL . 'assets/journey.js', [], LMEG_VERSION, true);
     wp_localize_script('lmeg-journey', 'LMEG_J', [
         'url'  => add_query_arg('lmeg_journey', 'collect', home_url('/')),
