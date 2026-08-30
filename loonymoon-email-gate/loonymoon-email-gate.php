@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version:     3.101.0
+ * Version:     3.102.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.101.0');
-define('LMEG_DB_VERSION',  '3.94.0');
+define('LMEG_VERSION',     '3.102.0');
+define('LMEG_DB_VERSION',  '3.102.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
 define('LMEG_COOKIE',      'lmeg_unlocked');
@@ -785,7 +785,9 @@ function lmeg_create_tables() {
         KEY idx_active (active)
     ) $charset;");
 
-    // Tour dates — powers "pick up at the show" (manual + Bandsintown sync).
+    // Tour dates — powers "pick up at the show" (manual, or auto-imported from
+    // Bandsintown or the GigPress plugin). ext_id keys any external source (e.g.
+    // a GigPress gp_id) so a re-sync updates its row instead of duplicating it.
     $shows = $wpdb->prefix . 'lmeg_shows';
     dbDelta("CREATE TABLE $shows (
         id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -795,14 +797,16 @@ function lmeg_create_tables() {
         country VARCHAR(2) NOT NULL DEFAULT '',
         show_date DATETIME DEFAULT NULL,
         pickup_note VARCHAR(255) NOT NULL DEFAULT '',
-        source VARCHAR(12) NOT NULL DEFAULT 'manual',
+        source VARCHAR(16) NOT NULL DEFAULT 'manual',
         bit_id VARCHAR(64) DEFAULT NULL,
+        ext_id VARCHAR(64) DEFAULT NULL,
         active TINYINT(1) NOT NULL DEFAULT 1,
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         KEY idx_active (active),
         KEY idx_date (show_date),
-        KEY idx_bit (bit_id)
+        KEY idx_bit (bit_id),
+        KEY idx_ext (ext_id)
     ) $charset;");
 
     // Fan journey events — pageviews + classified outbound clicks, tied to the

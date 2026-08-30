@@ -141,6 +141,7 @@ function lmeg_handle_save_pickup() {
     $opts['store_pickup_enabled']     = empty($_POST['store_pickup_enabled']) ? 0 : 1;
     $opts['store_bandsintown_artist'] = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['store_bandsintown_artist'] ?? ''))), 0, 190);
     $opts['store_bandsintown_appid']  = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['store_bandsintown_appid'] ?? ''))), 0, 190);
+    $opts['store_gigpress_sync']      = empty($_POST['store_gigpress_sync']) ? 0 : 1;
     update_option(LMEG_OPTION, $opts);
     wp_safe_redirect(admin_url('admin.php?page=lmeg-products&pickupsaved=1#shows')); exit;
 }
@@ -224,6 +225,168 @@ function lmeg_bit_maybe_schedule() {
     $scheduled = wp_next_scheduled('lmeg_bit_sync_cron');
     if ($on && !$scheduled)  wp_schedule_event(time() + 3600, 'daily', 'lmeg_bit_sync_cron');
     if (!$on && $scheduled)  wp_unschedule_event($scheduled, 'lmeg_bit_sync_cron');
+}
+
+/* ---------------------------------------------------------------------------
+ * GigPress sync (optional) — pull tour dates from the GigPress plugin when it's
+ * installed on this same site. GigPress keeps its shows + venues in local DB
+ * tables, so this reads them directly — no external API, no keys. Column names
+ * are introspected so it adapts to whatever GigPress version is installed.
+ * ------------------------------------------------------------------------- */
+
+/** GigPress shows-table name if it exists on this install, else '' (cached). */
+function lmeg_gigpress_table() {
+    global $wpdb;
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $tbl = $wpdb->prefix . 'gigpress_shows';
+    $cache = ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tbl)) === $tbl) ? $tbl : '';
+    return $cache;
+}
+
+/** Is GigPress present on this site (its shows table exists)? */
+function lmeg_gigpress_available() {
+    return lmeg_gigpress_table() !== '';
+}
+
+/** Column names of a table as a [col => true] lookup ($table is a trusted, prefixed name). */
+function lmeg_gigpress_columns($table) {
+    global $wpdb;
+    $out  = [];
+    $cols = $wpdb->get_col('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '`');
+    if (is_array($cols)) foreach ($cols as $c) $out[$c] = true;
+    return $out;
+}
+
+/**
+ * Best-effort ISO-3166 alpha-2 from whatever GigPress stored (a code or a name).
+ * Country isn't shown in the pick-up label, so this is low-stakes — a code
+ * passes through, common names map, anything else degrades to its first letters.
+ */
+function lmeg_country_iso2($c) {
+    $c = trim((string) $c);
+    if ($c === '') return '';
+    if (strlen($c) === 2 && ctype_alpha($c)) return strtoupper($c);
+    static $map = [
+        'canada' => 'CA', 'united states' => 'US', 'united states of america' => 'US',
+        'usa' => 'US', 'u.s.a.' => 'US', 'america' => 'US',
+        'united kingdom' => 'GB', 'uk' => 'GB', 'u.k.' => 'GB', 'england' => 'GB',
+        'scotland' => 'GB', 'wales' => 'GB', 'northern ireland' => 'GB', 'great britain' => 'GB',
+        'ireland' => 'IE', 'france' => 'FR', 'germany' => 'DE', 'spain' => 'ES', 'italy' => 'IT',
+        'netherlands' => 'NL', 'belgium' => 'BE', 'switzerland' => 'CH', 'austria' => 'AT',
+        'australia' => 'AU', 'new zealand' => 'NZ', 'mexico' => 'MX', 'japan' => 'JP',
+        'sweden' => 'SE', 'norway' => 'NO', 'denmark' => 'DK', 'finland' => 'FI', 'portugal' => 'PT',
+    ];
+    $k = strtolower($c);
+    if (isset($map[$k])) return $map[$k];
+    return strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $c), 0, 2));
+}
+
+/** Fetch upcoming GigPress shows as normalized rows, or WP_Error. */
+function lmeg_gigpress_fetch() {
+    global $wpdb;
+    $shows = lmeg_gigpress_table();
+    if ($shows === '') return new WP_Error('lmeg_gp_notinstalled', 'GigPress is not installed on this site.');
+    $venues = $wpdb->prefix . 'gigpress_venues';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $venues)) !== $venues) {
+        return new WP_Error('lmeg_gp_schema', 'GigPress shows table found but its venues table is missing.');
+    }
+    $sc = lmeg_gigpress_columns($shows);
+    $vc = lmeg_gigpress_columns($venues);
+    if (empty($sc['gp_id']) || empty($sc['gp_date']) || empty($sc['gp_venue']) || empty($vc['gp_venue_id']) || empty($vc['gp_venue'])) {
+        return new WP_Error('lmeg_gp_schema', 'GigPress tables were found but their columns (gp_id / gp_date / gp_venue) don\'t look standard — tell us your GigPress version and we\'ll map it.');
+    }
+    // Only reference columns we've confirmed exist; blank-literal the rest.
+    $time_sel  = !empty($sc['gp_time'])    ? 's.gp_time'    : "''";
+    $stat_sel  = !empty($sc['gp_status'])  ? 's.gp_status'  : "''";
+    $city_sel  = !empty($vc['gp_city'])    ? 'v.gp_city'    : "''";
+    $state_sel = !empty($vc['gp_state'])   ? 'v.gp_state'   : "''";
+    $ctry_sel  = !empty($vc['gp_country']) ? 'v.gp_country' : "''";
+
+    $sql = "SELECT s.gp_id AS ext_id, s.gp_date AS gp_date, $time_sel AS gp_time,
+                   $stat_sel AS gp_status, v.gp_venue AS venue,
+                   $city_sel AS city, $state_sel AS region, $ctry_sel AS country
+            FROM `$shows` s
+            LEFT JOIN `$venues` v ON v.gp_venue_id = s.gp_venue
+            WHERE s.gp_date >= CURDATE()
+            ORDER BY s.gp_date ASC, s.gp_id ASC
+            LIMIT 500";
+    $rows = $wpdb->get_results($sql);
+    if (!is_array($rows)) $rows = [];
+    // Drop shows GigPress marks cancelled/hidden (status values vary by version — be permissive).
+    $out = [];
+    foreach ($rows as $r) {
+        $st = strtolower(trim((string) ($r->gp_status ?? '')));
+        if ($st !== '' && (strpos($st, 'cancel') !== false || $st === 'inactive' || $st === 'hidden' || $st === 'draft')) continue;
+        $out[] = $r;
+    }
+    return $out;
+}
+
+/**
+ * Upsert upcoming GigPress shows into the shows table, keyed on (source,ext_id)
+ * so a re-sync updates rather than duplicates. Manual/Bandsintown shows are
+ * never touched. Returns [added, updated] or WP_Error.
+ */
+function lmeg_gigpress_sync() {
+    global $wpdb;
+    $events = lmeg_gigpress_fetch();
+    if (is_wp_error($events)) return $events;
+    $tbl = $wpdb->prefix . 'lmeg_shows';
+    $added = 0; $updated = 0;
+    foreach ($events as $e) {
+        $ext = mb_substr(sanitize_text_field((string) $e->ext_id), 0, 64);
+        if ($ext === '') continue;
+        $date = trim((string) ($e->gp_date ?? ''));
+        $time = trim((string) ($e->gp_time ?? ''));
+        $show_date = null;
+        if ($date !== '' && $date !== '0000-00-00') {
+            $t  = ($time !== '' && $time !== '00:00:00') ? $time : '00:00:00';
+            $ts = strtotime($date . ' ' . $t);
+            if ($ts) $show_date = date('Y-m-d H:i:s', $ts);
+        }
+        $data = [
+            'venue'     => mb_substr(sanitize_text_field((string) $e->venue), 0, 190),
+            'city'      => mb_substr(sanitize_text_field((string) $e->city), 0, 120),
+            'region'    => mb_substr(sanitize_text_field((string) $e->region), 0, 120),
+            'country'   => lmeg_country_iso2((string) $e->country),
+            'show_date' => $show_date,
+            'source'    => 'gigpress',
+        ];
+        $existing = $wpdb->get_row($wpdb->prepare("SELECT id FROM $tbl WHERE source = 'gigpress' AND ext_id = %s", $ext));
+        if ($existing) { $wpdb->update($tbl, $data, ['id' => (int) $existing->id]); $updated++; }
+        else {
+            $data['ext_id']     = $ext;
+            $data['active']     = 1;
+            $data['created_at'] = current_time('mysql');
+            $wpdb->insert($tbl, $data);
+            $added++;
+        }
+    }
+    return [$added, $updated];
+}
+
+add_action('admin_post_lmeg_sync_gigpress', 'lmeg_handle_sync_gigpress');
+function lmeg_handle_sync_gigpress() {
+    if (!current_user_can('manage_options')) wp_die('nope');
+    check_admin_referer('lmeg_sync_gp', 'lmeg_gp_nonce');
+    $r = lmeg_gigpress_sync();
+    if (is_wp_error($r)) {
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-products&gperr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
+    }
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&gpok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
+}
+
+/** Daily background sync (only when enabled AND GigPress is present). */
+add_action('lmeg_gp_sync_cron', 'lmeg_gigpress_sync');
+add_action('plugins_loaded', 'lmeg_gp_maybe_schedule');
+function lmeg_gp_maybe_schedule() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    // Short-circuit on the cheap setting first — only touch the DB when it's on.
+    $on = !empty($s['store_gigpress_sync']) && lmeg_gigpress_available();
+    $scheduled = wp_next_scheduled('lmeg_gp_sync_cron');
+    if ($on && !$scheduled)  wp_schedule_event(time() + 3600, 'daily', 'lmeg_gp_sync_cron');
+    if (!$on && $scheduled)  wp_unschedule_event($scheduled, 'lmeg_gp_sync_cron');
 }
 
 /* ---------------------------------------------------------------------------
@@ -317,11 +480,18 @@ function lmeg_shows_admin_section() {
     if (isset($_GET['showerr']))     echo '<div class="notice notice-error"><p>Add at least a venue or a city.</p></div>';
     if (isset($_GET['bitok'])) { $n = array_map('intval', explode('-', (string) $_GET['bitok'])); echo '<div class="notice notice-success is-dismissible"><p>Bandsintown sync: ' . (int) ($n[0] ?? 0) . ' added, ' . (int) ($n[1] ?? 0) . ' updated.</p></div>'; }
     if (isset($_GET['biterr']))      echo '<div class="notice notice-error"><p>Bandsintown sync failed: ' . esc_html(sanitize_text_field(wp_unslash($_GET['biterr']))) . '</p></div>';
+    if (isset($_GET['gpok'])) { $n = array_map('intval', explode('-', (string) $_GET['gpok'])); echo '<div class="notice notice-success is-dismissible"><p>GigPress sync: ' . (int) ($n[0] ?? 0) . ' added, ' . (int) ($n[1] ?? 0) . ' updated.</p></div>'; }
+    if (isset($_GET['gperr']))       echo '<div class="notice notice-error"><p>GigPress sync failed: ' . esc_html(sanitize_text_field(wp_unslash($_GET['gperr']))) . '</p></div>';
     ?>
     <p class="description" style="margin:0 0 12px;max-width:820px">Add your upcoming shows, then let fans choose <strong>&ldquo;pick up at a show&rdquo;</strong> at checkout instead of paying shipping — you bring their order to the merch table. Great for tours: no postage, and it pulls the sale online instead of hoping they stop by.</p>
     <?php lmeg_pickups_admin_section(); ?>
 
-    <?php $bit_artist = $settings['store_bandsintown_artist'] ?? ''; $bit_appid = $settings['store_bandsintown_appid'] ?? ''; ?>
+    <?php
+    $bit_artist = $settings['store_bandsintown_artist'] ?? '';
+    $bit_appid  = $settings['store_bandsintown_appid'] ?? '';
+    $gp_here    = lmeg_gigpress_available();
+    $gp_sync    = !empty($settings['store_gigpress_sync']);
+    ?>
     <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px;margin-bottom:14px">
         <?php wp_nonce_field('lmeg_save_pickup', 'lmeg_pickup_nonce'); ?>
         <input type="hidden" name="action" value="lmeg_save_pickup">
@@ -333,6 +503,15 @@ function lmeg_shows_admin_section() {
         <table class="form-table" role="presentation" style="margin-top:6px">
             <tr><th style="width:210px"><label>Bandsintown artist</label></th><td><input type="text" name="store_bandsintown_artist" class="regular-text" value="<?php echo esc_attr($bit_artist); ?>" placeholder="Your artist name or id_12345"> <span class="description">optional — auto-import your tour dates</span></td></tr>
             <tr><th><label>Bandsintown app_id</label></th><td><input type="text" name="store_bandsintown_appid" class="regular-text" value="<?php echo esc_attr($bit_appid); ?>" placeholder="your Bandsintown app_id"> <span class="description">a free public id from your Bandsintown account (not a secret)</span></td></tr>
+            <?php if ($gp_here) : ?>
+            <tr><th><label>GigPress tour dates</label></th><td>
+                <label style="display:inline-flex;align-items:center;gap:8px">
+                    <input type="checkbox" name="store_gigpress_sync" value="1" <?php checked($gp_sync); ?>>
+                    Auto-import my GigPress tour dates daily
+                </label>
+                <p class="description" style="margin:6px 0 0">GigPress is installed on this site — your existing tour dates can feed &ldquo;pick&nbsp;up&nbsp;at&nbsp;a&nbsp;show&rdquo; directly. Upcoming dates are copied in (re-syncs update, never duplicate); your GigPress listings are left untouched.</p>
+            </td></tr>
+            <?php endif; ?>
         </table>
         <p style="margin:4px 0 0"><button type="submit" class="button button-primary">Save</button></p>
     </form>
@@ -346,6 +525,15 @@ function lmeg_shows_admin_section() {
     </form>
     <?php endif; ?>
 
+    <?php if ($gp_here) : ?>
+    <form method="post" action="<?php echo esc_url($save); ?>" style="max-width:900px;margin:-6px 0 14px">
+        <?php wp_nonce_field('lmeg_sync_gp', 'lmeg_gp_nonce'); ?>
+        <input type="hidden" name="action" value="lmeg_sync_gigpress">
+        <button type="submit" class="button">&#8635; Sync from GigPress now</button>
+        <span class="description">&nbsp;Imports your upcoming GigPress dates<?php echo $gp_sync ? ', and also runs automatically once a day' : ''; ?>.</span>
+    </form>
+    <?php endif; ?>
+
     <table class="widefat striped" style="max-width:900px;margin-bottom:14px">
         <thead><tr><th>Venue</th><th>City</th><th>Date</th><th>Note for fans</th><th>Status</th><th></th></tr></thead>
         <tbody>
@@ -354,7 +542,10 @@ function lmeg_shows_admin_section() {
             $past = (!empty($s->show_date) && strtotime($s->show_date) < current_time('timestamp'));
         ?>
             <tr>
-                <td><strong><?php echo esc_html($s->venue ?: '—'); ?></strong><?php echo $s->source === 'bandsintown' ? ' <span class="description" style="font-weight:400">· Bandsintown</span>' : ''; ?></td>
+                <td><strong><?php echo esc_html($s->venue ?: '—'); ?></strong><?php
+                    $src_label = ['bandsintown' => '· Bandsintown', 'gigpress' => '· GigPress'][$s->source] ?? '';
+                    if ($src_label) echo ' <span class="description" style="font-weight:400">' . esc_html($src_label) . '</span>';
+                ?></td>
                 <td><?php echo esc_html(trim(($s->city ?: '') . ($s->region ? ', ' . $s->region : '')) ?: '—'); ?><?php echo $s->country ? ' <span style="color:#9A9DB0">' . esc_html($s->country) . '</span>' : ''; ?></td>
                 <td><?php echo !empty($s->show_date) ? esc_html(date_i18n('M j, Y · g:ia', strtotime($s->show_date))) . ($past ? ' <span style="color:#b32d2e">(past)</span>' : '') : '<span style="color:#9A9DB0">—</span>'; ?></td>
                 <td style="max-width:220px;color:#50505c"><?php echo esc_html($s->pickup_note ?: '—'); ?></td>
