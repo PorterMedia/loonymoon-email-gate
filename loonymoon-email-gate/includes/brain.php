@@ -53,8 +53,12 @@ function lmeg_brain_person_payload($sid) {
     $lastV     = $wpdb->get_var($wpdb->prepare("SELECT MAX(created_at) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
     $opens     = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE subscriber_id = %d AND event_type = 'open'", $sid));
     $clicks    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE subscriber_id = %d AND event_type = 'click'", $sid));
-    $orders    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ord WHERE subscriber_id = %d", $sid));
-    $spend     = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM $ord WHERE subscriber_id = %d", $sid));
+    // Orders attribute by subscriber_id, or by email when the order carries no
+    // subscriber_id (guest / pre-subscription checkout) — matching the export.
+    $email     = (string) ($sub->email ?? '');
+    $ordWhere  = "subscriber_id = %d OR (subscriber_id IS NULL AND email <> '' AND LOWER(email) = LOWER(%s))";
+    $orders    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ord WHERE $ordWhere", $sid, $email));
+    $spend     = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM $ord WHERE $ordWhere", $sid, $email));
 
     // Pages they land on.
     $pages = [];
@@ -148,17 +152,33 @@ function lmeg_brain_export_payload() {
         ['key' => 'open_rate_30d',  'label' => 'Open rate (30d)',     'value' => $openRate, 'unit' => 'percent'],
     ];
 
-    // ---- people (recent window; lifetime value = membership + shop) ----
+    // ---- people (top window by value; lifetime value = membership + shop) ----
+    // Shop revenue attributes to a fan by their order's subscriber_id when it's
+    // set, otherwise by matching the order email to the fan's email (guest and
+    // pre-subscription checkouts often carry no subscriber_id). Each order is
+    // resolved to exactly one fan so nothing is double-counted. The window is
+    // ordered by total value so buyers are never dropped when a site has more
+    // than 500 fans (e.g. a big recent import pushing older buyers past the cap).
     $rows = $wpdb->get_results(
         "SELECT s.id, s.email, s.phone, s.first_name, s.ip, s.member_revenue_cents, s.created_at,
-                COALESCE(o.cents, 0) AS shop_cents,
+                COALESCE(orev.cents, 0) AS shop_cents,
+                (COALESCE(s.member_revenue_cents, 0) + COALESCE(orev.cents, 0)) AS total_value,
                 (SELECT GROUP_CONCAT(t.slug) FROM {$wpdb->prefix}lmeg_subscriber_tags st
                    JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id WHERE st.subscriber_id = s.id) AS tags
          FROM $subs s
-         LEFT JOIN (SELECT subscriber_id, SUM(total_cents) cents FROM $ord GROUP BY subscriber_id) o
-           ON o.subscriber_id = s.id
+         LEFT JOIN (
+             SELECT rid, SUM(total_cents) AS cents FROM (
+                 SELECT o.total_cents,
+                        CASE WHEN o.subscriber_id IS NOT NULL AND o.subscriber_id > 0 THEN o.subscriber_id
+                             ELSE (SELECT s2.id FROM $subs s2
+                                   WHERE s2.email <> '' AND LOWER(s2.email) = LOWER(o.email)
+                                   ORDER BY s2.id LIMIT 1)
+                        END AS rid
+                 FROM $ord o
+             ) resolved WHERE rid IS NOT NULL GROUP BY rid
+         ) orev ON orev.rid = s.id
          WHERE s.unsubscribed_at IS NULL
-         ORDER BY s.id DESC LIMIT 500"
+         ORDER BY total_value DESC, s.id DESC LIMIT 500"
     );
     $people = [];
     foreach ((array) $rows as $r) {

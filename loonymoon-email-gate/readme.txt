@@ -4,7 +4,7 @@ Tags: email gate, content lock, opt-in, sms, brevo, twilio
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 3.103.0
+Stable tag: 3.104.0
 License: GPLv2 or later
 
 Gate posts behind an email-or-phone opt-in, capture optional address fields, and broadcast to subscribers via Brevo (email) or Twilio (SMS).
@@ -34,6 +34,9 @@ On first load, the plugin drops the old UNIQUE KEY `email` index, makes `email` 
 Drops the subscribers, broadcasts, and broadcast_log tables, removes settings, and clears the scheduled cron event.
 
 == Changelog ==
+
+= 3.104.0 =
+* Fix: per-fan lifetime value in the central-brain export was $0 for fans whose orders weren't linked to their subscriber record (guest or pre-subscription checkouts, or big recent list imports). Shop revenue now attributes to a fan by their order's subscriber link when present, otherwise by matching the order email to the fan's email (case-insensitive), so each order counts once for the right person. The exported people window is also ordered by total value, so buyers are never dropped when a site has more than 500 fans. Read-only export change only; store totals and the store itself are untouched.
 
 = 3.103.0 =
 * Fix: the GigPress tour-date import (added in 3.102.0) read the wrong table columns and reported "schema not recognised" instead of importing. It now uses GigPress's real column names (show_id / show_date / show_venue_id joined to the venues table's venue_name / venue_city / venue_state / venue_country) and skips deleted/cancelled dates. If you tried "Sync from GigPress" and it failed, click it again after updating — your upcoming shows will import.
