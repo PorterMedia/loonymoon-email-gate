@@ -16,7 +16,8 @@ if (!defined('ABSPATH')) exit;
 add_action('init', 'lmeg_brain_router');
 function lmeg_brain_router() {
     if (!isset($_GET['lmeg_brain'])) return;
-    if (sanitize_key($_GET['lmeg_brain']) !== 'export') return;
+    $action = sanitize_key($_GET['lmeg_brain']);
+    if (!in_array($action, ['export', 'person'], true)) return;
 
     $s      = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     $secret = (string) ($s['brain_token'] ?? '');
@@ -26,8 +27,86 @@ function lmeg_brain_router() {
 
     nocache_headers();
     header('Content-Type: application/json; charset=utf-8');
-    echo wp_json_encode(lmeg_brain_export_payload());
+    if ($action === 'person') {
+        echo wp_json_encode(lmeg_brain_person_payload((int) ($_GET['sub'] ?? 0)));
+    } else {
+        echo wp_json_encode(lmeg_brain_export_payload());
+    }
     exit;
+}
+
+/** One fan's full behavioural footprint — every data point we have on them. */
+function lmeg_brain_person_payload($sid) {
+    global $wpdb;
+    $sid = (int) $sid;
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $ev   = $wpdb->prefix . 'lmeg_broadcast_events';
+    $ord  = $wpdb->prefix . 'lmeg_shop_orders';
+
+    $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM $subs WHERE id = %d", $sid));
+    if (!$sub) return ['error' => 'not found'];
+
+    // On-site behaviour (identity-linked pageviews live in broadcast_events).
+    $pv        = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
+    $visitDays = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT DATE(created_at)) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
+    $firstV    = $wpdb->get_var($wpdb->prepare("SELECT MIN(created_at) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
+    $lastV     = $wpdb->get_var($wpdb->prepare("SELECT MAX(created_at) FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'", $sid));
+    $opens     = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE subscriber_id = %d AND event_type = 'open'", $sid));
+    $clicks    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ev WHERE subscriber_id = %d AND event_type = 'click'", $sid));
+    $orders    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ord WHERE subscriber_id = %d", $sid));
+    $spend     = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_cents),0) FROM $ord WHERE subscriber_id = %d", $sid));
+
+    // Pages they land on.
+    $pages = [];
+    foreach ((array) $wpdb->get_results($wpdb->prepare(
+        "SELECT url, COUNT(*) n FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview' AND url <> ''
+         GROUP BY url ORDER BY n DESC LIMIT 12", $sid)) as $r) {
+        $path = wp_parse_url($r->url, PHP_URL_PATH) ?: $r->url;
+        $pages[] = ['path' => $path, 'views' => (int) $r->n];
+    }
+
+    // Visit frequency — pageviews per day, last 60 days.
+    $byDay = [];
+    foreach ((array) $wpdb->get_results($wpdb->prepare(
+        "SELECT DATE(created_at) d, COUNT(*) n FROM $ev WHERE subscriber_id = %d AND event_type = 'pageview'
+         GROUP BY DATE(created_at) ORDER BY d DESC LIMIT 60", $sid)) as $r) {
+        $byDay[$r->d] = (int) $r->n;
+    }
+
+    // Outbound handoffs (journey), if that module is present.
+    $journey = function_exists('lmeg_fan_journey_summary') ? lmeg_fan_journey_summary($sid) : null;
+
+    // Full merged activity timeline (signup, emails, opens, clicks, pageviews,
+    // orders, contests, surveys, DMs…) — reuse the fan-profile timeline builder.
+    $timeline = [];
+    if (function_exists('lmeg_fan_timeline')) {
+        foreach (array_slice((array) lmeg_fan_timeline($sid, 60), 0, 60) as $it) {
+            $timeline[] = ['at' => $it['at'] ?? '', 'icon' => $it['icon'] ?? '•', 'label' => $it['label'] ?? ''];
+        }
+    }
+
+    return [
+        'source_id'   => (string) $sid,
+        'email'       => $sub->email ?: null,
+        'name'        => $sub->first_name ?: null,
+        'phone'       => $sub->phone ?: null,
+        'ip'          => $sub->ip ?: null,
+        'joined'      => $sub->created_at ? gmdate('c', strtotime($sub->created_at)) : null,
+        'first_visit' => $firstV ? gmdate('c', strtotime($firstV)) : null,
+        'last_visit'  => $lastV ? gmdate('c', strtotime($lastV)) : null,
+        'metrics'     => [
+            ['key' => 'pageviews',    'label' => 'Page views',   'value' => $pv,        'unit' => 'count'],
+            ['key' => 'visit_days',   'label' => 'Days visited', 'value' => $visitDays, 'unit' => 'count'],
+            ['key' => 'email_opens',  'label' => 'Email opens',  'value' => $opens,     'unit' => 'count'],
+            ['key' => 'email_clicks', 'label' => 'Email clicks', 'value' => $clicks,    'unit' => 'count'],
+            ['key' => 'orders',       'label' => 'Orders',       'value' => $orders,    'unit' => 'count'],
+            ['key' => 'spend',        'label' => 'Spend',        'value' => $spend,     'unit' => 'cents'],
+        ],
+        'top_pages'     => $pages,
+        'visits_by_day' => $byDay,
+        'journey'       => $journey,
+        'timeline'      => $timeline,
+    ];
 }
 
 /** Build the brain-export payload (metrics + people + docs). Read-only. */
