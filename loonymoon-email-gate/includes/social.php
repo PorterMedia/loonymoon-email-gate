@@ -605,7 +605,7 @@ function lmeg_social_demo() {
             ],
         ],
         'sp_stats'   => $mk($sp_vals),
-        'fan_ct'     => 3412,
+        'fan_ct'     => 32140,
         'stories'    => 23,
         'content'    => ['count' => 25, 'avg_eng' => 1360, 'eng_rate' => 4.9, 'cadence' => 2.7, 'top' => $top],
         'best_day'   => ['day' => 'Friday', 'samples' => 25],

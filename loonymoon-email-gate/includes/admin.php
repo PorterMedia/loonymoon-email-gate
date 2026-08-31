@@ -782,14 +782,14 @@ function lmeg_render_demo_fans() {
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0 10px;max-width:860px;">
             <div class="lmeg-stat"><div class="lmeg-stat__label">New fans today</div>
-                <div class="lmeg-stat__value">14 <span style="font-size:12px;font-weight:600;color:#34d399;">▲ 6</span></div>
+                <div class="lmeg-stat__value">142 <span style="font-size:12px;font-weight:600;color:#34d399;">▲ 58</span></div>
                 <div class="lmeg-stat__hint">vs yesterday</div></div>
             <div class="lmeg-stat"><div class="lmeg-stat__label">New fans yesterday</div>
-                <div class="lmeg-stat__value">8</div>
-                <div class="lmeg-stat__hint">63 in the last 7 days</div></div>
+                <div class="lmeg-stat__value">84</div>
+                <div class="lmeg-stat__hint">612 in the last 7 days</div></div>
             <div class="lmeg-stat"><div class="lmeg-stat__label">Total fans</div>
-                <div class="lmeg-stat__value">3,412</div>
-                <div class="lmeg-stat__hint">2,180 email · 1,232 SMS · 47 unsubscribed</div></div>
+                <div class="lmeg-stat__value">32,140</div>
+                <div class="lmeg-stat__hint">20,600 email · 11,540 SMS · 610 unsubscribed</div></div>
         </div>
 
         <ul class="subsubsub">
@@ -826,32 +826,37 @@ function lmeg_render_demo_fans() {
 }
 
 /**
- * Audience page — sample preview. Read-only aggregates (no map/geocoding).
+ * Audience page — sample preview. Read-only aggregates + a geographic bubble map.
  */
 function lmeg_render_demo_audience() {
     $types = [
-        ['name' => 'Superfan', 'color' => '#F59E0B', 'n' => 214],
-        ['name' => 'Engaged',  'color' => '#34D399', 'n' => 1180],
-        ['name' => 'Casual',   'color' => '#7C6CF6', 'n' => 1290],
-        ['name' => 'Dormant',  'color' => '#8B90A0', 'n' => 728],
+        ['name' => 'Superfan', 'color' => '#F59E0B', 'n' => 2010],
+        ['name' => 'Engaged',  'color' => '#34D399', 'n' => 11120],
+        ['name' => 'Casual',   'color' => '#7C6CF6', 'n' => 12150],
+        ['name' => 'Dormant',  'color' => '#8B90A0', 'n' => 6860],
     ];
     $ttotal = array_sum(array_column($types, 'n'));
-    $countries = [['CA',1520],['US',980],['GB',410],['FR',220],['DE',130],['AU',95],['NL',57]];
-    $cmax = 1520; $known = array_sum(array_column($countries, 1));
+    // [ISO, fans, lat, lon] — one source for both the map and the bar list.
+    $countries = [
+        ['CA', 13900,  56.13, -106.35], ['US', 9400, 37.09, -95.71], ['GB', 3650, 54.00, -2.50],
+        ['FR',  2020,  46.50,    2.20], ['DE', 1240, 51.00,  10.40], ['NL',  520, 52.20,  5.30],
+        ['AU',   880, -25.30,  133.80], ['JP',  330, 36.20, 138.25], ['BR',  200, -14.20, -51.90],
+    ];
+    $cmax = 13900; $known = array_sum(array_column($countries, 1));
     $top = [
-        ['c' => 'emma.dubois@gmail.com',  'shop' => 42000, 'memb' => 9600,  'orders' => 4],
-        ['c' => 'aria.singh@gmail.com',   'shop' => 28500, 'memb' => 12000, 'orders' => 3],
-        ['c' => 'maya.okafor@gmail.com',  'shop' => 31000, 'memb' => 0,     'orders' => 5],
-        ['c' => 'noah.becker@icloud.com', 'shop' => 9800,  'memb' => 14400, 'orders' => 1],
-        ['c' => '+13105550198',           'shop' => 0,     'memb' => 14400, 'orders' => 0],
-        ['c' => 'liam.tremblay@outlook.com','shop'=> 15600, 'memb' => 0,    'orders' => 2],
+        ['c' => 'emma.dubois@gmail.com',  'shop' => 84000, 'memb' => 19200, 'orders' => 9],
+        ['c' => 'maya.okafor@gmail.com',  'shop' => 62000, 'memb' => 0,     'orders' => 11],
+        ['c' => 'aria.singh@gmail.com',   'shop' => 57000, 'memb' => 24000, 'orders' => 6],
+        ['c' => 'noah.becker@icloud.com', 'shop' => 19600, 'memb' => 28800, 'orders' => 2],
+        ['c' => '+13105550198',           'shop' => 0,     'memb' => 28800, 'orders' => 0],
+        ['c' => 'liam.tremblay@outlook.com','shop'=> 31200, 'memb' => 0,    'orders' => 4],
     ];
     $cities = [
-        ['Toronto','ON',412,58],['Montréal','QC',268,31],['Vancouver','BC',190,22],
-        ['New York','NY',176,14],['London','',154,12],['Los Angeles','CA',121,9],['Chicago','IL',98,6],
+        ['Toronto','ON',3870,540],['Montréal','QC',2510,300],['Vancouver','BC',1780,205],
+        ['New York','NY',1650,132],['London','',1440,158],['Los Angeles','CA',1130,92],['Chicago','IL',920,58],
     ];
-    $city_max = 412;
-    $refs = [['maya.okafor@gmail.com',23],['aria.singh@gmail.com',17],['emma.dubois@gmail.com',11],['kai.nakamura@gmail.com',8],['noah.becker@icloud.com',5]];
+    $city_max = 3870;
+    $refs = [['maya.okafor@gmail.com',214],['aria.singh@gmail.com',158],['emma.dubois@gmail.com',103],['kai.nakamura@gmail.com',74],['noah.becker@icloud.com',47]];
     ?>
     <div class="wrap">
         <h1>Fanloop — Audience</h1>
@@ -870,7 +875,44 @@ function lmeg_render_demo_audience() {
         <p class="description">Superfan = purchased or paying member (90d) · Engaged = 2+ clicks or 5+ opens · Casual = any open/click · Dormant = silent. Each fan gets a <code>fan-type:*</code> tag.</p>
 
         <h2 style="margin-top:28px;">Where your fans are</h2>
-        <div style="max-width:640px;">
+        <?php
+        // Geographic bubble map — equirectangular projection, bubble area ∝ fan count.
+        $mapW = 1000; $mapH = 480;
+        $px = function ($lon) use ($mapW) { return round(($lon + 180) / 360 * $mapW, 1); };
+        $py = function ($lat) use ($mapH) { return round((90 - $lat) / 180 * $mapH, 1); };
+        $continents = [
+            ['NORTH AMERICA', 50, -100], ['SOUTH AMERICA', -15, -60], ['EUROPE', 58, 12],
+            ['AFRICA', 2, 22], ['ASIA', 48, 95], ['OCEANIA', -25, 140],
+        ];
+        // Draw largest bubbles first so smaller ones (and their labels) land on top.
+        $mapC = $countries; usort($mapC, function ($a, $b) { return $b[1] <=> $a[1]; });
+        ?>
+        <div style="max-width:860px;border:1px solid rgba(255,255,255,.10);border-radius:14px;overflow:hidden;background:#0b1020;">
+            <svg viewBox="0 0 <?php echo $mapW; ?> <?php echo $mapH; ?>" style="width:100%;height:auto;display:block;font-family:inherit;">
+                <rect x="0" y="0" width="<?php echo $mapW; ?>" height="<?php echo $mapH; ?>" fill="#0b1020"/>
+                <?php // graticule
+                for ($lon = -150; $lon <= 150; $lon += 30) : $x = $px($lon); ?>
+                    <line x1="<?php echo $x; ?>" y1="0" x2="<?php echo $x; ?>" y2="<?php echo $mapH; ?>" stroke="#ffffff" stroke-opacity=".05" stroke-width="1"/>
+                <?php endfor; ?>
+                <?php for ($lat = -60; $lat <= 60; $lat += 30) : $y = $py($lat); ?>
+                    <line x1="0" y1="<?php echo $y; ?>" x2="<?php echo $mapW; ?>" y2="<?php echo $y; ?>" stroke="#ffffff" stroke-opacity="<?php echo $lat === 0 ? '.12' : '.05'; ?>" stroke-width="1"/>
+                <?php endfor; ?>
+                <?php foreach ($continents as $ct) : ?>
+                    <text x="<?php echo $px($ct[2]); ?>" y="<?php echo $py($ct[1]); ?>" text-anchor="middle" fill="#ffffff" fill-opacity=".13" font-size="17" font-weight="700" letter-spacing="2"><?php echo esc_html($ct[0]); ?></text>
+                <?php endforeach; ?>
+                <?php foreach ($mapC as $c) :
+                    $x = $px($c[3]); $y = $py($c[2]); $r = round(7 + sqrt($c[1]) * 0.22, 1); ?>
+                    <circle cx="<?php echo $x; ?>" cy="<?php echo $y; ?>" r="<?php echo $r; ?>" fill="#4f9dff" fill-opacity=".5" stroke="#cfe3ff" stroke-opacity=".85" stroke-width="1.3"/>
+                    <?php if ($c[1] >= 3000) : ?>
+                        <text x="<?php echo $x; ?>" y="<?php echo $y + 4; ?>" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700"><?php echo number_format_i18n($c[1]); ?></text>
+                    <?php endif; ?>
+                    <text x="<?php echo $x; ?>" y="<?php echo $y + $r + 13; ?>" text-anchor="middle" fill="#9fc4ff" font-size="11" font-weight="600"><?php echo esc_html($c[0]); ?></text>
+                <?php endforeach; ?>
+            </svg>
+        </div>
+        <p class="description" style="max-width:860px;">Every fan with a known location, mapped. Bubble size = fan count. <?php echo number_format_i18n($known); ?> located across <?php echo count($countries); ?> countries.</p>
+
+        <div style="max-width:640px;margin-top:14px;">
             <?php foreach ($countries as $c) : $pct = round(100 * $c[1] / $known); ?>
                 <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
                     <span style="flex:0 0 140px;"><?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[0]); ?></span>
