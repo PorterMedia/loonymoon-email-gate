@@ -836,13 +836,16 @@ function lmeg_render_demo_audience() {
         ['name' => 'Dormant',  'color' => '#8B90A0', 'n' => 6860],
     ];
     $ttotal = array_sum(array_column($types, 'n'));
-    // [ISO, fans, lat, lon] — one source for both the map and the bar list.
+    // [ISO, fans, lat, lon] — one source for both the map and the bar list. Sorted desc.
     $countries = [
-        ['CA', 13900,  56.13, -106.35], ['US', 9400, 37.09, -95.71], ['GB', 3650, 54.00, -2.50],
-        ['FR',  2020,  46.50,    2.20], ['DE', 1240, 51.00,  10.40], ['NL',  520, 52.20,  5.30],
-        ['AU',   880, -25.30,  133.80], ['JP',  330, 36.20, 138.25], ['BR',  200, -14.20, -51.90],
+        ['CA', 13100,  56.13, -106.35], ['US', 8900, 37.09,  -95.71], ['GB', 3450, 54.00,  -2.50],
+        ['FR',  1900,  46.50,    2.20], ['DE', 1180, 51.00,   10.40], ['AU',  840, -25.30, 133.80],
+        ['NL',   500,  52.20,    5.30], ['JP',  320, 36.20,  138.25], ['BR',  210, -14.20, -51.90],
+        ['SE',   190,  62.20,   15.30], ['IE',  160, 53.40,   -8.00], ['ES',  140, 40.20,  -3.70],
+        ['IT',   120,  42.80,   12.60], ['MX',   95, 23.60, -102.50], ['NZ',   70, -41.80, 172.90],
+        ['BE',    55,  50.60,    4.60],
     ];
-    $cmax = 13900; $known = array_sum(array_column($countries, 1));
+    $cmax = 13100; $known = array_sum(array_column($countries, 1));
     $top = [
         ['c' => 'emma.dubois@gmail.com',  'shop' => 84000, 'memb' => 19200, 'orders' => 9],
         ['c' => 'maya.okafor@gmail.com',  'shop' => 62000, 'memb' => 0,     'orders' => 11],
@@ -854,6 +857,8 @@ function lmeg_render_demo_audience() {
     $cities = [
         ['Toronto','ON',3870,540],['Montréal','QC',2510,300],['Vancouver','BC',1780,205],
         ['New York','NY',1650,132],['London','',1440,158],['Los Angeles','CA',1130,92],['Chicago','IL',920,58],
+        ['Ottawa','ON',720,48],['Calgary','AB',640,40],['Paris','',610,70],['Berlin','',520,58],
+        ['Sydney','',430,48],['Melbourne','',380,36],['Amsterdam','',300,34],['Boston','MA',280,22],['Seattle','WA',250,20],
     ];
     $city_max = 3870;
     $refs = [['maya.okafor@gmail.com',214],['aria.singh@gmail.com',158],['emma.dubois@gmail.com',103],['kai.nakamura@gmail.com',74],['noah.becker@icloud.com',47]];
@@ -912,14 +917,21 @@ function lmeg_render_demo_audience() {
         </div>
         <p class="description" style="max-width:860px;">Every fan with a known location, mapped. Bubble size = fan count. <?php echo number_format_i18n($known); ?> located across <?php echo count($countries); ?> countries.</p>
 
+        <?php $country_bar = function ($c) use ($known, $cmax) { $pct = round(100 * $c[1] / $known); ?>
+            <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                <span style="flex:0 0 140px;"><?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[0]); ?></span>
+                <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo round(100 * $c[1] / $cmax); ?>%;min-width:2px;height:100%;background:#3b82f6;"></div></div>
+                <span style="flex:0 0 90px;text-align:right;"><strong><?php echo number_format_i18n($c[1]); ?></strong> (<?php echo $pct; ?>%)</span>
+            </div>
+        <?php }; ?>
         <div style="max-width:640px;margin-top:14px;">
-            <?php foreach ($countries as $c) : $pct = round(100 * $c[1] / $known); ?>
-                <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
-                    <span style="flex:0 0 140px;"><?php echo esc_html(lmeg_flag_emoji($c[0]) . ' ' . $c[0]); ?></span>
-                    <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo round(100 * $c[1] / $cmax); ?>%;min-width:2px;height:100%;background:#3b82f6;"></div></div>
-                    <span style="flex:0 0 90px;text-align:right;"><strong><?php echo number_format_i18n($c[1]); ?></strong> (<?php echo $pct; ?>%)</span>
-                </div>
-            <?php endforeach; ?>
+            <?php foreach (array_slice($countries, 0, 10) as $c) $country_bar($c); ?>
+            <?php $rest = array_slice($countries, 10); if ($rest) : ?>
+                <details style="margin-top:4px;">
+                    <summary style="cursor:pointer;color:#3b82f6;font-weight:600;padding:6px 0;">View all <?php echo count($countries); ?> countries</summary>
+                    <div style="margin-top:4px;"><?php foreach ($rest as $c) $country_bar($c); ?></div>
+                </details>
+            <?php endif; ?>
         </div>
 
         <h2 style="margin-top:28px;">Top fans by lifetime value</h2>
@@ -939,14 +951,21 @@ function lmeg_render_demo_audience() {
         <p class="description" style="max-width:720px;">Lifetime value = attributed Shopify orders + subscription payments.</p>
 
         <h2 style="margin-top:28px;">Tour routing — your top cities</h2>
+        <?php $city_bar = function ($c) use ($city_max) { $pct = round(100 * $c[2] / $city_max); $sfpct = round(100 * $c[3] / $c[2]); ?>
+            <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
+                <span style="flex:0 0 170px;"><?php echo esc_html($c[0] . ($c[1] ? ', ' . $c[1] : '')); ?></span>
+                <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo $pct; ?>%;min-width:2px;height:100%;background:#D05FA2;"></div></div>
+                <span style="flex:0 0 150px;text-align:right;"><strong><?php echo (int) $c[2]; ?></strong> fans · <?php echo $sfpct; ?>% superfan</span>
+            </div>
+        <?php }; ?>
         <div style="max-width:640px;">
-            <?php foreach ($cities as $c) : $pct = round(100 * $c[2] / $city_max); $sfpct = round(100 * $c[3] / $c[2]); ?>
-                <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
-                    <span style="flex:0 0 170px;"><?php echo esc_html($c[0] . ($c[1] ? ', ' . $c[1] : '')); ?></span>
-                    <div style="flex:1;background:rgba(255,255,255,.06);border-radius:6px;height:18px;overflow:hidden;"><div style="width:<?php echo $pct; ?>%;min-width:2px;height:100%;background:#D05FA2;"></div></div>
-                    <span style="flex:0 0 150px;text-align:right;"><strong><?php echo (int) $c[2]; ?></strong> fans · <?php echo $sfpct; ?>% superfan</span>
-                </div>
-            <?php endforeach; ?>
+            <?php foreach (array_slice($cities, 0, 10) as $c) $city_bar($c); ?>
+            <?php $rest_c = array_slice($cities, 10); if ($rest_c) : ?>
+                <details style="margin-top:4px;">
+                    <summary style="cursor:pointer;color:#D05FA2;font-weight:600;padding:6px 0;">View all <?php echo count($cities); ?> cities</summary>
+                    <div style="margin-top:4px;"><?php foreach ($rest_c as $c) $city_bar($c); ?></div>
+                </details>
+            <?php endif; ?>
         </div>
         <p class="description">Where to route a tour — fan density by city, with each city's superfan share.</p>
 
