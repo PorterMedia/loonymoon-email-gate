@@ -826,7 +826,55 @@ function lmeg_render_demo_fans() {
 }
 
 /**
- * Audience page — sample preview. Read-only aggregates + a geographic bubble map.
+ * Fan map — the Leaflet city-bubble map (pink dots on dark-filtered OSM tiles)
+ * shared by the live Audience page and the demo preview, so both render the
+ * exact same map. $pts = [['city','region','lat','lng','n','sf','url'?], ...].
+ * $opts: id (DOM id), caption (HTML string), link (bool — show a "View these
+ * fans" link built from each point's url).
+ */
+function lmeg_render_fan_map($pts, $opts = []) {
+    if (empty($pts)) return '';
+    $id      = preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($opts['id'] ?? 'lmeg-fanmap')) ?: 'lmeg-fanmap';
+    $caption = $opts['caption'] ?? '';
+    $link    = !empty($opts['link']);
+    ob_start(); ?>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>#<?php echo esc_attr($id); ?> .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.75)}</style>
+    <div id="<?php echo esc_attr($id); ?>" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
+    <?php if ($caption !== '') : ?><p class="description" style="max-width:960px;"><?php echo $caption; ?></p><?php endif; ?>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    (function () {
+        var pts = <?php echo wp_json_encode($pts); ?>, showLink = <?php echo $link ? 'true' : 'false'; ?>;
+        if (!pts.length || typeof L === 'undefined') return;
+        function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+        var map = L.map(<?php echo wp_json_encode($id); ?>, { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 12, minZoom: 3 }).addTo(map);
+        var group = [];
+        pts.forEach(function (p) {
+            var r = Math.max(6, Math.min(26, 4 + Math.sqrt(p.n) * 3));
+            var m = L.circleMarker([p.lat, p.lng], { radius: r, color: '#d05fa2', weight: 1.5, fillColor: '#d05fa2', fillOpacity: 0.35 }).addTo(map);
+            var html = '<strong>' + esc(p.city) + (p.region ? ', ' + esc(p.region) : '') + '</strong><br>' +
+                p.n + ' fan' + (p.n === 1 ? '' : 's') + (p.sf ? ' · ' + p.sf + ' superfan' + (p.sf === 1 ? '' : 's') : '');
+            if (showLink && p.url) html += '<br><a href="' + encodeURI(p.url) + '">View these fans →</a>';
+            m.bindPopup(html);
+            group.push(m);
+        });
+        function fit(){
+            if (!group.length) return;
+            var na = group.filter(function (m) { var ll = m.getLatLng(); return ll.lng >= -170 && ll.lng <= -52 && ll.lat >= 7 && ll.lat <= 75; });
+            map.fitBounds(L.featureGroup(na.length ? na : group).getBounds(), { padding: [30, 30], maxZoom: 9 });
+        }
+        fit();
+        setTimeout(function () { map.invalidateSize(); fit(); }, 250);
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Audience page — sample preview. Read-only aggregates + the shared fan map.
  */
 function lmeg_render_demo_audience() {
     $types = [
@@ -854,11 +902,12 @@ function lmeg_render_demo_audience() {
         ['c' => '+13105550198',           'shop' => 0,     'memb' => 28800, 'orders' => 0],
         ['c' => 'liam.tremblay@outlook.com','shop'=> 31200, 'memb' => 0,    'orders' => 4],
     ];
+    // [city, region, fans, superfans, lat, lng] — lat/lng feed the fan map.
     $cities = [
-        ['Toronto','ON',3870,540],['Montréal','QC',2510,300],['Vancouver','BC',1780,205],
-        ['New York','NY',1650,132],['London','',1440,158],['Los Angeles','CA',1130,92],['Chicago','IL',920,58],
-        ['Ottawa','ON',720,48],['Calgary','AB',640,40],['Paris','',610,70],['Berlin','',520,58],
-        ['Sydney','',430,48],['Melbourne','',380,36],['Amsterdam','',300,34],['Boston','MA',280,22],['Seattle','WA',250,20],
+        ['Toronto','ON',3870,540,43.6532,-79.3832],['Montréal','QC',2510,300,45.5019,-73.5674],['Vancouver','BC',1780,205,49.2827,-123.1207],
+        ['New York','NY',1650,132,40.7128,-74.0060],['London','',1440,158,51.5074,-0.1278],['Los Angeles','CA',1130,92,34.0522,-118.2437],['Chicago','IL',920,58,41.8781,-87.6298],
+        ['Ottawa','ON',720,48,45.4215,-75.6972],['Calgary','AB',640,40,51.0447,-114.0719],['Paris','',610,70,48.8566,2.3522],['Berlin','',520,58,52.5200,13.4050],
+        ['Sydney','',430,48,-33.8688,151.2093],['Melbourne','',380,36,-37.8136,144.9631],['Amsterdam','',300,34,52.3676,4.9041],['Boston','MA',280,22,42.3601,-71.0589],['Seattle','WA',250,20,47.6062,-122.3321],
     ];
     $city_max = 3870;
     $refs = [['maya.okafor@gmail.com',214],['aria.singh@gmail.com',158],['emma.dubois@gmail.com',103],['kai.nakamura@gmail.com',74],['noah.becker@icloud.com',47]];
@@ -881,41 +930,18 @@ function lmeg_render_demo_audience() {
 
         <h2 style="margin-top:28px;">Where your fans are</h2>
         <?php
-        // Geographic bubble map — equirectangular projection, bubble area ∝ fan count.
-        $mapW = 1000; $mapH = 480;
-        $px = function ($lon) use ($mapW) { return round(($lon + 180) / 360 * $mapW, 1); };
-        $py = function ($lat) use ($mapH) { return round((90 - $lat) / 180 * $mapH, 1); };
-        $continents = [
-            ['NORTH AMERICA', 50, -100], ['SOUTH AMERICA', -15, -60], ['EUROPE', 58, 12],
-            ['AFRICA', 2, 22], ['ASIA', 48, 95], ['OCEANIA', -25, 140],
-        ];
-        // Draw largest bubbles first so smaller ones (and their labels) land on top.
-        $mapC = $countries; usort($mapC, function ($a, $b) { return $b[1] <=> $a[1]; });
+        // Fan map — the SAME Leaflet city map the live Audience page uses.
+        $demo_pts = [];
+        foreach ($cities as $c) {
+            if (!isset($c[4], $c[5])) continue;
+            $demo_pts[] = ['city' => $c[0], 'region' => $c[1], 'lat' => $c[4], 'lng' => $c[5], 'n' => (int) $c[2], 'sf' => (int) $c[3]];
+        }
+        echo lmeg_render_fan_map($demo_pts, [
+            'id'      => 'lmeg-fanmap-demo',
+            'caption' => 'Dot size = fans in that city. Click a dot for the breakdown. <em>(Sample data.)</em>',
+            'link'    => false,
+        ]);
         ?>
-        <div style="max-width:860px;border:1px solid rgba(255,255,255,.10);border-radius:14px;overflow:hidden;background:#0b1020;">
-            <svg viewBox="0 0 <?php echo $mapW; ?> <?php echo $mapH; ?>" style="width:100%;height:auto;display:block;font-family:inherit;">
-                <rect x="0" y="0" width="<?php echo $mapW; ?>" height="<?php echo $mapH; ?>" fill="#0b1020"/>
-                <?php // graticule
-                for ($lon = -150; $lon <= 150; $lon += 30) : $x = $px($lon); ?>
-                    <line x1="<?php echo $x; ?>" y1="0" x2="<?php echo $x; ?>" y2="<?php echo $mapH; ?>" stroke="#ffffff" stroke-opacity=".05" stroke-width="1"/>
-                <?php endfor; ?>
-                <?php for ($lat = -60; $lat <= 60; $lat += 30) : $y = $py($lat); ?>
-                    <line x1="0" y1="<?php echo $y; ?>" x2="<?php echo $mapW; ?>" y2="<?php echo $y; ?>" stroke="#ffffff" stroke-opacity="<?php echo $lat === 0 ? '.12' : '.05'; ?>" stroke-width="1"/>
-                <?php endfor; ?>
-                <?php foreach ($continents as $ct) : ?>
-                    <text x="<?php echo $px($ct[2]); ?>" y="<?php echo $py($ct[1]); ?>" text-anchor="middle" fill="#ffffff" fill-opacity=".13" font-size="17" font-weight="700" letter-spacing="2"><?php echo esc_html($ct[0]); ?></text>
-                <?php endforeach; ?>
-                <?php foreach ($mapC as $c) :
-                    $x = $px($c[3]); $y = $py($c[2]); $r = round(7 + sqrt($c[1]) * 0.22, 1); ?>
-                    <circle cx="<?php echo $x; ?>" cy="<?php echo $y; ?>" r="<?php echo $r; ?>" fill="#4f9dff" fill-opacity=".5" stroke="#cfe3ff" stroke-opacity=".85" stroke-width="1.3"/>
-                    <?php if ($c[1] >= 3000) : ?>
-                        <text x="<?php echo $x; ?>" y="<?php echo $y + 4; ?>" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700"><?php echo number_format_i18n($c[1]); ?></text>
-                    <?php endif; ?>
-                    <text x="<?php echo $x; ?>" y="<?php echo $y + $r + 13; ?>" text-anchor="middle" fill="#9fc4ff" font-size="11" font-weight="600"><?php echo esc_html($c[0]); ?></text>
-                <?php endforeach; ?>
-            </svg>
-        </div>
-        <p class="description" style="max-width:860px;">Every fan with a known location, mapped. Bubble size = fan count. <?php echo number_format_i18n($known); ?> located across <?php echo count($countries); ?> countries.</p>
 
         <?php $country_bar = function ($c) use ($known, $cmax) { $pct = round(100 * $c[1] / $known); ?>
             <div style="display:flex;align-items:center;gap:10px;margin:5px 0;">
@@ -5252,46 +5278,10 @@ function lmeg_admin_audience() {
             ];
         }
         ?>
-        <?php if ($map_pts) : ?>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <style>/* Darken the keyless OSM basemap to match the dark dashboard (tiles only — markers/controls are on other panes). */
-        #lmeg-fanmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.75)}</style>
-        <div id="lmeg-fanmap" style="height:440px;max-width:960px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);"></div>
-        <p class="description" style="max-width:960px;">Dot size = fans in that city (exact form/Shopify cities plus approximate IP cities). Click a dot for the breakdown and a link to those fans.<?php echo $skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : ''; ?></p>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script>
-        (function () {
-            var pts = <?php echo wp_json_encode($map_pts); ?>;
-            if (!pts.length || typeof L === 'undefined') return;
-            function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
-            var map = L.map('lmeg-fanmap', { scrollWheelZoom: false, minZoom: 3, maxZoom: 12, worldCopyJump: true });
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors', maxZoom: 12, minZoom: 3
-            }).addTo(map);
-            var group = [];
-            pts.forEach(function (p) {
-                var r = Math.max(6, Math.min(26, 4 + Math.sqrt(p.n) * 3));
-                var m = L.circleMarker([p.lat, p.lng], {
-                    radius: r, color: '#d05fa2', weight: 1.5, fillColor: '#d05fa2', fillOpacity: 0.35
-                }).addTo(map);
-                m.bindPopup('<strong>' + esc(p.city) + (p.region ? ', ' + esc(p.region) : '') + '</strong><br>' +
-                    p.n + ' fan' + (p.n === 1 ? '' : 's') + (p.sf ? ' · ' + p.sf + ' superfan' + (p.sf === 1 ? '' : 's') : '') +
-                    '<br><a href="' + encodeURI(p.url) + '">View these fans →</a>');
-                group.push(m);
-            });
-            // Center on North America when there are NA fans, so the continent sits
-            // centered rather than the mid-Atlantic; other cities stay reachable by panning.
-            function fit(){
-                if (!group.length) return;
-                var na = group.filter(function (m) { var ll = m.getLatLng(); return ll.lng >= -170 && ll.lng <= -52 && ll.lat >= 7 && ll.lat <= 75; });
-                map.fitBounds(L.featureGroup(na.length ? na : group).getBounds(), { padding: [30, 30], maxZoom: 9 });
-            }
-            fit();
-            // Recalc size + re-frame after first paint so no grey tile panels remain.
-            setTimeout(function () { map.invalidateSize(); fit(); }, 250);
-        })();
-        </script>
-        <?php else : ?>
+        <?php if ($map_pts) :
+            $cap = 'Dot size = fans in that city (exact form/Shopify cities plus approximate IP cities). Click a dot for the breakdown and a link to those fans.' . ($skipped ? ' ' . (int) $skipped . ' smaller cities still geocoding — they appear on the next visit.' : '');
+            echo lmeg_render_fan_map($map_pts, ['caption' => $cap, 'link' => true]);
+        else : ?>
         <p class="description">The map appears once fans have cities on file (the IP-city backfill is filling these in automatically).</p>
         <?php endif; ?>
 
