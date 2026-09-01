@@ -442,7 +442,41 @@ function lmeg_wallet_pass_for_row($row, $sub = null) {
         $args['web_service_url'] = lmeg_wallet_ws_url();
         $args['auth_token']      = $row->auth_token;
     }
-    return lmeg_wallet_pass_json($args);
+    $pass = lmeg_wallet_pass_json($args);
+    // Tour relevance: surface the pass on the lock screen near a venue / on show day.
+    return array_merge($pass, lmeg_wallet_show_relevance());
+}
+
+/**
+ * relevantDate + locations from upcoming shows so the pass auto-surfaces on the
+ * lock screen (near a venue, or around show day). Cities geocode via the
+ * existing keyless Open-Meteo cache; same for every fan, so it's cheap.
+ */
+function lmeg_wallet_show_relevance() {
+    if (!function_exists('lmeg_shows_upcoming')) return [];
+    $shows = lmeg_shows_upcoming();
+    if (!$shows) return [];
+    $out = []; $locations = []; $relevantDate = null;
+    foreach ($shows as $s) {
+        if ($relevantDate === null && !empty($s->show_date)) {
+            $ts = strtotime($s->show_date);
+            if ($ts) $relevantDate = date('c', $ts);
+        }
+        if (count($locations) < 10 && !empty($s->city) && function_exists('lmeg_geo_city_coords')) {
+            $co = lmeg_geo_city_coords($s->city, $s->region ?? '', $s->country ?? '');
+            if ($co && isset($co['lat'], $co['lng'])) {
+                $where = trim(!empty($s->venue) ? $s->venue : $s->city);
+                $locations[] = [
+                    'latitude'     => (float) $co['lat'],
+                    'longitude'    => (float) $co['lng'],
+                    'relevantText' => 'Tonight: ' . $where,
+                ];
+            }
+        }
+    }
+    if ($relevantDate) $out['relevantDate'] = $relevantDate;
+    if ($locations)    $out['locations']    = $locations;
+    return $out;
 }
 
 /* ---- routes: ?lmeg_wallet=pkpass (download) and =add (capture) ---- */
