@@ -17,7 +17,7 @@
 
 if (!defined('ABSPATH') && !defined('LMEG_WALLET_STANDALONE')) return;
 
-if (!defined('LMEG_WALLET_DB_VERSION')) define('LMEG_WALLET_DB_VERSION', '1');
+if (!defined('LMEG_WALLET_DB_VERSION')) define('LMEG_WALLET_DB_VERSION', '2');
 
 /* -------------------------------------------------------------------------
  * Data model — passes + device registrations (self-installs, version-gated).
@@ -60,11 +60,24 @@ function lmeg_wallet_maybe_install() {
         KEY serial (serial)
     ) $charset;");
 
+    $chk = $wpdb->prefix . 'lmeg_wallet_checkins';
+    dbDelta("CREATE TABLE $chk (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        serial VARCHAR(64) NOT NULL,
+        event_day DATE NOT NULL,
+        checked_at DATETIME NOT NULL,
+        by_user BIGINT UNSIGNED DEFAULT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY serial_day (serial, event_day),
+        KEY serial (serial)
+    ) $charset;");
+
     update_option('lmeg_wallet_db_version', LMEG_WALLET_DB_VERSION);
 }
 function lmeg_wallet_table($which = 'passes') {
     global $wpdb;
-    return $wpdb->prefix . ($which === 'regs' ? 'lmeg_wallet_registrations' : 'lmeg_wallet_passes');
+    $map = ['regs' => 'lmeg_wallet_registrations', 'checkins' => 'lmeg_wallet_checkins', 'passes' => 'lmeg_wallet_passes'];
+    return $wpdb->prefix . ($map[$which] ?? $map['passes']);
 }
 
 /* -------------------------------------------------------------------------
@@ -422,7 +435,7 @@ function lmeg_wallet_pass_for_row($row, $sub = null) {
         'tier'            => $row->tier ?: 'Fan',
         'member_since'    => $since,
         'latest'          => $row->latest ?: 'Welcome to the inner circle.',
-        'barcode_message' => $row->serial,     // scannable fan id (show check-in lands later)
+        'barcode_message' => home_url('/?lmeg_wallet=checkin&serial=' . rawurlencode($row->serial)),  // QR → admin check-in card
     ];
     // web service + auth token wired in iteration 3 (register for push updates)
     if (function_exists('lmeg_wallet_ws_url') && !empty($row->auth_token)) {
@@ -468,6 +481,75 @@ function lmeg_wallet_router() {
         wp_safe_redirect(lmeg_wallet_link($sid));
         exit;
     }
+
+    if ($action === 'checkin') {   // door scanner opens the pass QR → this admin card
+        if (!current_user_can('manage_options')) { status_header(403); exit('Sign in as an admin to scan check-ins.'); }
+        $serial = sanitize_text_field($_GET['serial'] ?? $_GET['s'] ?? '');
+        $pass = $serial ? $wpdb->get_row($wpdb->prepare("SELECT * FROM " . lmeg_wallet_table('passes') . " WHERE serial = %s", $serial)) : null;
+        header('Content-Type: text/html; charset=utf-8');
+        nocache_headers();
+        if (!$pass) { echo lmeg_wallet_checkin_html(null, null, null); exit; }
+        $sub = $pass->subscriber_id
+            ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $pass->subscriber_id))
+            : null;
+        $chk = lmeg_wallet_table('checkins');
+        $day = current_time('Y-m-d');
+        $already = $wpdb->get_var($wpdb->prepare("SELECT checked_at FROM $chk WHERE serial = %s AND event_day = %s", $pass->serial, $day));
+        if (!$already) {
+            $wpdb->insert($chk, [
+                'serial' => $pass->serial, 'event_day' => $day,
+                'checked_at' => current_time('mysql', true), 'by_user' => get_current_user_id(),
+            ], ['%s','%s','%s','%d']);
+        }
+        echo lmeg_wallet_checkin_html($pass, $sub, $already);
+        exit;
+    }
+}
+
+/** The little card the door person sees after scanning a pass QR. */
+function lmeg_wallet_checkin_html($pass, $sub, $already) {
+    $c = lmeg_wallet_settings();
+    $ok = $pass !== null;
+    $name = $sub ? trim(($sub->first_name ?? '') ?: ($sub->email ?? 'Fan')) : '';
+    $email = $sub->email ?? '';
+    $tier  = $pass ? ($pass->tier ?: 'Fan') : '';
+    $since = ($sub && !empty($sub->created_at)) ? gmdate('M Y', strtotime($sub->created_at)) : '';
+    $accent = esc_attr($c['label'] ?: '#c7b9ff');
+    ob_start(); ?>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Check-in</title></head>
+<body style="margin:0;background:#0b0b10;color:#f4f2f7;font:16px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:grid;place-items:center;">
+  <div style="width:min(92vw,420px);background:#16161f;border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:26px;text-align:center;">
+  <?php if (!$ok): ?>
+    <div style="font-size:44px;margin-bottom:6px;">⚠️</div>
+    <div style="font-weight:700;font-size:20px;">Not a valid pass</div>
+    <div style="color:#9b98ab;margin-top:6px;">That QR doesn't match a Fanloop pass.</div>
+  <?php else: ?>
+    <div style="font-size:44px;margin-bottom:6px;color:<?php echo $accent; ?>;"><?php echo $already ? '↺' : '✓'; ?></div>
+    <div style="font-weight:800;font-size:22px;"><?php echo $already ? 'Already checked in' : 'Checked in'; ?></div>
+    <?php if ($already): ?><div style="color:#9b98ab;font-size:13px;margin-top:3px;">at <?php echo esc_html(gmdate('g:i a', strtotime($already))); ?> UTC</div><?php endif; ?>
+    <div style="margin:18px 0 4px;font-weight:700;font-size:19px;"><?php echo esc_html($name ?: 'Fan'); ?></div>
+    <?php if ($email): ?><div style="color:#9b98ab;font-size:14px;"><?php echo esc_html($email); ?></div><?php endif; ?>
+    <div style="display:inline-block;margin-top:14px;background:rgba(199,185,255,.14);color:<?php echo $accent; ?>;border-radius:99px;padding:5px 14px;font-weight:700;font-size:13px;letter-spacing:.02em;"><?php echo esc_html(strtoupper($tier)); ?></div>
+    <?php if ($since): ?><div style="color:#6a6779;font-size:12px;margin-top:12px;">Fan since <?php echo esc_html($since); ?></div><?php endif; ?>
+  <?php endif; ?>
+  </div>
+</body></html>
+    <?php
+    return ob_get_clean();
+}
+
+/* ---- membership tier → pass (live), driven by lmeg_membership_changed ---- */
+add_action('lmeg_membership_changed', 'lmeg_wallet_sync_tier');
+function lmeg_wallet_sync_tier($subscriber_id) {
+    global $wpdb;
+    $sid = (int) $subscriber_id;
+    if (!$sid) return;
+    $pass = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . lmeg_wallet_table('passes') . " WHERE subscriber_id = %d AND platform = 'apple'", $sid));
+    if (!$pass) return;   // fan has no Wallet pass — nothing to update
+    $tier = lmeg_wallet_tier_for($sid);
+    if ($tier === $pass->tier) return;
+    lmeg_wallet_update($pass->serial, ['tier' => $tier]);   // writes row + pushes their device(s)
 }
 
 /* ---- shortcode: [fanloop_wallet] — an Add-to-Apple-Wallet button ---- */

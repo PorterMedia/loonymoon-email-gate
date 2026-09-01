@@ -408,6 +408,7 @@ function lmeg_stripe_handle_event($event) {
             // Refresh channel:paid + tier:<slug> auto-tags.
             $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub_id));
             if ($row) lmeg_apply_auto_tags($row);
+            do_action('lmeg_membership_changed', $sub_id);
         }
         }
     } elseif ($type === 'invoice.payment_succeeded' || $type === 'invoice.paid') {
@@ -448,6 +449,7 @@ function lmeg_stripe_handle_event($event) {
             $wpdb->update($wpdb->prefix . LMEG_TABLE, $new, ['id' => $sub->id]);
             $fresh = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sub->id));
             if ($fresh) lmeg_apply_auto_tags($fresh);
+            do_action('lmeg_membership_changed', $sub_id);
         }
     }
 
