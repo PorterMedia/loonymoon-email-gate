@@ -945,3 +945,124 @@ function lmeg_wallet_google_save_url($sid) {
     $jwt = lmeg_wallet_google_jwt(lmeg_wallet_google_object($pass, $sub));
     return $jwt ? ('https://pay.google.com/gp/v/save/' . $jwt) : '';
 }
+
+/* =========================================================================
+ * ITERATION 7 — Settings → Wallet admin page (config + readiness + test).
+ * A self-contained submenu (own form/nonce/save) that merges wallet_* keys
+ * into the lmeg_settings option — it never touches the main settings form.
+ * ====================================================================== */
+
+add_action('admin_menu', 'lmeg_wallet_admin_menu', 30);
+function lmeg_wallet_admin_menu() {
+    add_submenu_page('lmeg', 'Wallet Pass', 'Wallet Pass', 'manage_options', 'lmeg-wallet', 'lmeg_wallet_admin_page');
+}
+function lmeg_wallet_admin_page() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $notice = '';
+
+    if (isset($_POST['lmeg_wallet_action']) && check_admin_referer('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce')) {
+        if ($_POST['lmeg_wallet_action'] === 'save') {
+            $o = get_option(LMEG_OPTION, []);
+            foreach (['wallet_org','wallet_logo_text','wallet_pass_type_id','wallet_team_id','wallet_cert_pass','wallet_apns_key_id','wallet_google_issuer_id'] as $k)
+                $o[$k] = sanitize_text_field(wp_unslash($_POST[$k] ?? ''));
+            foreach (['wallet_bg','wallet_fg','wallet_label'] as $k)
+                $o[$k] = sanitize_hex_color(wp_unslash($_POST[$k] ?? '')) ?: ($o[$k] ?? '');
+            foreach (['wallet_cert_pem','wallet_wwdr_pem','wallet_apns_key','wallet_google_sa_json'] as $k)
+                $o[$k] = trim((string) wp_unslash($_POST[$k] ?? ''));   // credentials — stored raw (DB only)
+            $o['wallet_apns_sandbox'] = !empty($_POST['wallet_apns_sandbox']) ? 1 : 0;
+            update_option(LMEG_OPTION, $o);
+            $notice = '<div class="notice notice-success"><p>Wallet settings saved.</p></div>';
+        } elseif ($_POST['lmeg_wallet_action'] === 'test') {
+            $r = lmeg_wallet_broadcast('Test from Fanloop 🎫');
+            $extra = !empty($r['dev']) ? ' (APNs not configured — no push actually sent)' : '';
+            $notice = '<div class="notice notice-info"><p>Test: updated ' . (int) ($r['passes'] ?? 0) . ' pass(es), ' . (int) ($r['devices'] ?? 0) . ' device(s)' . esc_html($extra) . '.</p></div>';
+        }
+    }
+
+    $c = lmeg_wallet_settings();
+    $g = lmeg_wallet_google_settings();
+    $s = get_option(LMEG_OPTION, []);
+    $passes = (int) $wpdb->get_var("SELECT COUNT(*) FROM " . lmeg_wallet_table('passes'));
+    $regs   = (int) $wpdb->get_var("SELECT COUNT(*) FROM " . lmeg_wallet_table('regs'));
+    $dot = function ($state, $label) {   // $state: ok | warn | off
+        $col = $state === 'ok' ? '#1a7f37' : ($state === 'warn' ? '#bf8700' : '#8c8f94');
+        return '<div style="display:flex;align-items:center;gap:9px;margin:6px 0;"><span style="width:10px;height:10px;border-radius:50%;background:' . $col . ';flex:0 0 auto;"></span><span>' . $label . '</span></div>';
+    };
+    $val = function ($k) use ($s) { return esc_attr((string) ($s[$k] ?? '')); };
+    $ta  = function ($k) use ($s) { return esc_textarea((string) ($s[$k] ?? '')); };
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Wallet Pass</h1>
+        <?php echo $notice; ?>
+        <p class="description" style="max-width:760px;">A fan pass in Apple &amp; Google Wallet — a free lock-screen channel. Add the credentials below to go live; until then passes still build with a dev signature so you can test the flow.</p>
+
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+          <div style="flex:1;min-width:340px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:14px 18px;">
+            <h2 style="margin-top:4px;">Status</h2>
+            <?php
+            echo $dot(lmeg_wallet_apple_ready() ? 'ok' : 'warn',
+                lmeg_wallet_apple_ready() ? '<strong>Apple signing: production</strong> — passes trusted on real iPhones'
+                : '<strong>Apple signing: dev self-signed</strong> — add your Pass Type ID cert + WWDR to go live');
+            echo $dot(lmeg_wallet_apns_ready() ? 'ok' : 'warn',
+                lmeg_wallet_apns_ready() ? '<strong>Push: ready</strong> — lock-screen updates will send'
+                : '<strong>Push: off</strong> — add your APNs key to send updates');
+            echo $dot(lmeg_wallet_google_ready() ? 'ok' : 'off',
+                lmeg_wallet_google_ready() ? '<strong>Google Wallet: ready</strong>'
+                : '<strong>Google Wallet: off</strong> — add a service account to offer Android');
+            ?>
+            <p style="margin-top:12px;"><strong><?php echo $passes; ?></strong> pass(es) issued · <strong><?php echo $regs; ?></strong> device registration(s)</p>
+            <p class="description">Add the button anywhere with <code>[fanloop_wallet]</code>.</p>
+            <p class="description">Web-service URL (auto): <code style="word-break:break-all;"><?php echo esc_html(function_exists('lmeg_wallet_ws_url') ? lmeg_wallet_ws_url() : ''); ?></code></p>
+            <form method="post" style="margin-top:10px;">
+                <?php wp_nonce_field('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce'); ?>
+                <input type="hidden" name="lmeg_wallet_action" value="test" />
+                <button class="button" <?php echo $passes ? '' : 'disabled'; ?>>Send a test Wallet update</button>
+            </form>
+          </div>
+
+          <form method="post" style="flex:2;min-width:420px;">
+            <?php wp_nonce_field('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce'); ?>
+            <input type="hidden" name="lmeg_wallet_action" value="save" />
+
+            <h2>Branding</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Pass name</th><td><input type="text" name="wallet_org" class="regular-text" value="<?php echo $val('wallet_org'); ?>" placeholder="Artist name" /></td></tr>
+                <tr><th>Logo text</th><td><input type="text" name="wallet_logo_text" class="regular-text" value="<?php echo $val('wallet_logo_text'); ?>" placeholder="Artist name" /></td></tr>
+                <tr><th>Colours</th><td>
+                    Background <input type="text" name="wallet_bg" value="<?php echo $val('wallet_bg') ?: '#141019'; ?>" style="width:90px" />
+                    Text <input type="text" name="wallet_fg" value="<?php echo $val('wallet_fg') ?: '#ffffff'; ?>" style="width:90px" />
+                    Accent <input type="text" name="wallet_label" value="<?php echo $val('wallet_label') ?: '#c7b9ff'; ?>" style="width:90px" />
+                    <p class="description">Hex, e.g. #141019.</p>
+                </td></tr>
+            </table>
+
+            <h2>Apple Wallet (PassKit)</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Pass Type ID</th><td><input type="text" name="wallet_pass_type_id" class="regular-text" value="<?php echo $val('wallet_pass_type_id'); ?>" placeholder="pass.ca.portermedia.loony" /></td></tr>
+                <tr><th>Team ID</th><td><input type="text" name="wallet_team_id" class="regular-text" value="<?php echo $val('wallet_team_id'); ?>" placeholder="10-char Apple Team ID" /></td></tr>
+                <tr><th>Signing cert (PEM)</th><td><textarea name="wallet_cert_pem" rows="4" class="large-text code" placeholder="-----BEGIN CERTIFICATE----- … (cert + private key, or a server path)"><?php echo $ta('wallet_cert_pem'); ?></textarea></td></tr>
+                <tr><th>Cert password</th><td><input type="text" name="wallet_cert_pass" class="regular-text" value="<?php echo $val('wallet_cert_pass'); ?>" autocomplete="off" /></td></tr>
+                <tr><th>WWDR cert (PEM)</th><td><textarea name="wallet_wwdr_pem" rows="3" class="large-text code" placeholder="Apple WWDR intermediate cert (PEM), or a server path"><?php echo $ta('wallet_wwdr_pem'); ?></textarea></td></tr>
+            </table>
+
+            <h2>Push (APNs)</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>APNs key (.p8)</th><td><textarea name="wallet_apns_key" rows="4" class="large-text code" placeholder="-----BEGIN PRIVATE KEY----- … (AuthKey_XXXX.p8 contents, or a server path)"><?php echo $ta('wallet_apns_key'); ?></textarea></td></tr>
+                <tr><th>Key ID</th><td><input type="text" name="wallet_apns_key_id" class="regular-text" value="<?php echo $val('wallet_apns_key_id'); ?>" placeholder="10-char Key ID" /></td></tr>
+                <tr><th>Sandbox</th><td><label><input type="checkbox" name="wallet_apns_sandbox" value="1" <?php checked(!empty($s['wallet_apns_sandbox'])); ?> /> Use the APNs sandbox host (testing)</label></td></tr>
+            </table>
+
+            <h2>Google Wallet</h2>
+            <table class="form-table" role="presentation">
+                <tr><th>Issuer ID</th><td><input type="text" name="wallet_google_issuer_id" class="regular-text" value="<?php echo $val('wallet_google_issuer_id'); ?>" placeholder="3388000000022…" /></td></tr>
+                <tr><th>Service account JSON</th><td><textarea name="wallet_google_sa_json" rows="4" class="large-text code" placeholder='{ "client_email": "...", "private_key": "-----BEGIN PRIVATE KEY----- …" }'><?php echo $ta('wallet_google_sa_json'); ?></textarea></td></tr>
+            </table>
+
+            <p><button class="button button-primary">Save Wallet settings</button></p>
+            <p class="description">Credentials are stored in your WordPress database (the <code>lmeg_settings</code> option), never in any file.</p>
+          </form>
+        </div>
+    </div>
+    <?php
+}
