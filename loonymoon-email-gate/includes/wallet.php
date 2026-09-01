@@ -628,3 +628,139 @@ function lmeg_wallet_ws_log($request) {
     }
     return new WP_REST_Response(null, 200);
 }
+
+/* =========================================================================
+ * ITERATION 4 — APNs push + pass updates + broadcast.
+ * A Wallet "notification" = change a pass field (with a changeMessage) then
+ * send an EMPTY push to every device registered for that pass. Free via APNs.
+ * Dev-guarded: with no APNs key configured it no-ops and logs what it WOULD do.
+ * ====================================================================== */
+
+function lmeg_wallet_apns_settings() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $c = lmeg_wallet_settings();
+    return [
+        'apns_key' => trim((string) ($s['wallet_apns_key'] ?? '')),      // APNs auth key (.p8 PEM inline or path)
+        'key_id'   => trim((string) ($s['wallet_apns_key_id'] ?? '')),   // 10-char Key ID
+        'team_id'  => $c['team_id'],
+        'topic'    => $c['pass_type_id'],                                // APNs topic for pass pushes = passTypeIdentifier
+        'sandbox'  => !empty($s['wallet_apns_sandbox']),
+    ];
+}
+function lmeg_wallet_apns_ready() {
+    $c = lmeg_wallet_apns_settings();
+    return lmeg_wallet_pem($c['apns_key']) !== '' && $c['key_id'] !== '' && $c['team_id'] !== '' && $c['topic'] !== '';
+}
+function lmeg_wallet_b64url($d) { return rtrim(strtr(base64_encode($d), '+/', '-_'), '='); }
+/** DER ECDSA sig → raw R||S (64 bytes for P-256), as JWT ES256 requires. */
+function lmeg_wallet_der2raw($der) {
+    $o = 0; $L = strlen($der);
+    if ($L < 8 || ord($der[$o++]) !== 0x30) return '';
+    $len = ord($der[$o++]); if ($len & 0x80) { $n = $len & 0x7f; while ($n-- > 0) $o++; }
+    if (ord($der[$o++]) !== 0x02) return '';
+    $rl = ord($der[$o++]); $r = substr($der, $o, $rl); $o += $rl;
+    if (ord($der[$o++]) !== 0x02) return '';
+    $sl = ord($der[$o++]); $s = substr($der, $o, $sl);
+    $r = ltrim($r, "\x00"); $s = ltrim($s, "\x00");
+    if (strlen($r) > 32 || strlen($s) > 32) return '';
+    return str_pad($r, 32, "\x00", STR_PAD_LEFT) . str_pad($s, 32, "\x00", STR_PAD_LEFT);
+}
+/** APNs provider JWT (ES256), cached ~50 min. '' if key missing/bad. */
+function lmeg_wallet_apns_jwt() {
+    static $cache = null;
+    if ($cache && $cache['exp'] > time() + 120) return $cache['jwt'];
+    $c   = lmeg_wallet_apns_settings();
+    $pem = lmeg_wallet_pem($c['apns_key']);
+    if ($pem === '' || $c['key_id'] === '' || $c['team_id'] === '') return '';
+    $pkey = openssl_pkey_get_private($pem);
+    if (!$pkey) return '';
+    $now  = time();
+    $head = lmeg_wallet_b64url(wp_json_encode(['alg' => 'ES256', 'kid' => $c['key_id']]));
+    $body = lmeg_wallet_b64url(wp_json_encode(['iss' => $c['team_id'], 'iat' => $now]));
+    $sig  = '';
+    if (!openssl_sign($head . '.' . $body, $sig, $pkey, OPENSSL_ALGO_SHA256)) return '';
+    $raw = lmeg_wallet_der2raw($sig);
+    if ($raw === '') return '';
+    $jwt = $head . '.' . $body . '.' . lmeg_wallet_b64url($raw);
+    $cache = ['jwt' => $jwt, 'exp' => $now + 3000];
+    return $jwt;
+}
+/** Send an empty APNs push to each pass push token. Dev-guarded. */
+function lmeg_wallet_apns_push(array $tokens) {
+    $tokens = array_values(array_unique(array_filter($tokens)));
+    if (!lmeg_wallet_apns_ready()) {
+        error_log('[lmeg-wallet] APNs not configured — would push ' . count($tokens) . ' device(s)');
+        return ['sent' => 0, 'skipped' => count($tokens), 'dev' => true];
+    }
+    $jwt = lmeg_wallet_apns_jwt();
+    if ($jwt === '') return ['error' => 'apns jwt build failed'];
+    $c    = lmeg_wallet_apns_settings();
+    $host = $c['sandbox'] ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com';
+    $ver  = defined('CURL_HTTP_VERSION_2_0') ? CURL_HTTP_VERSION_2_0 : 3;
+    $sent = 0; $failed = 0; $gone = [];
+    foreach ($tokens as $tok) {
+        $ch = curl_init($host . '/3/device/' . rawurlencode($tok));
+        curl_setopt_array($ch, [
+            CURLOPT_HTTP_VERSION   => $ver,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => '{}',
+            CURLOPT_HTTPHEADER     => [
+                'authorization: bearer ' . $jwt,
+                'apns-topic: ' . $c['topic'],
+                'apns-push-type: background',
+                'apns-priority: 5',
+                'content-type: application/json',
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 10,
+        ]);
+        $resp = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code === 200) { $sent++; }
+        else { $failed++; if ($code === 410) $gone[] = $tok; if (defined('WP_DEBUG') && WP_DEBUG) error_log('[lmeg-wallet] APNs ' . $code . ' ' . $resp); }
+    }
+    if ($gone) {  // 410 = token no longer valid; prune its registrations
+        global $wpdb;
+        foreach ($gone as $t) $wpdb->delete(lmeg_wallet_table('regs'), ['push_token' => $t], ['%s']);
+    }
+    return ['sent' => $sent, 'failed' => $failed];
+}
+
+/** Update one pass's fields (bumps updated_at) then push its devices. */
+function lmeg_wallet_update($serial, array $fields = []) {
+    global $wpdb;
+    $tbl = lmeg_wallet_table('passes');
+    $data = ['updated_at' => current_time('mysql', true), 'last_push_at' => current_time('mysql', true)];
+    $fmt  = ['%s', '%s'];
+    foreach (['latest', 'tier', 'headline'] as $k) if (isset($fields[$k])) { $data[$k] = (string) $fields[$k]; $fmt[] = '%s'; }
+    $wpdb->update($tbl, $data, ['serial' => $serial], $fmt, ['%s']);
+    $tokens = $wpdb->get_col($wpdb->prepare("SELECT push_token FROM " . lmeg_wallet_table('regs') . " WHERE serial = %s", $serial));
+    $res = $tokens ? lmeg_wallet_apns_push($tokens) : ['sent' => 0];
+    $res['devices'] = count((array) $tokens);
+    return $res;
+}
+
+/** Push a one-line "LATEST" update to every pass (or a tag segment) + notify. */
+function lmeg_wallet_broadcast($text, $segment = null) {
+    global $wpdb;
+    $pt = lmeg_wallet_table('passes');
+    if ($segment === null || $segment === '') {
+        $serials = $wpdb->get_col("SELECT serial FROM $pt WHERE platform = 'apple'");
+    } else {
+        $tags = $wpdb->prefix . 'lmeg_tags';
+        $st   = $wpdb->prefix . 'lmeg_subscriber_tags';
+        $serials = $wpdb->get_col($wpdb->prepare(
+            "SELECT p.serial FROM $pt p
+             JOIN $st s ON s.subscriber_id = p.subscriber_id
+             JOIN $tags t ON t.id = s.tag_id
+             WHERE t.slug = %s AND p.platform = 'apple'", $segment));
+    }
+    if (!$serials) return ['passes' => 0, 'devices' => 0, 'sent' => 0];
+    $now = current_time('mysql', true);
+    foreach ($serials as $s) $wpdb->update($pt, ['latest' => (string) $text, 'updated_at' => $now, 'last_push_at' => $now], ['serial' => $s], ['%s', '%s', '%s'], ['%s']);
+    $in = implode(',', array_fill(0, count($serials), '%s'));
+    $tokens = $wpdb->get_col($wpdb->prepare("SELECT push_token FROM " . lmeg_wallet_table('regs') . " WHERE serial IN ($in)", $serials));
+    $push = $tokens ? lmeg_wallet_apns_push($tokens) : ['sent' => 0];
+    return array_merge(['passes' => count($serials), 'devices' => count((array) $tokens)], $push);
+}
