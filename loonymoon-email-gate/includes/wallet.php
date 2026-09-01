@@ -477,7 +477,12 @@ function lmeg_wallet_router() {
         if (!$email || !is_email($email)) { wp_safe_redirect(add_query_arg('lmeg_wallet_err', '1', wp_get_referer() ?: home_url('/'))); exit; }
         $sid = lmeg_wallet_get_or_create_subscriber($email, $first);
         if (!$sid) { wp_safe_redirect(add_query_arg('lmeg_wallet_err', '1', wp_get_referer() ?: home_url('/'))); exit; }
-        // hand back the .pkpass directly so Wallet opens it
+        $platform = sanitize_key($_POST['platform'] ?? 'apple');
+        if ($platform === 'google' && lmeg_wallet_google_ready()) {
+            $gu = lmeg_wallet_google_save_url($sid);
+            if ($gu) { wp_safe_redirect($gu); exit; }
+        }
+        // default: hand back the .pkpass directly so Apple Wallet opens it
         wp_safe_redirect(lmeg_wallet_link($sid));
         exit;
     }
@@ -566,6 +571,13 @@ function lmeg_wallet_shortcode($atts = []) {
             . '<svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M17 1.6c.1 1-.3 2-1 2.8-.7.8-1.8 1.4-2.8 1.3-.1-1 .4-2 1-2.7.7-.8 1.9-1.4 2.8-1.4zM19.9 17c-.5 1.2-.8 1.7-1.4 2.7-1 1.4-2.3 3.2-4 3.2-1.5 0-1.9-1-3.9-1-2 0-2.4 1-3.9 1-1.7 0-2.9-1.6-3.9-3.1C-.1 16.6-.4 11 1.7 8c1-1.5 2.6-2.4 4.1-2.4 1.6 0 2.6 1 3.9 1 1.3 0 2-1 3.9-1 1.4 0 2.9.8 3.9 2.1-3.4 1.9-2.9 6.8.4 9.3z"/></svg>'
             . 'Add to Apple Wallet</a>';
     };
+    $gbtn = function ($href) {
+        return '<a href="' . esc_url($href) . '" style="display:inline-flex;align-items:center;gap:8px;background:#fff;color:#3c4043;'
+            . 'text-decoration:none;border:1px solid #dadce0;border-radius:10px;padding:10px 15px;font:600 15px/1 -apple-system,\'Segoe UI\',Roboto,sans-serif;">'
+            . '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-2 3.2-4.9 3.2-7.8z"/><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.7l-3.6-2.7c-1 .7-2.3 1.1-3.6 1.1-2.8 0-5.1-1.9-6-4.4H2.3v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M6 14.3a6.6 6.6 0 0 1 0-4.2V7.3H2.3a11 11 0 0 0 0 9.8L6 14.3z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .5 4.1 1.6l3.1-3.1A11 11 0 0 0 2.3 7.3L6 10.1c.9-2.6 3.2-4.7 6-4.7z"/></svg>'
+            . 'Save to Google Wallet</a>';
+    };
+    $gready = function_exists('lmeg_wallet_google_ready') && lmeg_wallet_google_ready();
 
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
     ob_start(); ?>
@@ -573,12 +585,16 @@ function lmeg_wallet_shortcode($atts = []) {
         <div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;"><?php echo esc_html($a['heading']); ?></div>
         <div style="font-size:14px;color:#555;margin-bottom:13px;"><?php echo esc_html($a['blurb']); ?></div>
         <?php if ($member): ?>
-            <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
+                <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo $gbtn($gu); } ?>
+            </div>
         <?php else: ?>
-            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                 <input type="email" name="email" required placeholder="you@email.com"
                     style="flex:1;min-width:180px;padding:11px 13px;border:1px solid rgba(0,0,0,.2);border-radius:10px;font-size:15px;">
-                <button type="submit" style="background:#000;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Add to Apple&nbsp;Wallet</button>
+                <button type="submit" name="platform" value="apple" style="background:#000;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Add to Apple&nbsp;Wallet</button>
+                <?php if ($gready): ?><button type="submit" name="platform" value="google" style="background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Save to Google&nbsp;Wallet</button><?php endif; ?>
             </form>
             <?php if (!empty($_GET['lmeg_wallet_err'])): ?><div style="color:#c0392b;font-size:13px;margin-top:7px;">Please enter a valid email.</div><?php endif; ?>
         <?php endif; ?>
@@ -845,4 +861,87 @@ function lmeg_wallet_broadcast($text, $segment = null) {
     $tokens = $wpdb->get_col($wpdb->prepare("SELECT push_token FROM " . lmeg_wallet_table('regs') . " WHERE serial IN ($in)", $serials));
     $push = $tokens ? lmeg_wallet_apns_push($tokens) : ['sent' => 0];
     return array_merge(['passes' => count($serials), 'devices' => count((array) $tokens)], $push);
+}
+
+/* =========================================================================
+ * ITERATION 6 — Google Wallet (Save-to-Google-Wallet for Android fans).
+ * A "skinny JWT" (RS256, signed with a Google Cloud service-account key) that
+ * carries a Generic class + per-fan object; the Save URL is
+ * https://pay.google.com/gp/v/save/<jwt>. Dev-guarded: no SA key → no button.
+ * ====================================================================== */
+
+function lmeg_wallet_google_settings() {
+    $s  = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $sa = trim((string) ($s['wallet_google_sa_json'] ?? ''));
+    if ($sa !== '' && strpos($sa, '{') === false && @is_file($sa) && @is_readable($sa)) $sa = (string) file_get_contents($sa);
+    $j = json_decode($sa, true);
+    return [
+        'issuer_id'      => trim((string) ($s['wallet_google_issuer_id'] ?? '')),
+        'client_email'   => is_array($j) ? (string) ($j['client_email'] ?? '') : '',
+        'private_key'    => is_array($j) ? (string) ($j['private_key'] ?? '') : '',
+        'private_key_id' => is_array($j) ? (string) ($j['private_key_id'] ?? '') : '',
+    ];
+}
+function lmeg_wallet_google_ready() {
+    $g = lmeg_wallet_google_settings();
+    return $g['issuer_id'] !== '' && $g['client_email'] !== '' && $g['private_key'] !== '';
+}
+/** The Generic object for one fan's pass. */
+function lmeg_wallet_google_object($pass, $sub) {
+    $g = lmeg_wallet_google_settings();
+    $c = lmeg_wallet_settings();
+    $iss   = $g['issuer_id'];
+    $objId = $iss . '.' . preg_replace('/[^A-Za-z0-9_.-]/', '', (string) $pass->serial);
+    $artist = $c['org'] ?: 'Fanloop';
+    $fan    = $sub ? (trim((string) (($sub->first_name ?? '') ?: ($sub->email ?? 'Fan'))) ?: 'Fan') : 'Fan';
+    $bg     = preg_match('/^#[0-9a-fA-F]{6}$/', (string) $c['bg']) ? $c['bg'] : '#141019';
+    $checkin = home_url('/?lmeg_wallet=checkin&serial=' . rawurlencode((string) $pass->serial));
+    return [
+        'id'                 => $objId,
+        'classId'            => $iss . '.fanloop_generic',
+        'genericType'        => 'GENERIC_TYPE_UNSPECIFIED',
+        'state'              => 'ACTIVE',
+        'hexBackgroundColor' => $bg,
+        'cardTitle' => ['defaultValue' => ['language' => 'en', 'value' => $artist]],
+        'header'    => ['defaultValue' => ['language' => 'en', 'value' => $fan]],
+        'subheader' => ['defaultValue' => ['language' => 'en', 'value' => 'Fan pass']],
+        'textModulesData' => [['id' => 'tier', 'header' => 'Tier', 'body' => ($pass->tier ?: 'Fan')]],
+        'barcode'   => ['type' => 'QR_CODE', 'value' => $checkin, 'alternateText' => (string) $pass->serial],
+    ];
+}
+/** RS256 "save to wallet" JWT embedding the class + object. */
+function lmeg_wallet_google_jwt($object) {
+    $g = lmeg_wallet_google_settings();
+    if (!$g['private_key']) return '';
+    $header = ['alg' => 'RS256', 'typ' => 'JWT'];
+    if ($g['private_key_id']) $header['kid'] = $g['private_key_id'];
+    $claims = [
+        'iss'     => $g['client_email'],
+        'aud'     => 'google',
+        'typ'     => 'savetowallet',
+        'iat'     => time(),
+        'origins' => [home_url('/')],
+        'payload' => [
+            'genericClasses' => [['id' => $g['issuer_id'] . '.fanloop_generic']],
+            'genericObjects' => [$object],
+        ],
+    ];
+    $si  = lmeg_wallet_b64url(wp_json_encode($header)) . '.' . lmeg_wallet_b64url(wp_json_encode($claims));
+    $pk  = openssl_pkey_get_private($g['private_key']);
+    if (!$pk) return '';
+    $sig = '';
+    if (!openssl_sign($si, $sig, $pk, OPENSSL_ALGO_SHA256)) return '';   // RSA sig is already raw for JWT
+    return $si . '.' . lmeg_wallet_b64url($sig);
+}
+/** The Save-to-Google-Wallet URL for a subscriber ('' if not configured). */
+function lmeg_wallet_google_save_url($sid) {
+    if (!lmeg_wallet_google_ready()) return '';
+    global $wpdb;
+    $pass = lmeg_wallet_issue_for_subscriber((int) $sid);
+    if (!$pass) return '';
+    $sub = $pass->subscriber_id
+        ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $pass->subscriber_id))
+        : null;
+    $jwt = lmeg_wallet_google_jwt(lmeg_wallet_google_object($pass, $sub));
+    return $jwt ? ('https://pay.google.com/gp/v/save/' . $jwt) : '';
 }
