@@ -186,12 +186,59 @@ function lmeg_wallet_images() {
         imagestring($im, $fnt, 6, (int) (($h - $ch) / 2), $txt, $t);
     };
 
-    return [
+    $imgs = [
         'icon.png'     => $png(29, 29, $icon),
         'icon@2x.png'  => $png(58, 58, $icon),
         'logo.png'     => $png(160, 50, $logo),
         'logo@2x.png'  => $png(320, 100, $logo),
     ];
+    // Optional strip/hero image — shown across the top of the storeCard.
+    $strip = lmeg_wallet_strip_source();
+    if ($strip !== '') {
+        $s1 = lmeg_wallet_cover($strip, 375, 123);
+        $s2 = lmeg_wallet_cover($strip, 750, 246);
+        if ($s1 !== '' && $s2 !== '') { $imgs['strip.png'] = $s1; $imgs['strip@2x.png'] = $s2; }
+    }
+    return $imgs;
+}
+/** Raw bytes of the configured strip image (media id, URL, or local path); '' if none. */
+function lmeg_wallet_strip_source() {
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    $v = trim((string) ($s['wallet_strip'] ?? ''));
+    if ($v === '') return '';
+    if (@is_file($v)) return (string) file_get_contents($v);
+    if (ctype_digit($v) && function_exists('get_attached_file')) {
+        $p = get_attached_file((int) $v);
+        return ($p && is_file($p)) ? (string) file_get_contents($p) : '';
+    }
+    if (function_exists('wp_upload_dir')) {
+        $up = wp_upload_dir();
+        if (!empty($up['baseurl']) && strpos($v, $up['baseurl']) === 0) {
+            $path = $up['basedir'] . substr($v, strlen($up['baseurl']));
+            if (is_file($path)) return (string) file_get_contents($path);
+        }
+    }
+    if (function_exists('wp_remote_get')) {
+        $r = wp_remote_get($v, ['timeout' => 5]);
+        if (!is_wp_error($r) && wp_remote_retrieve_response_code($r) === 200) return (string) wp_remote_retrieve_body($r);
+    }
+    return '';
+}
+/** Scale-and-centre-crop image bytes to exactly w×h (PNG). '' on failure. */
+function lmeg_wallet_cover($bytes, $w, $h) {
+    $src = @imagecreatefromstring($bytes);
+    if (!$src) return '';
+    $sw = imagesx($src); $sh = imagesy($src);
+    if ($sw < 1 || $sh < 1) { imagedestroy($src); return ''; }
+    $scale = max($w / $sw, $h / $sh);
+    $nw = max(1, (int) ceil($sw * $scale)); $nh = max(1, (int) ceil($sh * $scale));
+    $tmp = imagecreatetruecolor($nw, $nh);
+    imagecopyresampled($tmp, $src, 0, 0, 0, 0, $nw, $nh, $sw, $sh);
+    $dst = imagecreatetruecolor($w, $h);
+    imagecopy($dst, $tmp, 0, 0, (int) (($nw - $w) / 2), (int) (($nh - $h) / 2), $w, $h);
+    ob_start(); imagepng($dst); $out = ob_get_clean();
+    imagedestroy($src); imagedestroy($tmp); imagedestroy($dst);
+    return $out;
 }
 
 /* -------------------------------------------------------------------------
@@ -998,7 +1045,7 @@ function lmeg_wallet_admin_page() {
     if (isset($_POST['lmeg_wallet_action']) && check_admin_referer('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce')) {
         if ($_POST['lmeg_wallet_action'] === 'save') {
             $o = get_option(LMEG_OPTION, []);
-            foreach (['wallet_org','wallet_logo_text','wallet_pass_type_id','wallet_team_id','wallet_cert_pass','wallet_apns_key_id','wallet_google_issuer_id'] as $k)
+            foreach (['wallet_org','wallet_logo_text','wallet_strip','wallet_pass_type_id','wallet_team_id','wallet_cert_pass','wallet_apns_key_id','wallet_google_issuer_id'] as $k)
                 $o[$k] = sanitize_text_field(wp_unslash($_POST[$k] ?? ''));
             foreach (['wallet_bg','wallet_fg','wallet_label'] as $k)
                 $o[$k] = sanitize_hex_color(wp_unslash($_POST[$k] ?? '')) ?: ($o[$k] ?? '');
@@ -1089,6 +1136,8 @@ function lmeg_wallet_admin_page() {
                     Accent <input type="text" name="wallet_label" value="<?php echo $val('wallet_label') ?: '#c7b9ff'; ?>" style="width:90px" />
                     <p class="description">Hex, e.g. #141019.</p>
                 </td></tr>
+                <tr><th>Strip image</th><td><input type="text" name="wallet_strip" class="regular-text" value="<?php echo $val('wallet_strip'); ?>" placeholder="Image URL or media ID (optional)" />
+                    <p class="description">A wide hero image across the top of the pass (auto-cropped to 375×123). Paste a media URL or attachment ID; leave blank for none.</p></td></tr>
                 <tr><th>New drops</th><td><label><input type="checkbox" name="wallet_auto_drops" value="1" <?php checked(($s['wallet_auto_drops'] ?? '1') !== '0'); ?> /> Auto-push new releases to Wallet pass-holders</label>
                     <p class="description">When a Release Drop goes live it also updates fans' passes + pushes a lock-screen alert (to the drop's audience).</p></td></tr>
             </table>
