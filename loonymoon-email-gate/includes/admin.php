@@ -1652,6 +1652,22 @@ function lmeg_admin_compose() {
                     $url = admin_url('admin.php?page=lmeg-broadcasts');
                     $when = $scheduled ? 'scheduled for ' . esc_html($scheduled) : 'queued for immediate send';
                     $notice = '<div class="notice notice-success"><p>Broadcast ' . $when . '. <a href="' . esc_url($url) . '">View progress →</a></p></div>';
+
+                    // Wallet channel — additive: only when opted in, never affects email/SMS above.
+                    if (!empty($_POST['wallet_send']) && function_exists('lmeg_wallet_broadcast')) {
+                        $wseg = null;
+                        if (count($vals['tag_ids']) === 1) {
+                            $wseg = $wpdb->get_var($wpdb->prepare("SELECT slug FROM {$wpdb->prefix}lmeg_tags WHERE id = %d", (int) $vals['tag_ids'][0])) ?: null;
+                        }
+                        $wr  = lmeg_wallet_broadcast($vals['subject'], $wseg);
+                        $msg = ' · Wallet: ' . (int) ($wr['passes'] ?? 0) . ' pass' . ((($wr['passes'] ?? 0) == 1) ? '' : 'es') . ' updated';
+                        if (!empty($wr['devices'])) {
+                            $msg .= !empty($wr['dev'])
+                                ? ', ' . (int) $wr['devices'] . ' device(s) will notify once APNs is set up'
+                                : ', pushed to ' . (int) ($wr['sent'] ?? 0) . ' device(s)';
+                        }
+                        $notice = str_replace('</p>', esc_html($msg) . '</p>', $notice);
+                    }
                 }
                 break;
         }
@@ -1979,6 +1995,13 @@ function lmeg_admin_compose() {
                     <label style="margin-left:14px;"><input type="checkbox" name="smart_timing" value="1" /> <strong>Smart send times</strong></label>
                     <span class="description">deliver at each fan's most-active hour (based on their past opens; spreads over up to 24h — fans with no history send immediately)</span>
                         <p class="description">Leave blank to send immediately. Otherwise the broadcast sits in queue and starts at the chosen moment (site timezone). Recipients are locked in at queue time, not at send time.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="wallet_send">Apple Wallet</label></th>
+                    <td>
+                        <label><input type="checkbox" name="wallet_send" id="wallet_send" value="1" /> <strong>Also push to fans' Apple Wallet pass</strong></label>
+                        <p class="description">Sets the pass's "Latest" line to your subject and sends a free lock-screen alert to fans who added the Fanloop Pass. If exactly one tag is selected above, only that segment's passes are updated.</p>
                     </td>
                 </tr>
             </table>
