@@ -504,3 +504,127 @@ function lmeg_wallet_shortcode($atts = []) {
     <?php
     return ob_get_clean();
 }
+
+/* =========================================================================
+ * ITERATION 3 — PassKit web service (device registration + pass updates).
+ * Apple calls {webServiceURL}/v1/... ; we expose those as WP REST routes under
+ * /wp-json/lmeg-wallet/v1/... . Defining lmeg_wallet_ws_url() also flips issued
+ * passes to include webServiceURL + authenticationToken (so they're updatable).
+ * ====================================================================== */
+
+/** Base URL Apple appends "/v1/..." to. */
+function lmeg_wallet_ws_url() {
+    return untrailingslashit(rest_url('lmeg-wallet'));
+}
+
+/** Pull the pass auth token out of the "Authorization: ApplePass <token>" header. */
+function lmeg_wallet_ws_token($request) {
+    $h = (string) $request->get_header('authorization');
+    return (stripos($h, 'ApplePass ') === 0) ? trim(substr($h, 10)) : '';
+}
+function lmeg_wallet_ws_pass($serial) {
+    global $wpdb;
+    return $wpdb->get_row($wpdb->prepare("SELECT * FROM " . lmeg_wallet_table('passes') . " WHERE serial = %s", $serial));
+}
+
+add_action('rest_api_init', 'lmeg_wallet_rest_routes');
+function lmeg_wallet_rest_routes() {
+    $ns = 'lmeg-wallet';
+    $open = '__return_true';   // Apple's device isn't WP-authenticated; we check the ApplePass token inside.
+
+    register_rest_route($ns, '/v1/devices/(?P<device>[^/]+)/registrations/(?P<pt>[^/]+)/(?P<serial>[^/]+)', [
+        ['methods' => 'POST',   'callback' => 'lmeg_wallet_ws_register',   'permission_callback' => $open],
+        ['methods' => 'DELETE', 'callback' => 'lmeg_wallet_ws_unregister', 'permission_callback' => $open],
+    ]);
+    register_rest_route($ns, '/v1/devices/(?P<device>[^/]+)/registrations/(?P<pt>[^/]+)', [
+        ['methods' => 'GET', 'callback' => 'lmeg_wallet_ws_serials', 'permission_callback' => $open],
+    ]);
+    register_rest_route($ns, '/v1/passes/(?P<pt>[^/]+)/(?P<serial>[^/]+)', [
+        ['methods' => 'GET', 'callback' => 'lmeg_wallet_ws_latest', 'permission_callback' => $open],
+    ]);
+    register_rest_route($ns, '/v1/log', [
+        ['methods' => 'POST', 'callback' => 'lmeg_wallet_ws_log', 'permission_callback' => $open],
+    ]);
+}
+
+/** POST register a device's push token for a pass. */
+function lmeg_wallet_ws_register($request) {
+    global $wpdb;
+    $pass = lmeg_wallet_ws_pass($request['serial']);
+    if (!$pass || !hash_equals((string) $pass->auth_token, lmeg_wallet_ws_token($request))) return new WP_REST_Response(null, 401);
+    $body = json_decode((string) $request->get_body(), true);
+    $push = sanitize_text_field($body['pushToken'] ?? '');
+    if ($push === '') return new WP_REST_Response(null, 400);
+    $regs = lmeg_wallet_table('regs');
+    $id = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM $regs WHERE device_lib_id = %s AND serial = %s", $request['device'], $pass->serial));
+    if ($id) { $wpdb->update($regs, ['push_token' => $push], ['id' => $id]); return new WP_REST_Response(null, 200); }
+    $wpdb->insert($regs, [
+        'serial'        => $pass->serial,
+        'device_lib_id' => sanitize_text_field($request['device']),
+        'push_token'    => $push,
+        'platform'      => 'apple',
+        'created_at'    => current_time('mysql', true),
+    ], ['%s','%s','%s','%s','%s']);
+    return new WP_REST_Response(null, 201);
+}
+
+/** DELETE unregister a device from a pass. */
+function lmeg_wallet_ws_unregister($request) {
+    global $wpdb;
+    $pass = lmeg_wallet_ws_pass($request['serial']);
+    if (!$pass || !hash_equals((string) $pass->auth_token, lmeg_wallet_ws_token($request))) return new WP_REST_Response(null, 401);
+    $wpdb->delete(lmeg_wallet_table('regs'), ['device_lib_id' => $request['device'], 'serial' => $pass->serial], ['%s','%s']);
+    return new WP_REST_Response(null, 200);
+}
+
+/** GET serial numbers of this device's passes changed since a tag. */
+function lmeg_wallet_ws_serials($request) {
+    global $wpdb;
+    $regs = lmeg_wallet_table('regs');
+    $pas  = lmeg_wallet_table('passes');
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT p.serial AS serial, p.updated_at AS updated_at
+         FROM $regs r JOIN $pas p ON p.serial = r.serial
+         WHERE r.device_lib_id = %s", $request['device']));
+    $since = (int) $request->get_param('passesUpdatedSince');
+    $serials = []; $max = 0;
+    foreach ((array) $rows as $r) {
+        $ts = (int) strtotime($r->updated_at . ' UTC');
+        if ($ts > $max) $max = $ts;
+        if (!$since || $ts > $since) $serials[] = $r->serial;
+    }
+    if (!$serials) return new WP_REST_Response(null, 204);
+    return new WP_REST_Response(['lastUpdated' => (string) ($max ?: time()), 'serialNumbers' => $serials], 200);
+}
+
+/** GET the latest .pkpass for a serial (honors If-Modified-Since → 304). */
+function lmeg_wallet_ws_latest($request) {
+    global $wpdb;
+    $pass = lmeg_wallet_ws_pass($request['serial']);
+    if (!$pass || !hash_equals((string) $pass->auth_token, lmeg_wallet_ws_token($request))) return new WP_REST_Response(null, 401);
+    $lastmod = (int) strtotime($pass->updated_at . ' UTC');
+    $ims = $request->get_header('if_modified_since');
+    if ($ims && strtotime($ims) >= $lastmod) return new WP_REST_Response(null, 304);
+    $sub = $pass->subscriber_id
+        ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $pass->subscriber_id))
+        : null;
+    $res = lmeg_wallet_build_pkpass(lmeg_wallet_pass_for_row($pass, $sub));
+    if (isset($res['error'])) return new WP_REST_Response(null, 500);
+    nocache_headers();
+    header('Content-Type: application/vnd.apple.pkpass');
+    header('Content-Disposition: attachment; filename="' . $pass->serial . '.pkpass"');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastmod ?: time()) . ' GMT');
+    header('Content-Length: ' . strlen($res['bytes']));
+    echo $res['bytes'];
+    exit;
+}
+
+/** POST device logs — Apple posts diagnostics here; keep them out of the way. */
+function lmeg_wallet_ws_log($request) {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        $b = json_decode((string) $request->get_body(), true);
+        foreach ((array) ($b['logs'] ?? []) as $line) error_log('[lmeg-wallet] ' . substr((string) $line, 0, 300));
+    }
+    return new WP_REST_Response(null, 200);
+}
