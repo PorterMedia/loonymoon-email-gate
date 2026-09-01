@@ -1046,8 +1046,27 @@ function lmeg_wallet_admin_page() {
                 lmeg_wallet_google_ready() ? '<strong>Google Wallet: ready</strong>'
                 : '<strong>Google Wallet: off</strong> — add a service account to offer Android');
             ?>
-            <p style="margin-top:12px;"><strong><?php echo $passes; ?></strong> pass(es) issued · <strong><?php echo $regs; ?></strong> device registration(s)</p>
-            <p class="description">Add the button anywhere with <code>[fanloop_wallet]</code>.</p>
+            <?php
+            $st = lmeg_wallet_stats();
+            $tile = function ($n, $lbl) {
+                return '<div style="min-width:74px;"><div style="font:700 22px/1 -apple-system,sans-serif;">' . (int) $n . '</div>'
+                    . '<div style="font-size:11px;color:#646970;text-transform:uppercase;letter-spacing:.04em;margin-top:3px;">' . esc_html($lbl) . '</div></div>';
+            };
+            ?>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">
+                <?php
+                echo $tile($st['total'], 'passes');
+                echo $tile($st['d7'], 'added · 7d');
+                echo $tile($st['d30'], 'added · 30d');
+                echo $tile($st['regs'], 'devices');
+                echo $tile($st['ci_total'], 'check-ins');
+                ?>
+            </div>
+            <?php if (array_sum($st['daily']) > 0 && function_exists('lmeg_chart_line')): ?>
+                <div style="margin-top:10px;"><?php echo lmeg_chart_line($st['daily'], ['color' => ($c['label'] ?: '#c7b9ff'), 'h' => 46, 'uid' => 'walladds']); ?></div>
+                <p class="description" style="margin-top:2px;">Passes added · last 14 days</p>
+            <?php endif; ?>
+            <p class="description" style="margin-top:10px;">Add the button anywhere with <code>[fanloop_wallet]</code>.</p>
             <p class="description">Web-service URL (auto): <code style="word-break:break-all;"><?php echo esc_html(function_exists('lmeg_wallet_ws_url') ? lmeg_wallet_ws_url() : ''); ?></code></p>
             <form method="post" style="margin-top:10px;">
                 <?php wp_nonce_field('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce'); ?>
@@ -1102,4 +1121,29 @@ function lmeg_wallet_admin_page() {
         </div>
     </div>
     <?php
+}
+
+/* -------------------------------------------------------------------------
+ * ITERATION 10 — Wallet analytics (for the admin panel).
+ * ---------------------------------------------------------------------- */
+function lmeg_wallet_stats() {
+    global $wpdb;
+    $p  = lmeg_wallet_table('passes');
+    $r  = lmeg_wallet_table('regs');
+    $ck = lmeg_wallet_table('checkins');
+    $stats = [
+        'total'    => (int) $wpdb->get_var("SELECT COUNT(*) FROM $p"),
+        'd7'       => (int) $wpdb->get_var("SELECT COUNT(*) FROM $p WHERE created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY"),
+        'd30'      => (int) $wpdb->get_var("SELECT COUNT(*) FROM $p WHERE created_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY"),
+        'regs'     => (int) $wpdb->get_var("SELECT COUNT(*) FROM $r"),
+        'ci_total' => (int) $wpdb->get_var("SELECT COUNT(*) FROM $ck"),
+        'ci_today' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $ck WHERE event_day = %s", gmdate('Y-m-d'))),
+        'daily'    => [],
+    ];
+    $rows = $wpdb->get_results("SELECT DATE(created_at) d, COUNT(*) n FROM $p WHERE created_at >= UTC_TIMESTAMP() - INTERVAL 13 DAY GROUP BY DATE(created_at)", OBJECT_K);
+    for ($i = 13; $i >= 0; $i--) {
+        $day = gmdate('Y-m-d', time() - $i * 86400);
+        $stats['daily'][] = isset($rows[$day]) ? (int) $rows[$day]->n : 0;
+    }
+    return $stats;
 }
