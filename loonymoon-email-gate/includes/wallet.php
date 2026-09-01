@@ -332,3 +332,175 @@ function lmeg_wallet_build_pkpass(array $passJson) {
         lmeg_wallet_rrmdir($work);
     }
 }
+
+/* =========================================================================
+ * ITERATION 2 — delivery: per-fan passes, Add-to-Wallet, capture into CRM.
+ * ====================================================================== */
+
+function lmeg_wallet_ip() { return substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45); }
+
+/** Membership tier label for a subscriber (fuller Stripe-grant logic lands later). */
+function lmeg_wallet_tier_for($sid) {
+    global $wpdb;
+    $row = $wpdb->get_row($wpdb->prepare(
+        "SELECT member_status, member_tier_id FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $sid));
+    if ($row && $row->member_status && $row->member_status !== 'free' && $row->member_tier_id && function_exists('lmeg_tier')) {
+        $t = lmeg_tier((int) $row->member_tier_id);
+        if ($t && !empty($t->name)) return $t->name;
+    }
+    return 'Fan';
+}
+
+/** Get-or-create the Apple pass row for a subscriber. Returns the row object. */
+function lmeg_wallet_issue_for_subscriber($sid, $args = []) {
+    global $wpdb;
+    $sid = (int) $sid;
+    $tbl = lmeg_wallet_table('passes');
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE subscriber_id = %d AND platform = 'apple'", $sid));
+    if ($row) {
+        // refresh tier if it changed
+        $tier = lmeg_wallet_tier_for($sid);
+        if ($tier !== $row->tier) {
+            $wpdb->update($tbl, ['tier' => $tier, 'updated_at' => current_time('mysql', true)], ['id' => $row->id]);
+            $row->tier = $tier;
+        }
+        return $row;
+    }
+    $serial = 'flp' . dechex($sid) . bin2hex(random_bytes(4));
+    $now    = current_time('mysql', true);
+    $wpdb->insert($tbl, [
+        'serial'        => $serial,
+        'platform'      => 'apple',
+        'subscriber_id' => $sid,
+        'auth_token'    => bin2hex(random_bytes(16)),
+        'tier'          => lmeg_wallet_tier_for($sid),
+        'headline'      => (string) ($args['headline'] ?? ''),
+        'latest'        => (string) ($args['latest'] ?? 'Welcome to the inner circle.'),
+        'created_at'    => $now,
+        'updated_at'    => $now,
+    ], ['%s','%s','%d','%s','%s','%s','%s','%s','%s']);
+    return $wpdb->get_row($wpdb->prepare("SELECT * FROM $tbl WHERE id = %d", $wpdb->insert_id));
+}
+
+/** The one-tap "Add to Apple Wallet" URL for a subscriber (issues the pass). */
+function lmeg_wallet_link($sid) {
+    $row = lmeg_wallet_issue_for_subscriber($sid);
+    if (!$row) return '';
+    return add_query_arg(['lmeg_wallet' => 'pkpass', 's' => $row->serial, 't' => $row->auth_token], home_url('/'));
+}
+
+/** Find (or create) a subscriber by email — used when a new fan adds a pass. */
+function lmeg_wallet_get_or_create_subscriber($email, $first_name = '') {
+    global $wpdb;
+    $email = sanitize_email((string) $email);
+    if (!$email || !is_email($email)) return 0;
+    $id = function_exists('lmeg_shop_match_subscriber') ? (int) lmeg_shop_match_subscriber($email, '') : 0;
+    if ($id) return $id;
+    $now = current_time('mysql', true);
+    $wpdb->insert($wpdb->prefix . LMEG_TABLE, [
+        'contact_type' => 'email',
+        'email'        => $email,
+        'first_name'   => sanitize_text_field($first_name),
+        'created_at'   => $now,
+        'confirmed_at' => $now,          // adding a Wallet pass is an explicit opt-in
+        'email_status' => 'ok',
+        'member_status'=> 'free',
+        'lang'         => function_exists('lmeg_current_lang') ? lmeg_current_lang() : null,
+        'ip'           => lmeg_wallet_ip(),
+    ], ['%s','%s','%s','%s','%s','%s','%s','%s','%s']);
+    $id = (int) $wpdb->insert_id;
+    if ($id && function_exists('do_action')) do_action('lmeg_subscriber_created', $id, 'wallet');
+    return $id;
+}
+
+/** Build the per-fan pass.json from a pass row + subscriber row. */
+function lmeg_wallet_pass_for_row($row, $sub = null) {
+    $since = gmdate('Y');
+    if ($sub && !empty($sub->created_at)) $since = gmdate('Y', strtotime($sub->created_at));
+    $args = [
+        'serial'          => $row->serial,
+        'tier'            => $row->tier ?: 'Fan',
+        'member_since'    => $since,
+        'latest'          => $row->latest ?: 'Welcome to the inner circle.',
+        'barcode_message' => $row->serial,     // scannable fan id (show check-in lands later)
+    ];
+    // web service + auth token wired in iteration 3 (register for push updates)
+    if (function_exists('lmeg_wallet_ws_url') && !empty($row->auth_token)) {
+        $args['web_service_url'] = lmeg_wallet_ws_url();
+        $args['auth_token']      = $row->auth_token;
+    }
+    return lmeg_wallet_pass_json($args);
+}
+
+/* ---- routes: ?lmeg_wallet=pkpass (download) and =add (capture) ---- */
+add_action('init', 'lmeg_wallet_router');
+function lmeg_wallet_router() {
+    if (!isset($_GET['lmeg_wallet'])) return;
+    $action = sanitize_key($_GET['lmeg_wallet']);
+    global $wpdb;
+
+    if ($action === 'pkpass') {
+        $serial = sanitize_text_field($_GET['s'] ?? '');
+        $token  = sanitize_text_field($_GET['t'] ?? '');
+        if ($serial === '' || $token === '') { status_header(400); exit('missing serial/token'); }
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . lmeg_wallet_table('passes') . " WHERE serial = %s", $serial));
+        if (!$row || !hash_equals((string) $row->auth_token, $token)) { status_header(401); exit('unauthorized'); }
+        $sub = $row->subscriber_id
+            ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $row->subscriber_id))
+            : null;
+        $res = lmeg_wallet_build_pkpass(lmeg_wallet_pass_for_row($row, $sub));
+        if (isset($res['error'])) { status_header(500); exit('pass build failed: ' . $res['error']); }
+        nocache_headers();
+        header('Content-Type: application/vnd.apple.pkpass');
+        header('Content-Disposition: attachment; filename="' . $row->serial . '.pkpass"');
+        header('Content-Length: ' . strlen($res['bytes']));
+        echo $res['bytes'];
+        exit;
+    }
+
+    if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $email = sanitize_email($_POST['email'] ?? '');
+        $first = sanitize_text_field($_POST['first_name'] ?? '');
+        if (!$email || !is_email($email)) { wp_safe_redirect(add_query_arg('lmeg_wallet_err', '1', wp_get_referer() ?: home_url('/'))); exit; }
+        $sid = lmeg_wallet_get_or_create_subscriber($email, $first);
+        if (!$sid) { wp_safe_redirect(add_query_arg('lmeg_wallet_err', '1', wp_get_referer() ?: home_url('/'))); exit; }
+        // hand back the .pkpass directly so Wallet opens it
+        wp_safe_redirect(lmeg_wallet_link($sid));
+        exit;
+    }
+}
+
+/* ---- shortcode: [fanloop_wallet] — an Add-to-Apple-Wallet button ---- */
+add_shortcode('fanloop_wallet', 'lmeg_wallet_shortcode');
+function lmeg_wallet_shortcode($atts = []) {
+    $a = shortcode_atts([
+        'heading' => 'Add your fan pass',
+        'blurb'   => 'One tap. Drops, presales and shows land on your lock screen.',
+    ], $atts, 'fanloop_wallet');
+
+    $btn = function ($href) {
+        return '<a href="' . esc_url($href) . '" style="display:inline-flex;align-items:center;gap:9px;background:#000;color:#fff;'
+            . 'text-decoration:none;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;">'
+            . '<svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M17 1.6c.1 1-.3 2-1 2.8-.7.8-1.8 1.4-2.8 1.3-.1-1 .4-2 1-2.7.7-.8 1.9-1.4 2.8-1.4zM19.9 17c-.5 1.2-.8 1.7-1.4 2.7-1 1.4-2.3 3.2-4 3.2-1.5 0-1.9-1-3.9-1-2 0-2.4 1-3.9 1-1.7 0-2.9-1.6-3.9-3.1C-.1 16.6-.4 11 1.7 8c1-1.5 2.6-2.4 4.1-2.4 1.6 0 2.6 1 3.9 1 1.3 0 2-1 3.9-1 1.4 0 2.9.8 3.9 2.1-3.4 1.9-2.9 6.8.4 9.3z"/></svg>'
+            . 'Add to Apple Wallet</a>';
+    };
+
+    $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
+    ob_start(); ?>
+    <div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;">
+        <div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;"><?php echo esc_html($a['heading']); ?></div>
+        <div style="font-size:14px;color:#555;margin-bottom:13px;"><?php echo esc_html($a['blurb']); ?></div>
+        <?php if ($member): ?>
+            <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
+        <?php else: ?>
+            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input type="email" name="email" required placeholder="you@email.com"
+                    style="flex:1;min-width:180px;padding:11px 13px;border:1px solid rgba(0,0,0,.2);border-radius:10px;font-size:15px;">
+                <button type="submit" style="background:#000;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Add to Apple&nbsp;Wallet</button>
+            </form>
+            <?php if (!empty($_GET['lmeg_wallet_err'])): ?><div style="color:#c0392b;font-size:13px;margin-top:7px;">Please enter a valid email.</div><?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
