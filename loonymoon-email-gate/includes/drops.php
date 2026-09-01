@@ -359,6 +359,19 @@ function lmeg_process_drops_tick() {
             // the page flips to streaming links; the broadcast just no-ops.
         }
 
+        // Auto-push the drop to Apple/Google Wallet pass-holders (same audience),
+        // unless disabled in Settings → Wallet. Additive: never affects the send above.
+        if (function_exists('lmeg_wallet_broadcast')) {
+            $ws = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+            if (($ws['wallet_auto_drops'] ?? '1') !== '0') {
+                $wseg = null;
+                if ($drop->audience === 'notify' && $drop->notify_tag_id) {
+                    $wseg = $wpdb->get_var($wpdb->prepare("SELECT slug FROM {$wpdb->prefix}lmeg_tags WHERE id = %d", (int) $drop->notify_tag_id)) ?: null;
+                }
+                lmeg_wallet_broadcast($drop->email_subject ?: ('Out now: ' . $drop->title), $wseg);
+            }
+        }
+
         $wpdb->update($t, [
             'status'         => 'released',
             'broadcast_sent' => 1,

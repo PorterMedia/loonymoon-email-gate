@@ -971,6 +971,7 @@ function lmeg_wallet_admin_page() {
             foreach (['wallet_cert_pem','wallet_wwdr_pem','wallet_apns_key','wallet_google_sa_json'] as $k)
                 $o[$k] = trim((string) wp_unslash($_POST[$k] ?? ''));   // credentials — stored raw (DB only)
             $o['wallet_apns_sandbox'] = !empty($_POST['wallet_apns_sandbox']) ? 1 : 0;
+            $o['wallet_auto_drops']   = !empty($_POST['wallet_auto_drops']) ? '1' : '0';
             update_option(LMEG_OPTION, $o);
             $notice = '<div class="notice notice-success"><p>Wallet settings saved.</p></div>';
         } elseif ($_POST['lmeg_wallet_action'] === 'test') {
@@ -1035,6 +1036,8 @@ function lmeg_wallet_admin_page() {
                     Accent <input type="text" name="wallet_label" value="<?php echo $val('wallet_label') ?: '#c7b9ff'; ?>" style="width:90px" />
                     <p class="description">Hex, e.g. #141019.</p>
                 </td></tr>
+                <tr><th>New drops</th><td><label><input type="checkbox" name="wallet_auto_drops" value="1" <?php checked(($s['wallet_auto_drops'] ?? '1') !== '0'); ?> /> Auto-push new releases to Wallet pass-holders</label>
+                    <p class="description">When a Release Drop goes live it also updates fans' passes + pushes a lock-screen alert (to the drop's audience).</p></td></tr>
             </table>
 
             <h2>Apple Wallet (PassKit)</h2>
