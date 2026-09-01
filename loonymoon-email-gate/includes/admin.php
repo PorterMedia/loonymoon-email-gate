@@ -1655,9 +1655,16 @@ function lmeg_admin_compose() {
 
                     // Wallet channel — additive: only when opted in, never affects email/SMS above.
                     if (!empty($_POST['wallet_send']) && function_exists('lmeg_wallet_broadcast')) {
+                        // Mirror the email/SMS segment onto Wallet: pass every selected
+                        // tag (resolved id→slug) with the same any/all match mode.
                         $wseg = null;
-                        if (count($vals['tag_ids']) === 1) {
-                            $wseg = $wpdb->get_var($wpdb->prepare("SELECT slug FROM {$wpdb->prefix}lmeg_tags WHERE id = %d", (int) $vals['tag_ids'][0])) ?: null;
+                        if (!empty($vals['tag_ids'])) {
+                            $ids = array_map('intval', (array) $vals['tag_ids']);
+                            $in  = implode(',', array_fill(0, count($ids), '%d'));
+                            $slugs = $wpdb->get_col($wpdb->prepare("SELECT slug FROM {$wpdb->prefix}lmeg_tags WHERE id IN ($in)", $ids));
+                            if ($slugs) {
+                                $wseg = ['tags' => $slugs, 'match' => ($vals['tag_match'] === 'all' ? 'all' : 'any')];
+                            }
                         }
                         $wr  = lmeg_wallet_broadcast($vals['subject'], $wseg);
                         $msg = ' · Wallet: ' . (int) ($wr['passes'] ?? 0) . ' pass' . ((($wr['passes'] ?? 0) == 1) ? '' : 'es') . ' updated';

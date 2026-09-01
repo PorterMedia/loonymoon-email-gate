@@ -82,7 +82,9 @@ strip blank for a clean coloured card.
   link-in-bio, a gated page). Logged-in members get a one-tap button; everyone
   else gets an email-capture that drops them into the CRM and hands back the pass.
 - **Announce to Wallet** — in **Compose Broadcast**, tick *"Also push to Apple
-  Wallet"*. Pick a single tag to target that segment.
+  Wallet"*. The push targets the same segment as the email/SMS send: pick any
+  number of tags with **match any / match all** and Wallet mirrors it (no tags =
+  every pass-holder).
 - **Auto on release** — when a **Release Drop** goes live it pushes pass-holders
   automatically (toggle: *Auto-push new releases to Wallet*, on by default).
 - **Membership** — a fan's tier shows on the pass and updates automatically when

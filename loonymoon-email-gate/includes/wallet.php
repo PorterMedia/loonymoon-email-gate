@@ -920,20 +920,55 @@ function lmeg_wallet_update($serial, array $fields = []) {
     return $res;
 }
 
-/** Push a one-line "LATEST" update to every pass (or a tag segment) + notify. */
+/**
+ * Push a one-line "LATEST" update to pass-holders + notify.
+ *
+ * $segment selects the audience:
+ *   - null / ''                    → every Apple pass-holder
+ *   - a single tag slug (string)   → holders carrying that tag (back-compat)
+ *   - ['tags' => [slug,...],
+ *      'match' => 'any'|'all']      → multi-tag segment ('any' = union via IN,
+ *                                     'all' = holders carrying every listed tag)
+ */
 function lmeg_wallet_broadcast($text, $segment = null) {
     global $wpdb;
-    $pt = lmeg_wallet_table('passes');
-    if ($segment === null || $segment === '') {
+    $pt   = lmeg_wallet_table('passes');
+    $tags = $wpdb->prefix . 'lmeg_tags';
+    $st   = $wpdb->prefix . 'lmeg_subscriber_tags';
+
+    // Normalize the segment into a slug list + match mode.
+    $slugs = [];
+    $match = 'any';
+    if (is_array($segment)) {
+        $slugs = array_values(array_filter(array_map('strval', (array) ($segment['tags'] ?? [])), 'strlen'));
+        $match = (($segment['match'] ?? 'any') === 'all') ? 'all' : 'any';
+    } elseif (is_string($segment) && $segment !== '') {
+        $slugs = [$segment];
+    }
+
+    if (!$slugs) {
         $serials = $wpdb->get_col("SELECT serial FROM $pt WHERE platform = 'apple'");
     } else {
-        $tags = $wpdb->prefix . 'lmeg_tags';
-        $st   = $wpdb->prefix . 'lmeg_subscriber_tags';
-        $serials = $wpdb->get_col($wpdb->prepare(
-            "SELECT p.serial FROM $pt p
-             JOIN $st s ON s.subscriber_id = p.subscriber_id
-             JOIN $tags t ON t.id = s.tag_id
-             WHERE t.slug = %s AND p.platform = 'apple'", $segment));
+        $ph = implode(',', array_fill(0, count($slugs), '%s'));
+        if ($match === 'all') {
+            // Holders carrying EVERY listed tag: IN + HAVING DISTINCT count == N.
+            $serials = $wpdb->get_col($wpdb->prepare(
+                "SELECT p.serial FROM $pt p
+                 JOIN $st s ON s.subscriber_id = p.subscriber_id
+                 JOIN $tags t ON t.id = s.tag_id
+                 WHERE p.platform = 'apple' AND t.slug IN ($ph)
+                 GROUP BY p.serial
+                 HAVING COUNT(DISTINCT t.slug) = %d",
+                array_merge($slugs, [count($slugs)])));
+        } else {
+            // Union: any listed tag. DISTINCT so a multi-tag holder counts once.
+            $serials = $wpdb->get_col($wpdb->prepare(
+                "SELECT DISTINCT p.serial FROM $pt p
+                 JOIN $st s ON s.subscriber_id = p.subscriber_id
+                 JOIN $tags t ON t.id = s.tag_id
+                 WHERE p.platform = 'apple' AND t.slug IN ($ph)",
+                $slugs));
+        }
     }
     if (!$serials) return ['passes' => 0, 'devices' => 0, 'sent' => 0];
     $now = current_time('mysql', true);
