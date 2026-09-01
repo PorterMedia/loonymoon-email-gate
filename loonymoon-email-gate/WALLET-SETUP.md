@@ -89,6 +89,9 @@ strip blank for a clean coloured card.
   automatically (toggle: *Auto-push new releases to Wallet*, on by default).
 - **Membership** — a fan's tier shows on the pass and updates automatically when
   they upgrade or cancel.
+- **Fan control** — the back of the pass (tap ⓘ) carries a *Manage your pass*
+  note: how to remove it (which auto-stops updates) and a one-tap link to manage
+  all reminders. Removing the pass unregisters the device automatically.
 - **At the show** — scan the pass QR; it opens an admin-only check-in card (fan,
   tier, member-since) and logs attendance.
 - **Tour** — upcoming shows put the pass on the lock screen near the venue and on

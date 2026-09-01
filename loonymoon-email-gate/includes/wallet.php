@@ -277,9 +277,10 @@ function lmeg_wallet_pass_json(array $args) {
             'auxiliaryFields' => [
                 ['key' => 'latest', 'label' => 'LATEST', 'value' => $latest, 'changeMessage' => '%@'],
             ],
-            'backFields'      => [
+            'backFields'      => array_values(array_filter([
                 ['key' => 'about', 'label' => 'About', 'value' => 'Your pass to ' . ($c['org'] ?: 'the artist') . ' — drops, presales and shows land right here on your lock screen.'],
-            ],
+                lmeg_wallet_manage_field($args['manage_url'] ?? ''),
+            ])),
         ],
     ];
 
@@ -295,6 +296,26 @@ function lmeg_wallet_pass_json(array $args) {
         $pass['authenticationToken'] = (string) $args['auth_token'];
     }
     return $pass;
+}
+
+/**
+ * The fan-facing "Manage your pass" back field (tap ⓘ on the pass to read it).
+ * Explains how to remove the pass — which fires the DELETE unregister endpoint
+ * and prunes the device's push registration — plus an optional one-tap link to
+ * manage all reminders. Returns null when there's nothing useful to show.
+ */
+function lmeg_wallet_manage_field($manage_url = '') {
+    $remove = 'To stop these updates, remove the pass: open it in Wallet, tap ⓘ (top-right), then Remove Pass.';
+    $manage_url = trim((string) $manage_url);
+    if ($manage_url === '') {
+        return ['key' => 'manage', 'label' => 'Manage your pass', 'value' => $remove];
+    }
+    return [
+        'key'             => 'manage',
+        'label'           => 'Manage your pass',
+        'value'           => $remove . ' Manage all reminders: ' . $manage_url,
+        'attributedValue' => $remove . ' <a href="' . esc_url($manage_url) . '">Manage all reminders</a>.',
+    ];
 }
 
 /* -------------------------------------------------------------------------
@@ -484,6 +505,11 @@ function lmeg_wallet_pass_for_row($row, $sub = null) {
         'latest'          => $row->latest ?: 'Welcome to the inner circle.',
         'barcode_message' => home_url('/?lmeg_wallet=checkin&serial=' . rawurlencode($row->serial)),  // QR → admin check-in card
     ];
+    // Tokenized "manage all reminders" link for the pass back (needs the subscriber's contact).
+    if ($sub && function_exists('lmeg_unsub_url')) {
+        $contact = (string) (($sub->email ?? '') ?: ($sub->phone ?? ''));
+        if ($contact !== '') $args['manage_url'] = lmeg_unsub_url((int) $row->subscriber_id, $contact);
+    }
     // web service + auth token wired in iteration 3 (register for push updates)
     if (function_exists('lmeg_wallet_ws_url') && !empty($row->auth_token)) {
         $args['web_service_url'] = lmeg_wallet_ws_url();
