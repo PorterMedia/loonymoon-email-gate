@@ -966,7 +966,9 @@ function lmeg_wallet_broadcast($text, $segment = null) {
     $slugs = [];
     $match = 'any';
     if (is_array($segment)) {
-        $slugs = array_values(array_filter(array_map('strval', (array) ($segment['tags'] ?? [])), 'strlen'));
+        // Dedupe: 'all' compares COUNT(DISTINCT slug) against count($slugs), so a
+        // duplicate slug would inflate the target and match nobody.
+        $slugs = array_values(array_unique(array_filter(array_map('strval', (array) ($segment['tags'] ?? [])), 'strlen')));
         $match = (($segment['match'] ?? 'any') === 'all') ? 'all' : 'any';
     } elseif (is_string($segment) && $segment !== '') {
         $slugs = [$segment];
