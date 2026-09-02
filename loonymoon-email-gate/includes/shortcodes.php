@@ -103,8 +103,8 @@ function lmeg_shortcode_signup($atts = []) {
         // one-tap Add button (and matches by email — no duplicate account).
         $wallet_cta = '';
         if (strtolower($atts['wallet']) === 'yes' && function_exists('lmeg_wallet_shortcode')) {
-            $wallet_cta = '<div class="lmeg-embed__wallet" style="margin-top:14px;">'
-                . lmeg_wallet_shortcode(['heading' => '', 'blurb' => 'Add your pass — drops, presales and shows land on your lock screen.'])
+            $wallet_cta = '<div class="lmeg-embed__wallet" style="margin-top:18px;">'
+                . lmeg_wallet_shortcode(['heading' => '', 'blurb' => 'Add your pass — drops, presales and shows land on your lock screen.', 'frame' => 'none'])
                 . '</div>';
         }
         return '<div id="' . esc_attr($id) . '" class="lmeg-embed lmeg-embed--' . esc_attr($style) . ' lmeg-embed--success" role="status">'

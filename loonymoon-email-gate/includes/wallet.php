@@ -824,7 +824,16 @@ function lmeg_wallet_shortcode($atts = []) {
     $a = shortcode_atts([
         'heading' => 'Add your fan pass',
         'blurb'   => 'One tap. Drops, presales and shows land on your lock screen.',
+        'frame'   => 'card',   // card = bordered panel; none = borderless (for embedding in another card)
     ], $atts, 'fanloop_wallet');
+
+    // Frame: when embedded inside another card (e.g. the signup success panel),
+    // drop the border/padding so we don't get a card-in-a-card. Content centers.
+    $bare  = (strtolower($a['frame']) === 'none');
+    $wrap  = $bare
+        ? 'text-align:center;'
+        : 'max-width:440px;margin:0 auto;border:1px solid rgba(0,0,0,.12);border-radius:16px;padding:22px 24px;text-align:center;';
+    $qrbox = 'display:inline-block;padding:6px;background:#fff;border-radius:12px;margin:4px auto 12px;';   // no border — avoid nested boxes
 
     $btn = function ($href) {
         return '<a href="' . esc_url($href) . '" style="display:inline-flex;align-items:center;gap:9px;background:#000;color:#fff;'
@@ -854,14 +863,14 @@ function lmeg_wallet_shortcode($atts = []) {
                 $qr  = lmeg_qr_svg($url, ['size' => 180, 'quiet' => 3]);
             }
         }
-        $out  = '<div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;text-align:center;">';
-        $out .= '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:6px;">Scan to add your pass</div>';
+        $out  = '<div class="lmeg-wallet-cta" style="' . $wrap . '">';
+        $out .= '<div style="font:800 20px/1.25 -apple-system,BlinkMacSystemFont,sans-serif;color:#1a1622;margin-bottom:8px;">Scan to add your pass</div>';
         if ($qr) {
-            $out .= '<div style="display:inline-block;padding:10px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,.08);margin:4px 0 10px;">' . $qr . '</div>';
-            $out .= '<div style="font-size:14px;color:#555;line-height:1.5;">Point your <strong>iPhone camera</strong> at the code to add your pass to Apple&nbsp;Wallet. We also emailed you the link — open it on your phone if you prefer.</div>';
+            $out .= '<div style="' . $qrbox . '">' . $qr . '</div>';
+            $out .= '<div style="font-size:15.5px;color:#333;line-height:1.55;max-width:340px;margin:0 auto;">Point your <strong>iPhone camera</strong> at the code to add your pass to Apple&nbsp;Wallet. We also emailed you the link — open it on your phone if you prefer.</div>';
         } else {
-            $out .= '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;">📱 Check your email</div>';
-            $out .= '<div style="font-size:14px;color:#555;line-height:1.5;">We just emailed you a link to add your pass. <strong>Open it on your iPhone</strong> and tap &ldquo;Add to Apple&nbsp;Wallet.&rdquo;</div>';
+            $out .= '<div style="font:800 18px/1.25 -apple-system,BlinkMacSystemFont,sans-serif;color:#1a1622;margin-bottom:6px;">📱 Check your email</div>';
+            $out .= '<div style="font-size:15.5px;color:#333;line-height:1.55;max-width:340px;margin:0 auto;">We just emailed you a link to add your pass. <strong>Open it on your iPhone</strong> and tap &ldquo;Add to Apple&nbsp;Wallet.&rdquo;</div>';
         }
         $out .= '</div>';
         return $out;
@@ -869,22 +878,22 @@ function lmeg_wallet_shortcode($atts = []) {
 
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
     ob_start(); ?>
-    <div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;">
-        <div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;"><?php echo esc_html($a['heading']); ?></div>
-        <div style="font-size:14px;color:#555;margin-bottom:13px;"><?php echo esc_html($a['blurb']); ?></div>
+    <div class="lmeg-wallet-cta" style="<?php echo $wrap; ?>">
+        <?php if ($a['heading'] !== ''): ?><div style="font:800 20px/1.25 -apple-system,BlinkMacSystemFont,sans-serif;color:#1a1622;margin-bottom:8px;"><?php echo esc_html($a['heading']); ?></div><?php endif; ?>
+        <div style="font-size:15.5px;color:#333;line-height:1.55;margin:0 auto 16px;max-width:360px;"><?php echo esc_html($a['blurb']); ?></div>
         <?php if ($member): ?>
-            <?php if (!lmeg_wallet_is_apple_mobile() && function_exists('lmeg_qr_svg') && ($mqr = lmeg_qr_svg(lmeg_wallet_link((int) $member->id), ['size' => 170, 'quiet' => 3]))): ?>
-                <div style="display:inline-block;padding:10px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,.08);margin:2px 0 8px;"><?php echo $mqr; ?></div>
-                <div style="font-size:13.5px;color:#555;line-height:1.45;margin-bottom:8px;">Scan with your <strong>iPhone camera</strong> to add your pass to Apple&nbsp;Wallet.</div>
+            <?php if (!lmeg_wallet_is_apple_mobile() && function_exists('lmeg_qr_svg') && ($mqr = lmeg_qr_svg(lmeg_wallet_link((int) $member->id), ['size' => 180, 'quiet' => 3]))): ?>
+                <div style="<?php echo $qrbox; ?>"><?php echo $mqr; ?></div>
+                <div style="font-size:15px;color:#333;line-height:1.5;max-width:320px;margin:0 auto 10px;">Scan with your <strong>iPhone camera</strong> to add your pass to Apple&nbsp;Wallet.</div>
                 <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo '<div>' . $gbtn($gu) . '</div>'; } ?>
             <?php else: ?>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
                     <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
                     <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo $gbtn($gu); } ?>
                 </div>
             <?php endif; ?>
         <?php else: ?>
-            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
                 <input type="email" name="email" required placeholder="you@email.com"
                     style="flex:1;min-width:180px;padding:11px 13px;border:1px solid rgba(0,0,0,.2);border-radius:10px;font-size:15px;">
                 <button type="submit" name="platform" value="apple" style="background:#000;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Add to Apple&nbsp;Wallet</button>
