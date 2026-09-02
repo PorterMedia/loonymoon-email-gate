@@ -259,6 +259,7 @@ function lmeg_admin_app_bar() {
         'lmeg-broadcasts' => 'Broadcasts',
         'lmeg-shop'       => 'Revenue',
         'lmeg-members'    => 'Members',
+        'lmeg-presaves'   => 'Pre-Saves',
         'lmeg-social'     => 'Social Listening',
         'lmeg-ai'         => 'Ask AI',
         'lmeg-settings'   => 'Settings',
