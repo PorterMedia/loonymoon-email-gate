@@ -85,15 +85,17 @@ function lmeg_wallet_table($which = 'passes') {
  * ---------------------------------------------------------------------- */
 function lmeg_wallet_settings() {
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
-    $artist = $s['artist_name'] ?? (function_exists('get_bloginfo') ? get_bloginfo('name') : 'Fanloop');
+    $artist = trim((string) ($s['artist_name'] ?? (function_exists('get_bloginfo') ? get_bloginfo('name') : ''))) ?: 'Fanloop';
     return [
         'pass_type_id' => trim((string) ($s['wallet_pass_type_id'] ?? '')),   // pass.com.artist.fan
         'team_id'      => trim((string) ($s['wallet_team_id'] ?? '')),        // Apple team identifier
         'cert_pem'     => trim((string) ($s['wallet_cert_pem'] ?? '')),       // signer cert + key (inline PEM or path)
         'cert_pass'    => (string) ($s['wallet_cert_pass'] ?? ''),
         'wwdr_pem'     => trim((string) ($s['wallet_wwdr_pem'] ?? '')),       // Apple WWDR intermediate (inline PEM or path)
-        'org'          => trim((string) ($s['wallet_org'] ?? $artist)),
-        'logo_text'    => trim((string) ($s['wallet_logo_text'] ?? $artist)),
+        // White-label: an empty branding field falls back to the artist/site name,
+        // never the generic "Fanloop" — fans should only ever see their brand.
+        'org'          => trim((string) ($s['wallet_org'] ?? '')) ?: $artist,
+        'logo_text'    => trim((string) ($s['wallet_logo_text'] ?? '')) ?: $artist,
         'bg'           => trim((string) ($s['wallet_bg'] ?? '#141019')),
         'fg'           => trim((string) ($s['wallet_fg'] ?? '#ffffff')),
         'label'        => trim((string) ($s['wallet_label'] ?? '#c7b9ff')),
