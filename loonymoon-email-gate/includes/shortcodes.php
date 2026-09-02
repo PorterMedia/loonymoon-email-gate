@@ -36,6 +36,7 @@ function lmeg_shortcode_signup($atts = []) {
         'tiers'    => '',           // ''=free only; 'all'=every active tier; '1,2'=specific IDs
         'divider'  => 'or',         // text shown between free button and tier cards
         'contest'  => '',           // contest ID to auto-enter after signup
+        'wallet'   => 'no',         // yes = offer the Apple/Google Wallet pass on the success panel
     ], $atts, 'lmeg_signup');
 
     // Default button label follows the current language when the embed didn't set one.
@@ -97,9 +98,19 @@ function lmeg_shortcode_signup($atts = []) {
     // first embed instance. If several embeds are on the page they'll all
     // show the success message; that's acceptable and cheaper than tracking.
     if (!empty($_GET['lmeg_signup']) && $_GET['lmeg_signup'] === 'ok') {
+        // Optional: offer the Wallet pass right after signup. The just-created
+        // subscriber is now the current member, so [fanloop_wallet] shows the
+        // one-tap Add button (and matches by email — no duplicate account).
+        $wallet_cta = '';
+        if (strtolower($atts['wallet']) === 'yes' && function_exists('lmeg_wallet_shortcode')) {
+            $wallet_cta = '<div class="lmeg-embed__wallet" style="margin-top:14px;">'
+                . lmeg_wallet_shortcode(['heading' => '', 'blurb' => 'Add your pass — drops, presales and shows land on your lock screen.'])
+                . '</div>';
+        }
         return '<div id="' . esc_attr($id) . '" class="lmeg-embed lmeg-embed--' . esc_attr($style) . ' lmeg-embed--success" role="status">'
              . '<div class="lmeg-embed__success-icon" aria-hidden="true">✓</div>'
              . '<p>' . esc_html($atts['success']) . '</p>'
+             . $wallet_cta
              . '</div>';
     }
 
