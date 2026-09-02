@@ -413,31 +413,37 @@ function lmeg_wallet_sign($manifestPath) {
         $GLOBALS['lmeg_wallet_sign_err'] = 'openssl_pkcs7_sign() is disabled on this host';
         return '';
     }
-    $wwdrf = null; $keyf = null;
+    // Load cert + key as OpenSSL RESOURCES (not file:// paths). This avoids two
+    // OpenSSL 3.x failure modes seen on managed hosts: "invalid key length" when
+    // the private key is read from a file that also holds the certificate, and
+    // BIO "no such file" when a file:// path is passed where a plain path is
+    // expected (the extracerts argument, below).
+    $extraFile = null;
     if (lmeg_wallet_apple_ready()) {
-        $c = lmeg_wallet_settings();
-        $certf = tempnam($dir, 'crt'); file_put_contents($certf, lmeg_wallet_pem($c['cert_pem'])); // cert (+key) PEM
-        $wwdrf = tempnam($dir, 'wdr'); file_put_contents($wwdrf, lmeg_wallet_pem($c['wwdr_pem']));
-        $signCert = 'file://' . $certf;
-        $privKey  = ['file://' . $certf, $c['cert_pass']];
-        $extra    = 'file://' . $wwdrf;
+        $c   = lmeg_wallet_settings();
+        $pem = lmeg_wallet_pem($c['cert_pem']);                 // cert + key, combined
+        $signCert = openssl_x509_read($pem);
+        if (!$signCert) { $GLOBALS['lmeg_wallet_sign_err'] = 'could not read signing certificate (' . lmeg_wallet_ssl_err() . ')'; return ''; }
+        $pass    = ($c['cert_pass'] !== '') ? $c['cert_pass'] : null;
+        $privKey = openssl_pkey_get_private($pem, $pass);
+        if (!$privKey) { $GLOBALS['lmeg_wallet_sign_err'] = 'could not read signing private key — check the cert password (' . lmeg_wallet_ssl_err() . ')'; return ''; }
+        // Apple WWDR intermediate → extracerts (a PLAIN filename, never file://).
+        $wwdr = lmeg_wallet_pem($c['wwdr_pem']);
+        if ($wwdr !== '') { $extraFile = tempnam($dir, 'wdr'); file_put_contents($extraFile, $wwdr); }
     } else {
         $dev = lmeg_wallet_dev_signer();
         if (isset($dev['error'])) { $GLOBALS['lmeg_wallet_sign_err'] = 'dev signer: ' . $dev['error']; return ''; }
-        $certf = tempnam($dir, 'crt'); file_put_contents($certf, $dev['cert']);
-        $keyf  = tempnam($dir, 'key'); file_put_contents($keyf, $dev['key']);
-        $signCert = 'file://' . $certf;
-        $privKey  = ['file://' . $keyf, ''];
-        $extra    = null;
+        $signCert = openssl_x509_read($dev['cert']);
+        $privKey  = openssl_pkey_get_private($dev['key']);
+        if (!$signCert || !$privKey) { $GLOBALS['lmeg_wallet_sign_err'] = 'dev signer produced an unreadable cert/key (' . lmeg_wallet_ssl_err() . ')'; return ''; }
     }
     $sigf = tempnam($dir, 'sig');
-    $ok = @openssl_pkcs7_sign($manifestPath, $sigf, $signCert, $privKey, [], PKCS7_BINARY | PKCS7_DETACHED, $extra);
+    $ok = @openssl_pkcs7_sign($manifestPath, $sigf, $signCert, $privKey, [], PKCS7_BINARY | PKCS7_DETACHED, $extraFile);
     if (!$ok) $GLOBALS['lmeg_wallet_sign_err'] = 'openssl_pkcs7_sign failed (' . lmeg_wallet_ssl_err() . ')';
     $der = ($ok && is_file($sigf)) ? lmeg_wallet_smime_to_der((string) file_get_contents($sigf)) : '';
     if ($der === '' && $GLOBALS['lmeg_wallet_sign_err'] === '') $GLOBALS['lmeg_wallet_sign_err'] = 'empty signature';
-    @unlink($sigf); @unlink($certf);
-    if ($keyf)  @unlink($keyf);
-    if ($wwdrf) @unlink($wwdrf);
+    @unlink($sigf);
+    if ($extraFile) @unlink($extraFile);
     return $der;
 }
 
