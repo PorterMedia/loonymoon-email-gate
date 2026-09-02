@@ -107,6 +107,14 @@ function lmeg_wallet_apple_ready() {
     return $c['pass_type_id'] !== '' && $c['team_id'] !== ''
         && lmeg_wallet_pem($c['cert_pem']) !== '' && lmeg_wallet_pem($c['wwdr_pem']) !== '';
 }
+/** notAfter (unix ts) of the configured signing certificate, 0 if none/unparseable. */
+function lmeg_wallet_cert_expiry() {
+    $c = lmeg_wallet_settings();
+    $pem = lmeg_wallet_pem($c['cert_pem']);
+    if ($pem === '' || !function_exists('openssl_x509_parse')) return 0;
+    $x = @openssl_x509_parse($pem);   // reads the first CERTIFICATE block (the combined PEM also holds the key)
+    return (is_array($x) && !empty($x['validTo_time_t'])) ? (int) $x['validTo_time_t'] : 0;
+}
 /** A PEM setting may be inline PEM text or a filesystem path. Returns the PEM or ''. */
 function lmeg_wallet_pem($v) {
     $v = trim((string) $v);
@@ -1311,6 +1319,16 @@ function lmeg_wallet_admin_page() {
             echo $dot(lmeg_wallet_apple_ready() ? 'ok' : 'warn',
                 lmeg_wallet_apple_ready() ? '<strong>Apple signing: production</strong> — passes trusted on real iPhones'
                 : '<strong>Apple signing: dev self-signed</strong> — add your Pass Type ID cert + WWDR to go live');
+            // Signing-cert expiry: an amber heads-up inside the 30-day window (a
+            // Pass Type ID cert lasts ~13 months), so passes don't silently break.
+            $cert_exp = lmeg_wallet_apple_ready() ? lmeg_wallet_cert_expiry() : 0;
+            if ($cert_exp) {
+                $days = (int) floor(($cert_exp - time()) / 86400);
+                $edate = esc_html(gmdate('M j, Y', $cert_exp));
+                if ($days <= 0)       echo $dot('warn', '<strong>Signing cert expired</strong> (' . $edate . ') — renew it, passes won\'t install');
+                elseif ($days <= 30)  echo $dot('warn', '<strong>Signing cert expires in ' . $days . ' day' . ($days === 1 ? '' : 's') . '</strong> (' . $edate . ') — renew it soon');
+                else echo '<div style="margin:2px 0 6px 19px;font-size:12px;color:#646970;">Signing cert valid until ' . $edate . '</div>';
+            }
             echo $dot(lmeg_wallet_apns_ready() ? 'ok' : 'warn',
                 lmeg_wallet_apns_ready() ? '<strong>Push: ready</strong> — lock-screen updates will send'
                 : '<strong>Push: off</strong> — add your APNs key to send updates');
