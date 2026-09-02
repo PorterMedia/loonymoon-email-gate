@@ -118,12 +118,14 @@ function lmeg_releases_admin_page() {
     echo '</div>';
 }
 
-/** Persist the release record from $_POST; returns the id. (Cascade added next slice.) */
+/** Persist the release record from $_POST, then cascade to the drop, page and
+ *  product (creating or updating the linked rows). Returns the release id. */
 function lmeg_release_save_from_post() {
     global $wpdb;
     $t   = lmeg_releases_table();
     $now = current_time('mysql');
     $id  = (int) ($_POST['release_id'] ?? 0);
+    $prev = $id ? lmeg_release_get($id) : null;   // keep existing linked ids on edit
 
     $release_at = sanitize_text_field(wp_unslash($_POST['release_at'] ?? ''));
     $release_at = $release_at !== '' ? date('Y-m-d H:i:s', strtotime($release_at)) : null;
@@ -147,7 +149,137 @@ function lmeg_release_save_from_post() {
         $wpdb->insert($t, $data, $fmt);
         $id = (int) $wpdb->insert_id;
     }
+
+    // Build the working release object (new field values + existing linked ids).
+    $rel = (object) array_merge((array) ($prev ?: []), $data, ['id' => $id]);
+
+    // Cascade — create/sync the drop, the WP page and the shop product.
+    $drop_id    = lmeg_release_sync_drop($rel);
+    $rel->drop_id = $drop_id;
+    $drop_slug  = $drop_id ? $wpdb->get_var($wpdb->prepare('SELECT slug FROM ' . lmeg_drops_table() . ' WHERE id = %d', $drop_id)) : '';
+    $page_id    = lmeg_release_sync_page($rel, (string) $drop_slug);
+    $product_id = lmeg_release_sync_product($rel);
+
+    $wpdb->update($t,
+        ['drop_id' => $drop_id ?: null, 'page_id' => $page_id ?: null, 'product_id' => $product_id ?: null],
+        ['id' => $id], ['%d', '%d', '%d'], ['%d']);
+
     return $id;
+}
+
+/** A unique slug within $table, keeping $keep_id's own slug free. */
+function lmeg_release_unique_slug($table, $base, $keep_id = 0) {
+    global $wpdb;
+    $base = sanitize_title($base) ?: 'release';
+    $slug = $base; $i = 2;
+    while ($wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE slug = %s AND id <> %d", $slug, (int) $keep_id))) {
+        $slug = $base . '-' . $i++;
+    }
+    return $slug;
+}
+
+/** Create or update the release's Drop (countdown + notify + release-day broadcast). */
+function lmeg_release_sync_drop($rel) {
+    global $wpdb;
+    $t       = lmeg_drops_table();
+    $drop_id = (int) ($rel->drop_id ?? 0);
+    if ($drop_id && !$wpdb->get_var($wpdb->prepare("SELECT id FROM $t WHERE id = %d", $drop_id))) $drop_id = 0;
+
+    $slug = $drop_id
+        ? ($wpdb->get_var($wpdb->prepare("SELECT slug FROM $t WHERE id = %d", $drop_id)) ?: lmeg_release_unique_slug($t, $rel->title, $drop_id))
+        : lmeg_release_unique_slug($t, $rel->title);
+
+    $links  = function_exists('lmeg_drop_parse_links') ? lmeg_drop_parse_links($rel->links) : [];
+    $status = ($rel->status === 'draft') ? 'draft' : 'scheduled';
+
+    $notify_tag_id = null;
+    if (function_exists('lmeg_get_or_create_tag')) {
+        $tag = lmeg_get_or_create_tag('drop:' . $slug, 'Drop: ' . $rel->title, true, '#d05fa2');
+        if ($tag) $notify_tag_id = (int) $tag->id;
+    }
+
+    $data = [
+        'title'         => (string) $rel->title,
+        'slug'          => $slug,
+        'cover_url'     => ($rel->artwork_url ?: null),
+        'description'   => ($rel->description ?: null),
+        'release_at'    => ($rel->release_at ?: null),
+        'links'         => wp_json_encode($links),
+        'notify_tag_id' => $notify_tag_id,
+        'audience'      => 'notify',
+        'status'        => $status,
+    ];
+    if ($drop_id) {
+        $wpdb->update($t, $data, ['id' => $drop_id]);
+    } else {
+        $data['notify_count'] = 0;
+        $data['created_at']   = current_time('mysql');
+        $wpdb->insert($t, $data);
+        $drop_id = (int) $wpdb->insert_id;
+    }
+    return $drop_id;
+}
+
+/** Create or update the real WP release page that embeds the drop block. */
+function lmeg_release_sync_page($rel, $drop_slug) {
+    $content = $drop_slug !== '' ? '[fanloop_drop slug="' . $drop_slug . '"]' : '[fanloop_drop]';
+    $status  = ($rel->status === 'draft') ? 'draft' : 'publish';
+    $page_id = (int) ($rel->page_id ?? 0);
+
+    $postarr = [
+        'post_title'   => ($rel->title ?: 'Release'),
+        'post_content' => $content,
+        'post_type'    => 'page',
+        'post_status'  => $status,
+    ];
+    if ($page_id && function_exists('get_post') && get_post($page_id)) {
+        $postarr['ID'] = $page_id;
+        wp_update_post($postarr);
+    } else {
+        $page_id = (int) wp_insert_post($postarr);
+    }
+    return $page_id;
+}
+
+/** Create or update the single shop product whose variants are the formats. */
+function lmeg_release_sync_product($rel) {
+    global $wpdb;
+    $t = $wpdb->prefix . 'lmeg_products';
+    $product_id = (int) ($rel->product_id ?? 0);
+    if ($product_id && !$wpdb->get_var($wpdb->prepare("SELECT id FROM $t WHERE id = %d", $product_id))) $product_id = 0;
+
+    // Formats (one per line) → the product's comma-separated variants field.
+    $formats  = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) ($rel->formats ?? ''))));
+    $variants = implode(', ', $formats);
+
+    $slug = $product_id
+        ? ($wpdb->get_var($wpdb->prepare("SELECT slug FROM $t WHERE id = %d", $product_id)) ?: lmeg_release_unique_slug($t, $rel->title, $product_id))
+        : lmeg_release_unique_slug($t, $rel->title);
+
+    // Sellable only once released; a future release date becomes a pre-order.
+    $status    = ($rel->status === 'released') ? 'active' : 'draft';
+    $preorder  = (!empty($rel->release_at) && strtotime($rel->release_at) > time()) ? $rel->release_at : null;
+
+    $data = [
+        'title'       => (string) $rel->title,
+        'slug'        => $slug,
+        'description' => ($rel->description ?: null),
+        'cover_url'   => ($rel->artwork_url ?: null),
+        'variants'    => ($variants ?: null),
+        'preorder_at' => $preorder,
+        'status'      => $status,
+    ];
+    if ($product_id) {
+        $wpdb->update($t, $data, ['id' => $product_id]);
+    } else {
+        $data['currency']   = 'USD';
+        $data['type']       = 'digital';
+        $data['processor']  = 'stripe';
+        $data['created_at'] = current_time('mysql');
+        $wpdb->insert($t, $data);
+        $product_id = (int) $wpdb->insert_id;
+    }
+    return $product_id;
 }
 
 /** The releases list (or an empty state that explains the one-form idea). */
