@@ -310,6 +310,15 @@ function lmeg_presave_admin_page() {
                     . ($r['skipped'] ? ', ' . (int) $r['skipped'] . ' skipped' : '')
                     . ($r['failed'] ? ', <strong>' . (int) $r['failed'] . '</strong> failed (see the row status)' : '') . '.</p></div>';
             }
+        } elseif ($act === 'retry_failed') {
+            $cid = (int) ($_POST['campaign_id'] ?? 0);
+            if ($cid) {
+                // Reset this campaign's failed rows to pending, then run them again.
+                $wpdb->update(lmeg_presave_table('saves'), ['status' => 'pending', 'error' => ''], ['campaign_id' => $cid, 'status' => 'failed']);
+                $r = lmeg_presave_release($cid);
+                $notice = '<div class="notice notice-success"><p>Retried — <strong>' . (int) $r['added'] . '</strong> added'
+                    . ($r['failed'] ? ', <strong>' . (int) $r['failed'] . '</strong> still failing' : '') . '.</p></div>';
+            }
         }
     }
 
@@ -321,6 +330,13 @@ function lmeg_presave_admin_page() {
         $col = $state === 'ok' ? '#1a7f37' : ($state === 'warn' ? '#bf8700' : '#8c8f94');
         return '<div style="display:flex;align-items:center;gap:9px;margin:6px 0;"><span style="width:10px;height:10px;border-radius:50%;background:' . $col . ';flex:0 0 auto;"></span><span>' . $label . '</span></div>';
     };
+
+    // Per-campaign detail view: who pre-saved + retry failed rows.
+    $detail_id = isset($_GET['campaign']) ? (int) $_GET['campaign'] : 0;
+    if ($detail_id && ($dc = lmeg_presave_get_campaign($detail_id))) {
+        lmeg_presave_render_detail($dc, $notice);
+        return;
+    }
     ?>
     <div class="wrap">
         <h1>Fanloop — Pre-Saves</h1>
@@ -352,7 +368,7 @@ function lmeg_presave_admin_page() {
                     $plats = lmeg_presave_platforms_for($c);
                     $counts = lmeg_presave_counts($c->id); ?>
                     <tr>
-                        <td><strong><?php echo esc_html($c->title); ?></strong><?php echo $c->artist ? '<br><span class="description">' . esc_html($c->artist) . '</span>' : ''; ?></td>
+                        <td><strong><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-presaves&campaign=' . (int) $c->id)); ?>"><?php echo esc_html($c->title); ?></a></strong><?php echo $c->artist ? '<br><span class="description">' . esc_html($c->artist) . '</span>' : ''; ?></td>
                         <td><?php echo $c->release_date ? esc_html(date_i18n('M j, Y', strtotime($c->release_date))) : '<span class="description">—</span>'; ?></td>
                         <td><?php echo $plats ? esc_html(implode(', ', array_map('ucfirst', $plats))) : '<span class="description">none configured</span>'; ?></td>
                         <td><strong><?php echo (int) $counts['total']; ?></strong> <span class="description">(A <?php echo (int) $counts['apple']; ?> · D <?php echo (int) $counts['deezer']; ?> · Az <?php echo (int) $counts['amazon']; ?>)</span></td>
@@ -700,4 +716,91 @@ function lmeg_presave_cron_sweep() {
         "SELECT id FROM " . lmeg_presave_table('campaigns') . " WHERE status = 'active' AND release_date IS NOT NULL AND release_date <= %s",
         current_time('mysql')));
     foreach ((array) $due as $cid) lmeg_presave_release((int) $cid);
+}
+
+/* =========================================================================
+ * ITERATION 7 (polish) — per-campaign detail view: who pre-saved + retry.
+ * ====================================================================== */
+
+/** Pre-save rows for a campaign, joined to the fan's email. */
+function lmeg_presave_campaign_saves($campaign_id, $limit = 500) {
+    global $wpdb;
+    $t   = lmeg_presave_table('saves');
+    $sub = $wpdb->prefix . LMEG_TABLE;
+    return $wpdb->get_results($wpdb->prepare(
+        "SELECT ps.*, s.email AS fan_email FROM $t ps
+         LEFT JOIN $sub s ON s.id = ps.subscriber_id
+         WHERE ps.campaign_id = %d ORDER BY ps.id DESC LIMIT %d",
+        (int) $campaign_id, (int) $limit));
+}
+
+/** Render the per-campaign detail page (list of pre-savers + actions). */
+function lmeg_presave_render_detail($camp, $notice = '') {
+    $counts = lmeg_presave_counts($camp->id);
+    $rows   = lmeg_presave_campaign_saves($camp->id);
+    $back   = admin_url('admin.php?page=lmeg-presaves');
+    $failed = 0; foreach ((array) $rows as $r) if ($r->status === 'failed') $failed++;
+    $badge = function ($status) {
+        $map = ['added' => ['#e6f4ea', '#137333', 'added'], 'reminded' => ['#e8f0fe', '#1a56c4', 'reminded'],
+                'failed' => ['#fce8e6', '#c5221f', 'failed'], 'pending' => ['#f1f3f4', '#5f6368', 'pending']];
+        $m = $map[$status] ?? $map['pending'];
+        return '<span style="display:inline-block;padding:2px 9px;border-radius:99px;background:' . $m[0] . ';color:' . $m[1] . ';font-size:12px;font-weight:600;">' . $m[2] . '</span>';
+    };
+    ?>
+    <div class="wrap">
+        <p style="margin:8px 0;"><a href="<?php echo esc_url($back); ?>">&larr; All pre-save campaigns</a></p>
+        <?php echo $notice; ?>
+        <h1 style="margin-bottom:2px;"><?php echo esc_html($camp->title); ?></h1>
+        <p class="description" style="margin-top:0;">
+            <?php echo $camp->artist ? esc_html($camp->artist) . ' · ' : ''; ?>
+            <?php echo $camp->release_date ? 'Out ' . esc_html(date_i18n('M j, Y', strtotime($camp->release_date))) : 'No release date'; ?>
+            · <?php echo esc_html(ucfirst($camp->status)); ?>
+        </p>
+
+        <div style="display:flex;gap:22px;flex-wrap:wrap;margin:14px 0 18px;">
+            <?php foreach (['total' => 'pre-saves', 'apple' => 'Apple', 'deezer' => 'Deezer', 'amazon' => 'Amazon'] as $k => $lbl): ?>
+                <div><div style="font:700 24px/1 -apple-system,sans-serif;"><?php echo (int) $counts[$k]; ?></div>
+                     <div style="font-size:11px;color:#646970;text-transform:uppercase;letter-spacing:.04em;margin-top:3px;"><?php echo esc_html($lbl); ?></div></div>
+            <?php endforeach; ?>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <?php if ($camp->status === 'active' && $counts['total'] > 0): ?>
+            <form method="post" onsubmit="return confirm('Release now — add to <?php echo (int) $counts['total']; ?> libraries? Only once the album is live on the stores.');" style="margin:0;">
+                <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+                <input type="hidden" name="lmeg_presave_action" value="release_now" />
+                <input type="hidden" name="campaign_id" value="<?php echo (int) $camp->id; ?>" />
+                <button class="button button-primary">Release now</button>
+            </form>
+            <?php endif; ?>
+            <?php if ($failed > 0): ?>
+            <form method="post" style="margin:0;">
+                <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+                <input type="hidden" name="lmeg_presave_action" value="retry_failed" />
+                <input type="hidden" name="campaign_id" value="<?php echo (int) $camp->id; ?>" />
+                <button class="button">Retry <?php echo (int) $failed; ?> failed</button>
+            </form>
+            <?php endif; ?>
+        </div>
+
+        <?php if (!$rows): ?>
+            <p class="description">No pre-saves yet. Share <code>[fanloop_presave campaign="<?php echo (int) $camp->id; ?>"]</code>.</p>
+        <?php else: ?>
+            <table class="widefat striped" style="max-width:900px;">
+                <thead><tr><th>Fan</th><th>Platform</th><th>Status</th><th>When</th><th>Note</th></tr></thead>
+                <tbody>
+                <?php foreach ($rows as $r): ?>
+                    <tr>
+                        <td><?php echo $r->fan_email ? esc_html($r->fan_email) : '<span class="description">(no email)</span>'; ?></td>
+                        <td><?php echo esc_html(ucfirst($r->platform)); ?></td>
+                        <td><?php echo $badge($r->status); ?></td>
+                        <td><?php echo $r->created_at ? esc_html(date_i18n('M j, g:ia', strtotime($r->created_at))) : '—'; ?></td>
+                        <td><span class="description"><?php echo esc_html($r->error); ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
 }
