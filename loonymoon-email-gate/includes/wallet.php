@@ -572,6 +572,37 @@ function lmeg_wallet_get_or_create_subscriber($email, $first_name = '') {
     return $id;
 }
 
+/**
+ * True when the visitor is on an Apple mobile device that can open a .pkpass
+ * directly (iPhone / iPad / iPod). A desktop or Android browser cannot add an
+ * Apple Wallet pass, so those fall back to "email the link, open on your phone".
+ */
+function lmeg_wallet_is_apple_mobile() {
+    $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+    return (bool) preg_match('~iPhone|iPad|iPod~i', $ua);
+}
+
+/**
+ * Desktop fallback: email a fan the one-tap link so they can add the pass on
+ * their phone (a .pkpass download is a dead end off-device). Reuses the store's
+ * branded email shell. Returns whether the mail was handed to the provider.
+ */
+function lmeg_wallet_email_pass_link($sid) {
+    global $wpdb;
+    $sid = (int) $sid;
+    if (!$sid || !function_exists('lmeg_email_deliver')) return false;
+    $sub = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", $sid));
+    if (!$sub || empty($sub->email)) return false;
+    $url = lmeg_wallet_link($sid);
+    if (!$url) return false;
+    $inner = lmeg_email_label('Your fan pass')
+        . lmeg_email_h('Add your pass on your phone')
+        . lmeg_email_p('Open this email on your <strong>iPhone</strong> and tap the button below to add your pass to Apple Wallet — new drops, presales and shows will land right on your lock screen.')
+        . lmeg_email_button('Add to Apple Wallet', $url)
+        . lmeg_email_p('<span style="font-size:13px;color:#7a7486">Heads up: this button needs to be opened on your iPhone or iPad — that\'s where Apple Wallet lives.</span>');
+    return lmeg_email_deliver($sub->email, 'Your fan pass', $inner, 'Open on your iPhone to add your pass to Apple Wallet');
+}
+
 /** Build the per-fan pass.json from a pass row + subscriber row. */
 function lmeg_wallet_pass_for_row($row, $sub = null) {
     $since = gmdate('Y');
@@ -667,8 +698,17 @@ function lmeg_wallet_router() {
             $gu = lmeg_wallet_google_save_url($sid);
             if ($gu) { wp_safe_redirect($gu); exit; }
         }
-        // default: hand back the .pkpass directly so Apple Wallet opens it
-        wp_safe_redirect(lmeg_wallet_link($sid));
+        // Apple: an iPhone/iPad opens the .pkpass straight into Wallet. On a
+        // desktop (or Android) that download is a dead end — Apple Wallet only
+        // lives on the phone — so email the fan the link to open there and send
+        // them back to a "check your email" panel. The signup is already saved.
+        if (lmeg_wallet_is_apple_mobile()) {
+            wp_safe_redirect(lmeg_wallet_link($sid));
+            exit;
+        }
+        lmeg_wallet_email_pass_link($sid);
+        $back = remove_query_arg(['lmeg_wallet_err', 'lmeg_wallet_sent'], wp_get_referer() ?: home_url('/'));
+        wp_safe_redirect(add_query_arg('lmeg_wallet_sent', '1', $back));
         exit;
     }
 
@@ -764,6 +804,15 @@ function lmeg_wallet_shortcode($atts = []) {
     };
     $gready = function_exists('lmeg_wallet_google_ready') && lmeg_wallet_google_ready();
 
+    // Desktop fallback landing: the fan submitted on a computer, we emailed the
+    // link — tell them to finish on their phone (nothing sensitive in the URL).
+    if (!empty($_GET['lmeg_wallet_sent'])) {
+        return '<div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;">'
+            . '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;">📱 Check your email</div>'
+            . '<div style="font-size:14px;color:#555;line-height:1.5;">We just emailed you a link to add your pass. <strong>Open it on your iPhone</strong> and tap &ldquo;Add to Apple&nbsp;Wallet&rdquo; — drops, presales and shows will land on your lock screen.</div>'
+            . '</div>';
+    }
+
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
     ob_start(); ?>
     <div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;">
@@ -782,6 +831,7 @@ function lmeg_wallet_shortcode($atts = []) {
                 <?php if ($gready): ?><button type="submit" name="platform" value="google" style="background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;padding:11px 16px;font:600 15px/1 -apple-system,sans-serif;cursor:pointer;">Save to Google&nbsp;Wallet</button><?php endif; ?>
             </form>
             <?php if (!empty($_GET['lmeg_wallet_err'])): ?><div style="color:#c0392b;font-size:13px;margin-top:7px;">Please enter a valid email.</div><?php endif; ?>
+            <?php if (!lmeg_wallet_is_apple_mobile()): ?><div style="font-size:12.5px;color:#555;margin-top:9px;line-height:1.45;">On a computer? Add your email and we&rsquo;ll send a link to open on your phone — that&rsquo;s where Apple&nbsp;Wallet lives.</div><?php endif; ?>
         <?php endif; ?>
     </div>
     <?php
