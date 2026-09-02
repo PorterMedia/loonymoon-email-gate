@@ -156,6 +156,7 @@ function lmeg_admin_drop_form($drop) {
         return $drop->$field !== null ? $drop->$field : $fallback;
     };
 
+    if (function_exists('lmeg_media_enqueue')) lmeg_media_enqueue();
     echo '<h2>' . ($is_new ? 'New drop' : 'Edit: ' . esc_html($drop->title)) . '</h2>';
     echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
     wp_nonce_field('lmeg_save_drop');
@@ -167,9 +168,9 @@ function lmeg_admin_drop_form($drop) {
     echo '<tr><th><label for="d_title">Title</label></th><td>'
        . '<input name="title" id="d_title" class="regular-text" required value="' . esc_attr($val('title')) . '" placeholder="New single — &ldquo;Moonchild&rdquo;" /></td></tr>';
 
-    echo '<tr><th><label for="d_cover">Cover image URL</label></th><td>'
-       . '<input name="cover_url" id="d_cover" class="regular-text" value="' . esc_attr($val('cover_url')) . '" placeholder="https://…/cover.jpg" />'
-       . '<p class="description">Square art looks best. Paste a Media Library URL.</p></td></tr>';
+    echo '<tr><th>Cover image</th><td>'
+       . lmeg_image_field('cover_url', $val('cover_url'), ['title' => 'Choose cover art', 'hint' => 'Square art looks best. Pick from your Media Library.'])
+       . '</td></tr>';
 
     echo '<tr><th><label for="d_desc">Description</label></th><td>'
        . '<textarea name="description" id="d_desc" rows="3" class="large-text" placeholder="A one-line tease for the release.">' . esc_textarea($val('description')) . '</textarea></td></tr>';

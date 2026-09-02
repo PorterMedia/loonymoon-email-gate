@@ -259,6 +259,7 @@ function lmeg_presave_admin_menu() {
 
 function lmeg_presave_admin_page() {
     if (!current_user_can('manage_options')) return;
+    if (function_exists('lmeg_media_enqueue')) lmeg_media_enqueue();
     global $wpdb;
     $notice = '';
     $ct = lmeg_presave_table('campaigns');
@@ -409,7 +410,7 @@ function lmeg_presave_admin_page() {
                 <tr><th><label>Deezer album ID</label></th><td><input name="deezer_album_id" class="regular-text" placeholder="e.g. 302127" />
                     <p class="description">The numeric id from the Deezer album URL (deezer.com/album/<strong>302127</strong>).</p></td></tr>
                 <tr><th><label>Amazon Music URL</label></th><td><input type="url" name="amazon_url" class="regular-text" placeholder="https://music.amazon.com/albums/…" /></td></tr>
-                <tr><th><label>Artwork URL</label></th><td><input type="url" name="artwork_url" class="regular-text" placeholder="https://…/cover.jpg (optional)" /></td></tr>
+                <tr><th>Artwork</th><td><?php echo lmeg_image_field('artwork_url', '', ['title' => 'Choose artwork', 'hint' => 'Optional. Square cover art from your Media Library.']); ?></td></tr>
             </table>
             <p><button class="button button-primary">Create campaign</button></p>
           </form>
