@@ -1090,6 +1090,93 @@ function lmeg_wallet_google_save_url($sid) {
     return $jwt ? ('https://pay.google.com/gp/v/save/' . $jwt) : '';
 }
 
+/* -------------------------------------------------------------------------
+ * Google Wallet REST — idempotent server-side class registration.
+ * The Save JWT inline-creates the class on first save, but registering it
+ * explicitly (a) validates the whole Google setup and surfaces real errors
+ * instead of a silent broken Save, and (b) lets the class be updated later.
+ * Uses the service account's OAuth2 JWT-bearer grant. Dev-guarded end to end.
+ * ---------------------------------------------------------------------- */
+
+/** OAuth2 access token for the Wallet API via SA JWT-bearer grant. '' on failure. */
+function lmeg_wallet_google_access_token() {
+    static $cache = null;
+    if ($cache && $cache['exp'] > time() + 60) return $cache['token'];
+    $g = lmeg_wallet_google_settings();
+    if (!$g['private_key'] || !$g['client_email']) return '';
+    $now    = time();
+    $header = ['alg' => 'RS256', 'typ' => 'JWT'];
+    if ($g['private_key_id']) $header['kid'] = $g['private_key_id'];
+    $claims = [
+        'iss'   => $g['client_email'],
+        'scope' => 'https://www.googleapis.com/auth/wallet_object.issuer',
+        'aud'   => 'https://oauth2.googleapis.com/token',
+        'iat'   => $now,
+        'exp'   => $now + 3600,
+    ];
+    $si = lmeg_wallet_b64url(wp_json_encode($header)) . '.' . lmeg_wallet_b64url(wp_json_encode($claims));
+    $pk = openssl_pkey_get_private($g['private_key']);
+    if (!$pk) return '';
+    $sig = '';
+    if (!openssl_sign($si, $sig, $pk, OPENSSL_ALGO_SHA256)) return '';
+    $assertion = $si . '.' . lmeg_wallet_b64url($sig);
+    $resp = wp_remote_post('https://oauth2.googleapis.com/token', [
+        'timeout' => 15,
+        'body'    => ['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $assertion],
+    ]);
+    if (is_wp_error($resp)) return '';
+    $body  = json_decode((string) wp_remote_retrieve_body($resp), true);
+    $token = is_array($body) ? (string) ($body['access_token'] ?? '') : '';
+    if ($token === '') return '';
+    $cache = ['token' => $token, 'exp' => $now + (int) ($body['expires_in'] ?? 3600)];
+    return $token;
+}
+
+/** One authenticated Wallet API call. Returns ['code','body'] or ['error']. */
+function lmeg_wallet_google_api($method, $path, $body = null) {
+    $token = lmeg_wallet_google_access_token();
+    if ($token === '') return ['error' => 'auth failed — check the service-account JSON and that the Google Wallet API is enabled for it'];
+    $args = ['method' => $method, 'timeout' => 15,
+        'headers' => ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json']];
+    if ($body !== null) $args['body'] = wp_json_encode($body);
+    $resp = wp_remote_request('https://walletobjects.googleapis.com/walletobjects/v1/' . ltrim($path, '/'), $args);
+    if (is_wp_error($resp)) return ['error' => $resp->get_error_message()];
+    return ['code' => (int) wp_remote_retrieve_response_code($resp), 'body' => json_decode((string) wp_remote_retrieve_body($resp), true)];
+}
+
+/** The GenericClass resource we register (id is all a generic class requires). */
+function lmeg_wallet_google_class_definition() {
+    $g = lmeg_wallet_google_settings();
+    return ['id' => $g['issuer_id'] . '.fanloop_generic'];
+}
+
+/** Create-or-update the shared Google Wallet class. Returns ['status'] or ['error']. */
+function lmeg_wallet_google_register_class() {
+    if (!lmeg_wallet_google_ready()) return ['error' => 'Google Wallet is not configured'];
+    $g       = lmeg_wallet_google_settings();
+    $classId = $g['issuer_id'] . '.fanloop_generic';
+    $def     = lmeg_wallet_google_class_definition();
+    $get = lmeg_wallet_google_api('GET', 'genericClass/' . rawurlencode($classId));
+    if (isset($get['error'])) return $get;
+    $code = (int) ($get['code'] ?? 0);
+    if ($code === 404) {
+        $r = lmeg_wallet_google_api('POST', 'genericClass', $def);
+        if (isset($r['error'])) return $r;
+        return ($r['code'] >= 200 && $r['code'] < 300)
+            ? ['status' => 'created']
+            : ['error' => 'create failed (HTTP ' . $r['code'] . ')'];
+    }
+    if ($code >= 200 && $code < 300) {
+        $r = lmeg_wallet_google_api('PUT', 'genericClass/' . rawurlencode($classId), $def);
+        if (isset($r['error'])) return $r;
+        return ($r['code'] >= 200 && $r['code'] < 300)
+            ? ['status' => 'updated']
+            : ['error' => 'update failed (HTTP ' . $r['code'] . ')'];
+    }
+    if ($code === 401 || $code === 403) return ['error' => 'the service account is not authorized on this issuer (HTTP ' . $code . ')'];
+    return ['error' => 'unexpected response (HTTP ' . $code . ')'];
+}
+
 /* =========================================================================
  * ITERATION 7 — Settings → Wallet admin page (config + readiness + test).
  * A self-contained submenu (own form/nonce/save) that merges wallet_* keys
@@ -1122,6 +1209,11 @@ function lmeg_wallet_admin_page() {
             $r = lmeg_wallet_broadcast('Test from Fanloop 🎫');
             $extra = !empty($r['dev']) ? ' (APNs not configured — no push actually sent)' : '';
             $notice = '<div class="notice notice-info"><p>Test: updated ' . (int) ($r['passes'] ?? 0) . ' pass(es), ' . (int) ($r['devices'] ?? 0) . ' device(s)' . esc_html($extra) . '.</p></div>';
+        } elseif ($_POST['lmeg_wallet_action'] === 'register_google') {
+            $r = lmeg_wallet_google_register_class();
+            $notice = isset($r['error'])
+                ? '<div class="notice notice-error"><p>Google class registration failed: ' . esc_html($r['error']) . '</p></div>'
+                : '<div class="notice notice-success"><p>Google Wallet class ' . esc_html($r['status']) . ' — Android saves are wired up.</p></div>';
         }
     }
 
@@ -1183,6 +1275,14 @@ function lmeg_wallet_admin_page() {
                 <input type="hidden" name="lmeg_wallet_action" value="test" />
                 <button class="button" <?php echo $passes ? '' : 'disabled'; ?>>Send a test Wallet update</button>
             </form>
+            <?php if (lmeg_wallet_google_ready()): ?>
+            <form method="post" style="margin-top:8px;">
+                <?php wp_nonce_field('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce'); ?>
+                <input type="hidden" name="lmeg_wallet_action" value="register_google" />
+                <button class="button">Register / update Google class</button>
+            </form>
+            <p class="description" style="margin-top:4px;">Verifies the service account and creates the shared Android pass class.</p>
+            <?php endif; ?>
           </div>
 
           <form method="post" style="flex:2;min-width:420px;">

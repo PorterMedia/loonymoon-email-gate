@@ -67,6 +67,10 @@ Then **Push → ready**. Pushes cost nothing.
 3. Paste the whole JSON → **Service account JSON**; the issuer id →
    **Issuer ID**. → **Google Wallet → ready**, and a *Save to Google Wallet*
    button appears next to Apple's.
+4. Click **Register / update Google class** (Status panel) once. It validates the
+   service account end-to-end and creates the shared Android pass class — if the
+   SA isn't authorized on the issuer or the Wallet API isn't enabled, it tells
+   you exactly what's wrong instead of a silently broken Save. Safe to re-run.
 
 ## 4. Branding
 
