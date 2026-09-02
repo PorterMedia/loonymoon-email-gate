@@ -99,6 +99,7 @@ function lmeg_wallet_settings() {
         'bg'           => trim((string) ($s['wallet_bg'] ?? '#141019')),
         'fg'           => trim((string) ($s['wallet_fg'] ?? '#ffffff')),
         'label'        => trim((string) ($s['wallet_label'] ?? '#c7b9ff')),
+        'wallet_links' => (string) ($s['wallet_links'] ?? ''),   // "Label | URL" per line → tappable back-field links
     ];
 }
 /** True when a real Apple production cert is configured; otherwise we run dev/self-signed. */
@@ -320,10 +321,11 @@ function lmeg_wallet_pass_json(array $args) {
             'auxiliaryFields' => [
                 ['key' => 'latest', 'label' => 'LATEST', 'value' => $latest, 'changeMessage' => '%@'],
             ],
-            'backFields'      => array_values(array_filter([
-                ['key' => 'about', 'label' => 'About', 'value' => 'Your pass to ' . ($c['org'] ?: 'the artist') . ' — drops, presales and shows land right here on your lock screen.'],
-                lmeg_wallet_manage_field($args['manage_url'] ?? ''),
-            ])),
+            'backFields'      => array_values(array_filter(array_merge(
+                [['key' => 'about', 'label' => 'About', 'value' => 'Your pass to ' . ($c['org'] ?: 'the artist') . ' — drops, presales and shows land right here on your lock screen.']],
+                lmeg_wallet_link_fields($c['wallet_links'] ?? ''),   // tappable artist links
+                [lmeg_wallet_manage_field($args['manage_url'] ?? '')]
+            ))),
         ],
     ];
 
@@ -339,6 +341,35 @@ function lmeg_wallet_pass_json(array $args) {
         $pass['authenticationToken'] = (string) $args['auth_token'];
     }
     return $pass;
+}
+
+/**
+ * Parse "Label | URL" lines (one per line) into tappable back-field links.
+ * Apple Wallet renders a field's attributedValue <a href> as a clickable link
+ * on the back of the pass (tap ⓘ). Bare/invalid or non-http lines are skipped.
+ */
+function lmeg_wallet_link_fields($raw) {
+    $out = []; $i = 0;
+    foreach (preg_split('/\r\n|\r|\n/', (string) $raw) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        if (strpos($line, '|') !== false) {
+            list($label, $url) = array_map('trim', explode('|', $line, 2));
+        } else {
+            $label = ''; $url = $line;
+        }
+        $url = esc_url_raw($url);
+        if (!$url || !preg_match('~^https?://~i', $url)) continue;
+        $host  = parse_url($url, PHP_URL_HOST) ?: $url;
+        $label = $label !== '' ? $label : $host;
+        $out[] = [
+            'key'             => 'link' . (++$i),
+            'label'           => $label,
+            'value'           => $url,
+            'attributedValue' => '<a href="' . esc_url($url) . '">' . esc_html($host) . ' ›</a>',
+        ];
+    }
+    return $out;
 }
 
 /**
@@ -1356,6 +1387,7 @@ function lmeg_wallet_admin_page() {
                 $o[$k] = sanitize_text_field(wp_unslash($_POST[$k] ?? ''));
             foreach (['wallet_bg','wallet_fg','wallet_label'] as $k)
                 $o[$k] = sanitize_hex_color(wp_unslash($_POST[$k] ?? '')) ?: ($o[$k] ?? '');
+            $o['wallet_links'] = sanitize_textarea_field(wp_unslash($_POST['wallet_links'] ?? ''));   // "Label | URL" per line
             foreach (['wallet_cert_pem','wallet_wwdr_pem','wallet_apns_key','wallet_google_sa_json'] as $k)
                 $o[$k] = trim((string) wp_unslash($_POST[$k] ?? ''));   // credentials — stored raw (DB only)
             $o['wallet_apns_sandbox'] = !empty($_POST['wallet_apns_sandbox']) ? 1 : 0;
@@ -1462,6 +1494,10 @@ function lmeg_wallet_admin_page() {
             <table class="form-table" role="presentation">
                 <tr><th>Pass name</th><td><input type="text" name="wallet_org" class="regular-text" value="<?php echo $val('wallet_org'); ?>" placeholder="Artist name" /></td></tr>
                 <tr><th>Logo text</th><td><input type="text" name="wallet_logo_text" class="regular-text" value="<?php echo $val('wallet_logo_text'); ?>" placeholder="Artist name" /></td></tr>
+                <tr><th>Pass links</th><td>
+                    <textarea name="wallet_links" rows="4" class="large-text code" placeholder="Website | https://loonymoonchild.com&#10;Listen | https://open.spotify.com/artist/…&#10;Merch | https://…"><?php echo esc_textarea((string) ($s['wallet_links'] ?? '')); ?></textarea>
+                    <p class="description">Tappable links on the back of the pass (fans tap <strong>ⓘ</strong> to see them). One per line, <code>Label | URL</code>. Great for your site, streaming, merch or tour.</p>
+                </td></tr>
                 <tr><th>Colours</th><td>
                     Background <input type="text" name="wallet_bg" value="<?php echo $val('wallet_bg') ?: '#141019'; ?>" style="width:90px" />
                     Text <input type="text" name="wallet_fg" value="<?php echo $val('wallet_fg') ?: '#ffffff'; ?>" style="width:90px" />
