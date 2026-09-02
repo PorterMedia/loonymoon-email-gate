@@ -1561,6 +1561,7 @@ function lmeg_admin_compose() {
         'tag_match'        => 'any',
         'radius_km'        => '',
         'radius_city'      => '',
+        'wallet_send'      => false,
     ];
 
     // Deep-link prefill: "Notify nearby fans" from a tour date pre-targets the
@@ -1583,6 +1584,31 @@ function lmeg_admin_compose() {
                 . '<p>You’re getting this because you’re near ' . esc_html($td->city) . '. see you there? 🖤</p>';
             $vals['body_sms']        = $artist . ' is playing ' . $td->city . ' on ' . $when . '! ' . ($tix ? $tix . ' ' : '') . 'see u there 🖤';
             $notice = '<div class="notice notice-info"><p><strong>Drafted a show announcement for ' . esc_html($td->city) . '</strong>, pre-targeted to fans within 100&nbsp;km. Review the copy + audience below, then send.</p></div>';
+        }
+    }
+
+    // Deep-link prefill: "Announce presale" from a tour date with a presale link.
+    // Drafts early-access copy + pre-ticks the free Wallet push (the lock screen is
+    // the perfect channel for a time-sensitive presale). Human reviews + sends.
+    if (!isset($_POST['lmeg_action']) && ($_GET['prefill'] ?? '') === 'presale' && !empty($_GET['tour'])) {
+        global $wpdb;
+        $td = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_tour_dates WHERE id = %d", (int) $_GET['tour']));
+        if ($td && trim((string) $td->presale_url) !== '') {
+            $artist = function_exists('lmeg_artist') ? lmeg_artist() : get_bloginfo('name');
+            $when   = date_i18n('M j', strtotime($td->show_date));
+            $url    = trim((string) $td->presale_url);
+            $vals['radius_city']     = $td->city;
+            $vals['radius_km']       = 100;
+            $vals['wallet_send']     = true;
+            $vals['subject']         = 'Presale is live — ' . $artist . ' in ' . $td->city . ' 🎟️';
+            $vals['body_email_mode'] = 'rich';
+            $vals['body_email']      = '<p><strong>Presale is live.</strong> Get first crack at tickets to <strong>' . esc_html($artist) . '</strong> in <strong>' . esc_html($td->city) . '</strong> before they go on sale to everyone.</p>'
+                . '<p><strong>' . esc_html($td->venue) . '</strong><br>' . esc_html(date_i18n('l, F j, Y', strtotime($td->show_date))) . '</p>'
+                . '<p><a href="' . esc_url($url) . '">Grab presale tickets →</a></p>'
+                . '<p>You’re on the list, so you’re in early. 🖤</p>';
+            $vals['body_sms']        = $artist . ' ' . $td->city . ' presale is LIVE — get in before everyone else: ' . $url;
+            $mo = !empty($td->presale_members_only) ? ' <em>Presale is members-only — target your members segment with the tags above.</em>' : '';
+            $notice = '<div class="notice notice-info"><p><strong>Drafted a presale announcement for ' . esc_html($td->city) . '</strong> with a free Apple Wallet push pre-ticked.' . $mo . ' Review the copy + audience below, then send.</p></div>';
         }
     }
 
@@ -2007,8 +2033,8 @@ function lmeg_admin_compose() {
                 <tr>
                     <th><label for="wallet_send">Apple Wallet</label></th>
                     <td>
-                        <label><input type="checkbox" name="wallet_send" id="wallet_send" value="1" /> <strong>Also push to fans' Apple Wallet pass</strong></label>
-                        <p class="description">Sets the pass's "Latest" line to your subject and sends a free lock-screen alert to fans who added the Fanloop Pass. If exactly one tag is selected above, only that segment's passes are updated.</p>
+                        <label><input type="checkbox" name="wallet_send" id="wallet_send" value="1" <?php checked(!empty($vals['wallet_send'])); ?> /> <strong>Also push to fans' Apple Wallet pass</strong></label>
+                        <p class="description">Sets the pass's "Latest" line to your subject and sends a free lock-screen alert to fans who added the Fanloop Pass. The push targets the same tag segment (match any/all) you picked above — or every pass-holder if no tags are selected.</p>
                     </td>
                 </tr>
             </table>
