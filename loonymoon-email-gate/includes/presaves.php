@@ -699,7 +699,10 @@ function lmeg_presave_release($campaign_id, $limit = 0) {
 add_action('lmeg_presave_run', 'lmeg_presave_release');
 function lmeg_presave_schedule($campaign_id, $release_date) {
     if (!$release_date || !function_exists('wp_schedule_single_event')) return;
-    $ts = strtotime($release_date);
+    // release_date is stored in SITE-LOCAL time; convert to a real GMT timestamp
+    // (wp_schedule_single_event wants UTC) so the auto-release fires at the right
+    // moment, not off by the site's UTC offset. The daily sweep is the backstop.
+    $ts = function_exists('get_gmt_from_date') ? (int) get_gmt_from_date($release_date, 'U') : strtotime($release_date . ' UTC');
     if ($ts && $ts > time()) wp_schedule_single_event($ts, 'lmeg_presave_run', [(int) $campaign_id]);
 }
 add_action('lmeg_presave_sweep', 'lmeg_presave_cron_sweep');
