@@ -69,6 +69,34 @@ function lmeg_release_status_label($s) {
     return $m[$s] ?? ucfirst((string) $s);
 }
 
+/** The linked pieces (drop / page / product) with their view + edit URLs. */
+function lmeg_release_linked($rel) {
+    $out = [];
+    if (!empty($rel->drop_id)) {
+        $drop = function_exists('lmeg_drop_get') ? lmeg_drop_get((int) $rel->drop_id) : null;
+        $out['drop'] = [
+            'short' => 'Drop', 'label' => 'Drop',
+            'edit'  => admin_url('admin.php?page=lmeg-drops&edit=' . (int) $rel->drop_id),
+            'view'  => ($drop && function_exists('lmeg_drop_url')) ? lmeg_drop_url($drop) : null,
+        ];
+    }
+    if (!empty($rel->page_id)) {
+        $out['page'] = [
+            'short' => 'Page', 'label' => 'Release page',
+            'edit'  => function_exists('get_edit_post_link') ? get_edit_post_link((int) $rel->page_id, '') : null,
+            'view'  => function_exists('get_permalink') ? get_permalink((int) $rel->page_id) : null,
+        ];
+    }
+    if (!empty($rel->product_id)) {
+        $out['product'] = [
+            'short' => 'Shop', 'label' => 'Shop product',
+            'edit'  => admin_url('admin.php?page=lmeg-products&edit=' . (int) $rel->product_id),
+            'view'  => null,
+        ];
+    }
+    return $out;
+}
+
 /** Small coloured status pill for the admin list. */
 function lmeg_release_status_pill($s) {
     $c = ['draft' => '#6b7280', 'scheduled' => '#2563eb', 'released' => '#15803d'];
@@ -300,11 +328,18 @@ function lmeg_releases_render_list() {
             ? '<img src="' . esc_url($r->artwork_url) . '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #dcdcde;display:block">'
             : '<div style="width:44px;height:44px;border-radius:8px;background:#f3f4f6;border:1px solid #e5e7eb"></div>';
         $when = $r->release_at ? esc_html(date_i18n('M j, Y · g:i a', strtotime($r->release_at))) : '<span style="color:#9ca3af">—</span>';
-        $linked = [];
-        if ($r->drop_id)    $linked[] = 'Drop';
-        if ($r->page_id)    $linked[] = 'Page';
-        if ($r->product_id) $linked[] = 'Shop';
-        $linkedTxt = $linked ? esc_html(implode(' · ', $linked)) : '<span style="color:#9ca3af">not yet</span>';
+        $linked = lmeg_release_linked($r);
+        if ($linked) {
+            $parts = [];
+            foreach ($linked as $p) {
+                $parts[] = !empty($p['edit'])
+                    ? '<a href="' . esc_url($p['edit']) . '">' . esc_html($p['short']) . '</a>'
+                    : esc_html($p['short']);
+            }
+            $linkedTxt = implode(' · ', $parts);
+        } else {
+            $linkedTxt = '<span style="color:#9ca3af">not yet</span>';
+        }
         echo '<tr>'
            . '<td>' . $art . '</td>'
            . '<td><strong>' . esc_html($r->title ?: '(untitled)') . '</strong></td>'
@@ -324,6 +359,23 @@ function lmeg_releases_render_form($edit = null) {
     $release_local = $r->release_at ? date('Y-m-d\TH:i', strtotime($r->release_at)) : '';
     ?>
     <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
+    <?php $linked = $edit ? lmeg_release_linked($edit) : []; if ($linked): ?>
+        <div style="max-width:720px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+            <strong style="display:block;margin-bottom:8px;">Connected pieces</strong>
+            <div style="display:flex;flex-wrap:wrap;gap:18px;">
+                <?php foreach ($linked as $p): ?>
+                    <div>
+                        <span style="font-weight:600;"><?php echo esc_html($p['label']); ?></span>
+                        <span style="margin-left:6px;">
+                            <?php if (!empty($p['view'])): ?><a href="<?php echo esc_url($p['view']); ?>" target="_blank" rel="noopener">View</a><?php endif; ?>
+                            <?php if (!empty($p['view']) && !empty($p['edit'])): ?><span style="color:#c7cbd1;"> | </span><?php endif; ?>
+                            <?php if (!empty($p['edit'])): ?><a href="<?php echo esc_url($p['edit']); ?>">Edit</a><?php endif; ?>
+                        </span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php endif; ?>
     <form method="post" style="max-width:720px;">
         <?php wp_nonce_field('lmeg_release_save', 'lmeg_release_nonce'); ?>
         <input type="hidden" name="lmeg_release_action" value="save">
