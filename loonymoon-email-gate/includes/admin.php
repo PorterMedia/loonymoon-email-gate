@@ -257,6 +257,7 @@ function lmeg_admin_app_bar() {
         'lmeg-audience'   => 'Audience',
         'lmeg-compose'    => 'Compose',
         'lmeg-broadcasts' => 'Broadcasts',
+        'lmeg-releases'   => 'Releases',
         'lmeg-shop'       => 'Revenue',
         'lmeg-members'    => 'Members',
         'lmeg-presaves'   => 'Pre-Saves',
