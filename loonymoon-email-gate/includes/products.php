@@ -1121,7 +1121,7 @@ function lmeg_shortcode_store($atts) {
     $controls = '';
     if ($show_ctrls) {
         $n_total = count($rows);
-        $controls = '<div class="flp-store-ctrls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">'
+        $controls = '<div class="flp-store-ctrls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;max-width:500px">'
             . '<input type="search" class="flp-q" placeholder="Search the shop…" aria-label="Search the shop" style="flex:1;min-width:180px;' . $ctrl_css . '">'
             . '<select class="flp-sort" aria-label="Sort products" style="' . $ctrl_css . ';cursor:pointer">'
             . '<option value="featured">Featured</option><option value="new">Newest</option>'
@@ -1447,7 +1447,7 @@ function lmeg_store_theme_reset_css() {
     if (!empty($GLOBALS['lmeg_reset_css_done'])) return '';
     $GLOBALS['lmeg_reset_css_done'] = true;
     $chev = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2317141f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")";
-    $sel = ".flp-store-wrap .flp-store-ctrls{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:10px!important}"
+    $sel = ".flp-store-wrap .flp-store-ctrls{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:10px!important;max-width:500px!important}"
       . ".flp-store-wrap .flp-q{flex:1 1 200px!important;width:auto!important;min-width:170px!important;display:block!important;height:auto!important;margin:0!important;padding:10px 13px!important;border:1px solid rgba(0,0,0,.18)!important;border-radius:10px!important;background:#fff!important;color:#17141f!important;font-size:14px!important;line-height:1.2!important;box-shadow:none!important;-webkit-appearance:none!important;appearance:none!important;box-sizing:border-box!important}"
       . ".flp-store-wrap .flp-sort{flex:0 0 auto!important;width:auto!important;min-width:150px!important;display:block!important;height:auto!important;margin:0!important;padding:10px 40px 10px 13px!important;border:1px solid rgba(0,0,0,.18)!important;border-radius:10px!important;background-color:#fff!important;color:#17141f!important;font-size:14px!important;line-height:1.2!important;box-shadow:none!important;cursor:pointer!important;-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;box-sizing:border-box!important;background-image:$chev!important;background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:16px!important}"
       . ".flp-store-wrap .flp-count{margin:0!important;padding:0!important;border:0!important;background:none!important}"
