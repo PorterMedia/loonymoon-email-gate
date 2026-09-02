@@ -292,6 +292,7 @@ function lmeg_presave_admin_page() {
                     'status'          => 'active',
                     'created_at'      => current_time('mysql', true),
                 ]);
+                if ($wpdb->insert_id && $rd_sql) lmeg_presave_schedule((int) $wpdb->insert_id, $rd_sql);
                 $notice = '<div class="notice notice-success"><p>Campaign created. Add it to a page with the shortcode shown below.</p></div>';
             }
         } elseif ($act === 'delete_campaign') {
@@ -300,6 +301,14 @@ function lmeg_presave_admin_page() {
                 $wpdb->delete($ct, ['id' => $cid]);
                 $wpdb->delete(lmeg_presave_table('saves'), ['campaign_id' => $cid]);
                 $notice = '<div class="notice notice-success"><p>Campaign deleted.</p></div>';
+            }
+        } elseif ($act === 'release_now') {
+            $cid = (int) ($_POST['campaign_id'] ?? 0);
+            if ($cid) {
+                $r = lmeg_presave_release($cid);
+                $notice = '<div class="notice notice-success"><p>Released — <strong>' . (int) $r['added'] . '</strong> added to libraries'
+                    . ($r['skipped'] ? ', ' . (int) $r['skipped'] . ' skipped' : '')
+                    . ($r['failed'] ? ', <strong>' . (int) $r['failed'] . '</strong> failed (see the row status)' : '') . '.</p></div>';
             }
         }
     }
@@ -348,12 +357,22 @@ function lmeg_presave_admin_page() {
                         <td><?php echo $plats ? esc_html(implode(', ', array_map('ucfirst', $plats))) : '<span class="description">none configured</span>'; ?></td>
                         <td><strong><?php echo (int) $counts['total']; ?></strong> <span class="description">(A <?php echo (int) $counts['apple']; ?> · D <?php echo (int) $counts['deezer']; ?> · Az <?php echo (int) $counts['amazon']; ?>)</span></td>
                         <td><code>[fanloop_presave campaign="<?php echo (int) $c->id; ?>"]</code></td>
-                        <td><form method="post" onsubmit="return confirm('Delete this campaign and its pre-saves?');" style="margin:0;">
-                            <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
-                            <input type="hidden" name="lmeg_presave_action" value="delete_campaign" />
-                            <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>" />
-                            <button class="button-link-delete button-link">Delete</button>
-                        </form></td>
+                        <td style="white-space:nowrap;">
+                            <?php if ($c->status === 'active' && $counts['total'] > 0): ?>
+                            <form method="post" onsubmit="return confirm('Release now — add this to <?php echo (int) $counts['total']; ?> pre-saver\'s libraries? Do this only once the album is actually live on the stores.');" style="display:inline;margin:0;">
+                                <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+                                <input type="hidden" name="lmeg_presave_action" value="release_now" />
+                                <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>" />
+                                <button class="button button-small">Release now</button>
+                            </form>
+                            <?php elseif ($c->status === 'released'): ?><span class="description">Released</span> <?php endif; ?>
+                            <form method="post" onsubmit="return confirm('Delete this campaign and its pre-saves?');" style="display:inline;margin:0 0 0 6px;">
+                                <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+                                <input type="hidden" name="lmeg_presave_action" value="delete_campaign" />
+                                <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>" />
+                                <button class="button-link-delete button-link">Delete</button>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -588,4 +607,97 @@ function lmeg_presave_router() {
         wp_safe_redirect(add_query_arg('lmeg_presave_ok', 'deezer', $back));
         exit;
     }
+}
+
+/* =========================================================================
+ * ITERATION 5 — release runner. On release day (or "Release now"), add the
+ * album to every pre-saver's library: Apple + Deezer via their APIs, Amazon via
+ * a white-label reminder email. Rows are marked added/failed; the campaign flips
+ * to 'released'. Triggered by an admin button, a per-campaign wp-cron scheduled
+ * at the release date, and a daily fallback sweep.
+ * ====================================================================== */
+
+/** White-label release-day reminder email for Amazon (no auto-add API exists). */
+function lmeg_presave_amazon_reminder($email, $camp) {
+    if (!$email) return false;
+    $artist  = $camp->artist !== '' ? $camp->artist : (lmeg_presave_settings()['org'] ?: '');
+    $subject = ($artist ? $artist . ' — ' : '') . '“' . $camp->title . '” is out now';
+    $body    = "It's here — “" . $camp->title . "”" . ($artist ? " by " . $artist : '') . " is out now.\n\n"
+             . "Add it on Amazon Music:\n" . $camp->amazon_url . "\n\nThanks for pre-saving.";
+    return (bool) wp_mail($email, $subject, $body);
+}
+
+/**
+ * Release a campaign: process its pending pre-saves. $limit>0 processes a batch
+ * (and does NOT flip the campaign to released). Returns {added,failed,skipped}.
+ */
+function lmeg_presave_release($campaign_id, $limit = 0) {
+    global $wpdb;
+    $out  = ['added' => 0, 'failed' => 0, 'skipped' => 0];
+    $camp = lmeg_presave_get_campaign((int) $campaign_id);
+    if (!$camp) return $out;
+    $t   = lmeg_presave_table('saves');
+    $now = current_time('mysql', true);
+    $sql = $wpdb->prepare("SELECT * FROM $t WHERE campaign_id = %d AND status = 'pending' ORDER BY id ASC", (int) $campaign_id);
+    if ($limit > 0) $sql .= ' LIMIT ' . (int) $limit;
+    $rows = $wpdb->get_results($sql);
+    $dev  = lmeg_presave_apple_ready() ? lmeg_presave_apple_dev_token() : '';
+
+    foreach ((array) $rows as $r) {
+        $ok = false; $err = '';
+        if ($r->platform === 'apple') {
+            if ($dev === '' || empty($camp->apple_album_id) || empty($r->user_token)) { $out['skipped']++; continue; }
+            $resp = wp_remote_post('https://api.music.apple.com/v1/me/library?ids[albums]=' . rawurlencode($camp->apple_album_id), [
+                'method' => 'POST', 'timeout' => 20,
+                'headers' => ['Authorization' => 'Bearer ' . $dev, 'Music-User-Token' => $r->user_token],
+            ]);
+            if (is_wp_error($resp)) { $err = $resp->get_error_message(); }
+            else { $code = (int) wp_remote_retrieve_response_code($resp); $ok = ($code === 202 || $code === 200); if (!$ok) $err = 'Apple HTTP ' . $code; }
+        } elseif ($r->platform === 'deezer') {
+            if (empty($camp->deezer_album_id) || empty($r->user_token)) { $out['skipped']++; continue; }
+            $resp = wp_remote_post('https://api.deezer.com/user/me/albums', [
+                'timeout' => 20, 'body' => ['album_id' => $camp->deezer_album_id, 'access_token' => $r->user_token],
+            ]);
+            if (is_wp_error($resp)) { $err = $resp->get_error_message(); }
+            else { $b = trim((string) wp_remote_retrieve_body($resp)); $ok = ($b === 'true'); if (!$ok) $err = 'Deezer: ' . substr($b, 0, 120); }
+        } elseif ($r->platform === 'amazon') {
+            if (empty($camp->amazon_url)) { $out['skipped']++; continue; }
+            $email = $r->subscriber_id ? $wpdb->get_var($wpdb->prepare("SELECT email FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $r->subscriber_id)) : '';
+            if (!$email) { $out['skipped']++; continue; }
+            $ok = lmeg_presave_amazon_reminder($email, $camp);
+            if (!$ok) $err = 'reminder email failed';
+        } else { $out['skipped']++; continue; }
+
+        $wpdb->update($t, ['status' => $ok ? 'added' : 'failed', 'error' => substr($err, 0, 255), 'processed_at' => $now], ['id' => $r->id]);
+        $ok ? $out['added']++ : $out['failed']++;
+    }
+
+    // A full run (no batch limit) closes the campaign.
+    if ($limit === 0 && $camp->status !== 'released') {
+        $wpdb->update(lmeg_presave_table('campaigns'), ['status' => 'released', 'released_at' => $now], ['id' => (int) $campaign_id]);
+    }
+    return $out;
+}
+
+/* ---- automatic triggers: per-campaign event + daily fallback sweep ---- */
+add_action('lmeg_presave_run', 'lmeg_presave_release');
+function lmeg_presave_schedule($campaign_id, $release_date) {
+    if (!$release_date || !function_exists('wp_schedule_single_event')) return;
+    $ts = strtotime($release_date);
+    if ($ts && $ts > time()) wp_schedule_single_event($ts, 'lmeg_presave_run', [(int) $campaign_id]);
+}
+add_action('lmeg_presave_sweep', 'lmeg_presave_cron_sweep');
+add_action('init', 'lmeg_presave_ensure_sweep', 20);
+function lmeg_presave_ensure_sweep() {
+    if (function_exists('wp_next_scheduled') && !wp_next_scheduled('lmeg_presave_sweep')) {
+        wp_schedule_event(time() + 3600, 'daily', 'lmeg_presave_sweep');
+    }
+}
+/** Fallback: release any active campaign whose release date has passed. */
+function lmeg_presave_cron_sweep() {
+    global $wpdb;
+    $due = $wpdb->get_col($wpdb->prepare(
+        "SELECT id FROM " . lmeg_presave_table('campaigns') . " WHERE status = 'active' AND release_date IS NOT NULL AND release_date <= %s",
+        current_time('mysql')));
+    foreach ((array) $due as $cid) lmeg_presave_release((int) $cid);
 }
