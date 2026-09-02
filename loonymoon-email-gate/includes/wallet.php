@@ -1395,9 +1395,12 @@ function lmeg_wallet_admin_page() {
             update_option(LMEG_OPTION, $o);
             $notice = '<div class="notice notice-success"><p>Wallet settings saved.</p></div>';
         } elseif ($_POST['lmeg_wallet_action'] === 'test') {
-            // Unique text each tap — iOS only shows a lock-screen banner when a pass
-            // field VALUE actually changes, so a repeated identical test pushes silently.
-            $r = lmeg_wallet_broadcast('Test push ✓ ' . current_time('g:i:s a'));
+            // Use the typed message if given; otherwise a unique timestamped test.
+            // iOS only shows a lock-screen banner when the pass field VALUE changes,
+            // so an empty test falls back to a stamp that's always distinct.
+            $msg = sanitize_text_field(wp_unslash($_POST['wallet_test_msg'] ?? ''));
+            if ($msg === '') $msg = 'Test push ✓ ' . current_time('g:i:s a');
+            $r = lmeg_wallet_broadcast($msg);
             $extra = !empty($r['dev']) ? ' (APNs not configured — no push actually sent)' : '';
             $notice = '<div class="notice notice-info"><p>Test: updated ' . (int) ($r['passes'] ?? 0) . ' pass(es), ' . (int) ($r['devices'] ?? 0) . ' device(s)' . esc_html($extra) . '.</p></div>';
         } elseif ($_POST['lmeg_wallet_action'] === 'register_google') {
@@ -1471,10 +1474,12 @@ function lmeg_wallet_admin_page() {
             <?php endif; ?>
             <p class="description" style="margin-top:10px;">Add the button anywhere with <code>[fanloop_wallet]</code>.</p>
             <p class="description">Web-service URL (auto): <code style="word-break:break-all;"><?php echo esc_html(function_exists('lmeg_wallet_ws_url') ? lmeg_wallet_ws_url() : ''); ?></code></p>
-            <form method="post" style="margin-top:10px;">
+            <form method="post" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;max-width:640px;">
                 <?php wp_nonce_field('lmeg_wallet_settings', 'lmeg_wallet_settings_nonce'); ?>
                 <input type="hidden" name="lmeg_wallet_action" value="test" />
-                <button class="button" <?php echo $passes ? '' : 'disabled'; ?>>Send a test Wallet update</button>
+                <input type="text" name="wallet_test_msg" class="regular-text" style="flex:1;min-width:240px;" maxlength="200" placeholder="Optional message — e.g. Listen to my new single at…" />
+                <button class="button button-primary" <?php echo $passes ? '' : 'disabled'; ?>>Send Wallet update</button>
+                <p class="description" style="flex-basis:100%;margin:2px 0 0;">Pushes a lock-screen update to everyone who has the pass. Leave blank to send a quick timestamped test. iOS only shows a banner when the text changes, so vary the message each time.</p>
             </form>
             <?php if (lmeg_wallet_google_ready()): ?>
             <form method="post" style="margin-top:8px;">
