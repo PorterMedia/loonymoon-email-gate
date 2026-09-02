@@ -5443,14 +5443,22 @@ function lmeg_admin_smartlinks() {
                 <tr><td colspan="6">No smartlinks yet.</td></tr>
             <?php else : foreach ($rows as $l) :
                 $short = lmeg_smartlink_url($l->slug);
-                $qr    = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' . rawurlencode($short);
+                // QR generated on-site (no external service). SVG = vector, so it
+                // scales to any poster/merch size without pixelation.
+                $qr_small = function_exists('lmeg_qr_svg') ? lmeg_qr_svg($short, ['size' => 84, 'quiet' => 2]) : '';
+                $qr_dl    = $qr_small ? 'data:image/svg+xml;base64,' . base64_encode(lmeg_qr_svg($short, ['size' => 1024, 'quiet' => 4])) : '';
             ?>
                 <tr>
                     <td><a href="<?php echo esc_url($short); ?>" target="_blank" rel="noopener"><code>/go/<?php echo esc_html($l->slug); ?></code></a></td>
                     <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><a href="<?php echo esc_url($l->target_url); ?>" target="_blank" rel="noopener"><?php echo esc_html($l->target_url); ?></a></td>
                     <td><strong><?php echo (int) $l->clicks; ?></strong></td>
                     <td><?php echo esc_html($l->last_clicked_at ?: '—'); ?></td>
-                    <td><a href="<?php echo esc_url($qr); ?>" target="_blank" rel="noopener">View QR</a></td>
+                    <td>
+                        <?php if ($qr_small): ?>
+                            <div style="line-height:0;"><?php echo $qr_small; ?></div>
+                            <a href="<?php echo esc_attr($qr_dl); ?>" download="qr-<?php echo esc_attr($l->slug); ?>.svg" style="font-size:12px;">Download SVG</a>
+                        <?php else: ?>—<?php endif; ?>
+                    </td>
                     <td>
                         <form method="post" onsubmit="return confirm('Delete this smartlink? The short URL will stop working.');" style="display:inline;">
                             <?php wp_nonce_field('lmeg_sl', 'lmeg_sl_nonce'); ?>
@@ -5463,7 +5471,7 @@ function lmeg_admin_smartlinks() {
             <?php endforeach; endif; ?>
             </tbody>
         </table>
-        <p class="description" style="margin-top:10px;">QR codes are rendered by api.qrserver.com from the short URL — download the PNG from the QR view for posters/merch.</p>
+        <p class="description" style="margin-top:10px;">QR codes are generated on your own site (no external service). Download the SVG for posters/merch — it's vector, so it scales to any size without pixelation.</p>
     </div>
     <?php
 }
