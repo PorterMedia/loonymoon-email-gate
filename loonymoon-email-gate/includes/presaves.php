@@ -188,18 +188,28 @@ function lmeg_presave_apple_dev_token() {
 function lmeg_presave_deezer_redirect_uri() {
     return home_url('/?lmeg_presave=deezer_cb');
 }
-/** The Deezer "connect" URL a fan is sent to for a given campaign. */
-function lmeg_presave_deezer_auth_url($campaign_id) {
+/** The Deezer "connect" URL a fan is sent to for a given campaign. $back is the
+ * page to return the fan to (so the widget can show its success state). */
+function lmeg_presave_deezer_auth_url($campaign_id, $back = '') {
     $s = lmeg_presave_settings();
     if (!lmeg_presave_deezer_ready()) return '';
+    // state carries the campaign id + return page (Deezer echoes it back verbatim).
+    $state = lmeg_presave_b64url(wp_json_encode(['c' => (int) $campaign_id, 'b' => (string) $back]));
     return 'https://connect.deezer.com/oauth/auth.php?' . http_build_query([
         'app_id'       => $s['deezer_app_id'],
         'redirect_uri' => lmeg_presave_deezer_redirect_uri(),
         // basic_access + email → the callback can read the fan's email for the CRM;
         // manage_library → add the album at release; offline_access → token persists.
         'perms'        => 'basic_access,email,manage_library,offline_access',
-        'state'        => (string) ((int) $campaign_id),
+        'state'        => $state,
     ]);
+}
+/** Decode a Deezer state back into ['c' => campaign_id, 'b' => return_url]. */
+function lmeg_presave_deezer_state($state) {
+    $state = (string) $state;
+    $j = json_decode((string) base64_decode(strtr($state, '-_', '+/')), true);
+    if (is_array($j) && isset($j['c'])) return ['c' => (int) $j['c'], 'b' => (string) ($j['b'] ?? '')];
+    return ['c' => (int) $state, 'b' => ''];   // back-compat: a plain campaign id
 }
 /** Exchange a Deezer auth code for an access token. Returns token string or ''. */
 function lmeg_presave_deezer_token($code) {
@@ -416,7 +426,8 @@ function lmeg_presave_shortcode($atts = []) {
     $accent = (function_exists('lmeg_wallet_settings') && preg_match('/^#[0-9a-fA-F]{6}$/', (string) lmeg_wallet_settings()['label'])) ? lmeg_wallet_settings()['label'] : '#E15FA8';
     $when   = $c->release_date ? date_i18n('F j', strtotime($c->release_date)) : '';
     $devtoken  = in_array('apple', $plats, true)  ? lmeg_presave_apple_dev_token() : '';
-    $deezerUrl = in_array('deezer', $plats, true) ? lmeg_presave_deezer_auth_url($c->id) : '';
+    $page_url  = home_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/');
+    $deezerUrl = in_array('deezer', $plats, true) ? lmeg_presave_deezer_auth_url($c->id, $page_url) : '';
     $appleEp   = esc_url(add_query_arg('lmeg_presave', 'apple_store', home_url('/')));
     $amazonEp  = esc_url(add_query_arg('lmeg_presave', 'amazon', home_url('/')));
 
@@ -483,4 +494,98 @@ function lmeg_presave_shortcode($atts = []) {
     })();</script>
     <?php
     return ob_get_clean();
+}
+
+/* =========================================================================
+ * ITERATION 4 — connect endpoints (?lmeg_presave=…) + CRM capture.
+ * The fan widget POSTs Apple/Amazon here; Deezer redirects back here after
+ * OAuth. Each stores a pending lmeg_presaves row and captures the fan into the
+ * CRM (reusing the Wallet subscriber matcher — matches by email, no duplicate).
+ * ====================================================================== */
+
+/** Insert-or-update the unique (campaign, subscriber, platform) pre-save row. */
+function lmeg_presave_record($campaign_id, $subscriber_id, $platform, $token) {
+    global $wpdb;
+    $t   = lmeg_presave_table('saves');
+    $now = current_time('mysql', true);
+    $sid = $subscriber_id ? (int) $subscriber_id : null;
+    if ($sid) {
+        $existing = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $t WHERE campaign_id = %d AND subscriber_id = %d AND platform = %s",
+            (int) $campaign_id, $sid, $platform));
+        if ($existing) {
+            $wpdb->update($t, ['user_token' => (string) $token, 'status' => 'pending', 'error' => ''], ['id' => $existing]);
+            return $existing;
+        }
+    }
+    $wpdb->insert($t, [
+        'campaign_id'   => (int) $campaign_id,
+        'subscriber_id' => $sid,
+        'platform'      => $platform,
+        'user_token'    => (string) $token,
+        'status'        => 'pending',
+        'created_at'    => $now,
+    ]);
+    return (int) $wpdb->insert_id;
+}
+
+/** Get-or-create a CRM subscriber from an email (+ optional name). 0 if no email. */
+function lmeg_presave_subscriber($email, $name = '') {
+    $email = sanitize_email((string) $email);
+    if (!$email || !is_email($email)) return 0;
+    if (function_exists('lmeg_wallet_get_or_create_subscriber')) return (int) lmeg_wallet_get_or_create_subscriber($email, $name);
+    if (function_exists('lmeg_shop_match_subscriber'))          return (int) lmeg_shop_match_subscriber($email, '');
+    return 0;
+}
+
+add_action('init', 'lmeg_presave_router');
+function lmeg_presave_router() {
+    if (!isset($_GET['lmeg_presave'])) return;
+    $action = sanitize_key($_GET['lmeg_presave']);
+
+    // ---- Apple / Amazon : JSON POST from the widget ----
+    if ($action === 'apple_store' || $action === 'amazon') {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { status_header(405); exit; }
+        $raw  = json_decode((string) file_get_contents('php://input'), true);
+        $body = is_array($raw) ? $raw : $_POST;
+        $cid  = (int) ($body['c'] ?? 0);
+        $camp = lmeg_presave_get_campaign($cid);
+        if (!$camp || $camp->status !== 'active') { wp_send_json(['ok' => false, 'msg' => 'This pre-save is closed.']); }
+        $email = sanitize_email((string) ($body['email'] ?? ''));
+        $sid   = lmeg_presave_subscriber($email);
+        if ($action === 'apple_store') {
+            $token = trim((string) ($body['token'] ?? ''));
+            if ($token === '') { wp_send_json(['ok' => false, 'msg' => 'Apple Music authorization failed.']); }
+            if (empty($camp->apple_album_id) || !lmeg_presave_apple_ready()) { wp_send_json(['ok' => false, 'msg' => 'Apple Music isn\'t available for this release.']); }
+            lmeg_presave_record($cid, $sid, 'apple', $token);
+        } else {
+            if (empty($camp->amazon_url)) { wp_send_json(['ok' => false, 'msg' => 'Amazon Music isn\'t available for this release.']); }
+            lmeg_presave_record($cid, $sid, 'amazon', '');
+        }
+        wp_send_json(['ok' => true]);
+    }
+
+    // ---- Deezer : OAuth redirect back from connect.deezer.com ----
+    if ($action === 'deezer_cb') {
+        $st   = lmeg_presave_deezer_state($_GET['state'] ?? '');
+        $cid  = (int) $st['c'];
+        $back = $st['b'] !== '' ? $st['b'] : home_url('/');
+        $code = sanitize_text_field($_GET['code'] ?? '');
+        if ($code === '' || !$cid) { wp_safe_redirect(add_query_arg('lmeg_presave_ok', 'error', $back)); exit; }
+        $camp = lmeg_presave_get_campaign($cid);
+        if (!$camp || $camp->status !== 'active') { wp_safe_redirect(add_query_arg('lmeg_presave_ok', 'error', $back)); exit; }
+        $token = lmeg_presave_deezer_token($code);
+        if ($token === '') { wp_safe_redirect(add_query_arg('lmeg_presave_ok', 'error', $back)); exit; }
+        // Deezer gives us the fan's email + name (basic_access,email perms).
+        $email = ''; $name = '';
+        $resp = wp_remote_get('https://api.deezer.com/user/me?access_token=' . rawurlencode($token), ['timeout' => 15]);
+        if (!is_wp_error($resp)) {
+            $u = json_decode((string) wp_remote_retrieve_body($resp), true);
+            if (is_array($u)) { $email = sanitize_email((string) ($u['email'] ?? '')); $name = sanitize_text_field((string) ($u['name'] ?? '')); }
+        }
+        $sid = lmeg_presave_subscriber($email, $name);
+        lmeg_presave_record($cid, $sid, 'deezer', $token);
+        wp_safe_redirect(add_query_arg('lmeg_presave_ok', 'deezer', $back));
+        exit;
+    }
 }
