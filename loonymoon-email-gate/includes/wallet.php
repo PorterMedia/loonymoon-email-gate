@@ -707,8 +707,13 @@ function lmeg_wallet_router() {
             exit;
         }
         lmeg_wallet_email_pass_link($sid);
-        $back = remove_query_arg(['lmeg_wallet_err', 'lmeg_wallet_sent'], wp_get_referer() ?: home_url('/'));
-        wp_safe_redirect(add_query_arg('lmeg_wallet_sent', '1', $back));
+        // Pass the serial (not the auth token) back so the landing can render a
+        // scan-to-add QR. The serial alone can't fetch the pass (the pkpass
+        // route also requires the token, which only rides inside the QR/email).
+        $row    = lmeg_wallet_issue_for_subscriber($sid);
+        $serial = ($row && !empty($row->serial)) ? $row->serial : '1';
+        $back   = remove_query_arg(['lmeg_wallet_err', 'lmeg_wallet_sent'], wp_get_referer() ?: home_url('/'));
+        wp_safe_redirect(add_query_arg('lmeg_wallet_sent', rawurlencode($serial), $back));
         exit;
     }
 
@@ -805,12 +810,30 @@ function lmeg_wallet_shortcode($atts = []) {
     $gready = function_exists('lmeg_wallet_google_ready') && lmeg_wallet_google_ready();
 
     // Desktop fallback landing: the fan submitted on a computer, we emailed the
-    // link — tell them to finish on their phone (nothing sensitive in the URL).
+    // link — show a scan-to-add QR (token rides only inside the QR, never in the
+    // page URL) plus the check-your-email note.
     if (!empty($_GET['lmeg_wallet_sent'])) {
-        return '<div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;">'
-            . '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;">📱 Check your email</div>'
-            . '<div style="font-size:14px;color:#555;line-height:1.5;">We just emailed you a link to add your pass. <strong>Open it on your iPhone</strong> and tap &ldquo;Add to Apple&nbsp;Wallet&rdquo; — drops, presales and shows will land on your lock screen.</div>'
-            . '</div>';
+        $serial = sanitize_text_field(wp_unslash($_GET['lmeg_wallet_sent']));
+        $qr = '';
+        if ($serial !== '' && $serial !== '1' && function_exists('lmeg_qr_svg')) {
+            global $wpdb;
+            $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . lmeg_wallet_table('passes') . " WHERE serial = %s", $serial));
+            if ($row && !empty($row->auth_token)) {
+                $url = add_query_arg(['lmeg_wallet' => 'pkpass', 's' => $row->serial, 't' => $row->auth_token], home_url('/'));
+                $qr  = lmeg_qr_svg($url, ['size' => 180, 'quiet' => 3]);
+            }
+        }
+        $out  = '<div class="lmeg-wallet-cta" style="max-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:18px 20px;text-align:center;">';
+        $out .= '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:6px;">Scan to add your pass</div>';
+        if ($qr) {
+            $out .= '<div style="display:inline-block;padding:10px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,.08);margin:4px 0 10px;">' . $qr . '</div>';
+            $out .= '<div style="font-size:14px;color:#555;line-height:1.5;">Point your <strong>iPhone camera</strong> at the code to add your pass to Apple&nbsp;Wallet. We also emailed you the link — open it on your phone if you prefer.</div>';
+        } else {
+            $out .= '<div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;">📱 Check your email</div>';
+            $out .= '<div style="font-size:14px;color:#555;line-height:1.5;">We just emailed you a link to add your pass. <strong>Open it on your iPhone</strong> and tap &ldquo;Add to Apple&nbsp;Wallet.&rdquo;</div>';
+        }
+        $out .= '</div>';
+        return $out;
     }
 
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
@@ -819,10 +842,16 @@ function lmeg_wallet_shortcode($atts = []) {
         <div style="font:700 17px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:5px;"><?php echo esc_html($a['heading']); ?></div>
         <div style="font-size:14px;color:#555;margin-bottom:13px;"><?php echo esc_html($a['blurb']); ?></div>
         <?php if ($member): ?>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
-                <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo $gbtn($gu); } ?>
-            </div>
+            <?php if (!lmeg_wallet_is_apple_mobile() && function_exists('lmeg_qr_svg') && ($mqr = lmeg_qr_svg(lmeg_wallet_link((int) $member->id), ['size' => 170, 'quiet' => 3]))): ?>
+                <div style="display:inline-block;padding:10px;background:#fff;border-radius:12px;border:1px solid rgba(0,0,0,.08);margin:2px 0 8px;"><?php echo $mqr; ?></div>
+                <div style="font-size:13.5px;color:#555;line-height:1.45;margin-bottom:8px;">Scan with your <strong>iPhone camera</strong> to add your pass to Apple&nbsp;Wallet.</div>
+                <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo '<div>' . $gbtn($gu) . '</div>'; } ?>
+            <?php else: ?>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <?php echo $btn(lmeg_wallet_link((int) $member->id)); ?>
+                    <?php if ($gready) { $gu = lmeg_wallet_google_save_url((int) $member->id); if ($gu) echo $gbtn($gu); } ?>
+                </div>
+            <?php endif; ?>
         <?php else: ?>
             <form method="post" action="<?php echo esc_url(add_query_arg('lmeg_wallet', 'add', home_url('/'))); ?>" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                 <input type="email" name="email" required placeholder="you@email.com"
