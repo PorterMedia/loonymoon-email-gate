@@ -234,3 +234,159 @@ function lmeg_presave_counts($campaign_id) {
     foreach ((array) $rows as $r) { $out[$r['platform']] = (int) $r['n']; $out['total'] += (int) $r['n']; }
     return $out;
 }
+
+/* =========================================================================
+ * ITERATION 2 — admin UI. A "Pre-Saves" submenu: campaigns + credentials.
+ * Self-contained form/nonce/save; credentials merge into the shared LMEG_OPTION
+ * blob (never a file). Admin-only; internal, so "Fanloop" wording is fine here.
+ * ====================================================================== */
+add_action('admin_menu', 'lmeg_presave_admin_menu', 31);
+function lmeg_presave_admin_menu() {
+    add_submenu_page('lmeg', 'Pre-Saves', 'Pre-Saves', 'manage_options', 'lmeg-presaves', 'lmeg_presave_admin_page');
+}
+
+function lmeg_presave_admin_page() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $notice = '';
+    $ct = lmeg_presave_table('campaigns');
+
+    if (isset($_POST['lmeg_presave_action']) && check_admin_referer('lmeg_presaves', 'lmeg_presaves_nonce')) {
+        $act = sanitize_key($_POST['lmeg_presave_action']);
+        if ($act === 'save_creds') {
+            $o = get_option(LMEG_OPTION, []);
+            foreach (['presave_apple_music_key_id', 'presave_team_id', 'presave_deezer_app_id'] as $k)
+                $o[$k] = sanitize_text_field(wp_unslash($_POST[$k] ?? ''));
+            foreach (['presave_apple_music_key', 'presave_deezer_secret'] as $k)   // credentials, stored raw
+                $o[$k] = trim((string) wp_unslash($_POST[$k] ?? ''));
+            update_option(LMEG_OPTION, $o);
+            $notice = '<div class="notice notice-success"><p>Pre-save credentials saved.</p></div>';
+        } elseif ($act === 'create_campaign') {
+            $title = sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
+            if ($title === '') {
+                $notice = '<div class="notice notice-error"><p>Give the release a title.</p></div>';
+            } else {
+                $rd = sanitize_text_field(wp_unslash($_POST['release_date'] ?? ''));
+                $rd_sql = null;
+                if ($rd !== '') { $ts = strtotime(str_replace('T', ' ', $rd)); if ($ts) $rd_sql = date('Y-m-d H:i:s', $ts); }
+                $wpdb->insert($ct, [
+                    'title'           => $title,
+                    'artist'          => sanitize_text_field(wp_unslash($_POST['artist'] ?? '')),
+                    'release_date'    => $rd_sql,
+                    'apple_album_id'  => sanitize_text_field(wp_unslash($_POST['apple_album_id'] ?? '')),
+                    'deezer_album_id' => sanitize_text_field(wp_unslash($_POST['deezer_album_id'] ?? '')),
+                    'amazon_url'      => esc_url_raw(wp_unslash($_POST['amazon_url'] ?? '')),
+                    'artwork_url'     => esc_url_raw(wp_unslash($_POST['artwork_url'] ?? '')),
+                    'status'          => 'active',
+                    'created_at'      => current_time('mysql', true),
+                ]);
+                $notice = '<div class="notice notice-success"><p>Campaign created. Add it to a page with the shortcode shown below.</p></div>';
+            }
+        } elseif ($act === 'delete_campaign') {
+            $cid = (int) ($_POST['campaign_id'] ?? 0);
+            if ($cid) {
+                $wpdb->delete($ct, ['id' => $cid]);
+                $wpdb->delete(lmeg_presave_table('saves'), ['campaign_id' => $cid]);
+                $notice = '<div class="notice notice-success"><p>Campaign deleted.</p></div>';
+            }
+        }
+    }
+
+    $s          = get_option(LMEG_OPTION, []);
+    $campaigns  = $wpdb->get_results("SELECT * FROM $ct ORDER BY (status='active') DESC, release_date ASC, id DESC");
+    $val        = function ($k) use ($s) { return esc_attr((string) ($s[$k] ?? '')); };
+    $ta         = function ($k) use ($s) { return esc_textarea((string) ($s[$k] ?? '')); };
+    $dot        = function ($state, $label) {
+        $col = $state === 'ok' ? '#1a7f37' : ($state === 'warn' ? '#bf8700' : '#8c8f94');
+        return '<div style="display:flex;align-items:center;gap:9px;margin:6px 0;"><span style="width:10px;height:10px;border-radius:50%;background:' . $col . ';flex:0 0 auto;"></span><span>' . $label . '</span></div>';
+    };
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Pre-Saves</h1>
+        <?php echo $notice; ?>
+        <p class="description" style="max-width:760px;">Let fans commit an upcoming release to their music library before it drops — it's added automatically on release day. Add credentials below to switch each platform on; until then a platform just isn't offered.</p>
+
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:10px;">
+          <div style="flex:1;min-width:320px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:14px 18px;">
+            <h2 style="margin-top:4px;">Platforms</h2>
+            <?php
+            echo $dot(lmeg_presave_apple_ready() ? 'ok' : 'warn',
+                lmeg_presave_apple_ready() ? '<strong>Apple Music: ready</strong>' : '<strong>Apple Music: off</strong> — add a MusicKit key + Key ID');
+            echo $dot(lmeg_presave_deezer_ready() ? 'ok' : 'warn',
+                lmeg_presave_deezer_ready() ? '<strong>Deezer: ready</strong>' : '<strong>Deezer: off</strong> — add a Deezer App ID + secret');
+            echo $dot('ok', '<strong>Amazon Music: reminder mode</strong> — release-day email + link (no silent auto-add exists)');
+            ?>
+            <p class="description" style="margin-top:12px;">Spotify isn't offered — its API blocks pre-saves for real fanbases. Use a Release Drop for Spotify.</p>
+          </div>
+        </div>
+
+        <h2 style="margin-top:26px;">Campaigns</h2>
+        <?php if (!$campaigns): ?>
+            <p class="description">No campaigns yet — create one below.</p>
+        <?php else: ?>
+            <table class="widefat striped" style="max-width:1000px;">
+                <thead><tr><th>Release</th><th>Date</th><th>Platforms</th><th>Pre-saves</th><th>Shortcode</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($campaigns as $c):
+                    $plats = lmeg_presave_platforms_for($c);
+                    $counts = lmeg_presave_counts($c->id); ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($c->title); ?></strong><?php echo $c->artist ? '<br><span class="description">' . esc_html($c->artist) . '</span>' : ''; ?></td>
+                        <td><?php echo $c->release_date ? esc_html(date_i18n('M j, Y', strtotime($c->release_date))) : '<span class="description">—</span>'; ?></td>
+                        <td><?php echo $plats ? esc_html(implode(', ', array_map('ucfirst', $plats))) : '<span class="description">none configured</span>'; ?></td>
+                        <td><strong><?php echo (int) $counts['total']; ?></strong> <span class="description">(A <?php echo (int) $counts['apple']; ?> · D <?php echo (int) $counts['deezer']; ?> · Az <?php echo (int) $counts['amazon']; ?>)</span></td>
+                        <td><code>[fanloop_presave campaign="<?php echo (int) $c->id; ?>"]</code></td>
+                        <td><form method="post" onsubmit="return confirm('Delete this campaign and its pre-saves?');" style="margin:0;">
+                            <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+                            <input type="hidden" name="lmeg_presave_action" value="delete_campaign" />
+                            <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>" />
+                            <button class="button-link-delete button-link">Delete</button>
+                        </form></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:24px;">
+          <form method="post" style="flex:1;min-width:360px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;">
+            <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+            <input type="hidden" name="lmeg_presave_action" value="create_campaign" />
+            <h2 style="margin-top:2px;">New campaign</h2>
+            <table class="form-table" role="presentation">
+                <tr><th><label for="ps_title">Release title</label></th><td><input name="title" id="ps_title" class="regular-text" required /></td></tr>
+                <tr><th><label>Artist</label></th><td><input name="artist" class="regular-text" placeholder="<?php echo esc_attr(lmeg_presave_settings()['org'] ?: ''); ?>" /></td></tr>
+                <tr><th><label>Release date</label></th><td><input type="datetime-local" name="release_date" /></td></tr>
+                <tr><th><label>Apple album ID</label></th><td><input name="apple_album_id" class="regular-text" placeholder="e.g. 1440913150" />
+                    <p class="description">The numeric id from the Apple Music album URL (…/album/…/<strong>1440913150</strong>).</p></td></tr>
+                <tr><th><label>Deezer album ID</label></th><td><input name="deezer_album_id" class="regular-text" placeholder="e.g. 302127" />
+                    <p class="description">The numeric id from the Deezer album URL (deezer.com/album/<strong>302127</strong>).</p></td></tr>
+                <tr><th><label>Amazon Music URL</label></th><td><input type="url" name="amazon_url" class="regular-text" placeholder="https://music.amazon.com/albums/…" /></td></tr>
+                <tr><th><label>Artwork URL</label></th><td><input type="url" name="artwork_url" class="regular-text" placeholder="https://…/cover.jpg (optional)" /></td></tr>
+            </table>
+            <p><button class="button button-primary">Create campaign</button></p>
+          </form>
+
+          <form method="post" style="flex:1;min-width:360px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;">
+            <?php wp_nonce_field('lmeg_presaves', 'lmeg_presaves_nonce'); ?>
+            <input type="hidden" name="lmeg_presave_action" value="save_creds" />
+            <h2 style="margin-top:2px;">Platform credentials</h2>
+            <h3>Apple Music (MusicKit)</h3>
+            <table class="form-table" role="presentation">
+                <tr><th><label>MusicKit key (.p8)</label></th><td><textarea name="presave_apple_music_key" rows="5" class="large-text code" placeholder="-----BEGIN PRIVATE KEY----- … (or a server path)"><?php echo $ta('presave_apple_music_key'); ?></textarea></td></tr>
+                <tr><th><label>Key ID</label></th><td><input name="presave_apple_music_key_id" class="regular-text" value="<?php echo $val('presave_apple_music_key_id'); ?>" placeholder="10-char MusicKit Key ID" /></td></tr>
+                <tr><th><label>Team ID</label></th><td><input name="presave_team_id" class="regular-text" value="<?php echo $val('presave_team_id'); ?>" placeholder="<?php echo esc_attr(trim((string) ($s['wallet_team_id'] ?? '')) ?: '10-char Apple Team ID'); ?>" />
+                    <p class="description">Leave blank to reuse your Wallet Team ID.</p></td></tr>
+            </table>
+            <h3>Deezer</h3>
+            <table class="form-table" role="presentation">
+                <tr><th><label>App ID</label></th><td><input name="presave_deezer_app_id" class="regular-text" value="<?php echo $val('presave_deezer_app_id'); ?>" /></td></tr>
+                <tr><th><label>Secret</label></th><td><input name="presave_deezer_secret" class="regular-text" value="<?php echo $val('presave_deezer_secret'); ?>" /></td></tr>
+            </table>
+            <p class="description">Deezer redirect URI (add this to your Deezer app): <code style="word-break:break-all;"><?php echo esc_html(lmeg_presave_deezer_redirect_uri()); ?></code></p>
+            <p><button class="button button-primary">Save credentials</button></p>
+          </form>
+        </div>
+    </div>
+    <?php
+}
