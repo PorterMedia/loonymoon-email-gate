@@ -195,7 +195,9 @@ function lmeg_presave_deezer_auth_url($campaign_id) {
     return 'https://connect.deezer.com/oauth/auth.php?' . http_build_query([
         'app_id'       => $s['deezer_app_id'],
         'redirect_uri' => lmeg_presave_deezer_redirect_uri(),
-        'perms'        => 'manage_library,offline_access',
+        // basic_access + email → the callback can read the fan's email for the CRM;
+        // manage_library → add the album at release; offline_access → token persists.
+        'perms'        => 'basic_access,email,manage_library,offline_access',
         'state'        => (string) ((int) $campaign_id),
     ]);
 }
@@ -389,4 +391,96 @@ function lmeg_presave_admin_page() {
         </div>
     </div>
     <?php
+}
+
+/* =========================================================================
+ * ITERATION 3 — fan-facing widget: [fanloop_presave campaign="X"].
+ * WHITE-LABEL — fans see the artist, never "Fanloop". Renders artwork + the
+ * platform buttons that are actually available for the campaign. Apple uses
+ * MusicKit JS (fan authorizes → we store a Music-User-Token); Deezer is an OAuth
+ * connect; Amazon is an email capture + release-day reminder. The connect
+ * endpoints (?lmeg_presave=…) are wired in iteration 4.
+ * ====================================================================== */
+add_shortcode('fanloop_presave', 'lmeg_presave_shortcode');
+function lmeg_presave_shortcode($atts = []) {
+    $a = shortcode_atts(['campaign' => 0], $atts, 'fanloop_presave');
+    $c = lmeg_presave_get_campaign((int) $a['campaign']);
+    if (!$c) return '';
+    $plats = lmeg_presave_platforms_for($c);
+    if (!$plats) return '';   // nothing configured yet → render nothing
+
+    static $inst = 0; $inst++;
+    $uid    = 'flps' . $inst;
+    $set    = lmeg_presave_settings();
+    $artist = $c->artist !== '' ? $c->artist : ($set['org'] ?: '');
+    $accent = (function_exists('lmeg_wallet_settings') && preg_match('/^#[0-9a-fA-F]{6}$/', (string) lmeg_wallet_settings()['label'])) ? lmeg_wallet_settings()['label'] : '#E15FA8';
+    $when   = $c->release_date ? date_i18n('F j', strtotime($c->release_date)) : '';
+    $devtoken  = in_array('apple', $plats, true)  ? lmeg_presave_apple_dev_token() : '';
+    $deezerUrl = in_array('deezer', $plats, true) ? lmeg_presave_deezer_auth_url($c->id) : '';
+    $appleEp   = esc_url(add_query_arg('lmeg_presave', 'apple_store', home_url('/')));
+    $amazonEp  = esc_url(add_query_arg('lmeg_presave', 'amazon', home_url('/')));
+
+    // Platform button (shared look). Apple/Amazon are JS actions; Deezer is a link.
+    $btn = function ($label, $svg, $extra = '') use ($accent) {
+        return '<button type="button" ' . $extra . ' style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;'
+            . 'padding:12px 16px;border:0;border-radius:12px;background:#fff;color:#17141f;font:700 15px/1 -apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;'
+            . 'cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.14);margin-top:9px">' . $svg . esc_html($label) . '</button>';
+    };
+    $ic = [
+        'apple'  => '<svg width="18" height="18" viewBox="0 0 24 24" fill="#FA243C" aria-hidden="true"><path d="M23.99 6.12c0-.5-.05-1-.14-1.48a4.9 4.9 0 0 0-.6-1.62A4.68 4.68 0 0 0 20.98.44 6.6 6.6 0 0 0 18.86.06C18.36.01 18.2 0 16.9 0H7.1C5.8 0 5.64.01 5.14.06c-.74.05-1.44.2-2.12.38A4.68 4.68 0 0 0 .75 3.02a4.9 4.9 0 0 0-.6 1.62C.05 5.12 0 5.62 0 6.12v11.76c0 .5.05 1 .15 1.48.13.6.34 1.14.6 1.62.53.94 1.32 1.73 2.27 2.26.68.18 1.38.33 2.12.38.5.05.66.06 1.96.06h9.8c1.3 0 1.46-.01 1.96-.06a6.6 6.6 0 0 0 2.12-.38 4.68 4.68 0 0 0 2.27-2.26c.26-.48.47-1.02.6-1.62.1-.48.15-.98.15-1.48V6.12zM17.3 8.9v6.28c0 .55-.04.9-.36 1.3-.6.76-1.94.9-2.62.28-.66-.6-.5-1.66.32-2.12.4-.22.86-.26 1.32-.32.28-.04.42-.16.42-.46V9.42l-5.2 1.06v5.9c0 .55-.04.9-.36 1.3-.6.76-1.94.9-2.62.28-.66-.6-.5-1.66.32-2.12.4-.22.86-.26 1.32-.32.28-.04.42-.16.42-.46V8.2c0-.44.2-.7.62-.8l6.06-1.22c.5-.1.76.12.76.62l.02 2.1z"/></svg>',
+        'deezer' => '<svg width="18" height="15" viewBox="0 0 24 18" aria-hidden="true"><rect x="19" y="0" width="5" height="3" fill="#40AB5D"/><rect x="19" y="4.6" width="5" height="3" fill="#F90"/><rect x="12.6" y="4.6" width="5" height="3" fill="#FF5723"/><rect x="19" y="9.2" width="5" height="3" fill="#EF3E3F"/><rect x="12.6" y="9.2" width="5" height="3" fill="#5F358B"/><rect x="6.3" y="9.2" width="5" height="3" fill="#2A9DE1"/><rect x="19" y="13.8" width="5" height="3" fill="#333"/><rect x="12.6" y="13.8" width="5" height="3" fill="#357DED"/><rect x="6.3" y="13.8" width="5" height="3" fill="#41B85C"/><rect x="0" y="13.8" width="5" height="3" fill="#FDCA00"/></svg>',
+        'amazon' => '<svg width="18" height="18" viewBox="0 0 24 24" fill="#25D1DA" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 5.5 5 3.5-5 3.5v-7z"/></svg>',
+    ];
+
+    ob_start(); ?>
+    <div id="<?php echo esc_attr($uid); ?>" class="flp-presave" data-c="<?php echo (int) $c->id; ?>"
+         style="max-width:420px;border-radius:18px;overflow:hidden;background:#141019;color:#fff;box-shadow:0 14px 40px rgba(0,0,0,.28);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <?php if ($c->artwork_url): ?><img src="<?php echo esc_url($c->artwork_url); ?>" alt="" style="display:block;width:100%;aspect-ratio:1;object-fit:cover"><?php endif; ?>
+      <div style="padding:20px">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:<?php echo esc_attr($accent); ?>"><?php echo $when ? 'Out ' . esc_html($when) : 'Pre-save'; ?></div>
+        <div style="font-size:22px;font-weight:800;margin-top:4px;line-height:1.15"><?php echo esc_html($c->title); ?></div>
+        <?php if ($artist): ?><div style="font-size:14px;color:#c9c6d4;margin-top:2px"><?php echo esc_html($artist); ?></div><?php endif; ?>
+        <p style="font-size:13.5px;color:#b7b3c4;margin:12px 0 4px">Pre-save it now — it lands in your library the moment it drops.</p>
+
+        <?php if (in_array('apple', $plats, true) || in_array('amazon', $plats, true)): ?>
+          <input type="email" class="flp-ps-email" placeholder="you@email.com" autocomplete="email"
+            style="width:100%;box-sizing:border-box;margin-top:10px;padding:11px 13px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.06);color:#fff;font-size:14px">
+        <?php endif; ?>
+
+        <div class="flp-ps-btns">
+          <?php if (in_array('apple', $plats, true)) echo $btn('Pre-save on Apple Music', $ic['apple'], 'data-plat="apple"'); ?>
+          <?php if (in_array('deezer', $plats, true)) echo '<a href="' . esc_url($deezerUrl) . '" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;background:#fff;color:#17141f;font:700 15px/1 -apple-system,sans-serif;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,.14);margin-top:9px">' . $ic['deezer'] . 'Pre-save on Deezer</a>'; ?>
+          <?php if (in_array('amazon', $plats, true)) echo $btn('Pre-save on Amazon Music', $ic['amazon'], 'data-plat="amazon"'); ?>
+        </div>
+        <div class="flp-ps-done" style="display:none;text-align:center;padding:16px 0 4px">
+          <div style="font-size:34px;color:<?php echo esc_attr($accent); ?>">✓</div>
+          <div style="font-weight:700;margin-top:4px">You're pre-saved</div>
+          <div style="font-size:13px;color:#b7b3c4;margin-top:2px">We'll add it for you on release day.</div>
+        </div>
+        <div class="flp-ps-err" style="display:none;color:#ff9b9b;font-size:13px;margin-top:8px"></div>
+      </div>
+    </div>
+    <?php if ($devtoken): ?>
+    <script>window.LMEG_MK=window.LMEG_MK||<?php echo wp_json_encode(['token' => $devtoken, 'name' => $artist ?: 'Pre-save']); ?>;
+    (function(){function cfg(){try{MusicKit.configure({developerToken:LMEG_MK.token,app:{name:LMEG_MK.name,build:'1'}});}catch(e){}}
+    if(window.MusicKit&&MusicKit.configure)cfg();else document.addEventListener('musickitloaded',cfg);})();</script>
+    <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
+    <?php endif; ?>
+    <script>(function(){var root=document.getElementById(<?php echo wp_json_encode($uid); ?>);if(!root||root.dataset.wired)return;root.dataset.wired='1';
+      var C=root.getAttribute('data-c'),emailEl=root.querySelector('.flp-ps-email'),done=root.querySelector('.flp-ps-done'),btns=root.querySelector('.flp-ps-btns'),err=root.querySelector('.flp-ps-err');
+      function email(){return emailEl?emailEl.value.trim():'';}
+      function fail(m){err.textContent=m;err.style.display='block';}
+      function win(){btns.style.display='none';if(emailEl)emailEl.style.display='none';err.style.display='none';done.style.display='block';}
+      function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();});}
+      root.addEventListener('click',function(e){var b=e.target.closest('[data-plat]');if(!b)return;var plat=b.getAttribute('data-plat');err.style.display='none';
+        if((plat==='apple'||plat==='amazon')&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email())){fail('Enter your email so we can add it for you.');if(emailEl)emailEl.focus();return;}
+        if(plat==='amazon'){post(<?php echo wp_json_encode($amazonEp); ?>,{c:C,email:email()}).then(function(d){d&&d.ok?win():fail((d&&d.msg)||'Something went wrong.');}).catch(function(){fail('Network error.');});return;}
+        if(plat==='apple'){b.disabled=true;var mk;try{mk=MusicKit.getInstance();}catch(x){b.disabled=false;fail('Apple Music is still loading — try again in a moment.');return;}
+          mk.authorize().then(function(tok){return post(<?php echo wp_json_encode($appleEp); ?>,{c:C,token:tok||mk.musicUserToken,email:email()});}).then(function(d){d&&d.ok?win():fail((d&&d.msg)||'Could not save — try again.');}).catch(function(){b.disabled=false;fail('Apple Music authorization was cancelled.');});}
+      });
+      // Returning from a Deezer connect (?lmeg_presave_ok=deezer) → show success.
+      try{if(/[?&]lmeg_presave_ok=/.test(location.search))win();}catch(e){}
+    })();</script>
+    <?php
+    return ob_get_clean();
 }
