@@ -118,10 +118,43 @@ function lmeg_wallet_pem($v) {
  * Small filesystem + colour helpers.
  * ---------------------------------------------------------------------- */
 function lmeg_wallet_tmpdir() {
-    $base = function_exists('sys_get_temp_dir') ? sys_get_temp_dir() : '/tmp';
-    $d = $base . '/lmeg-wallet';
-    if (!is_dir($d)) @mkdir($d, 0700, true);
-    return $d;
+    // Prefer WP's temp dir (respects WP_TEMP_DIR + open_basedir on managed hosts
+    // like Kinsta), then the system temp, then the uploads dir — the first that's
+    // actually writable wins, so signing doesn't fail on a locked-down /tmp.
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    $bases = [];
+    if (function_exists('get_temp_dir'))     $bases[] = rtrim((string) get_temp_dir(), '/\\');
+    if (function_exists('sys_get_temp_dir')) $bases[] = sys_get_temp_dir();
+    if (function_exists('wp_upload_dir'))    { $u = wp_upload_dir(); if (!empty($u['basedir'])) $bases[] = $u['basedir']; }
+    $bases[] = '/tmp';
+    foreach ($bases as $base) {
+        if (!$base) continue;
+        $d = $base . '/lmeg-wallet';
+        if (!is_dir($d)) @mkdir($d, 0700, true);
+        if (is_dir($d) && is_writable($d)) return $cached = $d;
+    }
+    return $cached = (($bases[0] ?? '/tmp') . '/lmeg-wallet');
+}
+/** Drain the OpenSSL error queue into a short diagnostic string. */
+function lmeg_wallet_ssl_err() {
+    $msgs = [];
+    while (($e = openssl_error_string()) !== false) $msgs[] = $e;
+    return $msgs ? implode('; ', array_slice($msgs, -3)) : 'no OpenSSL detail';
+}
+/** OpenSSL configargs with a guaranteed config file — managed hosts often lack one. */
+function lmeg_wallet_openssl_config() {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $args = ['digest_alg' => 'sha256'];
+    $env = getenv('OPENSSL_CONF');
+    if ($env && @is_readable($env)) return $cache = ($args + ['config' => $env]);
+    $cnf = lmeg_wallet_tmpdir() . '/openssl.cnf';
+    if (!is_file($cnf)) {
+        @file_put_contents($cnf, "[req]\ndistinguished_name = dn\nprompt = no\n[dn]\nCN = Fanloop Dev Pass Signer\n");
+    }
+    if (@is_readable($cnf)) $args['config'] = $cnf;
+    return $cache = $args;
 }
 function lmeg_wallet_rrmdir($dir) {
     if (!is_dir($dir)) return;
@@ -334,26 +367,52 @@ function lmeg_wallet_smime_to_der($smime) {
     }
     return $b64 === '' ? '' : (string) base64_decode($b64);
 }
-/** A cached throwaway self-signed signer for dev mode (no Apple cert configured). */
+/**
+ * A cached throwaway self-signed signer for dev mode (no Apple cert configured).
+ * Returns ['cert','key'] or ['error' => diagnostic]. Passes an explicit OpenSSL
+ * config so key/CSR generation works on hosts without a system openssl.cnf.
+ */
 function lmeg_wallet_dev_signer() {
     $dir   = lmeg_wallet_tmpdir();
     $certf = $dir . '/dev_signer.pem';
     $keyf  = $dir . '/dev_key.pem';
     if (is_file($certf) && is_file($keyf)) {
-        return ['cert' => (string) file_get_contents($certf), 'key' => (string) file_get_contents($keyf)];
+        $c = (string) file_get_contents($certf);
+        $k = (string) file_get_contents($keyf);
+        if ($c !== '' && $k !== '') return ['cert' => $c, 'key' => $k];
     }
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-    $csr = openssl_csr_new(['commonName' => 'Fanloop Dev Pass Signer', 'organizationName' => 'Fanloop Dev'], $key);
-    $x   = openssl_csr_sign($csr, null, $key, 3650);
+    if (!function_exists('openssl_csr_new')) return ['error' => 'OpenSSL CSR functions unavailable on this host'];
+    $cfg = lmeg_wallet_openssl_config();
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA] + $cfg);
+    if (!$key) return ['error' => 'key generation failed (' . lmeg_wallet_ssl_err() . ')'];
+    $csr = openssl_csr_new(['commonName' => 'Fanloop Dev Pass Signer', 'organizationName' => 'Fanloop Dev'], $key, $cfg);
+    if (!$csr) return ['error' => 'CSR generation failed (' . lmeg_wallet_ssl_err() . ')'];
+    $x = openssl_csr_sign($csr, null, $key, 3650, $cfg);
+    if (!$x) return ['error' => 'self-sign failed (' . lmeg_wallet_ssl_err() . ')'];
+    $certPem = ''; $keyPem = '';
     openssl_x509_export($x, $certPem);
-    openssl_pkey_export($key, $keyPem);
+    openssl_pkey_export($key, $keyPem, null, $cfg);
+    if ($certPem === '' || $keyPem === '') return ['error' => 'PEM export failed (' . lmeg_wallet_ssl_err() . ')'];
     @file_put_contents($certf, $certPem);
     @file_put_contents($keyf, $keyPem);
     return ['cert' => $certPem, 'key' => $keyPem];
 }
-/** Sign manifest.json → raw DER PKCS#7 detached signature ('' on failure). */
+/**
+ * Sign manifest.json → raw DER PKCS#7 detached signature ('' on failure).
+ * On failure, a diagnostic is left in $GLOBALS['lmeg_wallet_sign_err'] so the
+ * caller can surface the real reason instead of a generic "signing failed".
+ */
 function lmeg_wallet_sign($manifestPath) {
+    $GLOBALS['lmeg_wallet_sign_err'] = '';
     $dir = lmeg_wallet_tmpdir();
+    if (!is_dir($dir) || !is_writable($dir)) {
+        $GLOBALS['lmeg_wallet_sign_err'] = 'temp dir not writable: ' . $dir;
+        return '';
+    }
+    if (!function_exists('openssl_pkcs7_sign')) {
+        $GLOBALS['lmeg_wallet_sign_err'] = 'openssl_pkcs7_sign() is disabled on this host';
+        return '';
+    }
     $wwdrf = null; $keyf = null;
     if (lmeg_wallet_apple_ready()) {
         $c = lmeg_wallet_settings();
@@ -363,7 +422,8 @@ function lmeg_wallet_sign($manifestPath) {
         $privKey  = ['file://' . $certf, $c['cert_pass']];
         $extra    = 'file://' . $wwdrf;
     } else {
-        $dev   = lmeg_wallet_dev_signer();
+        $dev = lmeg_wallet_dev_signer();
+        if (isset($dev['error'])) { $GLOBALS['lmeg_wallet_sign_err'] = 'dev signer: ' . $dev['error']; return ''; }
         $certf = tempnam($dir, 'crt'); file_put_contents($certf, $dev['cert']);
         $keyf  = tempnam($dir, 'key'); file_put_contents($keyf, $dev['key']);
         $signCert = 'file://' . $certf;
@@ -372,7 +432,9 @@ function lmeg_wallet_sign($manifestPath) {
     }
     $sigf = tempnam($dir, 'sig');
     $ok = @openssl_pkcs7_sign($manifestPath, $sigf, $signCert, $privKey, [], PKCS7_BINARY | PKCS7_DETACHED, $extra);
+    if (!$ok) $GLOBALS['lmeg_wallet_sign_err'] = 'openssl_pkcs7_sign failed (' . lmeg_wallet_ssl_err() . ')';
     $der = ($ok && is_file($sigf)) ? lmeg_wallet_smime_to_der((string) file_get_contents($sigf)) : '';
+    if ($der === '' && $GLOBALS['lmeg_wallet_sign_err'] === '') $GLOBALS['lmeg_wallet_sign_err'] = 'empty signature';
     @unlink($sigf); @unlink($certf);
     if ($keyf)  @unlink($keyf);
     if ($wwdrf) @unlink($wwdrf);
@@ -396,7 +458,7 @@ function lmeg_wallet_build_pkpass(array $passJson) {
         file_put_contents($work . '/manifest.json', wp_json_encode($manifest, JSON_UNESCAPED_SLASHES));
 
         $der = lmeg_wallet_sign($work . '/manifest.json');
-        if ($der === '') return ['error' => 'signing failed (check OpenSSL / cert)'];
+        if ($der === '') return ['error' => 'signing failed — ' . (($GLOBALS['lmeg_wallet_sign_err'] ?? '') ?: 'check OpenSSL / cert')];
         file_put_contents($work . '/signature', $der);
 
         $zipPath = $work . '.pkpass';
