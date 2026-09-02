@@ -5516,12 +5516,13 @@ function lmeg_admin_overview() {
         if ($t30) { $camp = (int) $t30->campaign_cents; $camp_orders = (int) $t30->campaign_orders; }
     }
 
-    // Spotify
+    // Spotify — use a SEPARATE var; do NOT clobber the cached $ov bundle that the
+    // signup sparkline / fan types / countries / last-broadcast reads below still need.
     $sp = null; $sp_delta = null;
     if (function_exists('lmeg_spotify_configured') && lmeg_spotify_configured()) {
-        $ov = lmeg_spotify_overview();
-        if (!is_wp_error($ov)) {
-            $sp = $ov;
+        $spov = lmeg_spotify_overview();
+        if (!is_wp_error($spov)) {
+            $sp = $spov;
             $snaps = function_exists('lmeg_spotify_snapshots') ? lmeg_spotify_snapshots(30) : [];
             if (count($snaps) >= 2) $sp_delta = (int) end($snaps)->followers - (int) reset($snaps)->followers;
         }
