@@ -1284,7 +1284,9 @@ function lmeg_wallet_admin_page() {
             update_option(LMEG_OPTION, $o);
             $notice = '<div class="notice notice-success"><p>Wallet settings saved.</p></div>';
         } elseif ($_POST['lmeg_wallet_action'] === 'test') {
-            $r = lmeg_wallet_broadcast('Test from Fanloop 🎫');
+            // Unique text each tap — iOS only shows a lock-screen banner when a pass
+            // field VALUE actually changes, so a repeated identical test pushes silently.
+            $r = lmeg_wallet_broadcast('Test push ✓ ' . current_time('g:i:s a'));
             $extra = !empty($r['dev']) ? ' (APNs not configured — no push actually sent)' : '';
             $notice = '<div class="notice notice-info"><p>Test: updated ' . (int) ($r['passes'] ?? 0) . ' pass(es), ' . (int) ($r['devices'] ?? 0) . ' device(s)' . esc_html($extra) . '.</p></div>';
         } elseif ($_POST['lmeg_wallet_action'] === 'register_google') {
