@@ -5731,10 +5731,107 @@ function lmeg_admin_smartlinks() {
  * Overview — the command-center landing page
  * ------------------------------------------------------------------------- */
 
+/**
+ * Overview — demo preview (?demo=1). Headline KPIs + a VISUAL version of the
+ * Monday brief (the weekly owner digest from lmeg_send_owner_digest), so the
+ * dashboard shows a full, established fan base for a walkthrough. Touches no DB.
+ */
+function lmeg_render_demo_overview() {
+    lmeg_broadcast_styles();
+    $kpi = function ($label, $value, $hint, $icon, $color) {
+        return '<div class="lmeg-stat">'
+            . '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">' . esc_html($label) . '</div>' . lmeg_icon_badge($icon, $color, 26) . '</div>'
+            . '<div class="lmeg-stat__value">' . esc_html($value) . '</div>'
+            . '<div class="lmeg-stat__hint">' . esc_html($hint) . '</div></div>';
+    };
+    // A single brief "point" tile.
+    $pt = function ($emoji, $label, $value, $sub = '') {
+        return '<div style="display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:12px 14px;">'
+            . '<span style="font-size:20px;line-height:1.1;">' . $emoji . '</span>'
+            . '<div style="min-width:0;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0b4;font-weight:700;">' . esc_html($label) . '</div>'
+            . '<div style="font-size:17px;font-weight:800;color:#f4f2f7;line-height:1.25;">' . esc_html($value)
+            . ($sub !== '' ? ' <span style="font-size:12px;color:#8b90a0;font-weight:500;">' . esc_html($sub) . '</span>' : '') . '</div></div></div>';
+    };
+    $types = [
+        ['Superfan', '#F59E0B', 6, '1,806'], ['Engaged', '#34D399', 35, '10,536'],
+        ['Casual', '#7C6CF6', 38, '11,439'], ['Dormant', '#8B90A0', 21, '6,321'],
+    ];
+    $cities = [['Toronto', '6,240'], ['Los Angeles', '2,180'], ['Hamilton', '1,010'], ['Washington', '890'], ['Philadelphia', '720'], ['Atlanta', '640']];
+    ?>
+    <div class="wrap">
+        <h1>Overview</h1>
+        <?php echo lmeg_demo_banner('lmeg-overview'); ?>
+        <div class="lmeg-bc-kpis" style="max-width:1040px;">
+            <?php
+            echo $kpi('Active list', '30,102', '+214 this week', 'users', '#7C6CF6');
+            echo $kpi('Members',     '214',    '$1,180 MRR',      'heart', '#F59E0B');
+            echo $kpi('Revenue · 30d','$9,240', '142 orders',      'dollar', '#34D399');
+            echo $kpi('Spotify',     '51,412', '+1,594 / 30d',    'spotify', '#1DB954');
+            ?>
+        </div>
+
+        <!-- Monday brief, visual -->
+        <div style="max-width:1040px;background:linear-gradient(160deg,#1c2030,#141826);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:22px 24px;margin:6px 0 22px;box-shadow:0 20px 50px rgba(0,0,0,.28);">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="width:40px;height:40px;border-radius:11px;background:linear-gradient(120deg,#d05fa2,#7c6cf6);display:grid;place-items:center;font-size:19px;">✉️</span>
+                <div>
+                    <div style="font-size:17px;font-weight:800;color:#f4f2f7;">Your week — the Monday brief</div>
+                    <div style="font-size:12.5px;color:#9aa0b4;">The one-email recap that lands in your inbox every Monday, 8am. No dashboard visit needed.</div>
+                </div>
+                <span style="margin-left:auto;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#241a0a;background:#E7B15A;padding:4px 11px;border-radius:999px;">Sample</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0 0;">
+                <?php
+                echo $pt('🌱', 'New fans · 7d',       '+214', '−12 unsubscribed');
+                echo $pt('👥', 'Active list',          '30,102');
+                echo $pt('💸', 'Shop revenue · 7d',    '$2,480', '$1,640 email-attributed');
+                echo $pt('🏅', 'Best send',            'Ragdoll is out', '61% opens');
+                echo $pt('📍', 'New fans from',        'Toronto 48', '· LA 22 · Hamilton 14');
+                echo $pt('🎧', 'Spotify · 7d',         '+1,594', 'followers');
+                ?>
+            </div>
+            <div style="margin-top:16px;padding:14px 16px;background:rgba(208,95,162,.10);border-left:3px solid #d05fa2;border-radius:0 10px 10px 0;color:#ecdfe8;font-size:14px;line-height:1.6;font-style:italic;">
+                <span style="font-style:normal;font-weight:800;color:#f4b9dc;display:inline-flex;align-items:center;gap:6px;margin-right:6px;"><?php echo lmeg_icon_badge('sparkle', '#d05fa2', 18); ?>Monday read</span>
+                Strong week — <strong style="color:#fff;">Ragdoll</strong> pulled your best open rate since the spring (61%) and added 214 fans, with Toronto and Hamilton overperforming again. Most of the <strong style="color:#fff;">$2,480</strong> in sales came from your Inner Circle. One move this week: send the <strong style="color:#fff;">Toronto + LA</strong> segment a presale nudge before the shows go public — that list opens at nearly double your average.
+            </div>
+            <div style="margin-top:14px;font-size:12.5px;color:#8b90a0;">This is the email that lands in your inbox every Monday. Turn it on under <strong style="color:#c9cede;">Settings → Monday digest</strong>.</div>
+        </div>
+
+        <!-- Fan types + top cities -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1040px;">
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label" style="margin-bottom:12px;">Who your fans are</div>
+                <?php foreach ($types as $t) : ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px;">
+                        <span style="width:74px;color:#c9cede;">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?php echo esc_attr($t[1]); ?>;margin-right:6px;"></span><?php echo esc_html($t[0]); ?></span>
+                        <span style="flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,.09);overflow:hidden;"><span style="display:block;height:100%;width:<?php echo (int) $t[2]; ?>%;background:<?php echo esc_attr($t[1]); ?>;"></span></span>
+                        <span style="width:64px;text-align:right;color:#e7e9f0;font-variant-numeric:tabular-nums;"><?php echo esc_html($t[3]); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <div class="lmeg-stat">
+                <div class="lmeg-stat__label" style="margin-bottom:12px;">Top cities</div>
+                <?php foreach ($cities as $i => $c) : ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px;">
+                        <span style="width:20px;color:#8b90a0;font-variant-numeric:tabular-nums;"><?php echo $i + 1; ?></span>
+                        <span style="flex:1;color:#e7e9f0;"><?php echo esc_html($c[0]); ?></span>
+                        <span style="color:#c9cede;font-variant-numeric:tabular-nums;"><?php echo esc_html($c[1]); ?></span>
+                    </div>
+                <?php endforeach; ?>
+                <div style="margin-top:6px;font-size:12px;color:#8b90a0;">From your real footprint — 123 cities across US &amp; Canada.</div>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
 function lmeg_admin_overview() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
     $subs = $wpdb->prefix . LMEG_TABLE;
+
+    if (!empty($_GET['demo'])) { lmeg_render_demo_overview(); return; }
 
     // All the dashboard's DB aggregations in ONE 3-minute cached bundle (headline
     // counts, MRR, sparkline, fan types, countries, last-broadcast open/click).
@@ -5808,6 +5905,7 @@ function lmeg_admin_overview() {
     ?>
     <div class="wrap">
         <h1>Overview</h1>
+        <?php echo lmeg_demo_preview_button('lmeg-overview'); ?>
 
         <!-- headline KPIs -->
         <div class="lmeg-ov-kpis">
