@@ -109,6 +109,98 @@ function lmeg_release_by_apple_id($apple_id) {
     return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE apple_id = %d LIMIT 1", $apple_id));
 }
 
+/* -------------------------------------------------------------------------
+ * Multi-service streaming links — from the artist + title, resolve Spotify
+ * and Deezer to sit alongside the Apple Music link, so every release page
+ * shows a button per service. Cached per (artist|title).
+ * ---------------------------------------------------------------------- */
+
+/** Deezer URL (keyless public API) for artist+title, or ''. Tries an album match
+ *  first (albums/EPs), then falls back to a track search (singles) → its album. */
+function lmeg_deezer_album_url($artist, $title) {
+    $artist = trim((string) $artist); $title = trim((string) $title);
+    if ($artist === '' || $title === '') return '';
+    $match = function ($name) use ($artist) {
+        $name = (string) $name;
+        return $name !== '' && (stripos($name, $artist) !== false || stripos($artist, $name) !== false);
+    };
+    $get = function ($url) {
+        $res = wp_remote_get($url, ['timeout' => 8, 'headers' => ['Accept' => 'application/json']]);
+        if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return [];
+        $d = json_decode(wp_remote_retrieve_body($res), true);
+        return $d['data'] ?? [];
+    };
+    // 1) Album match (albums / EPs).
+    foreach ($get('https://api.deezer.com/search/album?limit=5&q=' . rawurlencode('artist:"' . $artist . '" album:"' . $title . '"')) as $al) {
+        if (!empty($al['link']) && $match($al['artist']['name'] ?? '')) return (string) $al['link'];
+    }
+    // 2) Track fallback (singles) → the track's album, else the track link.
+    foreach ($get('https://api.deezer.com/search?limit=8&q=' . rawurlencode($artist . ' ' . $title)) as $tr) {
+        if (!$match($tr['artist']['name'] ?? '')) continue;
+        if (!empty($tr['album']['link'])) return (string) $tr['album']['link'];
+        if (!empty($tr['link']))          return (string) $tr['link'];
+    }
+    return '';
+}
+
+/** Spotify album URL via the site's Spotify app (client credentials), or ''. */
+function lmeg_spotify_album_url($artist, $title) {
+    $artist = trim((string) $artist); $title = trim((string) $title);
+    if ($artist === '' || $title === '') return '';
+    if (!function_exists('lmeg_spotify_configured') || !lmeg_spotify_configured()) return '';
+    $r = lmeg_spotify_get('/search', ['q' => $artist . ' ' . $title, 'type' => 'album', 'limit' => 5]);
+    if (is_wp_error($r) || !is_array($r)) return '';
+    foreach (($r['albums']['items'] ?? []) as $al) {
+        $an = $al['artists'][0]['name'] ?? '';
+        if (!empty($al['external_urls']['spotify']) && stripos($an, $artist) !== false) return (string) $al['external_urls']['spotify'];
+    }
+    return '';
+}
+
+/** Streaming-links text (Spotify / Apple Music / Deezer) for a release — keeps
+ *  any existing links, only fetching what's missing. Order: Spotify, Apple, Deezer. */
+function lmeg_release_streaming_links($title, $apple_url = '', $existing = '') {
+    $artist = function_exists('lmeg_artist') ? lmeg_artist() : '';
+    $have = [];
+    foreach (preg_split('/\r\n|\r|\n/', (string) $existing) as $line) {
+        if (strpos($line, '|') !== false) {
+            list($l, $u) = array_map('trim', explode('|', $line, 2));
+            if ($l !== '' && $u !== '') $have[$l] = $u;
+        }
+    }
+    if ($apple_url !== '' && empty($have['Apple Music'])) $have['Apple Music'] = $apple_url;
+    if ($artist !== '') {
+        if (empty($have['Spotify'])) { $s = lmeg_spotify_album_url($artist, $title); if ($s) $have['Spotify'] = $s; }
+        if (empty($have['Deezer']))  { $z = lmeg_deezer_album_url($artist, $title);   if ($z) $have['Deezer']  = $z; }
+    }
+    $out = [];
+    foreach (['Spotify', 'Apple Music', 'Deezer'] as $l) if (!empty($have[$l])) { $out[] = $l . ' | ' . $have[$l]; unset($have[$l]); }
+    foreach ($have as $l => $u) $out[] = $l . ' | ' . $u;
+    return implode("\n", $out);
+}
+
+/** Backfill: add Spotify + Deezer links to every release (idempotent), and
+ *  re-sync each drop so the release page buttons update. Returns count updated. */
+function lmeg_release_refresh_links() {
+    global $wpdb;
+    $t = lmeg_releases_table();
+    $updated = 0;
+    foreach (lmeg_releases_all(500) as $r) {
+        $apple = '';
+        foreach (preg_split('/\r\n|\r|\n/', (string) $r->links) as $ln) {
+            if (stripos($ln, 'apple') !== false && strpos($ln, '|') !== false) $apple = trim(explode('|', $ln, 2)[1]);
+        }
+        $new = lmeg_release_streaming_links($r->title, $apple, (string) $r->links);
+        if ($new !== '' && $new !== (string) $r->links) {
+            $wpdb->update($t, ['links' => $new, 'updated_at' => current_time('mysql')], ['id' => $r->id]);
+            $rel = lmeg_release_get($r->id);
+            if ($rel && !empty($rel->drop_id)) lmeg_release_sync_drop($rel);
+            $updated++;
+        }
+    }
+    return $updated;
+}
+
 function lmeg_release_status_label($s) {
     $m = ['draft' => 'Draft', 'scheduled' => 'Scheduled', 'released' => 'Released'];
     return $m[$s] ?? ucfirst((string) $s);
@@ -172,13 +264,16 @@ function lmeg_releases_admin_page() {
 
     // Save (create / edit the release record).
     $notice = '';
-    if (isset($_POST['lmeg_release_action']) && check_admin_referer('lmeg_release_save', 'lmeg_release_nonce')) {
-        if ($_POST['lmeg_release_action'] === 'save') {
-            $id = lmeg_release_save_from_post();
-            $notice = '<div class="notice notice-success"><p>Release saved.</p></div>';
-            // fall through to the list so the saved row is visible
-            $_GET = [];
-        }
+    if (($_POST['lmeg_release_action'] ?? '') === 'save' && check_admin_referer('lmeg_release_save', 'lmeg_release_nonce')) {
+        lmeg_release_save_from_post();
+        $notice = '<div class="notice notice-success"><p>Release saved.</p></div>';
+        $_GET = [];
+    }
+    // Backfill Spotify + Deezer links across every release.
+    if (($_POST['lmeg_release_action'] ?? '') === 'refresh_links' && check_admin_referer('lmeg_refresh_links', 'lmeg_refresh_nonce')) {
+        $n = lmeg_release_refresh_links();
+        $notice = '<div class="notice notice-success"><p>Added streaming links to <strong>' . (int) $n . '</strong> release(s) — Spotify &amp; Deezer now sit alongside Apple Music.</p></div>';
+        $_GET = [];
     }
 
     // Catalog import — "find" re-renders the import screen; "import" builds them.
@@ -207,6 +302,15 @@ function lmeg_releases_admin_page() {
     }
     echo '</h1>';
     echo $notice;
+
+    if ($action !== 'new' && $action !== 'import' && !$edit) {
+        echo '<form method="post" style="margin:-4px 0 14px;">';
+        wp_nonce_field('lmeg_refresh_links', 'lmeg_refresh_nonce');
+        echo '<input type="hidden" name="lmeg_release_action" value="refresh_links">';
+        echo '<button class="button" onclick="return confirm(\'Fetch Spotify + Deezer links for every release? This can take a moment.\');">&#8635; Refresh streaming links</button>';
+        echo '<span class="description" style="margin-left:8px;">Adds Spotify &amp; Deezer buttons alongside Apple Music on every release.</span>';
+        echo '</form>';
+    }
 
     if ($action === 'import') {
         lmeg_releases_render_import();
@@ -322,8 +426,8 @@ function lmeg_release_import_selected() {
         if (!in_array($aid, $picked, true)) continue;
         if ($aid && lmeg_release_by_apple_id($aid)) { $skipped++; continue; }
 
-        // Streaming link (Apple Music) + best-effort lead-track preview.
-        $links   = !empty($r['url']) ? 'Apple Music | ' . $r['url'] . "\n" : '';
+        // Streaming links (Spotify / Apple Music / Deezer) + best-effort preview.
+        $links   = lmeg_release_streaming_links($r['clean_title'] ?? ($r['title'] ?? ''), $r['url'] ?? '', '');
         $preview = '';
         if (function_exists('lmeg_itunes_search')) {
             $hits = lmeg_itunes_search(trim($artist . ' ' . ($r['clean_title'] ?? $r['title'] ?? '')), 3);
