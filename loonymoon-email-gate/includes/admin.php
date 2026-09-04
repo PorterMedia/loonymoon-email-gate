@@ -753,6 +753,54 @@ function lmeg_demo_tag($slug, $name, $color, $auto = true) {
     return (object) ['slug' => $slug, 'name' => $name, 'color' => $color, 'is_auto' => $auto ? 1 : 0];
 }
 
+/** Demo tags WITH ids + member counts — powers the Compose tag picker in demo
+ *  mode so every chip shows a realistic audience size. */
+function lmeg_demo_tags_with_counts() {
+    $t = function ($id, $slug, $name, $color, $auto, $count) {
+        return (object) ['id' => (int) $id, 'slug' => $slug, 'name' => $name, 'color' => $color, 'is_auto' => $auto ? 1 : 0, 'member_count' => (int) $count];
+    };
+    return [
+        $t(9001, 'fan-type:superfan', 'Fan type: Superfan', '#F59E0B', 1, 1675),
+        $t(9002, 'fan-type:engaged',  'Fan type: Engaged',  '#34D399', 1, 9773),
+        $t(9003, 'fan-type:casual',   'Fan type: Casual',   '#7C6CF6', 1, 10610),
+        $t(9004, 'fan-type:dormant',  'Fan type: Dormant',  '#8B90A0', 1, 5864),
+        $t(9010, 'channel:email',     'Channel: Email',     '#D05FA2', 1, 27922),
+        $t(9011, 'channel:sms',       'Channel: SMS',       '#D05FA2', 1, 4180),
+        $t(9012, 'tier:inner-circle', 'Tier: Inner Circle', '#F59E0B', 1, 214),
+        $t(9020, 'city:toronto',      'City: Toronto',      '#7C6CF6', 1, 6240),
+        $t(9021, 'city:new-york',     'City: New York',     '#7C6CF6', 1, 3110),
+        $t(9022, 'city:los-angeles',  'City: Los Angeles',  '#7C6CF6', 1, 2180),
+        $t(9023, 'city:montreal',     'City: Montréal',     '#7C6CF6', 1, 1920),
+        $t(9024, 'city:london',       'City: London',       '#7C6CF6', 1, 1240),
+        $t(9025, 'city:chicago',      'City: Chicago',      '#7C6CF6', 1, 1010),
+        $t(9030, 'country:CA',        'Country: CA',        '#7C6CF6', 1, 14800),
+        $t(9031, 'country:US',        'Country: US',        '#7C6CF6', 1, 9200),
+        $t(9032, 'country:GB',        'Country: GB',        '#7C6CF6', 1, 1600),
+        $t(9033, 'country:DE',        'Country: DE',        '#7C6CF6', 1, 720),
+        $t(9040, 'instagram',         'instagram',          '#D05FA2', 1, 8400),
+        $t(9041, 'drop:soft-thing',   'Drop: SOFT THING',   '#D05FA2', 1, 2100),
+        $t(9042, 'bio',               'bio',                '#D05FA2', 1, 3300),
+        $t(9050, 'vip-list',          'VIP list',           '#D05FA2', 0, 340),
+        $t(9051, '2026-tour',         '2026 tour',          '#D05FA2', 0, 1250),
+    ];
+}
+
+/** Demo open/click city points for the Broadcast History demo map. */
+function lmeg_demo_oc_points() {
+    return [
+        ['city' => 'Toronto',     'region' => 'ON',      'lat' => 43.6532, 'lng' => -79.3832,  'opens' => 820, 'clicks' => 240],
+        ['city' => 'New York',    'region' => 'NY',      'lat' => 40.7128, 'lng' => -74.0060,  'opens' => 610, 'clicks' => 176],
+        ['city' => 'Los Angeles', 'region' => 'CA',      'lat' => 34.0522, 'lng' => -118.2437, 'opens' => 430, 'clicks' => 128],
+        ['city' => 'Montréal',    'region' => 'QC',      'lat' => 45.5019, 'lng' => -73.5674,  'opens' => 388, 'clicks' => 96],
+        ['city' => 'Chicago',     'region' => 'IL',      'lat' => 41.8781, 'lng' => -87.6298,  'opens' => 276, 'clicks' => 70],
+        ['city' => 'Vancouver',   'region' => 'BC',      'lat' => 49.2827, 'lng' => -123.1207, 'opens' => 240, 'clicks' => 64],
+        ['city' => 'London',      'region' => 'England', 'lat' => 51.5074, 'lng' => -0.1278,   'opens' => 212, 'clicks' => 48],
+        ['city' => 'Austin',      'region' => 'TX',      'lat' => 30.2672, 'lng' => -97.7431,  'opens' => 168, 'clicks' => 44],
+        ['city' => 'Seattle',     'region' => 'WA',      'lat' => 47.6062, 'lng' => -122.3321, 'opens' => 150, 'clicks' => 38],
+        ['city' => 'Berlin',      'region' => '',        'lat' => 52.5200, 'lng' => 13.4050,   'opens' => 120, 'clicks' => 28],
+    ];
+}
+
 /**
  * Fans (Subscribers) page — sample preview. Read-only, no DB/bulk machinery.
  */
@@ -1730,6 +1778,15 @@ function lmeg_admin_compose() {
     $count_sms   = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs_tbl WHERE contact_type = 'phone' AND phone IS NOT NULL AND phone <> '' AND unsubscribed_at IS NULL");
 
     $all_tags    = lmeg_all_tags();
+
+    // Demo data — show a full ~30k audience and per-tag counts so the composer
+    // reads like a real, established list during a walkthrough.
+    if ($is_demo) {
+        $count_email = 27922;
+        $count_sms   = 4180;
+        $all_tags    = lmeg_demo_tags_with_counts();
+        if (empty($vals['tag_ids'])) $vals['tag_ids'] = [9001, 9002]; // pre-target Superfans + Engaged
+    }
     $ajax_nonce  = wp_create_nonce('lmeg_audience');
     ?>
     <div class="wrap">
@@ -2493,6 +2550,9 @@ function lmeg_render_demo_broadcasts() {
             echo $kpi('Revenue · 30d',    '$5,220','18 attributed orders','dollar', '#34D399');
             ?>
         </div>
+        <h2 style="margin-top:22px;">Where fans open &amp; click</h2>
+        <?php lmeg_render_opens_clicks_map(lmeg_demo_oc_points(), 0, 'lmeg-oc-demo'); ?>
+        <h2 style="margin-top:24px;">Recent broadcasts</h2>
         <table class="widefat striped" style="max-width:960px;">
             <thead><tr><th>Broadcast</th><th>Segment</th><th>Channel</th><th style="text-align:right;">Recipients</th><th style="text-align:right;">Open</th><th style="text-align:right;">Click</th><th style="text-align:right;">Revenue</th><th>Sent</th></tr></thead>
             <tbody>
