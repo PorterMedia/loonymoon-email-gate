@@ -11,7 +11,14 @@ if (!defined('ABSPATH')) exit;
  * record itself. The cascade (drop / page / product) layers on next.
  * ========================================================================== */
 
-if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '3');
+if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '4');
+
+/** The page template release pages use — Elementor Full Width where Elementor
+ *  is active, so the drop block renders full-bleed (no theme title band). */
+function lmeg_release_page_template() {
+    $tpl = defined('ELEMENTOR_VERSION') ? 'elementor_header_footer' : '';
+    return apply_filters('lmeg_release_page_template', $tpl);
+}
 
 function lmeg_releases_table() {
     global $wpdb;
@@ -48,6 +55,14 @@ function lmeg_releases_maybe_install() {
         KEY status (status),
         KEY release_at (release_at)
     ) $charset;");
+
+    // Backfill: put every existing release page on the Elementor Full Width template.
+    $tpl = lmeg_release_page_template();
+    if ($tpl !== '') {
+        $pids = $wpdb->get_col("SELECT page_id FROM $t WHERE page_id IS NOT NULL AND page_id > 0");
+        foreach ($pids as $pid) update_post_meta((int) $pid, '_wp_page_template', $tpl);
+    }
+
     update_option('lmeg_release_db_version', LMEG_RELEASE_DB_VERSION);
 }
 
@@ -457,6 +472,9 @@ function lmeg_release_sync_page($rel, $drop_slug) {
     } else {
         $page_id = (int) wp_insert_post($postarr);
     }
+    // Full-width Elementor template so the drop renders full-bleed.
+    $tpl = lmeg_release_page_template();
+    if ($page_id && $tpl !== '') update_post_meta($page_id, '_wp_page_template', $tpl);
     return $page_id;
 }
 
