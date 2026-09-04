@@ -169,12 +169,14 @@ function lmeg_release_streaming_links($title, $apple_url = '', $existing = '') {
         }
     }
     if ($apple_url !== '' && empty($have['Apple Music'])) $have['Apple Music'] = $apple_url;
-    if ($artist !== '') {
+    if ($artist !== '' && $title !== '') {
         if (empty($have['Spotify'])) { $s = lmeg_spotify_album_url($artist, $title); if ($s) $have['Spotify'] = $s; }
         if (empty($have['Deezer']))  { $z = lmeg_deezer_album_url($artist, $title);   if ($z) $have['Deezer']  = $z; }
+        // YouTube Music — deterministic search link (no API key needed).
+        if (empty($have['YouTube'])) $have['YouTube'] = 'https://music.youtube.com/search?q=' . rawurlencode($artist . ' ' . $title);
     }
     $out = [];
-    foreach (['Spotify', 'Apple Music', 'Deezer'] as $l) if (!empty($have[$l])) { $out[] = $l . ' | ' . $have[$l]; unset($have[$l]); }
+    foreach (['Spotify', 'Apple Music', 'YouTube', 'Deezer'] as $l) if (!empty($have[$l])) { $out[] = $l . ' | ' . $have[$l]; unset($have[$l]); }
     foreach ($have as $l => $u) $out[] = $l . ' | ' . $u;
     return implode("\n", $out);
 }
@@ -186,6 +188,8 @@ function lmeg_release_refresh_links() {
     $t = lmeg_releases_table();
     $updated = 0;
     foreach (lmeg_releases_all(500) as $r) {
+        // Throttle releases still needing Deezer so its public API doesn't rate-limit the batch.
+        if (stripos((string) $r->links, 'deezer') === false) usleep(350000);
         $apple = '';
         foreach (preg_split('/\r\n|\r|\n/', (string) $r->links) as $ln) {
             if (stripos($ln, 'apple') !== false && strpos($ln, '|') !== false) $apple = trim(explode('|', $ln, 2)[1]);
