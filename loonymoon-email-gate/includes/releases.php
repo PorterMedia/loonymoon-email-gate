@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) exit;
  * record itself. The cascade (drop / page / product) layers on next.
  * ========================================================================== */
 
-if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '1');
+if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '2');
 
 function lmeg_releases_table() {
     global $wpdb;
@@ -32,6 +32,7 @@ function lmeg_releases_maybe_install() {
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         title VARCHAR(200) NOT NULL DEFAULT '',
         artwork_url VARCHAR(600) NOT NULL DEFAULT '',
+        preview_url VARCHAR(600) NOT NULL DEFAULT '',
         release_at DATETIME DEFAULT NULL,
         description TEXT DEFAULT NULL,
         links TEXT DEFAULT NULL,
@@ -67,6 +68,15 @@ function lmeg_release_get($id) {
 function lmeg_release_status_label($s) {
     $m = ['draft' => 'Draft', 'scheduled' => 'Scheduled', 'released' => 'Released'];
     return $m[$s] ?? ucfirst((string) $s);
+}
+
+/** The release (if any) that owns a given drop — used by the drop page's buy CTA. */
+function lmeg_release_for_drop($drop_id) {
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return null;
+    $t = lmeg_releases_table();
+    return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE drop_id = %d ORDER BY id DESC LIMIT 1", $drop_id));
 }
 
 /** The linked pieces (drop / page / product) with their view + edit URLs. */
@@ -161,6 +171,7 @@ function lmeg_release_save_from_post() {
     $data = [
         'title'       => sanitize_text_field(wp_unslash($_POST['title'] ?? '')),
         'artwork_url' => esc_url_raw(wp_unslash($_POST['artwork_url'] ?? '')),
+        'preview_url' => esc_url_raw(wp_unslash($_POST['preview_url'] ?? '')),
         'release_at'  => $release_at,
         'description' => sanitize_textarea_field(wp_unslash($_POST['description'] ?? '')),
         'links'       => sanitize_textarea_field(wp_unslash($_POST['links'] ?? '')),
@@ -168,7 +179,7 @@ function lmeg_release_save_from_post() {
         'status'      => in_array(($_POST['status'] ?? ''), ['draft', 'scheduled', 'released'], true) ? $_POST['status'] : 'draft',
         'updated_at'  => $now,
     ];
-    $fmt = ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'];
+    $fmt = ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'];
 
     if ($id) {
         $wpdb->update($t, $data, ['id' => $id], $fmt, ['%d']);
@@ -293,6 +304,7 @@ function lmeg_release_sync_product($rel) {
         'slug'        => $slug,
         'description' => ($rel->description ?: null),
         'cover_url'   => ($rel->artwork_url ?: null),
+        'preview_url' => (string) ($rel->preview_url ?? ''),
         'variants'    => ($variants ?: null),
         'preorder_at' => $preorder,
         'status'      => $status,
@@ -355,7 +367,7 @@ function lmeg_releases_render_list() {
 /** The create / edit form (the record itself; cascade wiring lands next slice). */
 function lmeg_releases_render_form($edit = null) {
     if (function_exists('lmeg_media_enqueue')) lmeg_media_enqueue();
-    $r = $edit ?: (object) ['id' => 0, 'title' => '', 'artwork_url' => '', 'release_at' => null, 'description' => '', 'links' => '', 'formats' => "Digital\nCD\nVinyl", 'status' => 'draft'];
+    $r = $edit ?: (object) ['id' => 0, 'title' => '', 'artwork_url' => '', 'preview_url' => '', 'release_at' => null, 'description' => '', 'links' => '', 'formats' => "Digital\nCD\nVinyl", 'status' => 'draft'];
     $release_local = $r->release_at ? date('Y-m-d\TH:i', strtotime($r->release_at)) : '';
     ?>
     <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
@@ -393,6 +405,11 @@ function lmeg_releases_render_form($edit = null) {
             </td></tr>
             <tr><th><label for="r_desc">Description</label></th><td>
                 <textarea name="description" id="r_desc" rows="3" class="large-text" placeholder="A one-line tease for the release."><?php echo esc_textarea($r->description); ?></textarea>
+            </td></tr>
+            <tr><th><label for="r_preview_url">Audio preview</label></th><td>
+                <input type="url" name="preview_url" id="r_preview_url" class="regular-text" value="<?php echo esc_attr($r->preview_url ?? ''); ?>" placeholder="https://… 30-second clip (.m4a / .mp3)">
+                <?php echo lmeg_preview_finder_html($r->title, 'preview_url'); ?>
+                <p class="description">A 30-second clip fans can play on the release page &mdash; and it auto-fills the same preview on the shop product. <strong>Find preview</strong> pulls the official Apple Music clip; or paste your own URL.</p>
             </td></tr>
             <tr><th><label for="r_links">Streaming links</label></th><td>
                 <textarea name="links" id="r_links" rows="5" class="large-text code" placeholder="Spotify | https://open.spotify.com/…&#10;Apple Music | https://music.apple.com/…"><?php echo esc_textarea($r->links); ?></textarea>

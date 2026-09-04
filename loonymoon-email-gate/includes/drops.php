@@ -455,6 +455,7 @@ function lmeg_shortcode_drop($atts = []) {
                     <p class="lmeg-drop__desc">Streaming links coming momentarily.</p>
                 <?php endif; ?>
             <?php endif; ?>
+            <?php do_action('lmeg_drop_after_body', $drop, $released); ?>
         </div>
     </div>
     <?php
