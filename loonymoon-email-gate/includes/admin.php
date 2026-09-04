@@ -1614,6 +1614,19 @@ function lmeg_admin_compose() {
         }
     }
 
+    // Demo data — a safe preview with sample copy so the composer looks alive
+    // for a walkthrough. Sending is hard-disabled while in demo (see below).
+    $is_demo = (!empty($_GET['demo']) || !empty($_POST['lmeg_demo']));
+    if ($is_demo && !isset($_POST['lmeg_action'])) {
+        $vals['subject']         = 'Ragdoll is out — hear it first 🌙';
+        $vals['body_email_mode'] = 'rich';
+        $vals['body_email']      = '<p>The wait is over — <strong>Ragdoll</strong> is out everywhere.</p>'
+            . '<p>Inner Circle gets first listen: the demo, plus a presale code for the Toronto show before it goes public.</p>'
+            . '<p><a href="#">Listen now →</a></p>'
+            . '<p>Thank you for being here. 🖤</p>';
+        $vals['body_sms']        = 'Ragdoll is out 🌙 Listen: ' . home_url('/');
+    }
+
     if (isset($_POST['lmeg_action']) && check_admin_referer('lmeg_compose', 'lmeg_compose_nonce')) {
         $vals['subject']    = sanitize_text_field(wp_unslash($_POST['subject'] ?? ''));
         $vals['body_email'] = wp_kses_post(wp_unslash($_POST['body_email'] ?? ''));
@@ -1628,7 +1641,11 @@ function lmeg_admin_compose() {
         $vals['radius_km']   = ($_POST['radius_km'] ?? '') !== '' ? max(0, (float) $_POST['radius_km']) : '';
         $vals['radius_city'] = sanitize_text_field(wp_unslash($_POST['radius_city'] ?? ''));
 
-        switch ($_POST['lmeg_action']) {
+        // Hard block: in demo data, no test/broadcast/anything actually sends.
+        if (!empty($_POST['lmeg_demo'])) {
+            $notice = '<div class="notice notice-warning"><p><strong>Demo data is on</strong> — sending is disabled so you can’t message real fans. <a href="' . esc_url(admin_url('admin.php?page=lmeg-compose')) . '">Switch to live data</a> to send for real.</p></div>';
+        }
+        switch (empty($_POST['lmeg_demo']) ? $_POST['lmeg_action'] : '__demo_blocked__') {
             case 'send_test_email':
                 $to = sanitize_email(wp_unslash($_POST['test_to_email'] ?? ''));
                 $r  = lmeg_send_test('email', $to, $vals['subject'], $vals['body_email']);
@@ -1718,6 +1735,7 @@ function lmeg_admin_compose() {
     <div class="wrap">
         <h1>Fanloop — Compose Broadcast</h1>
         <?php echo $notice; ?>
+        <?php if ($is_demo) echo lmeg_demo_banner('lmeg-compose'); else echo lmeg_demo_preview_button('lmeg-compose'); ?>
         <p>
             Auto-routes per subscriber.
             <strong><?php echo $count_email; ?></strong> active email subscribers ·
@@ -1726,6 +1744,7 @@ function lmeg_admin_compose() {
         </p>
         <form method="post">
             <?php wp_nonce_field('lmeg_compose', 'lmeg_compose_nonce'); ?>
+            <?php if ($is_demo) echo '<input type="hidden" name="lmeg_demo" value="1">'; ?>
 
             <?php
             $seg_rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_segments ORDER BY name ASC");
@@ -1989,7 +2008,7 @@ function lmeg_admin_compose() {
                     <td>
                         <?php $default_test = lmeg_get_settings()['default_test_email'] ?? ''; ?>
                         <input type="email" name="test_to_email" id="test_to_email" class="regular-text" placeholder="you@example.com" value="<?php echo esc_attr($default_test); ?>" />
-                        <button type="submit" name="lmeg_action" value="send_test_email" class="button">Send email test</button>
+                        <button type="submit" name="lmeg_action" value="send_test_email" class="button"<?php disabled($is_demo); ?>>Send email test</button>
                         <p class="description">Pre-filled from Settings → "Default test recipient". Change it here for a one-off.</p>
                     </td>
                 </tr>
@@ -2016,7 +2035,7 @@ function lmeg_admin_compose() {
                     <th><label for="test_to_sms">Test SMS to (E.164)</label></th>
                     <td>
                         <input type="text" name="test_to_sms" id="test_to_sms" class="regular-text" placeholder="+14155551234" />
-                        <button type="submit" name="lmeg_action" value="send_test_sms" class="button">Send SMS test</button>
+                        <button type="submit" name="lmeg_action" value="send_test_sms" class="button"<?php disabled($is_demo); ?>>Send SMS test</button>
                     </td>
                 </tr>
             </table>
@@ -2042,10 +2061,11 @@ function lmeg_admin_compose() {
             </table>
 
             <p>
-                <button type="submit" name="lmeg_action" value="send_broadcast" class="button button-primary"
+                <button type="submit" name="lmeg_action" value="send_broadcast" class="button button-primary"<?php disabled($is_demo); ?>
                     onclick="return confirm('Queue this broadcast — emails to your email subscribers and texts to your SMS subscribers?');">
-                    Queue broadcast
+                    <?php echo $is_demo ? 'Sending disabled in demo' : 'Queue broadcast'; ?>
                 </button>
+                <?php if ($is_demo) echo '<span class="description" style="margin-left:10px;">Switch to live data to send for real.</span>'; ?>
             </p>
         </form>
         <hr />
@@ -2442,11 +2462,67 @@ function lmeg_render_opens_clicks_map($pts, $skipped = 0, $dom_id = 'lmeg-oc-map
     <?php
 }
 
+/**
+ * Broadcast History — demo preview (?demo=1). Self-contained sample numbers so
+ * the page shows a full, realistic history for a walkthrough. Touches no DB.
+ */
+function lmeg_render_demo_broadcasts() {
+    lmeg_broadcast_styles();
+    $rows = [
+        ['subj' => 'Ragdoll is out — hear it first 🌙', 'ch' => 'Email',        'seg' => 'All fans',      'sent' => 3412, 'open' => '48.2%', 'click' => '12.4%', 'rev' => '$2,140', 'when' => 'Sep 2, 2026'],
+        ['subj' => 'Toronto — your presale code inside 🎟️', 'ch' => 'Email + Wallet', 'seg' => 'Toronto · 100km', 'sent' => 612, 'open' => '61.0%', 'click' => '28.3%', 'rev' => '$1,480', 'when' => 'Aug 24, 2026'],
+        ['subj' => 'SOFT THING vinyl — back in stock', 'ch' => 'Email',        'seg' => 'Superfans',     'sent' => 214,  'open' => '72.4%', 'click' => '34.1%', 'rev' => '$980',   'when' => 'Aug 19, 2026'],
+        ['subj' => 'New merch drop 🖤',                'ch' => 'Email + SMS',  'seg' => 'Engaged',       'sent' => 1190, 'open' => '44.0%', 'click' => '9.8%',  'rev' => '$620',   'when' => 'Aug 12, 2026'],
+        ['subj' => 'Thank you — 50k on Spotify',        'ch' => 'Email',        'seg' => 'All fans',      'sent' => 3260, 'open' => '39.5%', 'click' => '6.2%',  'rev' => '—',      'when' => 'Aug 3, 2026'],
+    ];
+    $kpi = function ($label, $value, $hint, $icon, $color) {
+        return '<div class="lmeg-stat">'
+            . '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="lmeg-stat__label">' . esc_html($label) . '</div>' . lmeg_icon_badge($icon, $color, 26) . '</div>'
+            . '<div class="lmeg-stat__value">' . esc_html($value) . '</div>'
+            . '<div class="lmeg-stat__hint">' . esc_html($hint) . '</div></div>';
+    };
+    ?>
+    <div class="wrap">
+        <h1>Fanloop — Broadcast History</h1>
+        <?php echo lmeg_demo_banner('lmeg-broadcasts'); ?>
+        <div class="lmeg-bc-kpis" style="max-width:960px;">
+            <?php
+            echo $kpi('Recipients · 30d', '8,688', 'across 5 broadcasts', 'send', '#D05FA2');
+            echo $kpi('Open rate',        '48%',   '4,170 unique opens',  'eye',  '#7C6CF6');
+            echo $kpi('Click rate',       '12.4%', '1,077 unique clicks', 'trending-up', '#34D399');
+            echo $kpi('Revenue · 30d',    '$5,220','18 attributed orders','dollar', '#34D399');
+            ?>
+        </div>
+        <table class="widefat striped" style="max-width:960px;">
+            <thead><tr><th>Broadcast</th><th>Segment</th><th>Channel</th><th style="text-align:right;">Recipients</th><th style="text-align:right;">Open</th><th style="text-align:right;">Click</th><th style="text-align:right;">Revenue</th><th>Sent</th></tr></thead>
+            <tbody>
+            <?php foreach ($rows as $r) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html($r['subj']); ?></strong></td>
+                    <td><?php echo esc_html($r['seg']); ?></td>
+                    <td><?php echo esc_html($r['ch']); ?></td>
+                    <td style="text-align:right;font-variant-numeric:tabular-nums;"><?php echo esc_html(number_format((int) $r['sent'])); ?></td>
+                    <td style="text-align:right;"><?php echo esc_html($r['open']); ?></td>
+                    <td style="text-align:right;color:#15803d;font-weight:600;"><?php echo esc_html($r['click']); ?></td>
+                    <td style="text-align:right;font-weight:700;"><?php echo esc_html($r['rev']); ?></td>
+                    <td><?php echo esc_html($r['when']); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p class="description" style="margin-top:12px;">Sample data for preview. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-broadcasts')); ?>">Switch to live data →</a></p>
+    </div>
+    <?php
+}
+
 function lmeg_admin_broadcasts() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
     $bcast_tbl = $wpdb->prefix . 'lmeg_broadcasts';
     $log_tbl   = $wpdb->prefix . 'lmeg_broadcast_log';
+
+    // Demo data — a sample history so the page looks alive for a walkthrough.
+    if (!empty($_GET['demo']) && empty($_GET['broadcast'])) { lmeg_render_demo_broadcasts(); return; }
 
     // Resend to non-openers: same email body, fresh subject, only to fans
     // who received it but never opened. Typically +20-30% extra opens.
@@ -2652,6 +2728,7 @@ function lmeg_admin_broadcasts() {
     ?>
     <div class="wrap">
         <h1>Fanloop — Broadcast History</h1>
+        <?php echo lmeg_demo_preview_button('lmeg-broadcasts'); ?>
         <p class="description" style="margin:-4px 0 2px;">Opens, clicks, revenue and where your fans are engaging — across the last 30 days.</p>
 
         <div class="lmeg-bc-kpis">
