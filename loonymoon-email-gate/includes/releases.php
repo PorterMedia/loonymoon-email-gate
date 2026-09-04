@@ -11,13 +11,26 @@ if (!defined('ABSPATH')) exit;
  * record itself. The cascade (drop / page / product) layers on next.
  * ========================================================================== */
 
-if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '4');
+if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '5');
 
 /** The page template release pages use — Elementor Full Width where Elementor
  *  is active, so the drop block renders full-bleed (no theme title band). */
 function lmeg_release_page_template() {
     $tpl = defined('ELEMENTOR_VERSION') ? 'elementor_header_footer' : '';
     return apply_filters('lmeg_release_page_template', $tpl);
+}
+
+/** A clean, flat slug for a release page: the title slug, or title-lp when that
+ *  bare slug is already used by another page (e.g. a self-titled album vs the
+ *  artist's own page) — so we never get WordPress's "-3" fallbacks. */
+function lmeg_release_page_slug($title, $exclude_id = 0) {
+    global $wpdb;
+    $base = sanitize_title($title) ?: 'release';
+    $taken = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT ID FROM {$wpdb->posts} WHERE post_type='page' AND post_name=%s AND post_status NOT IN ('trash','auto-draft') AND ID <> %d LIMIT 1",
+        $base, (int) $exclude_id
+    ));
+    return $taken ? $base . '-lp' : $base;
 }
 
 function lmeg_releases_table() {
@@ -56,11 +69,17 @@ function lmeg_releases_maybe_install() {
         KEY release_at (release_at)
     ) $charset;");
 
-    // Backfill: put every existing release page on the Elementor Full Width template.
-    $tpl = lmeg_release_page_template();
-    if ($tpl !== '') {
-        $pids = $wpdb->get_col("SELECT page_id FROM $t WHERE page_id IS NOT NULL AND page_id > 0");
-        foreach ($pids as $pid) update_post_meta((int) $pid, '_wp_page_template', $tpl);
+    // Backfill existing release pages: Elementor Full Width template + clean flat
+    // slugs (fixing WordPress "-3" style fallbacks like loony-3 → loony-lp).
+    $tpl  = lmeg_release_page_template();
+    $rows = $wpdb->get_results("SELECT page_id, title FROM $t WHERE page_id IS NOT NULL AND page_id > 0");
+    foreach ((array) $rows as $r) {
+        $pid = (int) $r->page_id;
+        if (!$pid || !get_post($pid)) continue;
+        if ($tpl !== '') update_post_meta($pid, '_wp_page_template', $tpl);
+        $want = lmeg_release_page_slug((string) $r->title, $pid);
+        $cur  = get_post_field('post_name', $pid);
+        if ($cur && $want && $cur !== $want) wp_update_post(['ID' => $pid, 'post_name' => $want]);
     }
 
     update_option('lmeg_release_db_version', LMEG_RELEASE_DB_VERSION);
@@ -462,6 +481,7 @@ function lmeg_release_sync_page($rel, $drop_slug) {
 
     $postarr = [
         'post_title'   => ($rel->title ?: 'Release'),
+        'post_name'    => lmeg_release_page_slug(($rel->title ?: 'Release'), (int) $page_id),
         'post_content' => $content,
         'post_type'    => 'page',
         'post_status'  => $status,
