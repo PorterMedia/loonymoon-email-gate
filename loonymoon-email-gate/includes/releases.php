@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) exit;
  * record itself. The cascade (drop / page / product) layers on next.
  * ========================================================================== */
 
-if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '2');
+if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '3');
 
 function lmeg_releases_table() {
     global $wpdb;
@@ -33,6 +33,7 @@ function lmeg_releases_maybe_install() {
         title VARCHAR(200) NOT NULL DEFAULT '',
         artwork_url VARCHAR(600) NOT NULL DEFAULT '',
         preview_url VARCHAR(600) NOT NULL DEFAULT '',
+        apple_id BIGINT UNSIGNED DEFAULT NULL,
         release_at DATETIME DEFAULT NULL,
         description TEXT DEFAULT NULL,
         links TEXT DEFAULT NULL,
@@ -63,6 +64,15 @@ function lmeg_release_get($id) {
     global $wpdb;
     $t = lmeg_releases_table();
     return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE id = %d", (int) $id));
+}
+
+/** Existing release for an Apple collection id — used so catalog imports don't duplicate. */
+function lmeg_release_by_apple_id($apple_id) {
+    global $wpdb;
+    $apple_id = (int) $apple_id;
+    if (!$apple_id) return null;
+    $t = lmeg_releases_table();
+    return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE apple_id = %d LIMIT 1", $apple_id));
 }
 
 function lmeg_release_status_label($s) {
@@ -137,18 +147,36 @@ function lmeg_releases_admin_page() {
         }
     }
 
+    // Catalog import — "find" re-renders the import screen; "import" builds them.
+    $import_stage = false;
+    if (isset($_POST['lmeg_import_action']) && check_admin_referer('lmeg_import', 'lmeg_import_nonce')) {
+        if ($_POST['lmeg_import_action'] === 'import') {
+            list($c, $s) = lmeg_release_import_selected();
+            $notice = '<div class="notice notice-success"><p>Built <strong>' . (int) $c . '</strong> release' . ($c === 1 ? '' : 's')
+                    . ($s ? ' &middot; skipped ' . (int) $s . ' already in Fanloop' : '')
+                    . '. Each got a drop, a release page and a shop product.</p></div>';
+            $_GET = [];
+        } else {
+            $import_stage = true; // 'find' or the artist switcher
+        }
+    }
+
     $action = isset($_GET['action']) ? sanitize_key($_GET['action']) : '';
+    if ($import_stage) $action = 'import';
     $edit   = isset($_GET['edit']) ? lmeg_release_get((int) $_GET['edit']) : null;
 
     echo '<div class="wrap">';
     echo '<h1 style="display:flex;align-items:center;gap:12px;">Releases';
-    if ($action !== 'new' && !$edit) {
+    if ($action !== 'new' && $action !== 'import' && !$edit) {
         echo ' <a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=new')) . '" class="button button-primary">New release</a>';
+        echo ' <a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=import')) . '" class="button">Import from Apple Music</a>';
     }
     echo '</h1>';
     echo $notice;
 
-    if ($action === 'new' || $edit) {
+    if ($action === 'import') {
+        lmeg_releases_render_import();
+    } elseif ($action === 'new' || $edit) {
         lmeg_releases_render_form($edit);
     } else {
         lmeg_releases_render_list();
@@ -204,6 +232,158 @@ function lmeg_release_save_from_post() {
         ['id' => $id], ['%d', '%d', '%d'], ['%d']);
 
     return $id;
+}
+
+/* -------------------------------------------------------------------------
+ * Catalog import — build releases straight from an Apple Music discography.
+ * Each imported release runs the same cascade (drop + page + product).
+ * ---------------------------------------------------------------------- */
+
+/** Insert one release from a plain data array and run the full cascade. */
+function lmeg_release_create_from_import(array $f) {
+    global $wpdb;
+    $t   = lmeg_releases_table();
+    $now = current_time('mysql');
+    $release_at = !empty($f['release_at']) ? date('Y-m-d H:i:s', strtotime($f['release_at'])) : null;
+
+    $data = [
+        'title'       => sanitize_text_field($f['title'] ?? ''),
+        'artwork_url' => esc_url_raw($f['artwork_url'] ?? ''),
+        'preview_url' => esc_url_raw($f['preview_url'] ?? ''),
+        'apple_id'    => !empty($f['apple_id']) ? (int) $f['apple_id'] : null,
+        'release_at'  => $release_at,
+        'description' => sanitize_textarea_field($f['description'] ?? ''),
+        'links'       => sanitize_textarea_field($f['links'] ?? ''),
+        'formats'     => sanitize_textarea_field($f['formats'] ?? 'Digital'),
+        'status'      => in_array(($f['status'] ?? ''), ['draft', 'scheduled', 'released'], true) ? $f['status'] : 'released',
+        'created_at'  => $now,
+        'updated_at'  => $now,
+    ];
+    $wpdb->insert($t, $data);
+    $id = (int) $wpdb->insert_id;
+    if (!$id) return 0;
+
+    $rel = (object) array_merge($data, ['id' => $id]);
+    $drop_id    = lmeg_release_sync_drop($rel);
+    $rel->drop_id = $drop_id;
+    $drop_slug  = $drop_id ? $wpdb->get_var($wpdb->prepare('SELECT slug FROM ' . lmeg_drops_table() . ' WHERE id = %d', $drop_id)) : '';
+    $page_id    = lmeg_release_sync_page($rel, (string) $drop_slug);
+    $product_id = lmeg_release_sync_product($rel);
+    $wpdb->update($t,
+        ['drop_id' => $drop_id ?: null, 'page_id' => $page_id ?: null, 'product_id' => $product_id ?: null],
+        ['id' => $id], ['%d', '%d', '%d'], ['%d']);
+    return $id;
+}
+
+/** Import the checked releases from the choose-stage form. Returns [created, skipped]. */
+function lmeg_release_import_selected() {
+    $artist = sanitize_text_field(wp_unslash($_POST['artist_name'] ?? ''));
+    $rows   = json_decode(wp_unslash($_POST['releases_json'] ?? '[]'), true);
+    $picked = array_map('intval', (array) ($_POST['pick'] ?? []));
+    if (!is_array($rows) || !$picked) return [0, 0];
+
+    $created = 0; $skipped = 0;
+    foreach ($rows as $r) {
+        $aid = (int) ($r['apple_id'] ?? 0);
+        if (!in_array($aid, $picked, true)) continue;
+        if ($aid && lmeg_release_by_apple_id($aid)) { $skipped++; continue; }
+
+        // Streaming link (Apple Music) + best-effort lead-track preview.
+        $links   = !empty($r['url']) ? 'Apple Music | ' . $r['url'] . "\n" : '';
+        $preview = '';
+        if (function_exists('lmeg_itunes_search')) {
+            $hits = lmeg_itunes_search(trim($artist . ' ' . ($r['clean_title'] ?? $r['title'] ?? '')), 3);
+            if (!empty($hits[0]['preview_url'])) $preview = $hits[0]['preview_url'];
+        }
+        lmeg_release_create_from_import([
+            'title'       => $r['clean_title'] ?? ($r['title'] ?? ''),
+            'artwork_url' => $r['artwork'] ?? '',
+            'preview_url' => $preview,
+            'apple_id'    => $aid,
+            'release_at'  => $r['release_date'] ?? '',
+            'links'       => $links,
+            'formats'     => 'Digital',
+            'status'      => 'released',
+        ]);
+        $created++;
+    }
+    return [$created, $skipped];
+}
+
+/** The import screen — search an artist, then pick releases to build. */
+function lmeg_releases_render_import() {
+    if (function_exists('lmeg_media_enqueue')) lmeg_media_enqueue();
+    $term      = sanitize_text_field(wp_unslash($_POST['artist_term'] ?? ($_GET['term'] ?? '')));
+    $artist_id = (int) ($_POST['artist_id'] ?? 0);
+    $did_find  = (($_POST['lmeg_import_action'] ?? '') === 'find');
+    ?>
+    <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
+    <form method="post" style="max-width:760px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;margin-bottom:18px;">
+        <?php wp_nonce_field('lmeg_import', 'lmeg_import_nonce'); ?>
+        <input type="hidden" name="lmeg_import_action" value="find">
+        <label style="font-weight:600;display:block;margin-bottom:6px;">Import a catalog from Apple Music</label>
+        <div style="display:flex;gap:8px;">
+            <input type="text" name="artist_term" class="regular-text" value="<?php echo esc_attr($term); ?>" placeholder="Artist name — e.g. LOONY" style="flex:1;">
+            <button class="button button-primary">Find releases</button>
+        </div>
+        <p class="description" style="margin-top:8px;">Pulls the artist&rsquo;s releases from Apple Music. Pick which to build &mdash; each becomes a <strong>release page</strong>, a <strong>drop</strong>, and a <strong>shop product</strong>, with artwork, date, a streaming link and a preview.</p>
+    </form>
+    <?php
+    if (!$did_find || $term === '') return;
+
+    $artists = function_exists('lmeg_itunes_artist_search') ? lmeg_itunes_artist_search($term, 6) : [];
+    if (!$artists) { echo '<div class="notice notice-warning"><p>No artist found for &ldquo;' . esc_html($term) . '&rdquo;. Check the spelling.</p></div>'; return; }
+    if (!$artist_id) $artist_id = (int) $artists[0]['id'];
+    $artist_name = $artists[0]['name'];
+    foreach ($artists as $a) { if ((int) $a['id'] === $artist_id) $artist_name = $a['name']; }
+
+    if (count($artists) > 1) {
+        echo '<form method="post" style="max-width:760px;margin-bottom:14px;">';
+        wp_nonce_field('lmeg_import', 'lmeg_import_nonce');
+        echo '<input type="hidden" name="lmeg_import_action" value="find"><input type="hidden" name="artist_term" value="' . esc_attr($term) . '">';
+        echo '<div style="font-weight:600;margin-bottom:6px;">Which ' . esc_html($term) . '?</div><div style="display:flex;flex-wrap:wrap;gap:8px;">';
+        foreach ($artists as $a) {
+            $on = (int) $a['id'] === $artist_id;
+            echo '<button name="artist_id" value="' . (int) $a['id'] . '" class="button' . ($on ? ' button-primary' : '') . '">' . esc_html($a['name']) . ' <span style="opacity:.6;">· ' . esc_html($a['genre']) . '</span></button>';
+        }
+        echo '</div></form>';
+    }
+
+    $releases = function_exists('lmeg_itunes_artist_releases') ? lmeg_itunes_artist_releases($artist_id) : [];
+    if (!$releases) { echo '<div class="notice notice-warning"><p>No releases found for ' . esc_html($artist_name) . '.</p></div>'; return; }
+
+    $new_count = 0;
+    foreach ($releases as $r) { if (!lmeg_release_by_apple_id((int) $r['apple_id'])) $new_count++; }
+    ?>
+    <form method="post" style="max-width:920px;">
+        <?php wp_nonce_field('lmeg_import', 'lmeg_import_nonce'); ?>
+        <input type="hidden" name="lmeg_import_action" value="import">
+        <input type="hidden" name="artist_name" value="<?php echo esc_attr($artist_name); ?>">
+        <input type="hidden" name="releases_json" value="<?php echo esc_attr(wp_json_encode($releases)); ?>">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px;">
+            <strong><?php echo count($releases); ?> releases for <?php echo esc_html($artist_name); ?> &middot; <?php echo (int) $new_count; ?> new</strong>
+            <button class="button button-primary button-hero">Build selected in Fanloop</button>
+        </div>
+        <table class="widefat striped">
+            <thead><tr><th style="width:32px;"></th><th style="width:52px;"></th><th>Release</th><th>Type</th><th>Released</th><th>Status</th></tr></thead>
+            <tbody>
+            <?php foreach ($releases as $r) :
+                $exists = lmeg_release_by_apple_id((int) $r['apple_id']);
+                $art = $r['artwork'] ? '<img src="' . esc_url($r['artwork']) . '" style="width:40px;height:40px;border-radius:6px;object-fit:cover;display:block;border:1px solid #e5e7eb">' : ''; ?>
+                <tr>
+                    <td><?php echo $exists ? '' : '<input type="checkbox" name="pick[]" value="' . (int) $r['apple_id'] . '" checked>'; ?></td>
+                    <td><?php echo $art; ?></td>
+                    <td><strong><?php echo esc_html($r['clean_title']); ?></strong></td>
+                    <td><?php echo esc_html($r['kind']); ?></td>
+                    <td><?php echo esc_html($r['release_date']); ?></td>
+                    <td><?php echo $exists ? '<span style="color:#15803d;font-weight:600;">✓ already built</span>' : '<span style="color:#6b7280;">new</span>'; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p style="margin-top:12px;"><button class="button button-primary button-hero">Build selected in Fanloop</button></p>
+    </form>
+    <?php
 }
 
 /** A unique slug within $table, keeping $keep_id's own slug free. */

@@ -61,6 +61,68 @@ function lmeg_itunes_search($term, $limit = 8) {
 }
 
 /* -------------------------------------------------------------------------
+ * Catalog import — look up an artist and their full release list.
+ * ---------------------------------------------------------------------- */
+
+/** Search Apple Music for matching artists (to disambiguate the name). */
+function lmeg_itunes_artist_search($term, $limit = 6) {
+    $term = trim((string) $term);
+    if ($term === '') return [];
+    $key = 'lmeg_itart_' . md5(strtolower($term) . '|' . (int) $limit);
+    $c = get_transient($key);
+    if (is_array($c)) return $c;
+    $url = 'https://itunes.apple.com/search?term=' . rawurlencode($term) . '&entity=musicArtist&limit=' . max(1, min(15, (int) $limit));
+    $res = wp_remote_get($url, ['timeout' => 8, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return [];
+    $body = json_decode(wp_remote_retrieve_body($res), true);
+    $out = [];
+    foreach (($body['results'] ?? []) as $r) {
+        if (($r['wrapperType'] ?? '') !== 'artist' || empty($r['artistId'])) continue;
+        $out[] = ['id' => (int) $r['artistId'], 'name' => (string) ($r['artistName'] ?? ''), 'genre' => (string) ($r['primaryGenreName'] ?? '')];
+    }
+    set_transient($key, $out, 12 * HOUR_IN_SECONDS);
+    return $out;
+}
+
+/** Every release where the artist is the primary act (skips features), newest
+ *  first, de-duplicated by base title. Normalized for the importer. */
+function lmeg_itunes_artist_releases($artist_id) {
+    $artist_id = (int) $artist_id;
+    if (!$artist_id) return [];
+    $key = 'lmeg_itrel_' . $artist_id;
+    $c = get_transient($key);
+    if (is_array($c)) return $c;
+    $url = 'https://itunes.apple.com/lookup?id=' . $artist_id . '&entity=album&limit=200';
+    $res = wp_remote_get($url, ['timeout' => 10, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return [];
+    $body = json_decode(wp_remote_retrieve_body($res), true);
+    $out = []; $seen = [];
+    foreach (($body['results'] ?? []) as $r) {
+        if (($r['wrapperType'] ?? '') !== 'collection') continue;
+        if ((int) ($r['artistId'] ?? 0) !== $artist_id) continue;              // primary artist only
+        $title = (string) ($r['collectionName'] ?? '');
+        if ($title === '') continue;
+        $base = strtolower(trim(preg_replace('/\s*-\s*(single|ep)\s*$/i', '', $title)));
+        if (isset($seen[$base])) continue;
+        $seen[$base] = 1;
+        $art = (string) ($r['artworkUrl100'] ?? '');
+        $out[] = [
+            'apple_id'     => (int) ($r['collectionId'] ?? 0),
+            'title'        => $title,
+            'clean_title'  => trim(preg_replace('/\s*-\s*(Single|EP)\s*$/i', '', $title)),
+            'kind'         => ((int) ($r['trackCount'] ?? 1) > 1) ? 'Album / EP' : 'Single',
+            'tracks'       => (int) ($r['trackCount'] ?? 1),
+            'release_date' => substr((string) ($r['releaseDate'] ?? ''), 0, 10),
+            'artwork'      => $art !== '' ? str_replace('100x100bb', '600x600bb', $art) : '',
+            'url'          => (string) ($r['collectionViewUrl'] ?? ''),
+        ];
+    }
+    usort($out, function ($a, $b) { return strcmp($b['release_date'], $a['release_date']); });
+    set_transient($key, $out, 6 * HOUR_IN_SECONDS);
+    return $out;
+}
+
+/* -------------------------------------------------------------------------
  * Admin AJAX — return matches for the picker.
  * ---------------------------------------------------------------------- */
 add_action('wp_ajax_lmeg_preview_search', 'lmeg_preview_search_ajax');
