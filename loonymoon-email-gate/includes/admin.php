@@ -785,6 +785,20 @@ function lmeg_demo_tags_with_counts() {
     ];
 }
 
+/** Demo fan-map points — LOONY's real footprint reused as the Audience fan
+ *  map, so it matches the broadcast opens/clicks map (identical cities + coords).
+ *  n = fans with a known city (the geo-known subset of the ~30k list). */
+function lmeg_demo_fan_points() {
+    $out = [];
+    foreach (lmeg_demo_oc_points() as $c) {
+        $out[] = [
+            'city' => $c['city'], 'region' => $c['region'], 'lat' => $c['lat'], 'lng' => $c['lng'],
+            'n' => (int) $c['opens'], 'sf' => max(1, (int) round($c['opens'] * 0.06)),
+        ];
+    }
+    return $out;
+}
+
 /** Demo open/click city points for the Broadcast History demo map. */
 function lmeg_demo_oc_points() {
     return [
@@ -1066,13 +1080,11 @@ function lmeg_render_demo_audience() {
         ['c' => 'liam.tremblay@outlook.com','shop'=> 31200, 'memb' => 0,    'orders' => 4],
     ];
     // [city, region, fans, superfans, lat, lng] — lat/lng feed the fan map.
-    $cities = [
-        ['Toronto','ON',3870,540,43.6532,-79.3832],['Montréal','QC',2510,300,45.5019,-73.5674],['Vancouver','BC',1780,205,49.2827,-123.1207],
-        ['New York','NY',1650,132,40.7128,-74.0060],['London','',1440,158,51.5074,-0.1278],['Los Angeles','CA',1130,92,34.0522,-118.2437],['Chicago','IL',920,58,41.8781,-87.6298],
-        ['Ottawa','ON',720,48,45.4215,-75.6972],['Calgary','AB',640,40,51.0447,-114.0719],['Paris','',610,70,48.8566,2.3522],['Berlin','',520,58,52.5200,13.4050],
-        ['Sydney','',430,48,-33.8688,151.2093],['Melbourne','',380,36,-37.8136,144.9631],['Amsterdam','',300,34,52.3676,4.9041],['Boston','MA',280,22,42.3601,-71.0589],['Seattle','WA',250,20,47.6062,-122.3321],
-    ];
-    $city_max = 3870;
+    $cities = [];
+    foreach (function_exists('lmeg_demo_fan_points') ? lmeg_demo_fan_points() : [] as $p) {
+        $cities[] = [$p['city'], $p['region'], $p['n'], $p['sf'], $p['lat'], $p['lng']];
+    }
+    $city_max = $cities ? (int) max(array_column($cities, 2)) : 1;
     $refs = [['maya.okafor@gmail.com',214],['aria.singh@gmail.com',158],['emma.dubois@gmail.com',103],['kai.nakamura@gmail.com',74],['noah.becker@icloud.com',47]];
     ?>
     <div class="wrap">
