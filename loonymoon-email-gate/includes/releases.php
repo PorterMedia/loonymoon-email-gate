@@ -357,7 +357,7 @@ function lmeg_releases_render_import() {
         <input type="hidden" name="lmeg_import_action" value="find">
         <label style="font-weight:600;display:block;margin-bottom:6px;">Import a catalog from Apple Music</label>
         <div style="display:flex;gap:8px;">
-            <input type="text" name="artist_term" class="regular-text" value="<?php echo esc_attr($term); ?>" placeholder="Artist name — e.g. LOONY" style="flex:1;">
+            <input type="text" name="artist_term" class="regular-text" value="<?php echo esc_attr($term); ?>" placeholder="Artist name, or paste an Apple Music artist link" style="flex:1;">
             <button class="button button-primary">Find releases</button>
         </div>
         <p class="description" style="margin-top:8px;">Pulls the artist&rsquo;s releases from Apple Music. Pick which to build &mdash; each becomes a <strong>release page</strong>, a <strong>drop</strong>, and a <strong>shop product</strong>, with artwork, date, a streaming link and a preview.</p>
@@ -365,11 +365,20 @@ function lmeg_releases_render_import() {
     <?php
     if (!$did_find || $term === '') return;
 
-    $artists = function_exists('lmeg_itunes_artist_search') ? lmeg_itunes_artist_search($term, 6) : [];
-    if (!$artists) { echo '<div class="notice notice-warning"><p>No artist found for &ldquo;' . esc_html($term) . '&rdquo;. Check the spelling.</p></div>'; return; }
-    if (!$artist_id) $artist_id = (int) $artists[0]['id'];
-    $artist_name = $artists[0]['name'];
-    foreach ($artists as $a) { if ((int) $a['id'] === $artist_id) $artist_name = $a['name']; }
+    // A pasted Apple Music link (or raw id) resolves the artist directly — no
+    // name-guessing, no candidate list. Otherwise fall back to a name search.
+    $link_id = (!$artist_id) ? lmeg_itunes_artist_id_from_input($term) : 0;
+    if ($link_id) {
+        $artist_id   = $link_id;
+        $artists     = [];
+        $artist_name = lmeg_itunes_artist_name($artist_id) ?: 'this artist';
+    } else {
+        $artists = function_exists('lmeg_itunes_artist_search') ? lmeg_itunes_artist_search($term, 6) : [];
+        if (!$artists) { echo '<div class="notice notice-warning"><p>No artist found for &ldquo;' . esc_html($term) . '&rdquo;. Check the spelling, or paste their Apple Music artist link.</p></div>'; return; }
+        if (!$artist_id) $artist_id = (int) $artists[0]['id'];
+        $artist_name = $artists[0]['name'];
+        foreach ($artists as $a) { if ((int) $a['id'] === $artist_id) $artist_name = $a['name']; }
+    }
 
     if (count($artists) > 1) {
         echo '<form method="post" style="max-width:760px;margin-bottom:14px;">';

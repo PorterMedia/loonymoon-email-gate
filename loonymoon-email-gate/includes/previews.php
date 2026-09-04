@@ -122,6 +122,40 @@ function lmeg_itunes_artist_releases($artist_id) {
     return $out;
 }
 
+/** artistId that owns an Apple collection (album) or track id. */
+function lmeg_itunes_collection_artist($id) {
+    $id = (int) $id;
+    if (!$id) return 0;
+    $res = wp_remote_get('https://itunes.apple.com/lookup?id=' . $id, ['timeout' => 8, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return 0;
+    $b = json_decode(wp_remote_retrieve_body($res), true);
+    foreach (($b['results'] ?? []) as $r) if (!empty($r['artistId'])) return (int) $r['artistId'];
+    return 0;
+}
+
+/** Resolve an Apple artistId from a pasted Apple Music link (artist / album /
+ *  song URL) or a raw numeric id. Returns 0 when the input isn't a link/id. */
+function lmeg_itunes_artist_id_from_input($s) {
+    $s = trim((string) $s);
+    if ($s === '') return 0;
+    if (preg_match('~/artist/[^/]+/(\d+)~', $s, $m)) return (int) $m[1];
+    if (preg_match('~[?&]i=(\d+)~', $s, $m))                { $a = lmeg_itunes_collection_artist((int) $m[1]); if ($a) return $a; }
+    if (preg_match('~/(?:album|song)/[^/]+/(\d+)~', $s, $m)) { $a = lmeg_itunes_collection_artist((int) $m[1]); if ($a) return $a; }
+    if (preg_match('~^\d{5,}$~', $s)) return (int) $s;
+    return 0;
+}
+
+/** Artist display name for an artistId (from a lookup). */
+function lmeg_itunes_artist_name($artist_id) {
+    $artist_id = (int) $artist_id;
+    if (!$artist_id) return '';
+    $res = wp_remote_get('https://itunes.apple.com/lookup?id=' . $artist_id, ['timeout' => 8, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return '';
+    $b = json_decode(wp_remote_retrieve_body($res), true);
+    foreach (($b['results'] ?? []) as $r) if (($r['wrapperType'] ?? '') === 'artist') return (string) ($r['artistName'] ?? '');
+    return '';
+}
+
 /* -------------------------------------------------------------------------
  * Admin AJAX — return matches for the picker.
  * ---------------------------------------------------------------------- */
