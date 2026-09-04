@@ -447,8 +447,10 @@ function lmeg_shortcode_drop($atts = []) {
             <?php else : ?>
                 <?php if ($links) : ?>
                     <div class="lmeg-drop__links">
-                        <?php foreach ($links as $l) : ?>
-                            <a class="lmeg-drop__link" href="<?php echo esc_url($l['url']); ?>" target="_blank" rel="noopener"><?php echo esc_html($l['label']); ?></a>
+                        <?php foreach ($links as $i => $l) :
+                            // Route through the local click tracker (logs click + IP) when available; plain link otherwise.
+                            $href = function_exists('lmeg_link_click_url') ? lmeg_link_click_url($drop->id, $i) : $l['url']; ?>
+                            <a class="lmeg-drop__link" href="<?php echo esc_url($href); ?>" target="_blank" rel="noopener nofollow"><?php echo esc_html($l['label']); ?></a>
                         <?php endforeach; ?>
                     </div>
                 <?php else : ?>

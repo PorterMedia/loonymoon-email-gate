@@ -669,7 +669,7 @@ function lmeg_releases_render_list() {
         return;
     }
     echo '<table class="widefat striped" style="margin-top:14px;max-width:900px;">';
-    echo '<thead><tr><th style="width:56px;"></th><th>Release</th><th>Status</th><th>Release date</th><th>Linked</th><th></th></tr></thead><tbody>';
+    echo '<thead><tr><th style="width:56px;"></th><th>Release</th><th>Status</th><th>Release date</th><th>Linked</th><th style="width:80px;">Clicks</th><th></th></tr></thead><tbody>';
     foreach ($rows as $r) {
         $art = $r->artwork_url
             ? '<img src="' . esc_url($r->artwork_url) . '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #dcdcde;display:block">'
@@ -693,10 +693,64 @@ function lmeg_releases_render_list() {
            . '<td>' . lmeg_release_status_pill($r->status) . '</td>'
            . '<td>' . $when . '</td>'
            . '<td>' . $linkedTxt . '</td>'
+           . '<td>' . ((!empty($r->drop_id) && function_exists('lmeg_link_clicks_total') && ($ct = lmeg_link_clicks_total((int) $r->drop_id))) ? '<strong>' . (int) $ct . '</strong>' : '<span style="color:#9ca3af">0</span>') . '</td>'
            . '<td><a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&edit=' . (int) $r->id)) . '" class="button button-small">Edit</a></td>'
            . '</tr>';
     }
     echo '</tbody></table>';
+}
+
+/** Streaming-link click analytics for one release (totals + IPs). */
+function lmeg_release_render_clicks_panel($rel) {
+    $drop_id = (int) $rel->drop_id;
+    $total   = lmeg_link_clicks_total($drop_id);
+    $by      = lmeg_link_clicks_by_label($drop_id);
+    $recent  = lmeg_link_clicks_recent($drop_id, 15);
+    ?>
+    <div style="max-width:720px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+        <strong style="display:block;margin-bottom:2px;">Link clicks
+            <span style="font-weight:400;color:#6b7280;">— <?php echo (int) $total; ?> total</span></strong>
+        <p class="description" style="margin:2px 0 10px;">Every streaming / custom link on this release&rsquo;s page is tracked, including the visitor&rsquo;s IP address. Known fans&rsquo; clicks also land on their timeline.</p>
+        <?php if (!$total): ?>
+            <p style="color:#9ca3af;margin:0;">No clicks yet.</p>
+        <?php else: ?>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                <?php foreach ($by as $b): ?>
+                    <span style="display:inline-flex;align-items:center;gap:8px;background:#f6f7f7;border:1px solid #e5e7eb;border-radius:999px;padding:4px 12px;font-size:13px;">
+                        <strong><?php echo esc_html($b['label'] ?: '(link)'); ?></strong>
+                        <span style="color:#6b7280;"><?php echo (int) $b['clicks']; ?></span>
+                    </span>
+                <?php endforeach; ?>
+            </div>
+            <details>
+                <summary style="cursor:pointer;color:#2271b1;font-size:13px;">Recent clicks (with IP)</summary>
+                <table class="widefat striped" style="margin-top:8px;">
+                    <thead><tr><th>When</th><th>Link</th><th>IP</th><th>Fan</th></tr></thead>
+                    <tbody>
+                    <?php
+                    global $wpdb;
+                    foreach ($recent as $c):
+                        $fan = '';
+                        if ((int) $c->subscriber_id) {
+                            $sub = defined('LMEG_TABLE') ? $wpdb->get_row($wpdb->prepare(
+                                "SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $c->subscriber_id
+                            )) : null;
+                            $fan = $sub ? ($sub->email ?: ($sub->name ?? ('#' . (int) $c->subscriber_id))) : ('#' . (int) $c->subscriber_id);
+                        }
+                        ?>
+                        <tr>
+                            <td style="white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($c->created_at))); ?></td>
+                            <td><?php echo esc_html($c->label ?: '(link)'); ?></td>
+                            <td style="font-family:monospace;"><?php echo esc_html($c->ip ?: '—'); ?></td>
+                            <td><?php echo $fan ? esc_html($fan) : '<span style="color:#9ca3af;">anon</span>'; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </details>
+        <?php endif; ?>
+    </div>
+    <?php
 }
 
 /** The create / edit form (the record itself; cascade wiring lands next slice). */
@@ -723,6 +777,7 @@ function lmeg_releases_render_form($edit = null) {
             </div>
         </div>
     <?php endif; ?>
+    <?php if ($edit && !empty($edit->drop_id) && function_exists('lmeg_link_clicks_total')): lmeg_release_render_clicks_panel($edit); endif; ?>
     <form method="post" style="max-width:720px;">
         <?php wp_nonce_field('lmeg_release_save', 'lmeg_release_nonce'); ?>
         <input type="hidden" name="lmeg_release_action" value="save">
@@ -747,8 +802,11 @@ function lmeg_releases_render_form($edit = null) {
                 <p class="description">A 30-second clip fans can play on the release page &mdash; and it auto-fills the same preview on the shop product. <strong>Find preview</strong> pulls the official Apple Music clip; or paste your own URL.</p>
             </td></tr>
             <tr><th><label for="r_links">Streaming links</label></th><td>
-                <textarea name="links" id="r_links" rows="5" class="large-text code" placeholder="Spotify | https://open.spotify.com/…&#10;Apple Music | https://music.apple.com/…"><?php echo esc_textarea($r->links); ?></textarea>
-                <p class="description">One per line, <code>Label | URL</code>. Shown as buttons on the release page after release.</p>
+                <textarea name="links" id="r_links" rows="6" class="large-text code" placeholder="Spotify | https://open.spotify.com/…&#10;Apple Music | https://music.apple.com/…&#10;Bandcamp | https://…&#10;Merch | https://…&#10;Watch the video | https://…"><?php echo esc_textarea($r->links); ?></textarea>
+                <p class="description">One per line, <code>Label | URL</code> &mdash; shown as buttons on the release page after release, in this order.
+                Add <strong>any</strong> extra links you like (Bandcamp, SoundCloud, merch, tour, a video&hellip;); they&rsquo;re kept exactly as typed.
+                <br>&ldquo;Refresh streaming links&rdquo; only <em>fills in gaps</em> for Spotify / Apple Music / YouTube / Deezer &mdash; it never touches or removes your custom lines.
+                <br>Every button is click-tracked (with visitor IP) through <code>/lc/&hellip;</code>; totals show below and on each release.</p>
             </td></tr>
             <tr><th><label for="r_formats">Formats</label></th><td>
                 <textarea name="formats" id="r_formats" rows="3" class="large-text" placeholder="Digital&#10;CD&#10;Vinyl"><?php echo esc_textarea($r->formats); ?></textarea>
