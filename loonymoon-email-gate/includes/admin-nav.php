@@ -46,7 +46,8 @@ function lmeg_admin_hub_map() {
             ['lmeg-bio', 'Smart Bio'], ['lmeg-shortcodes', 'Shortcodes'],
         ]],
         'social'    => ['label' => 'Social',    'pages' => [
-            ['lmeg-social', 'Social Listening'], ['lmeg-spotify', 'Spotify'], ['lmeg-s4a', 'Spotify for Artists'],
+            ['lmeg-social', 'Social Listening'], ['lmeg-spotify-insights', 'Spotify Insights'],
+            ['lmeg-spotify', 'Spotify'], ['lmeg-s4a', 'Spotify for Artists'],
         ]],
         'connect'   => ['label' => 'Connect',   'pages' => [
             ['lmeg-instagram', 'Instagram'], ['lmeg-spotify', 'Spotify'], ['lmeg-wallet', 'Wallet'],
