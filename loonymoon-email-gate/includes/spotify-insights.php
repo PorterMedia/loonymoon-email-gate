@@ -177,6 +177,49 @@ function lmeg_si_releases_sorted($releases) {
     return $out;
 }
 
+/**
+ * Derive plain-language "so what" insight callouts from the snapshot + meta.
+ * Each is ['label','value','detail']; only callouts with real data are returned.
+ */
+function lmeg_si_callouts($snap, $meta) {
+    $out = [];
+    $meta = (array) $meta;
+    $ml    = ($snap && $snap->monthly_listeners !== null) ? (int) $snap->monthly_listeners : 0;
+    $saves = ($snap && $snap->saves !== null) ? (int) $snap->saves : 0;
+
+    if ($ml > 0 && $saves > 0) {
+        $rate = $saves / $ml * 100;
+        $out[] = ['label' => 'Save rate', 'value' => rtrim(rtrim(number_format($rate, 1), '0'), '.') . '%',
+                  'detail' => number_format_i18n($saves) . ' saves · ' . number_format_i18n($ml) . ' listeners'];
+    }
+    if (isset($meta['pct_streams_from_mal']) && $meta['pct_streams_from_mal'] !== null && $meta['pct_streams_from_mal'] !== '') {
+        $p = (float) $meta['pct_streams_from_mal']; if ($p > 0 && $p <= 1) $p *= 100;
+        if ($p > 0) $out[] = ['label' => 'From active fans', 'value' => round($p) . '%',
+                  'detail' => 'of streams come from your most active listeners'];
+    }
+    $ages = lmeg_si_age_rows($meta['gender_by_age'] ?? null);
+    if ($ages) {
+        $tot = 0; $top = $ages[0];
+        foreach ($ages as $r) { $tot += $r['total']; if ($r['total'] > $top['total']) $top = $r; }
+        if ($tot > 0) $out[] = ['label' => 'Core audience', 'value' => $top['label'],
+                  'detail' => round($top['total'] / $tot * 100) . '% of listeners are this age'];
+    }
+    $cities = array_values(array_filter((array) ($meta['top_cities'] ?? []), 'is_array'));
+    if ($cities) {
+        $c = $cities[0]; $loc = trim(implode(', ', array_filter([(string) ($c['region'] ?? ''), (string) ($c['country'] ?? '')])));
+        $detail = $loc; if (isset($c['num'])) $detail = trim($loc . ' · ' . number_format_i18n((int) $c['num']) . ' listeners', ' ·');
+        $out[] = ['label' => 'Biggest city', 'value' => (string) ($c['name'] ?? ''), 'detail' => $detail];
+    }
+    $songs = array_values(array_filter((array) json_decode((string) ($snap->top_songs ?? '[]'), true), 'is_array'));
+    if (count($songs) >= 2) {
+        $sum = 0; $max = 0; $maxt = '';
+        foreach ($songs as $s) { $v = (int) ($s['streams'] ?? 0); $sum += $v; if ($v > $max) { $max = $v; $maxt = (string) ($s['title'] ?? ''); } }
+        if ($sum > 0 && $maxt !== '') $out[] = ['label' => 'Top-track share', 'value' => round($max / $sum * 100) . '%',
+                  'detail' => 'of listed streams: "' . $maxt . '"'];
+    }
+    return $out;
+}
+
 /** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
 function lmeg_si_pct_change($cur, $prev) {
     if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
@@ -264,6 +307,21 @@ function lmeg_admin_spotify_insights() {
                 <a class="button" href="<?php echo esc_url($ov['url']); ?>" target="_blank" rel="noopener" style="flex:0 0 auto;">Open on Spotify ↗</a>
             <?php endif; ?>
         </div>
+
+        <!-- INSIGHT CALLOUTS ------------------------------------------------->
+        <?php
+        $callouts = lmeg_si_callouts($snap, ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : []);
+        if ($callouts) : ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;max-width:1040px;margin-bottom:14px;">
+            <?php foreach ($callouts as $co) : ?>
+            <div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-left:3px solid #7C6CF6;border-radius:12px;padding:12px 14px;color:#F4F5F7;">
+                <div style="font:800 20px/1.15 var(--lmegA-font,inherit);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($co['value']); ?></div>
+                <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:6px 0 4px;"><?php echo esc_html($co['label']); ?></div>
+                <div style="font-size:12px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($co['detail']); ?></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
 
         <!-- KPI STRIP --------------------------------------------------------->
         <?php
