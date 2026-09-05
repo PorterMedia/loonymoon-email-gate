@@ -912,6 +912,7 @@ function lmeg_release_render_clicks_panel($rel) {
     $sources = lmeg_link_clicks_by_source($drop_id, 6);
     $recent  = lmeg_link_clicks_recent($drop_id, 12);
     $daily   = lmeg_link_clicks_daily($drop_id, 30);
+    $geo     = function_exists('lmeg_link_clicks_by_country') ? lmeg_link_clicks_by_country($drop_id, 8) : [];
 
     // Brand colour per streaming service (for the bars + dots).
     $svc = function ($label) {
@@ -931,6 +932,12 @@ function lmeg_release_render_clicks_panel($rel) {
     $top_service = !empty($by) ? $by[0] : null;
     $max_svc = 0; foreach ($by as $b) $max_svc = max($max_svc, (int) $b['clicks']);
     $max_src = $sources ? max($sources) : 0;
+    // Geo: separate the known-country rows from the Unknown bucket for display.
+    $geo_known = array_values(array_filter($geo, function ($g) { return $g['cc'] !== ''; }));
+    $geo_max   = 0; foreach ($geo_known as $g) $geo_max = max($geo_max, (int) $g['n']);
+    $top_country = !empty($geo_known) ? $geo_known[0]['cc'] : '';
+    $top_country_name = $top_country && function_exists('lmeg_country_by_iso') && ($cc = lmeg_country_by_iso($top_country)) ? $cc[1] : $top_country;
+    $geo_countries = count($geo_known);
     ?>
     <div class="lmeg-la" style="max-width:900px;margin-bottom:18px;color:#F4F5F7;font-family:var(--lmegA-font,-apple-system,'Segoe UI',Roboto,sans-serif);">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;">
@@ -958,6 +965,12 @@ function lmeg_release_render_clicks_panel($rel) {
                     <div style="font:800 18px/1.1 var(--lmegA-font,inherit);color:<?php echo esc_attr($top_service ? $svc($top_service['label']) : '#F4F5F7'); ?>;"><?php echo esc_html($top_service ? ($top_service['label'] ?: '—') : '—'); ?></div>
                     <div style="<?php echo $lbl; ?>margin-top:8px;">Top destination</div>
                 </div>
+                <?php if ($top_country): ?>
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="font:800 18px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;"><?php echo esc_html(trim(lmeg_flag_emoji($top_country) . ' ' . $top_country_name)); ?></div>
+                    <div style="<?php echo $lbl; ?>margin-top:8px;">Top location<?php echo $geo_countries > 1 ? ' · ' . (int) $geo_countries . ' countries' : ''; ?></div>
+                </div>
+                <?php endif; ?>
             </div>
             <!-- clicks over time -->
             <div style="<?php echo $card; ?>padding:14px 16px;margin-bottom:12px;">
@@ -999,6 +1012,25 @@ function lmeg_release_render_clicks_panel($rel) {
                         </div>
                     <?php endforeach; endif; ?>
                 </div>
+                <!-- top locations -->
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top locations</div>
+                    <?php if (empty($geo_known)): ?>
+                        <p style="color:#8B90A0;font-size:13px;margin:0;">Mapping clicks to countries — check back shortly.</p>
+                    <?php else: foreach ($geo_known as $g):
+                        $cc = $g['cc']; $c = (int) $g['n'];
+                        $name = (function_exists('lmeg_country_by_iso') && ($row = lmeg_country_by_iso($cc))) ? $row[1] : $cc;
+                        $w = $geo_max ? max(4, round(100 * $c / $geo_max)) : 0;
+                        $pct = $total ? round(100 * $c / $total) : 0; ?>
+                        <div style="display:flex;align-items:center;gap:9px;margin:7px 0;">
+                            <span style="flex:0 0 auto;font-size:15px;"><?php echo esc_html(lmeg_flag_emoji($cc) ?: '🏳'); ?></span>
+                            <span style="flex:0 0 118px;font-size:13px;color:#F4F5F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo esc_html($name); ?></span>
+                            <span style="flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $w; ?>%;background:#34D399;border-radius:5px;"></span></span>
+                            <span style="flex:0 0 auto;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($c); ?></span>
+                            <span style="flex:0 0 40px;text-align:right;font-size:11.5px;color:#8B90A0;"><?php echo $pct; ?>%</span>
+                        </div>
+                    <?php endforeach; endif; ?>
+                </div>
             </div>
             <!-- recent clicks -->
             <details style="margin-top:12px;">
@@ -1020,7 +1052,7 @@ function lmeg_release_render_clicks_panel($rel) {
                         <tr>
                             <td style="<?php echo $td; ?>white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($cl->created_at))); ?></td>
                             <td style="<?php echo $td; ?>"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<?php echo esc_attr($svc($cl->label)); ?>;margin-right:6px;"></span><?php echo esc_html($cl->label ?: '(link)'); ?></td>
-                            <td style="<?php echo $td; ?>font-family:monospace;"><?php echo esc_html($cl->ip ?: '—'); ?></td>
+                            <td style="<?php echo $td; ?>font-family:monospace;"><?php $fl = !empty($cl->country) ? lmeg_flag_emoji($cl->country) : ''; echo ($fl ? '<span style="font-family:initial;margin-right:5px;">' . esc_html($fl) . '</span>' : '') . esc_html($cl->ip ?: '—'); ?></td>
                             <td style="<?php echo $td; ?>"><?php echo $fan ? esc_html($fan) : '<span style="color:#8B90A0;">anon</span>'; ?></td>
                         </tr>
                     <?php endforeach; ?>

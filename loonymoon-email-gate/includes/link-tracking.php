@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!defined('LMEG_LINKTRACK_DB_VERSION')) define('LMEG_LINKTRACK_DB_VERSION', '1');
+if (!defined('LMEG_LINKTRACK_DB_VERSION')) define('LMEG_LINKTRACK_DB_VERSION', '2');
 
 function lmeg_link_clicks_table() {
     global $wpdb;
@@ -40,12 +40,14 @@ function lmeg_link_tracking_maybe_install() {
         target_url VARCHAR(600) NOT NULL DEFAULT '',
         subscriber_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
         ip VARCHAR(45) NOT NULL DEFAULT '',
+        country CHAR(2) NOT NULL DEFAULT '',
         user_agent VARCHAR(255) NOT NULL DEFAULT '',
         referrer VARCHAR(255) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL,
         PRIMARY KEY (id),
         KEY drop_id (drop_id),
         KEY release_id (release_id),
+        KEY country (country),
         KEY created_at (created_at)
     ) $charset;");
     update_option('lmeg_link_track_db_version', LMEG_LINKTRACK_DB_VERSION);
@@ -56,6 +58,23 @@ function lmeg_linktrack_ip() {
     if (function_exists('lmeg_client_ip')) return lmeg_client_ip();
     $ip = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? ''))[0]);
     return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '0.0.0.0';
+}
+
+/**
+ * Country for the CURRENT click, resolved WITHOUT a blocking network call so
+ * the redirect stays instant: the Cloudflare header when present, else a
+ * cache-only IP lookup (a transient already warmed by the fan-CDP geo helpers).
+ * Anything not immediately known is left '' and filled later by the admin
+ * panel's lazy backfill (lmeg_link_clicks_backfill_country).
+ */
+function lmeg_linktrack_country_fast() {
+    $cf = strtoupper((string) ($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ''));
+    if (preg_match('/^[A-Z]{2}$/', $cf) && $cf !== 'XX' && $cf !== 'T1') return $cf;
+    $ip = lmeg_linktrack_ip();
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return '';
+    $cached = get_transient('lmeg_geo_' . md5($ip)); // set by lmeg_geo_country_from_ip
+    if ($cached !== false && $cached !== '-') return (string) $cached;
+    return '';
 }
 
 /** Tracked redirect URL for link #$index of a given drop. */
@@ -115,6 +134,7 @@ function lmeg_link_click_redirect() {
         'target_url'    => substr((string) $target, 0, 600),
         'subscriber_id' => $subscriber_id,
         'ip'            => substr(lmeg_linktrack_ip(), 0, 45),
+        'country'       => lmeg_linktrack_country_fast(),
         'user_agent'    => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
         'referrer'      => substr((string) ($_SERVER['HTTP_REFERER'] ?? ''), 0, 255),
         'created_at'    => current_time('mysql'),
@@ -248,4 +268,48 @@ function lmeg_link_clicks_by_source($drop_id, $limit = 6) {
     }
     arsort($agg);
     return array_slice($agg, 0, (int) $limit, true);
+}
+
+/**
+ * Lazily fill the country for a drop's clicks that don't have one yet — a
+ * small, bounded batch of DISTINCT un-geolocated IPs per admin view, resolved
+ * through the day-cached lmeg_geo_country_from_ip(). Runs only in wp-admin so
+ * a page render never pays for more than $limit lookups, and repeat views walk
+ * the rest of the backlog. No-op when the geo helper isn't available.
+ */
+function lmeg_link_clicks_backfill_country($drop_id, $limit = 12) {
+    if (!function_exists('lmeg_geo_country_from_ip')) return;
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return;
+    $t = lmeg_link_clicks_table();
+    $ips = $wpdb->get_col($wpdb->prepare(
+        "SELECT DISTINCT ip FROM $t
+         WHERE drop_id = %d AND (country IS NULL OR country = '') AND ip <> '' AND ip <> '0.0.0.0'
+         ORDER BY id DESC LIMIT %d", $drop_id, (int) $limit
+    ));
+    foreach ((array) $ips as $ip) {
+        $cc = lmeg_geo_country_from_ip($ip);
+        if ($cc) $wpdb->update($t, ['country' => $cc], ['drop_id' => $drop_id, 'ip' => $ip]);
+    }
+}
+
+/**
+ * Clicks grouped by country for a release. Backfills missing countries first
+ * (bounded), then returns [ ['cc'=>'US','n'=>N], ... ] most-clicked first.
+ * Rows still without a country after backfill are bucketed under '' (Unknown).
+ */
+function lmeg_link_clicks_by_country($drop_id, $limit = 8) {
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return [];
+    if (is_admin()) lmeg_link_clicks_backfill_country($drop_id);
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT country cc, COUNT(*) n FROM " . lmeg_link_clicks_table() . "
+         WHERE drop_id = %d GROUP BY country ORDER BY n DESC", $drop_id
+    ));
+    $out = [];
+    foreach ($rows as $r) $out[] = ['cc' => strtoupper((string) $r->cc), 'n' => (int) $r->n];
+    // Keep top N known countries, fold everything else (incl. Unknown) into the tail count if truncated.
+    return array_slice($out, 0, (int) $limit);
 }
