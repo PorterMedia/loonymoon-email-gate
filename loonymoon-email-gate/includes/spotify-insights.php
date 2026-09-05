@@ -348,6 +348,18 @@ function lmeg_si_analyze($c) {
         $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
             'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
     }
+    // Release cadence / newest-release performance.
+    if (!empty($c['last_release']['name'])) {
+        $lr = $c['last_release']; $d = (int) ($lr['days_ago'] ?? 0);
+        if ($d >= 60) $F[] = ['type' => 'opportunity', 'title' => 'Time for new music',
+            'detail' => 'It’s been ' . $d . ' days since your last release (“' . $lr['name'] . '”). A fresh drop — or a re-push of a strong catalog cut — would refresh your momentum.'];
+        elseif ($d <= 45 && isset($lr['ratio']) && $lr['ratio'] !== null) {
+            if ($lr['ratio'] >= 1.6) $F[] = ['type' => 'strength', 'title' => 'Your latest release is landing',
+                'detail' => '“' . $lr['name'] . '” is pulling ' . $p($lr['ratio']) . '× your typical release’s streams — lean promo into it while it’s fresh.'];
+            elseif ($lr['ratio'] <= 0.6) $F[] = ['type' => 'watch', 'title' => 'Latest release is under its potential',
+                'detail' => '“' . $lr['name'] . '” is tracking below your catalog average. A targeted push — playlist pitches, socials, a few ad dollars — could give it a second wind.'];
+        }
+    }
     // Playlist dependency vs editorial support.
     if (isset($c['pl_mix']['Algorithmic'])) {
         $alg = $c['pl_mix']['Algorithmic']; $ed = $c['pl_mix']['Editorial'] ?? 0;
@@ -464,6 +476,19 @@ function lmeg_admin_spotify_insights() {
     $az_saveRate = ($snap && $snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null;
     $az_sum = 0; $az_max = 0; $az_topTrack = '';
     foreach ($az_songs as $s) { $v = (int) ($s['streams'] ?? 0); $az_sum += $v; if ($v > $az_max) { $az_max = $v; $az_topTrack = (string) ($s['title'] ?? ''); } }
+    // newest release (by date) + its performance vs the catalog median.
+    $az_lastRel = null;
+    $az_relRaw = array_values(array_filter((array) ($az_meta['releases'] ?? []), 'is_array'));
+    if ($az_relRaw) {
+        usort($az_relRaw, function ($a, $b) { return strcmp((string) ($b['date'] ?? ''), (string) ($a['date'] ?? '')); });
+        $r0 = $az_relRaw[0];
+        if (!empty($r0['date']) && ($ts = strtotime((string) $r0['date']))) {
+            $st = array_map(function ($r) { return (int) ($r['streams'] ?? 0); }, $az_relRaw);
+            sort($st); $med = $st ? $st[intdiv(count($st), 2)] : 0;
+            $az_lastRel = ['name' => (string) ($r0['name'] ?? ''), 'days_ago' => (int) floor((current_time('timestamp') - $ts) / 86400),
+                'streams' => (int) ($r0['streams'] ?? 0), 'ratio' => ($med > 0 ? (int) ($r0['streams'] ?? 0) / $med : null)];
+        }
+    }
     $trend = function ($vals) { $vals = array_values(array_filter((array) $vals, function ($v) { return $v !== null; })); $k = count($vals); if ($k < 2) return null; $d = (float) $vals[$k - 1] - (float) $vals[0]; return $d > 0 ? 1 : ($d < 0 ? -1 : 0); };
     $az_streamsTrend = ($has_s4a && function_exists('lmeg_s4a_series')) ? $trend(array_map(function ($r) { return (int) $r->v; }, lmeg_s4a_series('streams', $sel, $snap->window))) : null;
     $az_socialTrend = null;
@@ -489,6 +514,7 @@ function lmeg_admin_spotify_insights() {
         'top_track_share'   => $az_sum > 0 ? $az_max / $az_sum * 100 : null,
         'top_track'         => $az_topTrack,
         'active_share'      => isset($az_meta['pct_streams_from_mal']) && $az_meta['pct_streams_from_mal'] !== null ? (float) $az_meta['pct_streams_from_mal'] : null,
+        'last_release'      => $az_lastRel,
     ]);
     ?>
     <div class="wrap lmeg-admin">
