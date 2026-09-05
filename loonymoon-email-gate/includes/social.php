@@ -174,7 +174,7 @@ function lmeg_social_ig_content_stats() {
         'avg_eng'  => (int) round($avg_eng),
         'eng_rate' => $followers ? round(100 * $avg_eng / $followers, 2) : 0,
         'cadence'  => $cadence,
-        'top'      => array_slice($media, 0, 8),
+        'top'      => array_slice($media, 0, 12),
     ];
 }
 
@@ -443,7 +443,7 @@ function lmeg_fb_content_stats() {
         'avg_eng'  => (int) round($avg_eng),
         'eng_rate' => $followers ? round(100 * $avg_eng / $followers, 2) : 0,
         'cadence'  => $cadence,
-        'top'      => array_slice($posts, 0, 8),
+        'top'      => array_slice($posts, 0, 12),
     ];
 }
 
@@ -704,6 +704,12 @@ function lmeg_social_demo() {
         ['caption' => 'New merch drops Friday 👀🔥', 'permalink' => '#', 'timestamp' => '2026-07-16T19:00:00+0000', 'likes' => 388, 'comments' => 44, 'shares' => 33],
         ['caption' => 'Behind the scenes of the video 🎬', 'permalink' => '#', 'timestamp' => '2026-07-19T16:00:00+0000', 'likes' => 356, 'comments' => 29, 'shares' => 22],
         ['caption' => 'Should I release the acoustic version?', 'permalink' => '#', 'timestamp' => '2026-07-13T21:00:00+0000', 'likes' => 302, 'comments' => 61, 'shares' => 18],
+        ['caption' => 'ICYMI — the video is out now 🎬', 'permalink' => '#', 'timestamp' => '2026-07-11T16:00:00+0000', 'likes' => 288, 'comments' => 33, 'shares' => 27],
+        ['caption' => 'Vinyl restock is live — limited run 💿', 'permalink' => '#', 'timestamp' => '2026-07-08T18:00:00+0000', 'likes' => 264, 'comments' => 38, 'shares' => 19],
+        ['caption' => 'Rehearsals for the tour 🥁', 'permalink' => '#', 'timestamp' => '2026-07-05T20:00:00+0000', 'likes' => 231, 'comments' => 22, 'shares' => 12],
+        ['caption' => 'Throwback to opening night 🖤', 'permalink' => '#', 'timestamp' => '2026-07-02T17:00:00+0000', 'likes' => 205, 'comments' => 26, 'shares' => 14],
+        ['caption' => 'New photos from the shoot 📸', 'permalink' => '#', 'timestamp' => '2026-06-29T19:00:00+0000', 'likes' => 188, 'comments' => 17, 'shares' => 9],
+        ['caption' => 'Q&A this Sunday — drop your questions', 'permalink' => '#', 'timestamp' => '2026-06-26T21:00:00+0000', 'likes' => 162, 'comments' => 49, 'shares' => 7],
     ];
 
     $top = [
@@ -715,6 +721,10 @@ function lmeg_social_demo() {
         ['caption' => 'new merch dropping friday 👀🔥', 'type' => 'CAROUSEL_ALBUM', 'permalink' => '#', 'timestamp' => '2026-07-16T19:00:00+0000', 'likes' => 1980, 'comments' => 176],
         ['caption' => 'acoustic version… should i release it?', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-13T21:00:00+0000', 'likes' => 1740, 'comments' => 230],
         ['caption' => 'ootd for the show tonight 💜', 'type' => 'IMAGE', 'permalink' => '#', 'timestamp' => '2026-07-10T22:00:00+0000', 'likes' => 1320, 'comments' => 88],
+        ['caption' => 'the video is finally OUT 🎬 watch it', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-08T15:00:00+0000', 'likes' => 1180, 'comments' => 132],
+        ['caption' => 'vinyl restock 💿 limited, link in bio', 'type' => 'IMAGE', 'permalink' => '#', 'timestamp' => '2026-07-05T18:00:00+0000', 'likes' => 1040, 'comments' => 74],
+        ['caption' => 'rehearsals 🥁 tour soon', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-02T20:00:00+0000', 'likes' => 970, 'comments' => 61],
+        ['caption' => 'photo dump from the week 📸', 'type' => 'CAROUSEL_ALBUM', 'permalink' => '#', 'timestamp' => '2026-06-29T17:00:00+0000', 'likes' => 860, 'comments' => 53],
     ];
     return [
         'ig'         => ['username' => 'loonymoonchild', 'followers' => end($ig_vals), 'media_count' => 142, 'follows' => 612],
