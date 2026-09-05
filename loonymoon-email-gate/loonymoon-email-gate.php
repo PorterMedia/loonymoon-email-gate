@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.135.0');
+define('LMEG_VERSION',     '3.136.0');
 define('LMEG_DB_VERSION',  '3.105.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -83,6 +83,7 @@ require_once LMEG_PLUGIN_DIR . 'includes/shop.php';
 require_once LMEG_PLUGIN_DIR . 'includes/fans.php';
 require_once LMEG_PLUGIN_DIR . 'includes/smartlinks.php';
 require_once LMEG_PLUGIN_DIR . 'includes/link-tracking.php';
+require_once LMEG_PLUGIN_DIR . 'includes/admin-nav.php';
 require_once LMEG_PLUGIN_DIR . 'includes/biopage.php';
 require_once LMEG_PLUGIN_DIR . 'includes/drops.php';
 require_once LMEG_PLUGIN_DIR . 'includes/square.php';
