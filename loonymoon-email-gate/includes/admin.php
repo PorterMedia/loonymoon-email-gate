@@ -6143,8 +6143,8 @@ function lmeg_admin_overview() {
     .lmeg-admin .lmeg-att__dot--info{background:#7C6CF6;box-shadow:0 0 0 4px rgba(124,108,246,.14);}
     .lmeg-admin .lmeg-att__dot--good{background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.14);}
     .lmeg-admin .lmeg-att__body{display:flex;flex-direction:column;flex:1;min-width:0;}
-    .lmeg-admin .lmeg-att__label{font-size:13.5px;font-weight:600;line-height:1.25;}
-    .lmeg-admin .lmeg-att__detail{font-size:11.5px;color:#8B90A0;margin-top:1px;}
+    .lmeg-admin .lmeg-att__label{font-size:13.5px;font-weight:600;line-height:1.25;color:#F4F5F7!important;}
+    .lmeg-admin .lmeg-att__detail{font-size:11.5px;color:#8B90A0!important;margin-top:1px;}
     .lmeg-admin .lmeg-att__arrow{flex:0 0 auto;color:#8B90A0;font-size:15px;transition:transform .12s ease;}
     .lmeg-admin .lmeg-att__card:hover .lmeg-att__arrow{transform:translateX(2px);color:#F4F5F7;}
     .lmeg-admin .lmeg-ov-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:18px 0;}
