@@ -538,7 +538,7 @@ function lmeg_ig_oauth_start() {
         'redirect_uri'  => lmeg_ig_oauth_redirect_uri(),
         'state'         => $state,
         'response_type' => 'code',
-        'scope'         => 'instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_show_list,pages_read_engagement,business_management',
+        'scope'         => 'instagram_basic,instagram_manage_messages,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,business_management',
     ]);
     wp_redirect($url);
     exit;

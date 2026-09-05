@@ -3,6 +3,8 @@
  * Social Listening — a read on the artist's social presence from their OWN
  * connected accounts:
  *   • Audience snapshot   — IG + Spotify followers + owned fan-list, at a glance
+ *   • Follower demographics — gender / age / country / city (IG insights;
+ *                           needs the instagram_manage_insights scope)
  *   • Growth trends       — follower sparklines + per-day rate + 30-day change
  *   • Content performance — top posts by engagement, engagement rate, cadence,
  *                           format breakdown, hashtag performance (lift vs avg),
@@ -270,6 +272,69 @@ function lmeg_social_ig_hashtags($limit = 10, $min_posts = 2) {
     return ['avg_all' => (int) round($avg_all), 'tags' => array_slice($out, 0, (int) $limit)];
 }
 
+/**
+ * Follower demographics — gender, age, country, city — the marquee "who your
+ * audience is" read (matches Cobrand's Social Listening Overview). Uses the
+ * Instagram Graph `follower_demographics` insight (period=lifetime,
+ * metric_type=total_value, with breakdowns). Requires the
+ * `instagram_manage_insights` scope on the connection (added to the connect
+ * flow) and a Business/Creator account with ≥100 followers — until the artist
+ * reconnects to grant it, every call fails gracefully and returns null so the
+ * page shows a "reconnect to unlock" nudge rather than an error.
+ *
+ * @return array|null ['gender'=>[k=>n], 'age'=>[k=>n], 'country'=>[cc=>n], 'city'=>[name=>n]]
+ */
+function lmeg_social_ig_demographics($force = false) {
+    if (!function_exists('lmeg_ig_configured') || !lmeg_ig_configured()) return null;
+    $cache = 'lmeg_social_ig_demo';
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return ($c === ['__none__' => 1]) ? null : $c; }
+
+    $s    = lmeg_get_settings();
+    $base = LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id']) . '/insights';
+    $tok  = rawurlencode($s['ig_page_token']);
+
+    // One insight call per breakdown; a breakdown returns
+    // total_value.breakdowns[0].results[] = { dimension_values:[…], value:N }.
+    $pull = function ($breakdown) use ($base, $tok) {
+        $resp = wp_remote_get(
+            $base . '?metric=follower_demographics&period=lifetime&metric_type=total_value'
+                  . '&breakdown=' . rawurlencode($breakdown) . '&access_token=' . $tok,
+            ['timeout' => 12]
+        );
+        if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
+        $d = json_decode(wp_remote_retrieve_body($resp), true);
+        $res = $d['data'][0]['total_value']['breakdowns'][0]['results'] ?? null;
+        if (!is_array($res)) return [];
+        return $res;
+    };
+
+    // age,gender in one call → split into two distributions.
+    $gender = []; $age = [];
+    foreach ($pull('age,gender') as $r) {
+        $dv = $r['dimension_values'] ?? []; $v = (int) ($r['value'] ?? 0);
+        if (count($dv) < 2) continue;
+        $a = (string) $dv[0]; $g = strtoupper((string) $dv[1]);
+        $age[$a]    = ($age[$a] ?? 0) + $v;
+        $gender[$g] = ($gender[$g] ?? 0) + $v;
+    }
+    $country = []; foreach ($pull('country') as $r) { $cc = strtoupper((string) ($r['dimension_values'][0] ?? '')); if ($cc !== '') $country[$cc] = (int) ($r['value'] ?? 0); }
+    $city    = []; foreach ($pull('city')    as $r) { $nm = (string) ($r['dimension_values'][0] ?? '');            if ($nm !== '') $city[$nm]    = (int) ($r['value'] ?? 0); }
+
+    if (!$gender && !$age && !$country && !$city) {
+        set_transient($cache, ['__none__' => 1], 3 * HOUR_IN_SECONDS); // remember "unavailable" briefly
+        return null;
+    }
+    // Sort each distribution most-first (age keeps its natural bucket order).
+    arsort($gender); arsort($country); arsort($city);
+    $age_order = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+    $age_sorted = [];
+    foreach ($age_order as $k) if (isset($age[$k])) $age_sorted[$k] = $age[$k];
+    foreach ($age as $k => $v) if (!isset($age_sorted[$k])) $age_sorted[$k] = $v; // any unexpected bucket last
+    $out = ['gender' => $gender, 'age' => $age_sorted, 'country' => $country, 'city' => $city];
+    set_transient($cache, $out, 12 * HOUR_IN_SECONDS);
+    return $out;
+}
+
 /** Story mentions received in the last N days (UGC signal). */
 function lmeg_social_story_mentions($days = 30) {
     global $wpdb;
@@ -520,6 +585,19 @@ function lmeg_social_ai_digest($force = false) {
             foreach ($tops as $h) $bits[] = '#' . $h['tag'] . ' (' . ($h['lift'] >= 0 ? '+' : '') . $h['lift'] . '% vs avg, ' . $h['posts'] . ' posts)';
             $lines[] = "Top-performing hashtags: " . implode(', ', $bits) . ".";
         }
+        $demo = lmeg_social_ig_demographics();
+        if ($demo) {
+            $fmtTop = function ($arr, $n, $flag = false) {
+                $arr = (array) $arr; $tot = max(1, array_sum($arr)); $i = 0; $out = [];
+                foreach ($arr as $k => $v) { if ($i++ >= $n) break; $lbl = ($flag && function_exists('lmeg_country_by_iso') && ($r = lmeg_country_by_iso($k))) ? $r[1] : $k; $out[] = $lbl . ' ' . round(100 * $v / $tot) . '%'; }
+                return implode(', ', $out);
+            };
+            $parts = [];
+            if (!empty($demo['country'])) $parts[] = "top countries " . $fmtTop($demo['country'], 3, true);
+            if (!empty($demo['city']))    $parts[] = "top cities " . $fmtTop($demo['city'], 3);
+            if (!empty($demo['age']))     $parts[] = "biggest age group " . $fmtTop($demo['age'], 1);
+            if ($parts) $lines[] = "Audience: " . implode('; ', $parts) . ".";
+        }
     }
     if (lmeg_fb_configured()) {
         $fb = lmeg_fb_page_stats();
@@ -674,6 +752,12 @@ function lmeg_social_demo() {
             ['tag' => 'artpop',     'posts' => 7, 'avg' => 1180, 'lift' => -13],
             ['tag' => 'studio',     'posts' => 3, 'avg' => 980,  'lift' => -28],
         ]],
+        'demographics' => [
+            'gender'  => ['F' => 15820, 'M' => 9740, 'U' => 980],
+            'age'     => ['13-17' => 1210, '18-24' => 9860, '25-34' => 8730, '35-44' => 3820, '45-54' => 1560, '55-64' => 720, '65+' => 640],
+            'country' => ['CA' => 13380, 'US' => 7620, 'MX' => 940, 'GB' => 860, 'AU' => 520, 'DE' => 410],
+            'city'    => ['Toronto' => 4820, 'Los Angeles' => 1910, 'New York City' => 1680, 'Montreal' => 1240, 'Vancouver' => 980, 'Mexico City' => 610],
+        ],
         'sentiment'  => [
             'positive' => 79, 'neutral' => 17, 'negative' => 4,
             'themes'     => ['the new single', 'tour dates', 'merch', 'your voice', 'the music video'],
@@ -719,6 +803,7 @@ function lmeg_admin_social() {
         $fan_ct = $dd['fan_ct']; $stories = $dd['stories']; $content = $dd['content'];
         $best_day = $dd['best_day']; $types = $dd['types'];
         $hashtags = $dd['hashtags'];
+        $demographics = $dd['demographics'];
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
@@ -735,6 +820,7 @@ function lmeg_admin_social() {
         $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
         $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
         $hashtags = $ig_ok ? lmeg_social_ig_hashtags() : null;
+        $demographics = $ig_ok ? lmeg_social_ig_demographics() : null;
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
@@ -820,6 +906,54 @@ function lmeg_admin_social() {
             <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>
             <?php endif; ?>
         </div>
+
+        <?php if ($ig_ok) : ?>
+        <h2 style="margin-top:24px;">Who your followers are</h2>
+        <?php if (empty($demographics)) : ?>
+            <div style="<?php echo $dash; ?>max-width:900px;">
+                <p style="margin:0 0 4px;font-weight:600;color:#F4F5F7;">Follower demographics — gender, age, and where they are</p>
+                <p class="description" style="margin:0;">Instagram shares this for Business/Creator accounts with 100+ followers, but it needs the insights permission. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Reconnect Instagram in Settings</a> to grant it and this fills in automatically — your existing connection keeps working in the meantime.</p>
+            </div>
+        <?php else :
+            // Inline distribution renderer: assoc [key=>count], optional label formatter.
+            $dist = function ($data, $limit, $fmt = null) use ($card) {
+                $data = (array) $data; if (!$data) { echo '<p class="description" style="margin:0;">No data yet.</p>'; return; }
+                $total = array_sum($data); $total = $total > 0 ? $total : 1;
+                $i = 0;
+                foreach ($data as $k => $v) {
+                    if ($i++ >= $limit) break;
+                    $pct = round(100 * $v / $total, 1);
+                    $label = $fmt ? $fmt($k) : $k;
+                    echo '<div style="display:flex;align-items:center;gap:9px;margin:7px 0;">'
+                       . '<span style="flex:0 0 120px;font-size:13px;color:#F4F5F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' . $label . '</span>'
+                       . '<span style="flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:' . max(3, round($pct)) . '%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:5px;"></span></span>'
+                       . '<span style="flex:0 0 48px;text-align:right;font-size:12px;color:#8B90A0;font-variant-numeric:tabular-nums;">' . $pct . '%</span>'
+                       . '</div>';
+                }
+            };
+            $gender_label = ['F' => 'Female', 'M' => 'Male', 'U' => 'Unknown'];
+            $flag = function ($cc) { $n = (function_exists('lmeg_country_by_iso') && ($r = lmeg_country_by_iso($cc))) ? $r[1] : $cc; return esc_html(trim((function_exists('lmeg_flag_emoji') ? lmeg_flag_emoji($cc) . ' ' : '') . $n)); };
+            ?>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;max-width:900px;">
+                <div style="<?php echo $card; ?>">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Gender</div>
+                    <?php $dist($demographics['gender'] ?? [], 4, function ($k) use ($gender_label) { return esc_html($gender_label[strtoupper($k)] ?? ucfirst(strtolower($k))); }); ?>
+                </div>
+                <div style="<?php echo $card; ?>">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Age</div>
+                    <?php $dist($demographics['age'] ?? [], 7, function ($k) { return esc_html($k); }); ?>
+                </div>
+                <div style="<?php echo $card; ?>">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Top countries</div>
+                    <?php $dist($demographics['country'] ?? [], 6, $flag); ?>
+                </div>
+                <div style="<?php echo $card; ?>">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Top cities</div>
+                    <?php $dist($demographics['city'] ?? [], 6, function ($k) { return esc_html($k); }); ?>
+                </div>
+            </div>
+        <?php endif; ?>
+        <?php endif; ?>
 
         <h2 style="margin-top:24px;">Content performance</h2>
         <?php if (!$ig_ok) : ?>
