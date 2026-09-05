@@ -904,55 +904,129 @@ function lmeg_releases_render_list() {
 
 /** Streaming-link click analytics for one release (totals + IPs). */
 function lmeg_release_render_clicks_panel($rel) {
+    global $wpdb;
     $drop_id = (int) $rel->drop_id;
-    $total   = lmeg_link_clicks_total($drop_id);
+    $stats   = lmeg_link_clicks_stats($drop_id);
+    $total   = (int) $stats['total'];
     $by      = lmeg_link_clicks_by_label($drop_id);
-    $recent  = lmeg_link_clicks_recent($drop_id, 15);
+    $sources = lmeg_link_clicks_by_source($drop_id, 6);
+    $recent  = lmeg_link_clicks_recent($drop_id, 12);
+    $daily   = lmeg_link_clicks_daily($drop_id, 30);
+
+    // Brand colour per streaming service (for the bars + dots).
+    $svc = function ($label) {
+        $l = strtolower((string) $label);
+        if (strpos($l, 'spotify') !== false)    return '#1DB954';
+        if (strpos($l, 'apple') !== false)      return '#FC3C44';
+        if (strpos($l, 'youtube') !== false)    return '#FF0000';
+        if (strpos($l, 'deezer') !== false)     return '#A238FF';
+        if (strpos($l, 'amazon') !== false)     return '#00A8E1';
+        if (strpos($l, 'tidal') !== false)      return '#38E5FF';
+        if (strpos($l, 'bandcamp') !== false)   return '#629AA9';
+        if (strpos($l, 'soundcloud') !== false) return '#FF5500';
+        return '#7C6CF6';
+    };
+    $card = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.09);border-radius:14px;';
+    $lbl  = 'font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;';
+    $top_service = !empty($by) ? $by[0] : null;
+    $max_svc = 0; foreach ($by as $b) $max_svc = max($max_svc, (int) $b['clicks']);
+    $max_src = $sources ? max($sources) : 0;
     ?>
-    <?php
-    $td = 'padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.07);color:#F4F5F7;font-size:13px;';
-    $th = 'text-align:left;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.12);color:#8B90A0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;';
-    ?>
-    <div style="max-width:720px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:14px 16px;margin-bottom:16px;color:#F4F5F7;">
-        <strong style="display:block;margin-bottom:2px;color:#F4F5F7;">Link clicks
-            <span style="font-weight:400;color:#8B90A0;">— <?php echo (int) $total; ?> total</span></strong>
-        <p style="margin:2px 0 12px;color:#8B90A0;font-size:13px;">Every streaming / custom link on this release&rsquo;s page is tracked, including the visitor&rsquo;s IP address. Known fans&rsquo; clicks also land on their timeline.</p>
+    <div class="lmeg-la" style="max-width:900px;margin-bottom:18px;color:#F4F5F7;font-family:var(--lmegA-font,-apple-system,'Segoe UI',Roboto,sans-serif);">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;">
+            <strong style="font-size:15px;color:#F4F5F7;">Release analytics</strong>
+            <span style="<?php echo $lbl; ?>">Streaming-link clicks · with IP</span>
+        </div>
         <?php if (!$total): ?>
-            <p style="color:#8B90A0;margin:0;">No clicks yet.</p>
+            <div style="<?php echo $card; ?>padding:22px;color:#8B90A0;">No clicks yet — this fills in as fans tap the links on the release page.</div>
         <?php else: ?>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-                <?php foreach ($by as $b): ?>
-                    <span style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 12px;font-size:13px;color:#F4F5F7;">
-                        <strong style="color:#F4F5F7;"><?php echo esc_html($b['label'] ?: '(link)'); ?></strong>
-                        <span style="color:#8B90A0;"><?php echo (int) $b['clicks']; ?></span>
-                    </span>
-                <?php endforeach; ?>
+            <!-- KPI tiles -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="font:800 28px/1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($total); ?></div>
+                    <div style="<?php echo $lbl; ?>margin-top:6px;">Total clicks</div>
+                </div>
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="font:800 28px/1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n((int) $stats['unique']); ?></div>
+                    <div style="<?php echo $lbl; ?>margin-top:6px;">Unique visitors</div>
+                </div>
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="font:800 28px/1 var(--lmegA-font,inherit);color:#34D399;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n((int) $stats['known']); ?></div>
+                    <div style="<?php echo $lbl; ?>margin-top:6px;">Known fans</div>
+                </div>
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="font:800 18px/1.1 var(--lmegA-font,inherit);color:<?php echo esc_attr($top_service ? $svc($top_service['label']) : '#F4F5F7'); ?>;"><?php echo esc_html($top_service ? ($top_service['label'] ?: '—') : '—'); ?></div>
+                    <div style="<?php echo $lbl; ?>margin-top:8px;">Top destination</div>
+                </div>
             </div>
-            <details>
+            <!-- clicks over time -->
+            <div style="<?php echo $card; ?>padding:14px 16px;margin-bottom:12px;">
+                <div style="<?php echo $lbl; ?>margin-bottom:6px;">Clicks · last 30 days</div>
+                <?php
+                echo lmeg_chart_line(array_values($daily), [
+                    'color'  => '#7C6CF6',
+                    'uid'    => 'rel-clicks-' . $drop_id,
+                    'h'      => 66,
+                    'labels' => array_map(function ($d) { return date_i18n('M j', strtotime($d)); }, array_keys($daily)),
+                    'suffix' => ' clicks',
+                ]);
+                ?>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;">
+                <!-- by destination service -->
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="<?php echo $lbl; ?>margin-bottom:10px;">By destination</div>
+                    <?php foreach ($by as $b): $c = (int) $b['clicks']; $w = $max_svc ? max(4, round(100 * $c / $max_svc)) : 0; $pct = $total ? round(100 * $c / $total) : 0; ?>
+                        <div style="display:flex;align-items:center;gap:9px;margin:7px 0;">
+                            <span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:<?php echo esc_attr($svc($b['label'])); ?>;"></span>
+                            <span style="flex:0 0 96px;font-size:13px;color:#F4F5F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo esc_html($b['label'] ?: '(link)'); ?></span>
+                            <span style="flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $w; ?>%;background:<?php echo esc_attr($svc($b['label'])); ?>;border-radius:5px;"></span></span>
+                            <span style="flex:0 0 auto;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($c); ?></span>
+                            <span style="flex:0 0 40px;text-align:right;font-size:11.5px;color:#8B90A0;"><?php echo $pct; ?>%</span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <!-- top sources -->
+                <div style="<?php echo $card; ?>padding:14px 16px;">
+                    <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where clicks came from</div>
+                    <?php if (!$sources): ?>
+                        <p style="color:#8B90A0;font-size:13px;margin:0;">No referrer data yet.</p>
+                    <?php else: foreach ($sources as $host => $c): $w = $max_src ? max(4, round(100 * $c / $max_src)) : 0; ?>
+                        <div style="display:flex;align-items:center;gap:9px;margin:7px 0;">
+                            <span style="flex:0 0 120px;font-size:13px;color:#F4F5F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo esc_html($host); ?></span>
+                            <span style="flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $w; ?>%;background:#7C6CF6;border-radius:5px;"></span></span>
+                            <span style="flex:0 0 auto;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($c); ?></span>
+                        </div>
+                    <?php endforeach; endif; ?>
+                </div>
+            </div>
+            <!-- recent clicks -->
+            <details style="margin-top:12px;">
                 <summary style="cursor:pointer;color:#E58BBD;font-size:13px;">Recent clicks (with IP)</summary>
-                <table style="margin-top:8px;width:100%;border-collapse:collapse;">
-                    <thead><tr><th style="<?php echo $th; ?>">When</th><th style="<?php echo $th; ?>">Link</th><th style="<?php echo $th; ?>">IP</th><th style="<?php echo $th; ?>">Fan</th></tr></thead>
+                <div style="<?php echo $card; ?>padding:6px 14px 10px;margin-top:8px;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <?php $th = 'text-align:left;padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.12);color:#8B90A0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;';
+                          $td = 'padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.06);color:#F4F5F7;font-size:13px;'; ?>
+                    <thead><tr><th style="<?php echo $th; ?>">When</th><th style="<?php echo $th; ?>">Destination</th><th style="<?php echo $th; ?>">IP</th><th style="<?php echo $th; ?>">Fan</th></tr></thead>
                     <tbody>
-                    <?php
-                    global $wpdb;
-                    foreach ($recent as $c):
+                    <?php foreach ($recent as $cl):
                         $fan = '';
-                        if ((int) $c->subscriber_id) {
+                        if ((int) $cl->subscriber_id) {
                             $sub = defined('LMEG_TABLE') ? $wpdb->get_row($wpdb->prepare(
-                                "SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $c->subscriber_id
+                                "SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $cl->subscriber_id
                             )) : null;
-                            $fan = $sub ? ($sub->email ?: ($sub->name ?? ('#' . (int) $c->subscriber_id))) : ('#' . (int) $c->subscriber_id);
-                        }
-                        ?>
+                            $fan = $sub ? ($sub->email ?: ($sub->name ?? ('#' . (int) $cl->subscriber_id))) : ('#' . (int) $cl->subscriber_id);
+                        } ?>
                         <tr>
-                            <td style="<?php echo $td; ?>white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($c->created_at))); ?></td>
-                            <td style="<?php echo $td; ?>"><?php echo esc_html($c->label ?: '(link)'); ?></td>
-                            <td style="<?php echo $td; ?>font-family:monospace;"><?php echo esc_html($c->ip ?: '—'); ?></td>
+                            <td style="<?php echo $td; ?>white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($cl->created_at))); ?></td>
+                            <td style="<?php echo $td; ?>"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<?php echo esc_attr($svc($cl->label)); ?>;margin-right:6px;"></span><?php echo esc_html($cl->label ?: '(link)'); ?></td>
+                            <td style="<?php echo $td; ?>font-family:monospace;"><?php echo esc_html($cl->ip ?: '—'); ?></td>
                             <td style="<?php echo $td; ?>"><?php echo $fan ? esc_html($fan) : '<span style="color:#8B90A0;">anon</span>'; ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             </details>
         <?php endif; ?>
     </div>

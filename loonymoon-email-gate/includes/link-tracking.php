@@ -199,3 +199,53 @@ function lmeg_link_clicks_recent($drop_id, $limit = 15) {
          WHERE drop_id = %d ORDER BY id DESC LIMIT %d", $drop_id, (int) $limit
     ));
 }
+
+/** Headline click stats for a release: total, unique visitors (IPs), known fans. */
+function lmeg_link_clicks_stats($drop_id) {
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return ['total' => 0, 'unique' => 0, 'known' => 0];
+    $t = lmeg_link_clicks_table();
+    return [
+        'total'  => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $t WHERE drop_id = %d", $drop_id)),
+        'unique' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT ip) FROM $t WHERE drop_id = %d", $drop_id)),
+        'known'  => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT subscriber_id) FROM $t WHERE drop_id = %d AND subscriber_id > 0", $drop_id)),
+    ];
+}
+
+/** Daily click counts for the last $days days (date => count, zero-filled, oldest→newest). */
+function lmeg_link_clicks_daily($drop_id, $days = 30) {
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return [];
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT DATE(created_at) d, COUNT(*) n FROM " . lmeg_link_clicks_table() . "
+         WHERE drop_id = %d AND created_at >= DATE_SUB(NOW(), INTERVAL %d DAY) GROUP BY DATE(created_at)",
+        $drop_id, (int) $days
+    ));
+    $by = [];
+    foreach ($rows as $r) $by[$r->d] = (int) $r->n;
+    $out = [];
+    for ($i = $days - 1; $i >= 0; $i--) { $day = date('Y-m-d', strtotime("-$i days")); $out[$day] = $by[$day] ?? 0; }
+    return $out;
+}
+
+/** Top referrer hosts (where the click came from) for a release. host => count. */
+function lmeg_link_clicks_by_source($drop_id, $limit = 6) {
+    global $wpdb;
+    $drop_id = (int) $drop_id;
+    if (!$drop_id) return [];
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT referrer, COUNT(*) n FROM " . lmeg_link_clicks_table() . " WHERE drop_id = %d GROUP BY referrer",
+        $drop_id
+    ));
+    $agg = [];
+    foreach ($rows as $r) {
+        $ref  = trim((string) $r->referrer);
+        $host = $ref === '' ? 'Direct / unknown' : (parse_url($ref, PHP_URL_HOST) ?: 'Direct / unknown');
+        $host = preg_replace('/^www\./', '', $host);
+        $agg[$host] = ($agg[$host] ?? 0) + (int) $r->n;
+    }
+    arsort($agg);
+    return array_slice($agg, 0, (int) $limit, true);
+}
