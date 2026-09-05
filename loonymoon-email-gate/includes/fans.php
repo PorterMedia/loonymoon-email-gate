@@ -921,6 +921,146 @@ function lmeg_admin_top_fans() {
 }
 
 /* ---------------------------------------------------------------------------
+ * Fanbase — lifecycle groups. Cobrand's "Fanbase" shows named fan groups
+ * (Superfans, at-risk/"faded", new, members) each with a size + share. Ours is
+ * the owned-data version: every group is derived from the engagement + orders
+ * the plugin already records (opens/clicks/visits + revenue + membership), so
+ * it needs no new data. Any group can be snapshotted into a targetable tag in
+ * one click (same pattern as Top Fans → VIP), so it drops straight into Compose.
+ * ------------------------------------------------------------------------- */
+
+/** Group definitions: key => [label, desc, color, tag] (tag = slug to snapshot into). */
+function lmeg_fanbase_defs() {
+    return [
+        'active'    => ['label' => 'Active',            'desc' => 'opened, clicked or visited in the last 30 days', 'color' => '#34D399', 'tag' => 'active-30d'],
+        'new'       => ['label' => 'New fans',          'desc' => 'joined in the last 30 days',                     'color' => '#7C6CF6', 'tag' => 'new-30d'],
+        'superfans' => ['label' => 'Superfans',         'desc' => 'top supporters — revenue, clicks & opens',       'color' => '#F59E0B', 'tag' => 'superfan'],
+        'members'   => ['label' => 'Paying members',    'desc' => 'an active membership',                           'color' => '#E58BBD', 'tag' => 'member'],
+        'atrisk'    => ['label' => 'Going quiet',       'desc' => 'were engaged, but nothing in 60+ days',          'color' => '#F87171', 'tag' => 'at-risk'],
+        'dormant'   => ['label' => 'Never engaged',     'desc' => 'on your list but no opens/clicks/visits yet',    'color' => '#8B90A0', 'tag' => ''],
+    ];
+}
+
+/** The per-fan classification sub-select (engagement + orders + score). Static SQL. */
+function lmeg_fanbase_inner() {
+    global $wpdb;
+    $subs   = $wpdb->prefix . LMEG_TABLE;
+    $orders = $wpdb->prefix . 'lmeg_shop_orders';
+    $events = $wpdb->prefix . 'lmeg_broadcast_events';
+    $score  = "(COALESCE(o.rev,0)/100*5 + COALESCE(e.clicks,0)*3 + COALESCE(e.opens,0) + COALESCE(e.visits,0) + IF(s.member_status='active',50,0))";
+    $last   = "GREATEST(COALESCE(e.last_evt,'1970-01-01 00:00:00'), COALESCE(o.last_order,'1970-01-01 00:00:00'))";
+    return "SELECT s.id, s.member_status, s.created_at,
+                   COALESCE(e.evt_total,0) evt_total, $last AS last_touch, $score AS score
+            FROM $subs s
+            LEFT JOIN (SELECT subscriber_id,
+                          SUM(event_type='open') opens, SUM(event_type='click') clicks,
+                          SUM(event_type='pageview') visits, COUNT(*) evt_total, MAX(created_at) last_evt
+                       FROM $events GROUP BY subscriber_id) e ON e.subscriber_id = s.id
+            LEFT JOIN (SELECT subscriber_id, SUM(total_cents) rev, MAX(created_at) last_order
+                       FROM $orders GROUP BY subscriber_id) o ON o.subscriber_id = s.id
+            WHERE s.unsubscribed_at IS NULL";
+}
+
+/** Group key => WHERE predicate on the classified sub-select alias `t`. Static SQL. */
+function lmeg_fanbase_preds() {
+    return [
+        'active'    => "t.last_touch >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+        'new'       => "t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+        'superfans' => "t.score >= 60 AND t.last_touch >= DATE_SUB(NOW(), INTERVAL 60 DAY)",
+        'members'   => "t.member_status = 'active'",
+        'atrisk'    => "t.evt_total >= 3 AND t.last_touch < DATE_SUB(NOW(), INTERVAL 60 DAY) AND t.created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)",
+        'dormant'   => "t.evt_total = 0 AND t.created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)",
+    ];
+}
+
+/** Counts for every group + the total list, in one pass. */
+function lmeg_fanbase_counts() {
+    global $wpdb;
+    $inner = lmeg_fanbase_inner();
+    $sums  = [];
+    foreach (lmeg_fanbase_preds() as $k => $p) $sums[] = "SUM(CASE WHEN $p THEN 1 ELSE 0 END) `$k`";
+    $row = $wpdb->get_row("SELECT COUNT(*) total, " . implode(', ', $sums) . " FROM ($inner) t", ARRAY_A);
+    return is_array($row) ? array_map('intval', $row) : ['total' => 0];
+}
+
+/** Subscriber ids in a group (for one-click tagging). */
+function lmeg_fanbase_ids($key, $limit = 5000) {
+    global $wpdb;
+    $preds = lmeg_fanbase_preds();
+    if (empty($preds[$key])) return [];
+    $inner = lmeg_fanbase_inner();
+    return array_map('intval', (array) $wpdb->get_col(
+        "SELECT id FROM ($inner) t WHERE {$preds[$key]} ORDER BY score DESC LIMIT " . (int) $limit
+    ));
+}
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Fanbase', 'Fanbase', 'manage_options', 'lmeg-fanbase', 'lmeg_admin_fanbase');
+}, 20);
+
+function lmeg_admin_fanbase() {
+    if (!current_user_can('manage_options')) return;
+    $defs   = lmeg_fanbase_defs();
+    $notice = '';
+
+    // One-click: snapshot a group into a targetable tag.
+    if (isset($_POST['lmeg_fanbase_nonce']) && wp_verify_nonce($_POST['lmeg_fanbase_nonce'], 'lmeg_fanbase')) {
+        $key = sanitize_key($_POST['group'] ?? '');
+        if (isset($defs[$key]) && $defs[$key]['tag'] && function_exists('lmeg_get_or_create_tag')) {
+            $ids = lmeg_fanbase_ids($key);
+            $tag = lmeg_get_or_create_tag($defs[$key]['tag'], $defs[$key]['label'], false, $defs[$key]['color']);
+            $n = 0;
+            if ($tag) foreach ($ids as $id) { lmeg_attach_tag((int) $id, $tag->id); $n++; }
+            $notice = '<div class="notice notice-success is-dismissible"><p>Tagged <strong>' . (int) $n . '</strong> fans as <code>' . esc_html($defs[$key]['tag']) . '</code> — target them now in <a href="' . esc_url(admin_url('admin.php?page=lmeg-compose')) . '">Compose</a>.</p></div>';
+        }
+    }
+
+    $c     = lmeg_fanbase_counts();
+    $total = max(1, (int) ($c['total'] ?? 0));
+    $card  = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;color:#F4F5F7;';
+    ?>
+    <div class="wrap lmeg-admin">
+        <h1>Fanloop — Fanbase</h1>
+        <?php echo $notice; ?>
+        <p style="max-width:820px;">Your fans grouped by where they are in their lifecycle — all from your own opens, clicks, visits, orders and memberships. Snapshot any group into a tag to target it in <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-compose')); ?>">Compose</a>, or dig deeper in <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-top-fans')); ?>">Top Fans</a> and <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-segments')); ?>">Segments</a>.</p>
+
+        <div style="<?php echo $card; ?>max-width:1040px;margin:12px 0 16px;display:flex;align-items:baseline;gap:12px;">
+            <span style="font:800 30px/1 var(--lmegA-font,inherit);"><?php echo number_format_i18n((int) $c['total']); ?></span>
+            <span style="color:#8B90A0;">fans on your list — <strong style="color:#F4F5F7;">yours to reach anytime</strong>, no algorithm in the way.</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:1040px;">
+            <?php foreach ($defs as $key => $d) :
+                $n   = (int) ($c[$key] ?? 0);
+                $pct = round(100 * $n / $total);
+            ?>
+                <div style="<?php echo $card; ?>">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="width:9px;height:9px;border-radius:50%;background:<?php echo esc_attr($d['color']); ?>;flex:0 0 9px;"></span>
+                        <strong style="font-size:14px;"><?php echo esc_html($d['label']); ?></strong>
+                    </div>
+                    <div style="font:800 28px/1.1 var(--lmegA-font,inherit);margin:8px 0 2px;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($n); ?></div>
+                    <div style="font-size:12px;color:#8B90A0;margin-bottom:8px;"><?php echo esc_html($d['desc']); ?></div>
+                    <div style="height:7px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;margin-bottom:10px;"><span style="display:block;height:100%;width:<?php echo max(2, (int) $pct); ?>%;background:<?php echo esc_attr($d['color']); ?>;border-radius:5px;"></span></div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-size:11.5px;color:#8B90A0;"><?php echo (int) $pct; ?>% of your list</span>
+                        <?php if ($d['tag'] && $n > 0) : ?>
+                        <form method="post" style="margin:0;">
+                            <?php wp_nonce_field('lmeg_fanbase', 'lmeg_fanbase_nonce'); ?>
+                            <input type="hidden" name="group" value="<?php echo esc_attr($key); ?>" />
+                            <button type="submit" class="button button-small">🏷 Tag <code style="background:none;"><?php echo esc_html($d['tag']); ?></code></button>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="description" style="max-width:820px;margin-top:14px;"><strong>Going quiet</strong> is your win-back list — fans who used to open and click but have drifted; a "we miss you" message or a members-only drop pulls them back before they're gone for good.</p>
+    </div>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
  * Referrals — attribute revenue to the fans who bring in other fans. The
  * owned-data take on Laylo's Affiliates: who's your street team, and how much
  * have the fans they referred actually spent?
