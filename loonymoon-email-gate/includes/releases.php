@@ -668,36 +668,97 @@ function lmeg_releases_render_list() {
            . '</div>';
         return;
     }
-    echo '<table class="widefat striped" style="margin-top:14px;max-width:900px;">';
-    echo '<thead><tr><th style="width:56px;"></th><th>Release</th><th>Status</th><th>Release date</th><th>Linked</th><th style="width:80px;">Clicks</th><th></th></tr></thead><tbody>';
+    // Short label for a streaming service chip.
+    $short_label = function ($l) {
+        $map = ['Apple Music' => 'Apple', 'YouTube Music' => 'YouTube', 'Amazon Music' => 'Amazon'];
+        return $map[$l] ?? $l;
+    };
+
+    echo '<div class="lmeg-rel-cards">';
     foreach ($rows as $r) {
-        $art = $r->artwork_url
-            ? '<img src="' . esc_url($r->artwork_url) . '" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid #dcdcde;display:block">'
-            : '<div style="width:44px;height:44px;border-radius:8px;background:#f3f4f6;border:1px solid #e5e7eb"></div>';
-        $when = $r->release_at ? esc_html(date_i18n('M j, Y · g:i a', strtotime($r->release_at))) : '<span style="color:#9ca3af">—</span>';
-        $linked = lmeg_release_linked($r);
-        if ($linked) {
-            $parts = [];
-            foreach ($linked as $p) {
-                $parts[] = !empty($p['edit'])
-                    ? '<a href="' . esc_url($p['edit']) . '">' . esc_html($p['short']) . '</a>'
-                    : esc_html($p['short']);
+        $edit_url = admin_url('admin.php?page=lmeg-releases&edit=' . (int) $r->id);
+        $when = $r->release_at ? date_i18n('M j, Y', strtotime($r->release_at)) : '—';
+
+        // Parse "Label | URL" streaming links.
+        $links = [];
+        foreach (preg_split('/\r\n|\r|\n/', (string) $r->links) as $ln) {
+            if (strpos($ln, '|') !== false) {
+                list($l, $u) = array_map('trim', explode('|', $ln, 2));
+                if ($l !== '' && $u !== '') $links[] = [$l, $u];
             }
-            $linkedTxt = implode(' · ', $parts);
-        } else {
-            $linkedTxt = '<span style="color:#9ca3af">not yet</span>';
         }
-        echo '<tr>'
-           . '<td>' . $art . '</td>'
-           . '<td><strong>' . esc_html($r->title ?: '(untitled)') . '</strong></td>'
-           . '<td>' . lmeg_release_status_pill($r->status) . '</td>'
-           . '<td>' . $when . '</td>'
-           . '<td>' . $linkedTxt . '</td>'
-           . '<td>' . ((!empty($r->drop_id) && function_exists('lmeg_link_clicks_total') && ($ct = lmeg_link_clicks_total((int) $r->drop_id))) ? '<strong>' . (int) $ct . '</strong>' : '<span style="color:#9ca3af">0</span>') . '</td>'
-           . '<td><a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&edit=' . (int) $r->id)) . '" class="button button-small">Edit</a></td>'
-           . '</tr>';
+        $formats = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $r->formats)));
+        $clicks  = (!empty($r->drop_id) && function_exists('lmeg_link_clicks_total')) ? (int) lmeg_link_clicks_total((int) $r->drop_id) : 0;
+
+        // Where the "open" icon points: the live release page, else the drop share URL.
+        $open_url = '';
+        if (!empty($r->page_id) && get_post_status((int) $r->page_id)) $open_url = get_permalink((int) $r->page_id);
+        if (!$open_url && !empty($r->drop_id) && function_exists('lmeg_drop_get')) {
+            $d = lmeg_drop_get((int) $r->drop_id);
+            if ($d && !empty($d->slug)) $open_url = home_url('/?drop=' . rawurlencode($d->slug));
+        }
+
+        echo '<div class="lmeg-rel-card">';
+        // Cover
+        if ($r->artwork_url) {
+            echo '<a href="' . esc_url($edit_url) . '" class="lmeg-rel-card__cover"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy"></a>';
+        } else {
+            echo '<a href="' . esc_url($edit_url) . '" class="lmeg-rel-card__cover lmeg-rel-card__cover--empty"></a>';
+        }
+        echo '<div class="lmeg-rel-card__body">';
+        echo '<div class="lmeg-rel-card__top">' . lmeg_release_status_pill($r->status) . '<span>' . esc_html($when) . '</span></div>';
+        echo '<a class="lmeg-rel-card__title" href="' . esc_url($edit_url) . '">' . esc_html($r->title ?: '(untitled)') . '</a>';
+
+        // Stats
+        echo '<div class="lmeg-rel-card__stats">'
+           . '<span title="Streaming-link clicks"><strong>' . number_format_i18n($clicks) . '</strong> ' . _n('click', 'clicks', $clicks, 'lmeg') . '</span>'
+           . '<span><strong>' . count($links) . '</strong> ' . _n('link', 'links', count($links), 'lmeg') . '</span>'
+           . '<span><strong>' . count($formats) . '</strong> ' . _n('format', 'formats', count($formats), 'lmeg') . '</span>'
+           . '</div>';
+
+        // Streaming link chips (open each service directly)
+        if ($links) {
+            echo '<div class="lmeg-rel-card__links">';
+            foreach ($links as $lk) {
+                echo '<a class="lmeg-rel-chip" href="' . esc_url($lk[1]) . '" target="_blank" rel="noopener">' . esc_html($short_label($lk[0])) . '</a>';
+            }
+            echo '</div>';
+        }
+
+        // Footer: edit + open-links icon
+        echo '<div class="lmeg-rel-card__foot">';
+        echo '<a href="' . esc_url($edit_url) . '" class="button button-small">Edit</a>';
+        if ($open_url) {
+            echo '<a href="' . esc_url($open_url) . '" target="_blank" rel="noopener" class="lmeg-rel-open" title="Open the release page &amp; links">'
+               . lmeg_icon('send', ['size' => 15, 'sw' => 2]) . '</a>';
+        }
+        echo '</div>';
+
+        echo '</div></div>';
     }
-    echo '</tbody></table>';
+    echo '</div>';
+
+    // Card styling (inline — Autoptimize serves a cached admin.css).
+    echo '<style>
+    .lmeg-admin .lmeg-rel-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:16px;}
+    .lmeg-admin .lmeg-rel-card{background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .12s ease,border-color .12s ease;}
+    .lmeg-admin .lmeg-rel-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.18);}
+    .lmeg-admin .lmeg-rel-card__cover{display:block;aspect-ratio:1/1;background:#0E0F16;}
+    .lmeg-admin .lmeg-rel-card__cover img{width:100%;height:100%;object-fit:cover;display:block;}
+    .lmeg-admin .lmeg-rel-card__cover--empty{background:linear-gradient(135deg,#1C1F2E,#12141F);}
+    .lmeg-admin .lmeg-rel-card__body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1;}
+    .lmeg-admin .lmeg-rel-card__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;color:#8B90A0;}
+    .lmeg-admin .lmeg-rel-card__title{font-size:15px;font-weight:700;color:#F4F5F7!important;line-height:1.25;text-decoration:none!important;}
+    .lmeg-admin .lmeg-rel-card__title:hover{color:#E58BBD!important;}
+    .lmeg-admin .lmeg-rel-card__stats{display:flex;gap:14px;font-size:12px;color:#8B90A0;}
+    .lmeg-admin .lmeg-rel-card__stats strong{color:#F4F5F7;font-variant-numeric:tabular-nums;}
+    .lmeg-admin .lmeg-rel-card__links{display:flex;flex-wrap:wrap;gap:6px;}
+    .lmeg-admin .lmeg-rel-chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7!important;font-size:11.5px;font-weight:500;text-decoration:none!important;}
+    .lmeg-admin .lmeg-rel-chip:hover{background:rgba(208,95,162,.25);border-color:rgba(208,95,162,.5);}
+    .lmeg-admin .lmeg-rel-card__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding-top:6px;}
+    .lmeg-admin .lmeg-rel-open{display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7!important;}
+    .lmeg-admin .lmeg-rel-open:hover{background:var(--lmegA-accent,#D05FA2);border-color:var(--lmegA-accent,#D05FA2);}
+    </style>';
 }
 
 /** Streaming-link click analytics for one release (totals + IPs). */
