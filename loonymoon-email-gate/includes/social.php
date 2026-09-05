@@ -360,6 +360,47 @@ function lmeg_social_story_mentions($days = 30) {
     ));
 }
 
+/**
+ * The fans who've tagged the artist in their Instagram stories — Cobrand's
+ * "Fans Who Mentioned" / Notable Fans, from the story mentions we already log
+ * (lmeg_ig_messages, source='story'). Each row: handle, mention count, last
+ * mention, whether they're a known fan (linked subscriber) or a capture
+ * opportunity, and a "notable" flag (paying member or a Superfan by score).
+ *
+ * @return array [ ['username','mentions','last','sid','name','notable'], … ]
+ */
+function lmeg_social_story_fans($limit = 24) {
+    global $wpdb;
+    $msgs = $wpdb->prefix . 'lmeg_ig_messages';
+    $subs = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT m.username, m.ig_user_id, COUNT(*) mentions, MAX(m.created_at) last_at, MAX(m.subscriber_id) sid
+         FROM $msgs m
+         WHERE m.source = 'story' AND m.direction = 'in'
+         GROUP BY m.ig_user_id, m.username
+         ORDER BY mentions DESC, last_at DESC LIMIT %d", (int) $limit
+    ));
+    if (!$rows) return [];
+    $superfans = function_exists('lmeg_fanbase_ids') ? array_flip(lmeg_fanbase_ids('superfans')) : [];
+    $out = [];
+    foreach ($rows as $r) {
+        $sid = (int) $r->sid; $name = ''; $member = false;
+        if ($sid) {
+            $s = $wpdb->get_row($wpdb->prepare("SELECT first_name, email, member_status FROM $subs WHERE id = %d", $sid));
+            if ($s) { $name = $s->first_name ?: $s->email; $member = ($s->member_status === 'active'); }
+        }
+        $out[] = [
+            'username' => (string) $r->username,
+            'mentions' => (int) $r->mentions,
+            'last'     => (string) $r->last_at,
+            'sid'      => $sid,
+            'name'     => (string) $name,
+            'notable'  => ($member || isset($superfans[$sid])),
+        ];
+    }
+    return $out;
+}
+
 /* ---------------------------------------------------------------------------
  * Facebook Page — comes free with the Instagram connection. The OAuth grants
  * a Page token with `pages_read_engagement`, and the Page id is stored at
@@ -785,6 +826,14 @@ function lmeg_social_demo() {
             'city'    => ['Toronto' => 4820, 'Los Angeles' => 1910, 'New York City' => 1680, 'Montreal' => 1240, 'Vancouver' => 980, 'Mexico City' => 610],
         ],
         'tt'         => ['username' => 'loonymoonchild', 'followers' => 41230, 'likes' => 1284000, 'videos' => 87],
+        'story_fans' => [
+            ['username' => 'ellie.listens', 'mentions' => 6, 'last' => '2026-09-04 18:20:00', 'sid' => 1, 'name' => 'Ellie R.', 'notable' => true],
+            ['username' => 'moonchild_marco', 'mentions' => 4, 'last' => '2026-09-03 12:04:00', 'sid' => 2, 'name' => 'Marco', 'notable' => true],
+            ['username' => 'sofia.wav', 'mentions' => 3, 'last' => '2026-09-02 21:40:00', 'sid' => 0, 'name' => '', 'notable' => false],
+            ['username' => 'theloonybin.fan', 'mentions' => 3, 'last' => '2026-09-01 09:15:00', 'sid' => 3, 'name' => 'Priya', 'notable' => false],
+            ['username' => 'nightdrive_kai', 'mentions' => 2, 'last' => '2026-08-30 23:02:00', 'sid' => 0, 'name' => '', 'notable' => false],
+            ['username' => 'vinyl.only', 'mentions' => 2, 'last' => '2026-08-29 16:48:00', 'sid' => 4, 'name' => 'Dana', 'notable' => false],
+        ],
         'tt_videos'  => [
             ['caption' => 'SOFT THING sped up 🖤 #newmusic', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'views' => 412000, 'likes' => 38200, 'comments' => 1240, 'shares' => 5600],
             ['caption' => 'studio session, which one hits 🎹', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-25T20:00:00+0000', 'views' => 288000, 'likes' => 24100, 'comments' => 2010, 'shares' => 3100],
@@ -895,6 +944,7 @@ function lmeg_admin_social() {
         $hashtags = $dd['hashtags'];
         $demographics = $dd['demographics'];
         $tt = $dd['tt']; $tt_videos = $dd['tt_videos']; $tt_ok = true;
+        $story_fans = $dd['story_fans'];
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
@@ -915,6 +965,7 @@ function lmeg_admin_social() {
         $tt_ok    = function_exists('lmeg_tiktok_configured') && lmeg_tiktok_configured();
         $tt       = $tt_ok ? lmeg_tiktok_user_info() : null;
         $tt_videos = $tt_ok ? lmeg_tiktok_videos(12) : [];
+        $story_fans = $ig_ok ? lmeg_social_story_fans() : [];
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
@@ -1067,6 +1118,30 @@ function lmeg_admin_social() {
                 </div>
             </div>
         <?php endif; ?>
+        <?php endif; ?>
+
+        <?php if (!empty($story_fans)) :
+            $notable_ct = 0; foreach ($story_fans as $sf) if (!empty($sf['notable'])) $notable_ct++;
+        ?>
+        <h2 style="margin-top:24px;">Fans who mentioned you</h2>
+        <p class="description" style="max-width:820px;margin:0 0 10px;">Fans who tagged you in their Instagram stories — your most active advocates. <?php echo $notable_ct ? '<strong style="color:#F4F5F7;">' . (int) $notable_ct . ' notable</strong> (paying members or superfans). ' : ''; ?>Handles not on your list yet are a capture opportunity — reply and invite them in.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;max-width:1000px;">
+            <?php foreach ($story_fans as $sf) :
+                $known = (int) $sf['sid'] > 0; ?>
+                <div style="<?php echo $card; ?>display:flex;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#E58BBD;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@<?php echo esc_html($sf['username'] ?: 'unknown'); ?></span>
+                        <?php if (!empty($sf['notable'])) : ?><span style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:#F59E0B;background:rgba(245,158,11,.14);padding:2px 7px;border-radius:20px;">★ NOTABLE</span><?php endif; ?>
+                    </div>
+                    <div style="font-size:12.5px;color:#8B90A0;"><?php echo (int) $sf['mentions']; ?> mention<?php echo (int) $sf['mentions'] === 1 ? '' : 's'; ?> · last <?php echo esc_html($sf['last'] ? date_i18n('M j', strtotime($sf['last'])) : '—'); ?></div>
+                    <?php if ($known) : ?>
+                        <a href="<?php echo esc_url(add_query_arg(['page' => 'lmeg', 'fan' => (int) $sf['sid']], admin_url('admin.php'))); ?>" style="font-size:12.5px;color:#7C6CF6;"><?php echo esc_html($sf['name'] ?: 'View fan'); ?> →</a>
+                    <?php else : ?>
+                        <span style="font-size:12px;color:#34D399;">Not on your list yet — capture them</span>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
         <?php endif; ?>
 
         <h2 style="margin-top:24px;">Content performance</h2>
