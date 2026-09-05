@@ -155,6 +155,35 @@ function lmeg_si_song_movers($songs28, $songs7d) {
     return ['by_title' => $by, 'biggest' => $biggest];
 }
 
+/**
+ * Playlist stream-source mix: share of playlist streams by type — Editorial
+ * (Spotify's team), Algorithmic (Radio/Mixes/DJ), Listener (organic user
+ * playlists). A strategic signal of how algo-dependent vs editorially-backed the
+ * artist is. Returns rows sorted by streams, or [] when no playlist streams.
+ */
+function lmeg_si_playlist_mix($playlists) {
+    $map = [
+        'curated'      => ['label' => 'Editorial',   'color' => '#D05FA2'],
+        'personalized' => ['label' => 'Algorithmic', 'color' => '#7C6CF6'],
+        'listener'     => ['label' => 'Listener',    'color' => '#34D399'],
+    ];
+    $tot = 0; $by = [];
+    foreach ((array) $playlists as $p) {
+        if (!is_array($p)) continue;
+        $ty = (string) ($p['type'] ?? ''); if (!isset($map[$ty])) continue;
+        $s = (int) ($p['streams'] ?? 0); if ($s <= 0) continue;
+        $by[$ty] = ($by[$ty] ?? 0) + $s; $tot += $s;
+    }
+    if ($tot <= 0) return [];
+    $rows = [];
+    foreach ($map as $ty => $m) {
+        if (empty($by[$ty])) continue;
+        $rows[] = ['type' => $ty, 'label' => $m['label'], 'color' => $m['color'], 'streams' => $by[$ty], 'pct' => $by[$ty] / $tot * 100];
+    }
+    usort($rows, function ($a, $b) { return $b['streams'] <=> $a['streams']; });
+    return $rows;
+}
+
 /** Extract a Spotify album id (22 chars) from a spotify:album:ID uri OR an
  *  open.spotify.com/album/ID url. Returns '' when none. */
 function lmeg_si_spotify_album_id($s) {
@@ -562,6 +591,14 @@ function lmeg_admin_spotify_insights() {
             <?php if ($playlists) : ?>
             <div style="<?php echo $card; ?>max-height:360px;overflow:auto;">
                 <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top playlists <span style="color:#8B90A0;font-weight:400;">(<?php echo count($playlists); ?>)</span></div>
+                <?php $mix = lmeg_si_playlist_mix($playlists); if ($mix) : ?>
+                <div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.06);margin-bottom:8px;">
+                    <?php foreach ($mix as $m) : ?><div title="<?php echo esc_attr($m['label']); ?>" style="width:<?php echo round($m['pct'], 2); ?>%;background:<?php echo $m['color']; ?>;"></div><?php endforeach; ?>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;font-size:11px;">
+                    <?php foreach ($mix as $m) : ?><span style="color:#8B90A0;"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:<?php echo $m['color']; ?>;margin-right:5px;"></span><?php echo esc_html($m['label']); ?> <span style="color:#F4F5F7;font-weight:600;"><?php echo round($m['pct']); ?>%</span></span><?php endforeach; ?>
+                </div>
+                <?php endif; ?>
                 <?php
                 $pl_type = ['curated' => 'Editorial', 'listener' => 'Listener', 'personalized' => 'Algorithmic'];
                 foreach (array_slice($playlists, 0, 10) as $p) :
