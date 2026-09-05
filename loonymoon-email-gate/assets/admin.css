@@ -302,12 +302,9 @@ body.lmeg-admin .wrap table.form-table td {
 
 /* ---- inputs --------------------------------------------------------------- */
 
-body.lmeg-admin .wrap input[type="text"],
-body.lmeg-admin .wrap input[type="email"],
-body.lmeg-admin .wrap input[type="url"],
-body.lmeg-admin .wrap input[type="number"],
-body.lmeg-admin .wrap input[type="password"],
-body.lmeg-admin .wrap input[type="datetime-local"],
+/* Every text-like input (not just a hand-picked type list) — including inputs
+   with no type attribute (implicit text) and search/tel/date/etc. */
+body.lmeg-admin .wrap input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="image"]):not([type="hidden"]),
 body.lmeg-admin .wrap select,
 body.lmeg-admin .wrap textarea {
     background: var(--lmegA-bg2);
@@ -316,9 +313,12 @@ body.lmeg-admin .wrap textarea {
     color: var(--lmegA-text);
     font-family: var(--lmegA-font);
     padding: 8px 12px;
+    min-height: 38px;
+    box-sizing: border-box;
     box-shadow: none;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+body.lmeg-admin .wrap textarea { min-height: 80px; }
 
 body.lmeg-admin .wrap input:focus,
 body.lmeg-admin .wrap select:focus,

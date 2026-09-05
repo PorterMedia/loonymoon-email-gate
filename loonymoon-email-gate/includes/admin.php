@@ -269,6 +269,14 @@ function lmeg_admin_contrast_css() {
         . "body.lmeg-admin .notice-warning{border-left-color:#FBBF24!important;}\n"
         . "body.lmeg-admin .notice-info{border-left-color:#7C6CF6!important;}\n"
         . "body.lmeg-admin .notice .notice-dismiss:before{color:#8B90A0!important;}\n"
+        // Form fields — style EVERY text-like input the same (dark, 38px tall), not just
+        // a hand-picked type list. Catches inputs with no type attribute (implicit text)
+        // and search/tel/date/etc. that were rendering as WP's white, thin default.
+        . "body.lmeg-admin .wrap input:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=file]):not([type=range]):not([type=color]):not([type=image]):not([type=hidden]),body.lmeg-admin .wrap select,body.lmeg-admin .wrap textarea{background:#12141F!important;border:1px solid rgba(255,255,255,.14)!important;border-radius:9px!important;color:#F4F5F7!important;padding:8px 12px!important;min-height:38px!important;box-sizing:border-box!important;box-shadow:none!important;font-family:'DM Sans',-apple-system,'Segoe UI',Roboto,sans-serif!important;}\n"
+        . "body.lmeg-admin .wrap select{height:auto!important;}\n"
+        . "body.lmeg-admin .wrap textarea{min-height:80px!important;}\n"
+        . "body.lmeg-admin .wrap input::placeholder,body.lmeg-admin .wrap textarea::placeholder{color:rgba(139,144,160,.7)!important;}\n"
+        . "body.lmeg-admin .wrap input:focus,body.lmeg-admin .wrap select:focus,body.lmeg-admin .wrap textarea:focus{border-color:#D05FA2!important;box-shadow:0 0 0 3px rgba(208,95,162,.2)!important;outline:none!important;}\n"
         // Belt-and-suspenders: any inline white card → the canonical dark panel
         // (same gradient/border/radius as .lmeg-stat) so every card matches.
         . "body.lmeg-admin [style*=\"background:#fff\"],body.lmeg-admin [style*=\"background: #fff\"],body.lmeg-admin [style*=\"background:#ffffff\"],body.lmeg-admin [style*=\"background: #ffffff\"]{background:linear-gradient(160deg,#161826,#1C1F2E)!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;}\n"
