@@ -1101,7 +1101,10 @@ function lmeg_admin_signups() {
     $pv_since = $days ? "AND created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)" : '';
     $visitors = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(anon_id,''), CONCAT('s', subscriber_id))) FROM $journey WHERE event_type='pageview' $pv_since");
     $utm = $wpdb->get_results("SELECT utm_campaign, COUNT(*) n FROM $journey WHERE event_type='pageview' AND utm_campaign<>'' $pv_since GROUP BY utm_campaign ORDER BY n DESC LIMIT 6");
-    $conv = $visitors > 0 ? round(100 * $total / $visitors, 1) : null;
+    // Only show a conversion rate once the Journey has counted at least as many
+    // visitors as signups — otherwise (e.g. tracking just turned on, so signups
+    // far outnumber recorded pageviews) the ratio is nonsense (>100%).
+    $conv = ($visitors > 0 && $visitors >= $total) ? round(100 * $total / $visitors, 1) : null;
 
     // Aggregate referrer hosts.
     $ref_hosts = [];
