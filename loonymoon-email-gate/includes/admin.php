@@ -2369,6 +2369,18 @@ function lmeg_admin_compose() {
         var tagBoxes    = document.querySelectorAll('input[name="tag_ids[]"]');
         var radiusKm    = document.getElementById('radius_km');
         var radiusCity  = document.getElementById('radius_city');
+        var smsRate     = <?php echo (float) apply_filters('lmeg_sms_est_rate', 0.0083); ?>; // est. $/SMS segment
+
+        // GSM-7 vs Unicode segmentation (emoji/accents force Unicode = shorter segments).
+        function smsSegments(text) {
+            text = (text || '').trim();
+            if (!text) return 0;
+            var unicode = false;
+            for (var i = 0; i < text.length; i++) { if (text.charCodeAt(i) > 127) { unicode = true; break; } }
+            var len = text.length;
+            if (!unicode) return len <= 160 ? 1 : Math.ceil(len / 153);
+            return len <= 70 ? 1 : Math.ceil(len / 67);
+        }
 
         var inflight = null;
         function refresh() {
@@ -2395,9 +2407,22 @@ function lmeg_admin_compose() {
                     var d = null;
                     try { d = JSON.parse(t); } catch (e) {}
                     if (d && d.success) {
-                        var html = 'Sending to <strong>' + d.data.count + '</strong> subscriber' + (d.data.count === 1 ? '' : 's');
+                        var count = d.data.count | 0, ec = d.data.email_count | 0, sc = d.data.sms_count | 0;
+                        var html = 'Sending to <strong>' + count + '</strong> subscriber' + (count === 1 ? '' : 's');
                         if (d.data.radius) html += ' <span style="opacity:.7;">within ' + d.data.radius + '</span>';
                         if (d.data.radius_error) html += ' <em style="color:#FBBF24;">— ' + d.data.radius_error + '</em>';
+                        var hasSmsBody = !!(taSms && taSms.value.trim());
+                        var hasEmailBody = !!(taEmail && taEmail.value.trim());
+                        var neither = !hasSmsBody && !hasEmailBody;
+                        var parts = [];
+                        if (ec && (hasEmailBody || neither)) parts.push(ec.toLocaleString() + ' by email');
+                        if (sc && (hasSmsBody || neither)) {
+                            var seg = smsSegments(taSms ? taSms.value : '');
+                            var line = sc.toLocaleString() + ' by SMS';
+                            if (seg > 0) line += ' × ' + seg + ' seg &asymp; $' + (sc * seg * smsRate).toFixed(2);
+                            parts.push(line);
+                        }
+                        if (parts.length) html += '<div style="margin-top:5px;font-size:12px;opacity:.8;">' + parts.join(' &middot; ') + (sc && (hasSmsBody || neither) ? ' <span style="opacity:.7;">(SMS est.)</span>' : '') + '</div>';
                         countEl.innerHTML = html;
                     } else {
                         var why = (t || '').substring(0, 140).replace(/</g, '&lt;');
@@ -4032,20 +4057,18 @@ function lmeg_ajax_audience_count() {
         if (!$center) {
             wp_send_json_success(['count' => 0, 'radius_error' => 'couldn\'t place "' . $radius_city . '" on the map']);
         }
-        $count = lmeg_audience_radius_count(
-            ['tag_ids' => $tag_ids, 'match' => $match],
-            ['email'   => $has_email, 'sms' => $has_sms],
-            $center,
-            $radius_km
-        );
-        wp_send_json_success(['count' => $count, 'radius' => round($radius_km) . ' km of ' . $radius_city]);
+        $aud = ['tag_ids' => $tag_ids, 'match' => $match];
+        $count = lmeg_audience_radius_count($aud, ['email' => $has_email, 'sms' => $has_sms], $center, $radius_km);
+        $ec = $has_email ? lmeg_audience_radius_count($aud, ['email' => true, 'sms' => false], $center, $radius_km) : 0;
+        $sc = $has_sms   ? lmeg_audience_radius_count($aud, ['email' => false, 'sms' => true], $center, $radius_km) : 0;
+        wp_send_json_success(['count' => $count, 'email_count' => (int) $ec, 'sms_count' => (int) $sc, 'radius' => round($radius_km) . ' km of ' . $radius_city]);
     }
 
-    $count = lmeg_audience_count(
-        ['tag_ids' => $tag_ids, 'match' => $match],
-        ['email'   => $has_email, 'sms' => $has_sms]
-    );
-    wp_send_json_success(['count' => $count]);
+    $aud   = ['tag_ids' => $tag_ids, 'match' => $match];
+    $count = lmeg_audience_count($aud, ['email' => $has_email, 'sms' => $has_sms]);
+    $ec    = $has_email ? lmeg_audience_count($aud, ['email' => true, 'sms' => false]) : 0;
+    $sc    = $has_sms   ? lmeg_audience_count($aud, ['email' => false, 'sms' => true]) : 0;
+    wp_send_json_success(['count' => $count, 'email_count' => (int) $ec, 'sms_count' => (int) $sc]);
 }
 
 /* ---------------------------------------------------------------------------
