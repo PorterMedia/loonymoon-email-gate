@@ -297,6 +297,25 @@ function lmeg_si_norm_age($src) {
     return $out;
 }
 
+/** Normalize a city source to a ranked [{name,count,sub}] list. Accepts the
+ *  Spotify shape ([{name,num,region,country}]) or the Instagram shape
+ *  ({cityName=>count}). Sorted by count desc, trimmed to $limit. */
+function lmeg_si_city_list($src, $limit = 8) {
+    $out = [];
+    if (isset($src[0]) && is_array($src[0])) { // Spotify
+        foreach ((array) $src as $c) {
+            if (!is_array($c)) continue;
+            $out[] = ['name' => (string) ($c['name'] ?? ''), 'count' => (int) ($c['num'] ?? 0),
+                      'sub' => trim(implode(', ', array_filter([(string) ($c['region'] ?? ''), (string) ($c['country'] ?? '')])))];
+        }
+    } else { // Instagram {name=>count}
+        foreach ((array) $src as $k => $v) $out[] = ['name' => (string) $k, 'count' => (int) $v, 'sub' => ''];
+    }
+    $out = array_values(array_filter($out, function ($c) { return $c['name'] !== '' && $c['count'] > 0; }));
+    usort($out, function ($a, $b) { return $b['count'] <=> $a['count']; });
+    return array_slice($out, 0, $limit);
+}
+
 /** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
 function lmeg_si_pct_change($cur, $prev) {
     if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
@@ -669,6 +688,29 @@ function lmeg_admin_spotify_insights() {
                     </div>
                 </div>
                 <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <?php
+            $sp_cities = lmeg_si_city_list($meta['top_cities'] ?? [], 8);
+            $ig_cities = lmeg_si_city_list($ig_demo['city'] ?? [], 8);
+            if ($sp_cities || $ig_cities) :
+                $cityCol = function ($cities, $accent) {
+                    if (!$cities) return '<span style="color:#8B90A0;font-size:12px;">No city data yet</span>';
+                    $max = 1; foreach ($cities as $c) $max = max($max, $c['count']);
+                    $h = '';
+                    foreach ($cities as $c) {
+                        $w = max(2, round($c['count'] / $max * 100));
+                        $h .= '<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:2px;"><span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' . esc_html($c['name']) . ($c['sub'] ? ' <span style="color:#8B90A0;font-size:10px;">' . esc_html($c['sub']) . '</span>' : '') . '</span><span style="color:#8B90A0;font-variant-numeric:tabular-nums;flex:0 0 auto;">' . number_format_i18n($c['count']) . '</span></div><div style="height:5px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:' . $w . '%;background:' . $accent . ';border-radius:5px;"></div></div></div>';
+                    }
+                    return $h;
+                };
+            ?>
+            <div style="margin-top:16px;">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top cities — <span style="color:#1DB954;">Spotify</span> vs <span style="color:#E58BBD;">Instagram</span></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;">
+                    <div><div style="font-size:11px;color:#1DB954;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Spotify listeners</div><?php echo $cityCol($sp_cities, '#1DB954'); ?></div>
+                    <div><div style="font-size:11px;color:#E58BBD;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Instagram followers</div><?php echo $cityCol($ig_cities, '#E58BBD'); ?></div>
+                </div>
             </div>
             <?php endif; ?>
             <?php if (!$ig_demo && ($ig_stats || $fb_stats)) : ?>
