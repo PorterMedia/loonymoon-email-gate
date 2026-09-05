@@ -956,7 +956,7 @@ function lmeg_fanbase_inner() {
                           SUM(event_type='open') opens, SUM(event_type='click') clicks,
                           SUM(event_type='pageview') visits, COUNT(*) evt_total, MAX(created_at) last_evt
                        FROM $events GROUP BY subscriber_id) e ON e.subscriber_id = s.id
-            LEFT JOIN (SELECT subscriber_id, SUM(total_cents) rev, MAX(created_at) last_order
+            LEFT JOIN (SELECT subscriber_id, SUM(total_cents) rev, MAX(ordered_at) last_order
                        FROM $orders GROUP BY subscriber_id) o ON o.subscriber_id = s.id
             WHERE s.unsubscribed_at IS NULL";
 }
