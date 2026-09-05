@@ -112,7 +112,7 @@ function lmeg_s4a_parse($data) {
                 'playlist_adds'     => $ss['playlist_adds_change_pct'] ?? null,
                 'followers'         => $ss['followers_change_pct'] ?? null,
             ]),
-            'top_songs'            => wp_json_encode(array_values((array) ($a['top_songs_last_7d'] ?? $a['top_songs'] ?? []))),
+            'top_songs'            => wp_json_encode(array_values((array) ($a['songs'] ?? $a['top_songs_last_7d'] ?? $a['top_songs'] ?? []))),
             'top_playlists'        => wp_json_encode(array_values((array) ($a['top_playlists_last_7d'] ?? $a['top_playlists'] ?? []))),
             'top_countries'        => wp_json_encode(array_values((array) ($ad['top_active_listener_countries'] ?? $a['top_countries'] ?? []))),
             'meta'                 => wp_json_encode([
@@ -281,11 +281,12 @@ function lmeg_admin_s4a() {
 
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;max-width:1040px;">
                 <?php
-                $list = function ($title, $json, $key, $valkey) use ($card, $lbl) {
+                $list = function ($title, $json, $key, $valkey, $limit = 6) use ($card, $lbl) {
                     $items = (array) json_decode((string) $json, true);
                     if (!$items) return;
-                    echo '<div style="' . $card . '"><div style="' . $lbl . 'margin-bottom:10px;">' . esc_html($title) . '</div>';
-                    foreach (array_slice($items, 0, 6) as $it) {
+                    $more = count($items) > $limit ? ' <span style="color:#8B90A0;font-weight:400;">(' . count($items) . ')</span>' : '';
+                    echo '<div style="' . $card . ($limit > 8 ? 'max-height:360px;overflow:auto;' : '') . '"><div style="' . $lbl . 'margin-bottom:10px;">' . esc_html($title) . $more . '</div>';
+                    foreach (array_slice($items, 0, $limit) as $it) {
                         if (is_array($it)) {
                             $name = (string) ($it[$key] ?? ''); $val = isset($it[$valkey]) ? number_format_i18n((int) $it[$valkey]) : '';
                         } else { $name = (string) $it; $val = ''; }
@@ -293,7 +294,7 @@ function lmeg_admin_s4a() {
                     }
                     echo '</div>';
                 };
-                $list('Top songs', $snap->top_songs, 'title', 'streams');
+                $list('Songs', $snap->top_songs, 'title', 'streams', 30);
                 $list('Top playlists', $snap->top_playlists, 'name', 'streams');
                 $list('Top active markets', $snap->top_countries, 'x', 'y');
                 ?>
