@@ -110,6 +110,27 @@ function lmeg_release_by_apple_id($apple_id) {
     return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE apple_id = %d LIMIT 1", $apple_id));
 }
 
+/** Id of an existing release that matches this Apple id OR title (case/space-insensitive).
+ *  The duplicate barrier: creators call this so the same album is never built twice —
+ *  even when Apple hands back a different edition id for the same album. Returns 0 if none. */
+function lmeg_release_find_existing($apple_id, $title) {
+    global $wpdb;
+    $t = lmeg_releases_table();
+    $apple_id = (int) $apple_id;
+    if ($apple_id) {
+        $id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM $t WHERE apple_id = %d LIMIT 1", $apple_id));
+        if ($id) return $id;
+    }
+    $title = trim((string) $title);
+    if ($title !== '') {
+        $id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $t WHERE LOWER(TRIM(title)) = %s LIMIT 1", strtolower($title)
+        ));
+        if ($id) return $id;
+    }
+    return 0;
+}
+
 /* -------------------------------------------------------------------------
  * Multi-service streaming links — from the artist + title, resolve Spotify
  * and Deezer to sit alongside the Apple Music link, so every release page
@@ -467,6 +488,10 @@ function lmeg_release_save_from_post() {
 function lmeg_release_create_from_import(array $f) {
     global $wpdb;
     $t   = lmeg_releases_table();
+    // Duplicate barrier — never build a second release for the same Apple album
+    // or the same title. Returns the existing id instead of creating a copy.
+    $existing = lmeg_release_find_existing((int) ($f['apple_id'] ?? 0), (string) ($f['title'] ?? ''));
+    if ($existing) return $existing;
     $now = current_time('mysql');
     $release_at = !empty($f['release_at']) ? date('Y-m-d H:i:s', strtotime($f['release_at'])) : null;
 
@@ -519,7 +544,9 @@ function lmeg_release_import_selected() {
     foreach ($rows as $r) {
         $aid = (int) ($r['apple_id'] ?? 0);
         if (!in_array($aid, $picked, true)) continue;
-        if ($aid && lmeg_release_by_apple_id($aid)) { $skipped++; continue; }
+        // Skip anything already in Fanloop — by Apple id OR title (barrier against
+        // building a second copy when Apple returns a different edition id).
+        if (lmeg_release_find_existing($aid, $r['clean_title'] ?? ($r['title'] ?? ''))) { $skipped++; continue; }
 
         // Streaming links (Spotify / Apple Music / Deezer) + best-effort preview.
         $links   = lmeg_release_streaming_links($r['clean_title'] ?? ($r['title'] ?? ''), $r['url'] ?? '', '');
