@@ -122,6 +122,35 @@ function lmeg_itunes_artist_releases($artist_id) {
     return $out;
 }
 
+/** Full tracklist for an Apple album (collectionId): [ ['n','title','ms','preview'], … ]
+ *  ordered by track number. Cached 12h. */
+function lmeg_itunes_album_tracks($collection_id) {
+    $collection_id = (int) $collection_id;
+    if (!$collection_id) return [];
+    $key = 'lmeg_ittrk_' . $collection_id;
+    $c = get_transient($key);
+    if (is_array($c)) return $c;
+    $url = 'https://itunes.apple.com/lookup?id=' . $collection_id . '&entity=song&limit=200';
+    $res = wp_remote_get($url, ['timeout' => 10, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return [];
+    $body = json_decode(wp_remote_retrieve_body($res), true);
+    $out = [];
+    foreach (($body['results'] ?? []) as $r) {
+        if (($r['wrapperType'] ?? '') !== 'track' || ($r['kind'] ?? '') !== 'song') continue;
+        $name = (string) ($r['trackName'] ?? '');
+        if ($name === '') continue;
+        $out[] = [
+            'n'       => (int) ($r['trackNumber'] ?? (count($out) + 1)),
+            'title'   => $name,
+            'ms'      => (int) ($r['trackTimeMillis'] ?? 0),
+            'preview' => (string) ($r['previewUrl'] ?? ''),
+        ];
+    }
+    usort($out, function ($a, $b) { return ($a['n'] <=> $b['n']); });
+    set_transient($key, $out, 12 * HOUR_IN_SECONDS);
+    return $out;
+}
+
 /** artistId that owns an Apple collection (album) or track id. */
 function lmeg_itunes_collection_artist($id) {
     $id = (int) $id;
@@ -215,12 +244,75 @@ add_action('lmeg_drop_after_body', 'lmeg_release_drop_preview', 10, 2);
 function lmeg_release_drop_preview($drop, $released) {
     if (!function_exists('lmeg_release_for_drop')) return;
     $rel = lmeg_release_for_drop((int) $drop->id);
-    $url = ($rel && !empty($rel->preview_url)) ? $rel->preview_url : '';
+    if (!$rel) return;
+    // If the release has a tracklist, the tracklist below carries the previews.
+    if (!empty($rel->tracks)) { $tl = json_decode((string) $rel->tracks, true); if (is_array($tl) && $tl) return; }
+    $url = !empty($rel->preview_url) ? $rel->preview_url : '';
     if ($url === '') return;
     $accent = '#E15FA8';
     $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
     if (!empty($s['color_primary'])) $accent = sanitize_hex_color($s['color_primary']) ?: $accent;
     echo '<div class="lmeg-drop__preview" style="margin-top:14px">' . lmeg_audio_preview_html($url, 'Hear it', $accent) . '</div>';
+}
+
+/** Playable tracklist — each track is a compact one-at-a-time preview row
+ *  (reuses the shared .flp-preview player). */
+function lmeg_release_tracklist_html($tracks, $accent = '#E15FA8') {
+    if (!is_array($tracks) || !$tracks) return '';
+    $accent  = sanitize_hex_color($accent) ?: '#E15FA8';
+    $ic_play = function_exists('lmeg_store_icon') ? lmeg_store_icon('play', 13, ['fill' => true, 'style' => 'margin-left:1px']) : '&#9654;';
+    $css = '';
+    if (empty($GLOBALS['lmeg_tracklist_css'])) {
+        $GLOBALS['lmeg_tracklist_css'] = true;
+        $css = '<style>'
+            . '.lmeg-tracklist{margin:0;max-width:440px}'
+            . '.lmeg-tracklist__h{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin:0 0 6px}'
+            . '.lmeg-track{position:relative;display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;overflow:hidden}'
+            . '.lmeg-track + .lmeg-track{border-top:1px solid rgba(255,255,255,.08)}'
+            . '.lmeg-track:hover{background:rgba(255,255,255,.05)}'
+            . '.lmeg-track__btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:0;background:' . $accent . ';color:#fff;cursor:pointer;display:grid;place-items:center;padding:0}'
+            . '.lmeg-track__n{flex:0 0 auto;width:30px;text-align:center;font-size:12px;opacity:.5;font-variant-numeric:tabular-nums}'
+            . '.lmeg-track__title{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+            . '.lmeg-track__dur{flex:0 0 auto;font-size:12px;opacity:.55;font-variant-numeric:tabular-nums}'
+            . '.lmeg-track .flp-preview-fill{position:absolute;left:0;bottom:0;height:2px;width:0;background:' . $accent . ';transition:width .15s linear}'
+            . '</style>';
+    }
+    $rows = '';
+    foreach ($tracks as $t) {
+        $title = esc_html((string) ($t['title'] ?? ''));
+        if ($title === '') continue;
+        $n   = (int) ($t['n'] ?? 0);
+        $ms  = (int) ($t['ms'] ?? 0);
+        $dur = $ms > 0 ? sprintf('%d:%02d', (int) floor($ms / 60000), (int) floor(($ms % 60000) / 1000)) : '';
+        $prev = trim((string) ($t['preview'] ?? ''));
+        $has  = ($prev !== '' && filter_var($prev, FILTER_VALIDATE_URL));
+        $rows .= '<div class="lmeg-track' . ($has ? ' flp-preview' : '') . '">';
+        $rows .= $has
+            ? '<button type="button" class="lmeg-track__btn flp-preview-btn" aria-label="Play preview of ' . esc_attr($t['title']) . '" aria-pressed="false">' . $ic_play . '</button>'
+            : '<span class="lmeg-track__n">' . ($n ?: '•') . '</span>';
+        $rows .= '<span class="lmeg-track__title">' . $title . '</span>';
+        if ($dur) $rows .= '<span class="lmeg-track__dur">' . esc_html($dur) . '</span>';
+        if ($has) {
+            $rows .= '<div class="flp-preview-fill"></div>';
+            $rows .= '<audio class="flp-preview-audio" preload="none" src="' . esc_url($prev) . '"></audio>';
+        }
+        $rows .= '</div>';
+    }
+    if ($rows === '') return '';
+    return $css . '<div class="lmeg-tracklist"><div class="lmeg-tracklist__h">Tracklist</div>' . $rows . '</div>' . lmeg_preview_shared_js();
+}
+
+add_action('lmeg_drop_after_body', 'lmeg_release_drop_tracklist', 11, 2);
+function lmeg_release_drop_tracklist($drop, $released) {
+    if (!function_exists('lmeg_release_for_drop')) return;
+    $rel = lmeg_release_for_drop((int) $drop->id);
+    if (!$rel || empty($rel->tracks)) return;
+    $tracks = json_decode((string) $rel->tracks, true);
+    if (!is_array($tracks) || !$tracks) return;
+    $accent = '#E15FA8';
+    $s = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+    if (!empty($s['color_primary'])) $accent = sanitize_hex_color($s['color_primary']) ?: $accent;
+    echo '<div class="lmeg-drop__tracklist" style="margin-top:16px">' . lmeg_release_tracklist_html($tracks, $accent) . '</div>';
 }
 
 /* -------------------------------------------------------------------------

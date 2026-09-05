@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) exit;
  * record itself. The cascade (drop / page / product) layers on next.
  * ========================================================================== */
 
-if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '5');
+if (!defined('LMEG_RELEASE_DB_VERSION')) define('LMEG_RELEASE_DB_VERSION', '6');
 
 /** The page template release pages use — Elementor Full Width where Elementor
  *  is active, so the drop block renders full-bleed (no theme title band). */
@@ -58,6 +58,7 @@ function lmeg_releases_maybe_install() {
         description TEXT DEFAULT NULL,
         links TEXT DEFAULT NULL,
         formats TEXT DEFAULT NULL,
+        tracks TEXT DEFAULT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'draft',
         drop_id BIGINT UNSIGNED DEFAULT NULL,
         product_id BIGINT UNSIGNED DEFAULT NULL,
@@ -195,8 +196,20 @@ function lmeg_release_refresh_links() {
             if (stripos($ln, 'apple') !== false && strpos($ln, '|') !== false) $apple = trim(explode('|', $ln, 2)[1]);
         }
         $new = lmeg_release_streaming_links($r->title, $apple, (string) $r->links);
-        if ($new !== '' && $new !== (string) $r->links) {
-            $wpdb->update($t, ['links' => $new, 'updated_at' => current_time('mysql')], ['id' => $r->id]);
+        $changed = ['updated_at' => current_time('mysql')];
+        if ($new !== '' && $new !== (string) $r->links) $changed['links'] = $new;
+
+        // Backfill the tracklist (song titles + per-track previews) from Apple.
+        if (empty($r->tracks) && !empty($r->apple_id) && function_exists('lmeg_itunes_album_tracks')) {
+            $tl = lmeg_itunes_album_tracks((int) $r->apple_id);
+            if ($tl) {
+                $changed['tracks'] = wp_json_encode($tl);
+                if (empty($r->preview_url) && !empty($tl[0]['preview'])) $changed['preview_url'] = esc_url_raw($tl[0]['preview']);
+            }
+        }
+
+        if (count($changed) > 1) {
+            $wpdb->update($t, $changed, ['id' => $r->id]);
             $rel = lmeg_release_get($r->id);
             if ($rel && !empty($rel->drop_id)) lmeg_release_sync_drop($rel);
             $updated++;
@@ -309,10 +322,10 @@ function lmeg_releases_admin_page() {
         echo '<form method="post" style="margin:0;">';
         wp_nonce_field('lmeg_refresh_links', 'lmeg_refresh_nonce');
         echo '<input type="hidden" name="lmeg_release_action" value="refresh_links">';
-        echo '<button class="button" onclick="return confirm(\'Fetch Spotify + Deezer links for every release? This can take a moment.\');">&#8635; Refresh streaming links</button>';
+        echo '<button class="button" onclick="return confirm(\'Fetch streaming links + tracklists for every release? This can take a moment.\');">&#8635; Refresh links &amp; tracklists</button>';
         echo '</form>';
         echo '</div>';
-        echo '<p class="description" style="margin:2px 0 18px;">Refresh fills in Spotify, Apple Music, YouTube &amp; Deezer links on every release &mdash; your custom links are left untouched.</p>';
+        echo '<p class="description" style="margin:2px 0 18px;">Fills in Spotify, Apple Music, YouTube &amp; Deezer links and imports each release&rsquo;s <strong>tracklist</strong> (song titles + 30-sec previews) from Apple Music &mdash; your custom links are left untouched.</p>';
     }
 
     if ($action === 'import') {
@@ -396,10 +409,19 @@ function lmeg_release_create_from_import(array $f) {
         'description' => sanitize_textarea_field($f['description'] ?? ''),
         'links'       => sanitize_textarea_field($f['links'] ?? ''),
         'formats'     => sanitize_textarea_field($f['formats'] ?? 'Digital'),
+        'tracks'      => isset($f['tracks']) ? (string) $f['tracks'] : '',
         'status'      => in_array(($f['status'] ?? ''), ['draft', 'scheduled', 'released'], true) ? $f['status'] : 'released',
         'created_at'  => $now,
         'updated_at'  => $now,
     ];
+    // Pull the full tracklist from Apple (song titles, durations, per-track 30s previews).
+    if ($data['tracks'] === '' && !empty($data['apple_id']) && function_exists('lmeg_itunes_album_tracks')) {
+        $tl = lmeg_itunes_album_tracks((int) $data['apple_id']);
+        if ($tl) {
+            $data['tracks'] = wp_json_encode($tl);
+            if ($data['preview_url'] === '' && !empty($tl[0]['preview'])) $data['preview_url'] = esc_url_raw($tl[0]['preview']);
+        }
+    }
     $wpdb->insert($t, $data);
     $id = (int) $wpdb->insert_id;
     if (!$id) return 0;
