@@ -416,9 +416,23 @@ function lmeg_si_analyze($c) {
             'detail' => $p($c['active_share']) . '% of streams come from your most active listeners — a dependable base to launch releases to.'];
     }
 
+    // Stable sort by tier (opportunity → watch → insight → strength) so the most
+    // actionable lead, but keep insertion order within a tier.
     $order = ['opportunity' => 0, 'watch' => 1, 'insight' => 2, 'strength' => 3];
-    usort($F, function ($a, $b) use ($order) { return ($order[$a['type']] ?? 9) <=> ($order[$b['type']] ?? 9); });
-    return array_slice($F, 0, 7);
+    $i = 0; foreach ($F as &$fr) { $fr['_i'] = $i++; } unset($fr);
+    usort($F, function ($a, $b) use ($order) {
+        $t = ($order[$a['type']] ?? 9) <=> ($order[$b['type']] ?? 9);
+        return $t !== 0 ? $t : ($a['_i'] <=> $b['_i']);
+    });
+    // Cap at 8 and guarantee at least one strength surfaces (so the card can end
+    // on what's working, not only what to fix) when strengths exist.
+    $top = array_slice($F, 0, 8);
+    $hasStrength = false; foreach ($top as $t) if ($t['type'] === 'strength') { $hasStrength = true; break; }
+    if (!$hasStrength) {
+        foreach ($F as $fr) { if ($fr['type'] === 'strength') { array_pop($top); $top[] = $fr; break; } }
+    }
+    foreach ($top as &$fr) unset($fr['_i']); unset($fr);
+    return $top;
 }
 
 function lmeg_admin_spotify_insights() {
