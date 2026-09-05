@@ -24,7 +24,7 @@ function lmeg_admin_hub_map() {
             ['lmeg-overview', 'Overview'],
         ]],
         'audience'  => ['label' => 'Audience',  'pages' => [
-            ['lmeg', 'Subscribers'], ['lmeg-audience', 'Audience'], ['lmeg-fanbase', 'Fanbase'], ['lmeg-tags', 'Tags'],
+            ['lmeg', 'Subscribers'], ['lmeg-audience', 'Audience'], ['lmeg-fanbase', 'Fanbase'], ['lmeg-signups', 'Signups'], ['lmeg-tags', 'Tags'],
             ['lmeg-segments', 'Segments'], ['lmeg-top-fans', 'Top Fans'], ['lmeg-members', 'Members'],
             ['lmeg-journey', 'Journey'], ['lmeg-referrals', 'Referrals'],
         ]],

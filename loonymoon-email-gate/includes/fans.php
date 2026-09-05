@@ -1061,6 +1061,121 @@ function lmeg_admin_fanbase() {
 }
 
 /* ---------------------------------------------------------------------------
+ * Signups — the acquisition funnel. Cobrand's "Fan Sign Up Analytics": how
+ * many joined, the email/SMS split, where they're from, who referred them,
+ * and (when the Journey is on) a page-views → signups conversion rate + the
+ * UTM campaigns driving the traffic. All from data the plugin already stores.
+ * ------------------------------------------------------------------------- */
+
+add_action('admin_menu', function () {
+    add_submenu_page('lmeg', 'Signups', 'Signups', 'manage_options', 'lmeg-signups', 'lmeg_admin_signups');
+}, 20);
+
+function lmeg_admin_signups() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $subs    = $wpdb->prefix . LMEG_TABLE;
+    $journey = $wpdb->prefix . 'lmeg_journey_events';
+
+    $win  = isset($_GET['win']) ? (string) $_GET['win'] : '30';
+    $days = $win === 'all' ? 0 : (in_array($win, ['7', '30', '90'], true) ? (int) $win : 30);
+    $since_sql = $days ? "AND created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)" : '';
+
+    $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL $since_sql");
+    $email = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL AND contact_type='email' $since_sql");
+    $sms   = (int) $wpdb->get_var("SELECT COUNT(*) FROM $subs WHERE unsubscribed_at IS NULL AND contact_type='phone' $since_sql");
+
+    // Daily signups for the trend (default 30, capped for 'all').
+    $tdays = $days ?: 90;
+    $rows  = $wpdb->get_results($wpdb->prepare(
+        "SELECT DATE(created_at) d, COUNT(*) n FROM $subs
+         WHERE created_at >= DATE_SUB(NOW(), INTERVAL %d DAY) GROUP BY DATE(created_at)", $tdays));
+    $by = []; foreach ($rows as $r) $by[$r->d] = (int) $r->n;
+    $series = []; $labels = [];
+    for ($i = $tdays - 1; $i >= 0; $i--) { $d = date('Y-m-d', strtotime("-$i days")); $series[] = $by[$d] ?? 0; $labels[] = date_i18n('M j', strtotime($d)); }
+
+    $countries = $wpdb->get_results("SELECT country cc, COUNT(*) n FROM $subs WHERE unsubscribed_at IS NULL AND country IS NOT NULL AND country<>'' $since_sql GROUP BY country ORDER BY n DESC LIMIT 8");
+    $refs = $wpdb->get_results("SELECT referrer, COUNT(*) n FROM $subs WHERE unsubscribed_at IS NULL $since_sql GROUP BY referrer ORDER BY n DESC");
+
+    // Journey-based: unique visitors + top UTM campaigns → conversion rate.
+    $pv_since = $days ? "AND created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)" : '';
+    $visitors = (int) $wpdb->get_var("SELECT COUNT(DISTINCT COALESCE(NULLIF(anon_id,''), CONCAT('s', subscriber_id))) FROM $journey WHERE event_type='pageview' $pv_since");
+    $utm = $wpdb->get_results("SELECT utm_campaign, COUNT(*) n FROM $journey WHERE event_type='pageview' AND utm_campaign<>'' $pv_since GROUP BY utm_campaign ORDER BY n DESC LIMIT 6");
+    $conv = $visitors > 0 ? round(100 * $total / $visitors, 1) : null;
+
+    // Aggregate referrer hosts.
+    $ref_hosts = [];
+    foreach ($refs as $r) {
+        $raw = trim((string) $r->referrer);
+        $host = $raw === '' ? 'Direct / unknown' : (parse_url($raw, PHP_URL_HOST) ?: 'Direct / unknown');
+        $host = preg_replace('/^www\./', '', $host);
+        $ref_hosts[$host] = ($ref_hosts[$host] ?? 0) + (int) $r->n;
+    }
+    arsort($ref_hosts); $ref_hosts = array_slice($ref_hosts, 0, 8, true);
+
+    $card = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;color:#F4F5F7;';
+    $lbl  = 'font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;';
+    $bars = function ($items, $fmt) use ($card) {
+        $max = 0; foreach ($items as $v) $max = max($max, (int) $v);
+        $tot = array_sum($items); $tot = $tot ?: 1; $h = '';
+        foreach ($items as $k => $v) {
+            $w = $max ? max(3, round(100 * $v / $max)) : 0; $pct = round(100 * $v / $tot);
+            $h .= '<div style="display:flex;align-items:center;gap:9px;margin:7px 0;">'
+                . '<span style="flex:0 0 130px;font-size:13px;color:#F4F5F7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' . $fmt($k) . '</span>'
+                . '<span style="flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:' . $w . '%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:5px;"></span></span>'
+                . '<span style="flex:0 0 auto;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;">' . number_format_i18n((int) $v) . '</span>'
+                . '<span style="flex:0 0 40px;text-align:right;font-size:11.5px;color:#8B90A0;">' . $pct . '%</span></div>';
+        }
+        return $h;
+    };
+    $wins = ['7' => 'Last 7 days', '30' => 'Last 30 days', '90' => 'Last 90 days', 'all' => 'All time'];
+    ?>
+    <div class="wrap lmeg-admin">
+        <h1>Fanloop — Signups</h1>
+        <p style="max-width:820px;">Where your fans come from — volume, channel, geography, and (with the <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-journey')); ?>">Journey</a> on) how many visitors convert into signups.</p>
+        <p style="margin:8px 0 14px;">
+            <?php foreach ($wins as $k => $label) : $active = ($win === $k); ?>
+                <a href="<?php echo esc_url(add_query_arg('win', $k)); ?>" class="button<?php echo $active ? ' button-primary' : ''; ?>" style="margin-right:4px;"><?php echo esc_html($label); ?></a>
+            <?php endforeach; ?>
+        </p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;max-width:1000px;margin-bottom:14px;">
+            <div style="<?php echo $card; ?>"><div style="font:800 28px/1 var(--lmegA-font,inherit);font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($total); ?></div><div style="<?php echo $lbl; ?>margin-top:6px;">Signups</div></div>
+            <div style="<?php echo $card; ?>"><div style="font:800 28px/1 var(--lmegA-font,inherit);font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($email); ?></div><div style="<?php echo $lbl; ?>margin-top:6px;">By email</div></div>
+            <div style="<?php echo $card; ?>"><div style="font:800 28px/1 var(--lmegA-font,inherit);font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($sms); ?></div><div style="<?php echo $lbl; ?>margin-top:6px;">By SMS</div></div>
+            <div style="<?php echo $card; ?>"><div style="font:800 28px/1 var(--lmegA-font,inherit);color:<?php echo $conv !== null ? '#34D399' : '#8B90A0'; ?>;"><?php echo $conv !== null ? $conv . '%' : '—'; ?></div><div style="<?php echo $lbl; ?>margin-top:6px;">Conversion<?php echo $conv !== null ? ' · ' . number_format_i18n($visitors) . ' visitors' : ''; ?></div></div>
+        </div>
+
+        <div style="<?php echo $card; ?>max-width:1000px;margin-bottom:14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:6px;">Signups · last <?php echo (int) $tdays; ?> days</div>
+            <?php echo function_exists('lmeg_chart_line') ? lmeg_chart_line($series, ['color' => '#7C6CF6', 'uid' => 'signups-trend', 'h' => 66, 'labels' => $labels, 'suffix' => ' signups']) : ''; ?>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;max-width:1000px;">
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where signups come from</div>
+                <?php echo $ref_hosts ? $bars($ref_hosts, function ($h) { return esc_html($h); }) : '<p style="color:#8B90A0;font-size:13px;margin:0;">No referrer data yet.</p>'; ?>
+            </div>
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top countries</div>
+                <?php
+                $cc = []; foreach ($countries as $r) $cc[strtoupper((string) $r->cc)] = (int) $r->n;
+                echo $cc ? $bars($cc, function ($k) { $n = (function_exists('lmeg_country_by_iso') && ($r = lmeg_country_by_iso($k))) ? $r[1] : $k; return esc_html(trim((function_exists('lmeg_flag_emoji') ? lmeg_flag_emoji($k) . ' ' : '') . $n)); }) : '<p style="color:#8B90A0;font-size:13px;margin:0;">No country data yet.</p>';
+                ?>
+            </div>
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top campaigns (traffic)</div>
+                <?php
+                $uc = []; foreach ($utm as $r) $uc[(string) $r->utm_campaign] = (int) $r->n;
+                echo $uc ? $bars($uc, function ($k) { return esc_html($k); }) : '<p style="color:#8B90A0;font-size:13px;margin:0;">No campaign traffic yet — add <code>?utm_campaign=</code> tags to your links (needs the Journey on).</p>';
+                ?>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+/* ---------------------------------------------------------------------------
  * Referrals — attribute revenue to the fans who bring in other fans. The
  * owned-data take on Laylo's Affiliates: who's your street team, and how much
  * have the fans they referred actually spent?
