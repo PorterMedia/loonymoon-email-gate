@@ -295,17 +295,23 @@ function lmeg_social_ig_demographics($force = false) {
     $s    = lmeg_get_settings();
     $base = LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id']) . '/insights';
     $tok  = rawurlencode($s['ig_page_token']);
+    $err  = ''; // capture the first API error for admin diagnostics
 
     // One insight call per breakdown; a breakdown returns
     // total_value.breakdowns[0].results[] = { dimension_values:[…], value:N }.
-    $pull = function ($breakdown) use ($base, $tok) {
+    $pull = function ($breakdown) use ($base, $tok, &$err) {
         $resp = wp_remote_get(
             $base . '?metric=follower_demographics&period=lifetime&metric_type=total_value'
                   . '&breakdown=' . rawurlencode($breakdown) . '&access_token=' . $tok,
             ['timeout' => 12]
         );
-        if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
-        $d = json_decode(wp_remote_retrieve_body($resp), true);
+        if (is_wp_error($resp)) { if ($err === '') $err = $resp->get_error_message(); return []; }
+        $body = wp_remote_retrieve_body($resp);
+        $d    = json_decode($body, true);
+        if (wp_remote_retrieve_response_code($resp) !== 200) {
+            if ($err === '' && !empty($d['error']['message'])) $err = $d['error']['message'];
+            return [];
+        }
         $res = $d['data'][0]['total_value']['breakdowns'][0]['results'] ?? null;
         if (!is_array($res)) return [];
         return $res;
@@ -324,9 +330,15 @@ function lmeg_social_ig_demographics($force = false) {
     $city    = []; foreach ($pull('city')    as $r) { $nm = (string) ($r['dimension_values'][0] ?? '');            if ($nm !== '') $city[$nm]    = (int) ($r['value'] ?? 0); }
 
     if (!$gender && !$age && !$country && !$city) {
-        set_transient($cache, ['__none__' => 1], 3 * HOUR_IN_SECONDS); // remember "unavailable" briefly
+        // Remember "unavailable" only briefly so a fresh reconnect / Meta
+        // populating the insight clears it fast; stash the reason for the admin.
+        set_transient($cache, ['__none__' => 1], 15 * MINUTE_IN_SECONDS);
+        set_transient('lmeg_social_ig_demo_err',
+            $err !== '' ? $err : 'Instagram returned no demographic data yet. This needs a Business/Creator account with 100+ followers, and Meta can take up to ~24h to populate it after the insights permission is granted.',
+            30 * MINUTE_IN_SECONDS);
         return null;
     }
+    delete_transient('lmeg_social_ig_demo_err');
     // Sort each distribution most-first (age keeps its natural bucket order).
     arsort($gender); arsort($country); arsort($city);
     $age_order = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
@@ -885,7 +897,7 @@ function lmeg_admin_social() {
         $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
         $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
         $hashtags = $ig_ok ? lmeg_social_ig_hashtags() : null;
-        $demographics = $ig_ok ? lmeg_social_ig_demographics() : null;
+        $demographics = $ig_ok ? lmeg_social_ig_demographics(!empty($_GET['ig_demo_refresh'])) : null;
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
@@ -975,9 +987,15 @@ function lmeg_admin_social() {
         <?php if ($ig_ok) : ?>
         <h2 style="margin-top:24px;">Who your followers are</h2>
         <?php if (empty($demographics)) : ?>
+            <?php $demo_err = $demo ? '' : (string) get_transient('lmeg_social_ig_demo_err'); ?>
             <div style="<?php echo $dash; ?>max-width:900px;">
                 <p style="margin:0 0 4px;font-weight:600;color:#F4F5F7;">Follower demographics — gender, age, and where they are</p>
-                <p class="description" style="margin:0;">Instagram shares this for Business/Creator accounts with 100+ followers, but it needs the <code>instagram_manage_insights</code> permission enabled on your Meta app (added via Meta App Review / Business Verification — <em>not</em> just a reconnect). Once it's approved on the app, this fills in automatically. Use <a href="<?php echo esc_url(add_query_arg('demo', 1)); ?>">demo data</a> to preview the layout.</p>
+                <p class="description" style="margin:0 0 8px;">Instagram shares this for Business/Creator accounts with 100+ followers, once the <code>instagram_manage_insights</code> permission is granted (Settings → Instagram → “Follower demographics”, then Reconnect). Meta can take up to ~24h to populate it after you connect.</p>
+                <?php if ($demo_err !== '') : ?>
+                <p class="description" style="margin:0 0 8px;color:#E58BBD;">Instagram said: “<?php echo esc_html($demo_err); ?>”</p>
+                <?php endif; ?>
+                <a class="button button-small" href="<?php echo esc_url(add_query_arg('ig_demo_refresh', 1)); ?>">Refresh demographics</a>
+                <a class="button button-small" href="<?php echo esc_url(add_query_arg('demo', 1)); ?>">Preview with demo data</a>
             </div>
         <?php else :
             // Inline distribution renderer: assoc [key=>count], optional label formatter.
