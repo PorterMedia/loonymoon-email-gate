@@ -125,7 +125,7 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
     $s = lmeg_get_settings();
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id'])
-            . '/media?fields=id,caption,media_type,permalink,timestamp,like_count,comments_count&limit=' . (int) $limit
+            . '/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit=' . (int) $limit
             . '&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 15]
     );
@@ -133,10 +133,13 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     $out = [];
     foreach ((array) ($d['data'] ?? []) as $m) {
+        // thumbnail_url is set for VIDEO; media_url for IMAGE (and often CAROUSEL cover).
+        $thumb = (string) ($m['thumbnail_url'] ?? ($m['media_url'] ?? ''));
         $out[] = [
             'id'        => (string) ($m['id'] ?? ''),
             'caption'   => (string) ($m['caption'] ?? ''),
             'type'      => (string) ($m['media_type'] ?? ''),
+            'thumb'     => $thumb,
             'permalink' => (string) ($m['permalink'] ?? ''),
             'timestamp' => (string) ($m['timestamp'] ?? ''),
             'likes'     => (int) ($m['like_count'] ?? 0),
@@ -390,7 +393,7 @@ function lmeg_fb_posts($limit = 25, $force = false) {
     $pid = get_option('lmeg_ig_page_id');
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($pid)
-            . '/posts?fields=id,message,story,created_time,permalink_url,shares,'
+            . '/posts?fields=id,message,story,full_picture,created_time,permalink_url,shares,'
             . 'comments.summary(true).limit(0),reactions.summary(true).limit(0)&limit=' . (int) $limit
             . '&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 15]
@@ -402,6 +405,7 @@ function lmeg_fb_posts($limit = 25, $force = false) {
         $out[] = [
             'id'        => (string) ($p['id'] ?? ''),
             'caption'   => (string) ($p['message'] ?? ($p['story'] ?? '')),
+            'thumb'     => (string) ($p['full_picture'] ?? ''),
             'permalink' => (string) ($p['permalink_url'] ?? ''),
             'timestamp' => (string) ($p['created_time'] ?? ''),
             'likes'     => (int) ($p['reactions']['summary']['total_count'] ?? 0),
@@ -771,6 +775,57 @@ function lmeg_social_demo() {
 }
 
 /* ---------------------------------------------------------------------------
+ * Post cards — a visual grid (thumbnail + caption + metrics) shared by the
+ * Instagram and Facebook "top posts" sections. Real IG/FB posts show their
+ * cover art (media_url / thumbnail_url / full_picture); when there's no image
+ * (or in demo mode) a deterministic branded gradient with the platform glyph
+ * stands in, so the grid always reads as a set.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_social_render_post_cards($posts, $platform = 'instagram', $metrics = null) {
+    if (!$posts) return;
+    $glyph = $platform === 'facebook' ? 'facebook' : 'instagram';
+    if ($metrics === null) {
+        $metrics = [['icon' => 'heart', 'key' => 'likes'], ['icon' => 'message', 'key' => 'comments']];
+    }
+    $card = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;display:block;color:#F4F5F7;text-decoration:none;';
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;max-width:900px;">';
+    foreach ($posts as $i => $p) {
+        $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string) ($p['caption'] ?? ''))));
+        $cap = $cap !== '' ? mb_substr($cap, 0, 90) : '(no caption)';
+        $type = strtoupper((string) ($p['type'] ?? ''));
+        $badge = strpos($type, 'VIDEO') !== false ? 'Reel' : (strpos($type, 'CAROUSEL') !== false ? 'Carousel' : (strpos($type, 'IMAGE') !== false ? 'Photo' : ''));
+        $thumb = (string) ($p['thumb'] ?? '');
+        $href  = (string) ($p['permalink'] ?? '');
+        $linkable = $href !== '' && $href !== '#';
+        $seed = crc32((string) ($p['id'] ?? $cap)); $a = $seed % 360; $b = ($a + 45) % 360;
+        $tag  = $linkable ? 'a' : 'div';
+        $attr = $linkable ? ' href="' . esc_url($href) . '" target="_blank" rel="noopener"' : '';
+        $rank = $i === 0 ? '<span style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:4px;background:rgba(14,15,22,.72);color:#FBBF24;font-size:11px;font-weight:600;padding:3px 7px;border-radius:20px;">' . lmeg_icon('trophy', ['size' => 12, 'sw' => 2]) . 'Top</span>' : '';
+        $badge_html = $badge !== '' ? '<span style="position:absolute;top:8px;right:8px;background:rgba(14,15,22,.72);color:#F4F5F7;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;">' . esc_html($badge) . '</span>' : '';
+        if ($thumb !== '') {
+            $media = '<img src="' . esc_url($thumb) . '" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">';
+        } else {
+            $media = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,hsl(' . $a . ',42%,30%),hsl(' . $b . ',48%,20%));color:rgba(255,255,255,.6);">' . lmeg_icon($glyph, ['size' => 30, 'sw' => 1.6]) . '</div>';
+        }
+        echo '<' . $tag . $attr . ' style="' . $card . '">';
+        echo '<div style="position:relative;aspect-ratio:1/1;background:#0E0F16;">' . $media . $rank . $badge_html . '</div>';
+        echo '<div style="padding:10px 12px 12px;">';
+        echo '<div style="font-size:12.5px;line-height:1.35;color:#F4F5F7;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' . esc_html($cap) . '</div>';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap;">';
+        foreach ($metrics as $m) {
+            $v = (int) ($p[$m['key']] ?? 0);
+            echo '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;"><span style="color:#8B90A0;display:inline-flex;">' . lmeg_icon($m['icon'], ['size' => 13, 'sw' => 2]) . '</span>' . number_format_i18n($v) . '</span>';
+        }
+        echo '</div>';
+        $when = !empty($p['timestamp']) ? date_i18n('M j', strtotime($p['timestamp'])) : '';
+        if ($when !== '') echo '<div style="font-size:11px;color:#8B90A0;margin-top:7px;">' . esc_html($when) . ($linkable ? ' · View ↗' : '') . '</div>';
+        echo '</div></' . $tag . '>';
+    }
+    echo '</div>';
+}
+
+/* ---------------------------------------------------------------------------
  * Admin page
  * ------------------------------------------------------------------------- */
 
@@ -912,7 +967,7 @@ function lmeg_admin_social() {
         <?php if (empty($demographics)) : ?>
             <div style="<?php echo $dash; ?>max-width:900px;">
                 <p style="margin:0 0 4px;font-weight:600;color:#F4F5F7;">Follower demographics — gender, age, and where they are</p>
-                <p class="description" style="margin:0;">Instagram shares this for Business/Creator accounts with 100+ followers, but it needs the insights permission. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Reconnect Instagram in Settings</a> to grant it and this fills in automatically — your existing connection keeps working in the meantime.</p>
+                <p class="description" style="margin:0;">Instagram shares this for Business/Creator accounts with 100+ followers, but it needs the <code>instagram_manage_insights</code> permission enabled on your Meta app (added via Meta App Review / Business Verification — <em>not</em> just a reconnect). Once it's approved on the app, this fills in automatically. Use <a href="<?php echo esc_url(add_query_arg('demo', 1)); ?>">demo data</a> to preview the layout.</p>
             </div>
         <?php else :
             // Inline distribution renderer: assoc [key=>count], optional label formatter.
@@ -969,25 +1024,8 @@ function lmeg_admin_social() {
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Best day to post</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo esc_html($best_day['day']); ?></div><div style="font-size:12px;color:#8B90A0;">your posts land best (last <?php echo (int) $best_day['samples']; ?>)</div></div>
                 <?php endif; ?>
             </div>
-            <h3 style="margin:14px 0 6px;">Top posts</h3>
-            <table class="widefat striped" style="max-width:900px;">
-                <thead><tr><th>Post</th><th>Type</th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('heart', ['size' => 14, 'sw' => 2]); ?>Likes</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('message', ['size' => 14, 'sw' => 2]); ?>Comments</span></th><th>When</th><th></th></tr></thead>
-                <tbody>
-                <?php foreach ($content['top'] as $p) :
-                    $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($p['caption'])));
-                    $cap = $cap !== '' ? mb_substr($cap, 0, 70) : '(no caption)';
-                ?>
-                    <tr>
-                        <td style="max-width:360px;"><?php echo esc_html($cap); ?></td>
-                        <td style="font-size:12px;color:#8B90A0;"><?php echo esc_html(ucwords(strtolower(str_replace('_', ' ', $p['type'])))); ?></td>
-                        <td><strong><?php echo number_format_i18n($p['likes']); ?></strong></td>
-                        <td><?php echo number_format_i18n($p['comments']); ?></td>
-                        <td style="font-size:12px;color:#8B90A0;"><?php echo $p['timestamp'] ? esc_html(date_i18n('M j', strtotime($p['timestamp']))) : '—'; ?></td>
-                        <td><?php if ($p['permalink']) : ?><a href="<?php echo esc_url($p['permalink']); ?>" target="_blank" rel="noopener">View ↗</a><?php endif; ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
+            <h3 style="margin:14px 0 8px;">Top posts</h3>
+            <?php lmeg_social_render_post_cards($content['top'], 'instagram'); ?>
             <?php if ($types && count($types) > 1) : ?>
             <h3 style="margin:16px 0 6px;">What format works best</h3>
             <table class="widefat striped" style="max-width:520px;">
@@ -1037,25 +1075,12 @@ function lmeg_admin_social() {
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Avg per post</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($fb_content['avg_eng']); ?></div><div style="font-size:12px;color:#8B90A0;">engagements</div></div>
                 <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Posting cadence</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo $fb_content['cadence']; ?></div><div style="font-size:12px;color:#8B90A0;">days between posts</div></div>
             </div>
-            <h3 style="margin:14px 0 6px;">Top Facebook posts</h3>
-            <table class="widefat striped" style="max-width:900px;">
-                <thead><tr><th>Post</th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('heart', ['size' => 14, 'sw' => 2]); ?>Reactions</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('message', ['size' => 14, 'sw' => 2]); ?>Comments</span></th><th><span style="display:inline-flex;align-items:center;gap:6px;"><?php echo lmeg_icon('send', ['size' => 14, 'sw' => 2]); ?>Shares</span></th><th>When</th><th></th></tr></thead>
-                <tbody>
-                <?php foreach ($fb_content['top'] as $p) :
-                    $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($p['caption'])));
-                    $cap = $cap !== '' ? mb_substr($cap, 0, 70) : '(no text)';
-                ?>
-                    <tr>
-                        <td style="max-width:360px;"><?php echo esc_html($cap); ?></td>
-                        <td><strong><?php echo number_format_i18n($p['likes']); ?></strong></td>
-                        <td><?php echo number_format_i18n($p['comments']); ?></td>
-                        <td><?php echo number_format_i18n($p['shares']); ?></td>
-                        <td style="font-size:12px;color:#8B90A0;"><?php echo $p['timestamp'] ? esc_html(date_i18n('M j', strtotime($p['timestamp']))) : '—'; ?></td>
-                        <td><?php if ($p['permalink']) : ?><a href="<?php echo esc_url($p['permalink']); ?>" target="_blank" rel="noopener">View ↗</a><?php endif; ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
+            <h3 style="margin:14px 0 8px;">Top Facebook posts</h3>
+            <?php lmeg_social_render_post_cards($fb_content['top'], 'facebook', [
+                ['icon' => 'heart', 'key' => 'likes'],
+                ['icon' => 'message', 'key' => 'comments'],
+                ['icon' => 'send', 'key' => 'shares'],
+            ]); ?>
         <?php endif; ?>
 
         <?php if ($sp_ok && $ov && !is_wp_error($ov)) : ?>
