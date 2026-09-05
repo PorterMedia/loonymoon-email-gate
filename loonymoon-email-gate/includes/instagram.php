@@ -533,12 +533,20 @@ function lmeg_ig_oauth_start() {
     }
     $state = wp_generate_password(24, false);
     set_transient('lmeg_ig_oauth_state', $state, 15 * MINUTE_IN_SECONDS);
+    // Base scopes the app is known to have. instagram_manage_insights (follower
+    // demographics + hashtag/insights) is OPT-IN per site — only appended when
+    // the artist has ticked "Follower demographics" AND enabled that permission
+    // on their Meta app. Requesting a permission the app hasn't been granted
+    // makes Facebook reject the ENTIRE connect dialog for app admins, so it must
+    // stay off by default. See Settings → Instagram.
+    $scope = 'instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_show_list,pages_read_engagement,business_management';
+    if (!empty($s['ig_request_insights'])) $scope .= ',instagram_manage_insights';
     $url = 'https://www.facebook.com/v21.0/dialog/oauth?' . http_build_query([
         'client_id'     => $s['ig_app_id'],
         'redirect_uri'  => lmeg_ig_oauth_redirect_uri(),
         'state'         => $state,
         'response_type' => 'code',
-        'scope'         => 'instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_show_list,pages_read_engagement,business_management',
+        'scope'         => $scope,
     ]);
     wp_redirect($url);
     exit;

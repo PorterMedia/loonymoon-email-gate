@@ -3189,6 +3189,7 @@ function lmeg_admin_settings() {
             'ig_page_token'           => sanitize_text_field(wp_unslash($_POST['ig_page_token'] ?? '')),
             'ig_account_id'           => sanitize_text_field(wp_unslash($_POST['ig_account_id'] ?? '')),
             'ig_verify_token'         => sanitize_text_field(wp_unslash($_POST['ig_verify_token'] ?? '')),
+            'ig_request_insights'     => !empty($_POST['ig_request_insights']) ? 1 : 0,
             // Shopify shop connection
             'shopify_domain'          => sanitize_text_field(wp_unslash($_POST['shopify_domain'] ?? '')),
             'shopify_admin_token'     => sanitize_text_field(wp_unslash($_POST['shopify_admin_token'] ?? '')),
@@ -3666,6 +3667,9 @@ function lmeg_admin_settings() {
                 <tr><th><label for="ig_story_reply">Story-mention auto-reply</label></th>
                     <td><textarea name="ig_story_reply" id="ig_story_reply" rows="2" class="large-text" placeholder="Leave blank to not auto-reply"><?php echo esc_textarea($s['ig_story_reply'] ?? ''); ?></textarea>
                         <p class="description">When a fan tags you in their Instagram story, they get this DM (thank-you + repost permission) and a <code>story-mention</code> tag. Merge tags work: <code>{community}</code>, <code>{artist}</code>. Blank = don't auto-reply.</p></td></tr>
+                <tr><th><label for="ig_request_insights">Follower demographics</label></th>
+                    <td><label><input type="checkbox" name="ig_request_insights" id="ig_request_insights" value="1" <?php checked(!empty($s['ig_request_insights'])); ?> /> Request the <code>instagram_manage_insights</code> permission when connecting</label>
+                        <p class="description">Enables gender / age / country / city on <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-social')); ?>">Social Listening</a> (Business/Creator accounts, 100+ followers). <strong>Only turn this on after that permission is enabled on your Meta app</strong> — otherwise Facebook rejects the whole connection. After enabling, click <strong>Connect Instagram</strong> again to re-authorize.</p></td></tr>
                 <tr><th>Save / test</th>
                     <td><button type="submit" name="lmeg_test" value="instagram" class="button">Save &amp; test Instagram</button>
                         <p class="description">Save your App ID + Secret here, then use <strong>Connect Instagram</strong> above. “Save &amp; test” confirms an existing connection.</p></td></tr>
