@@ -151,6 +151,37 @@ function lmeg_itunes_album_tracks($collection_id) {
     return $out;
 }
 
+/** Metadata for a single Apple album/collection id — so the importer can rebuild
+ *  a release from just its id (no need to POST the whole catalog). Cached 6h. */
+function lmeg_itunes_album_meta($collection_id) {
+    $collection_id = (int) $collection_id;
+    if (!$collection_id) return null;
+    $key = 'lmeg_itmeta_' . $collection_id;
+    $c = get_transient($key);
+    if (is_array($c)) return $c;
+    $res = wp_remote_get('https://itunes.apple.com/lookup?id=' . $collection_id, ['timeout' => 8, 'headers' => ['Accept' => 'application/json']]);
+    if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) return null;
+    $b = json_decode(wp_remote_retrieve_body($res), true);
+    foreach (($b['results'] ?? []) as $r) {
+        if (($r['wrapperType'] ?? '') !== 'collection') continue;
+        $title = (string) ($r['collectionName'] ?? '');
+        if ($title === '') continue;
+        $art = (string) ($r['artworkUrl100'] ?? '');
+        $meta = [
+            'apple_id'     => (int) ($r['collectionId'] ?? $collection_id),
+            'title'        => $title,
+            'clean_title'  => trim(preg_replace('/\s*-\s*(Single|EP)\s*$/i', '', $title)),
+            'artist'       => (string) ($r['artistName'] ?? ''),
+            'release_date' => substr((string) ($r['releaseDate'] ?? ''), 0, 10),
+            'artwork'      => $art !== '' ? str_replace('100x100bb', '600x600bb', $art) : '',
+            'url'          => (string) ($r['collectionViewUrl'] ?? ''),
+        ];
+        set_transient($key, $meta, 6 * HOUR_IN_SECONDS);
+        return $meta;
+    }
+    return null;
+}
+
 /** artistId that owns an Apple collection (album) or track id. */
 function lmeg_itunes_collection_artist($id) {
     $id = (int) $id;

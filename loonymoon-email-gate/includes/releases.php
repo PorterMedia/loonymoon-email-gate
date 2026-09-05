@@ -218,6 +218,61 @@ function lmeg_release_refresh_links() {
     return $updated;
 }
 
+/** Delete a release and (by default) its linked WP page, drop and shop product. */
+function lmeg_release_delete($id, $cascade = true) {
+    global $wpdb;
+    $id  = (int) $id;
+    $rel = lmeg_release_get($id);
+    if (!$rel) return false;
+    if ($cascade) {
+        if (!empty($rel->page_id) && get_post((int) $rel->page_id)) wp_delete_post((int) $rel->page_id, true);
+        if (!empty($rel->drop_id)) $wpdb->delete(lmeg_drops_table(), ['id' => (int) $rel->drop_id]);
+        if (!empty($rel->product_id)) $wpdb->delete($wpdb->prefix . 'lmeg_products', ['id' => (int) $rel->product_id]);
+    }
+    $wpdb->delete(lmeg_releases_table(), ['id' => $id]);
+    return true;
+}
+
+/** Group releases that are the same release (same Apple id, or — when no Apple
+ *  id — the same normalized title). Only returns groups with more than one row. */
+function lmeg_release_dupe_groups() {
+    $groups = [];
+    foreach (lmeg_releases_all(1000) as $r) {
+        // Group by normalized title — catches re-imports whether Apple returned
+        // the same collection id or a different edition id (deluxe/remaster/region)
+        // for the same album. Titleless rows fall back to their Apple id.
+        $key = strtolower(trim(preg_replace('/\s+/', ' ', (string) $r->title)));
+        if ($key === '') $key = 'aid:' . (int) $r->apple_id;
+        $groups[$key][] = $r;
+    }
+    return array_values(array_filter($groups, function ($g) { return count($g) > 1; }));
+}
+
+/** How many release rows could be removed as duplicates (extras beyond one per group). */
+function lmeg_release_dupe_count() {
+    $n = 0;
+    foreach (lmeg_release_dupe_groups() as $g) $n += count($g) - 1;
+    return $n;
+}
+
+/** Remove duplicate releases, keeping the best copy of each (one with a live
+ *  page wins; then the oldest/lowest-id — which usually holds the clean URL).
+ *  Returns the number of duplicate releases removed. */
+function lmeg_release_dedupe() {
+    $removed = 0;
+    foreach (lmeg_release_dupe_groups() as $g) {
+        usort($g, function ($a, $b) {
+            $ap = (!empty($a->page_id) && get_post((int) $a->page_id)) ? 1 : 0;
+            $bp = (!empty($b->page_id) && get_post((int) $b->page_id)) ? 1 : 0;
+            if ($ap !== $bp) return $bp - $ap;     // a release with a live page is kept
+            return ((int) $a->id) - ((int) $b->id); // else the oldest (clean URL)
+        });
+        array_shift($g); // keep the first
+        foreach ($g as $dupe) { if (lmeg_release_delete((int) $dupe->id, true)) $removed++; }
+    }
+    return $removed;
+}
+
 function lmeg_release_status_label($s) {
     $m = ['draft' => 'Draft', 'scheduled' => 'Scheduled', 'released' => 'Released'];
     return $m[$s] ?? ucfirst((string) $s);
@@ -293,6 +348,13 @@ function lmeg_releases_admin_page() {
         $_GET = [];
     }
 
+    if (($_POST['lmeg_release_action'] ?? '') === 'dedupe' && check_admin_referer('lmeg_dedupe', 'lmeg_dedupe_nonce')) {
+        $n = lmeg_release_dedupe();
+        $notice = '<div class="notice notice-success"><p>Removed <strong>' . (int) $n . '</strong> duplicate release' . ($n === 1 ? '' : 's')
+                . ' — kept one clean copy of each and deleted the extra drops, pages and shop products.</p></div>';
+        $_GET = [];
+    }
+
     // Catalog import — "find" re-renders the import screen; "import" builds them.
     $import_stage = false;
     if (isset($_POST['lmeg_import_action']) && check_admin_referer('lmeg_import', 'lmeg_import_nonce')) {
@@ -324,6 +386,14 @@ function lmeg_releases_admin_page() {
         echo '<input type="hidden" name="lmeg_release_action" value="refresh_links">';
         echo '<button class="button" onclick="return confirm(\'Fetch streaming links + tracklists for every release? This can take a moment.\');">&#8635; Refresh links &amp; tracklists</button>';
         echo '</form>';
+        $dupes = function_exists('lmeg_release_dupe_count') ? lmeg_release_dupe_count() : 0;
+        if ($dupes > 0) {
+            echo '<form method="post" style="margin:0;">';
+            wp_nonce_field('lmeg_dedupe', 'lmeg_dedupe_nonce');
+            echo '<input type="hidden" name="lmeg_release_action" value="dedupe">';
+            echo '<button class="button" style="border-color:#F87171;color:#F87171;" onclick="return confirm(\'Remove ' . (int) $dupes . ' duplicate release(s)? Fanloop keeps ONE clean copy of each and permanently deletes the extra release pages, drops and shop products. This cannot be undone.\');">&#128465; Remove ' . (int) $dupes . ' duplicate' . ($dupes === 1 ? '' : 's') . '</button>';
+            echo '</form>';
+        }
         echo '</div>';
         echo '<p class="description" style="margin:2px 0 18px;">Fills in Spotify, Apple Music, YouTube &amp; Deezer links and imports each release&rsquo;s <strong>tracklist</strong> (song titles + 30-sec previews) from Apple Music &mdash; your custom links are left untouched.</p>';
     }
