@@ -2500,7 +2500,7 @@ function lmeg_handle_import_products() {
     check_admin_referer('lmeg_import_products', 'lmeg_import_nonce');
     global $wpdb;
     $tbl = $wpdb->prefix . 'lmeg_products';
-    $back = admin_url('admin.php?page=lmeg-products&imported=1');
+    $back = admin_url('admin.php?page=lmeg-store-tools&imported=1');
 
     if (empty($_FILES['csv']['tmp_name']) || !is_uploaded_file($_FILES['csv']['tmp_name'])) {
         set_transient('lmeg_import_result', ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => ['No file was uploaded.']], 120);
@@ -3047,60 +3047,7 @@ function lmeg_admin_products() {
     <?php if ($units > 0) : ?>
         &nbsp; <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_orders'), 'lmeg_export_orders')); ?>" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export orders (CSV)</a>
     <?php endif; ?></p>
-    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
-        <summary style="cursor:pointer;font-weight:600">Shortcodes &amp; links — how to show your shop</summary>
-        <table class="widefat" style="margin:10px 0 4px"><tbody>
-            <tr><td style="width:230px"><code>[fanloop_store]</code></td><td>Your whole shop as a grid.</td></tr>
-            <tr><td><code>[fanloop_store controls="on"]</code></td><td>Force the <strong>search + sort</strong> bar (auto-shows at 5+ products).</td></tr>
-            <tr><td><code>[fanloop_store type="digital"]</code></td><td>Only digital (or <code>type="physical"</code>).</td></tr>
-            <tr><td><code>[fanloop_store min="200"]</code></td><td>Smaller cards / more per row (grid min px).</td></tr>
-            <tr><td><code>[fanloop_store cols="4"]</code></td><td>A fixed <strong>number of columns</strong> (1–6). Steps down automatically on tablet/phone.</td></tr>
-            <tr><td><code>[fanloop_store card="minimal"]</code></td><td>A <strong>cleaner card</strong>: hides the description, "· ships" label, per-card share button and quantity stepper.</td></tr>
-            <tr><td><code>[fanloop_store tags="off"]</code></td><td>Hide the <strong>tag/category filter chips</strong> above the grid.</td></tr>
-            <tr><td><code>[fanloop_store desc="off" share="off" ships="off" qty="off"]</code></td><td>Turn off individual card bits (description / share button / "· ships" / qty stepper). Mix &amp; match with <code>card</code>.</td></tr>
-            <tr><td><code>[fanloop_store ids="12,7,3"]</code></td><td>A <strong>curated collection</strong> — just those products, in that order (great for a landing or feature section).</td></tr>
-            <tr><td><code>[fanloop_store tag="vinyl"]</code></td><td>Only products with that <strong>tag</strong> — a ready-made section page.</td></tr>
-            <tr><td><code>[fanloop_store per="12"]</code></td><td>Show 12 at a time with a <strong>Load more</strong> button (great for big catalogues).</td></tr>
-            <tr><td><code>[fanloop_product id="<?php echo (int) ($rows[0]->id ?? 1); ?>"]</code></td><td>One product (or <code>slug="…"</code>).</td></tr>
-            <tr><td><code>[fanloop_purchases]</code></td><td>A "find my downloads" box for fans.</td></tr>
-            <tr><td><code><?php echo esc_html(home_url('/?lmeg_product=your-slug')); ?></code></td><td>A product's own shareable page (URL shown on each product's edit screen).</td></tr>
-            <tr><td><code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code></td><td>Direct find-my-purchases link.</td></tr>
-        </tbody></table>
-        <p class="description" style="margin:6px 0 0">Sort options in the bar: Featured · Newest · Price · Best selling · Name. Pin a product to the top with the ⭐ <strong>Featured</strong> checkbox on its edit screen. Every <code>fanloop_</code> code also works as <code>loony_</code>.</p>
-    </details>
-    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
-        <summary style="cursor:pointer;font-weight:600">Import / export products (CSV)</summary>
-        <p class="description" style="margin:10px 0">Bulk-manage your catalogue in a spreadsheet. <strong>Export</strong> to download every product as a CSV; edit it (or build one from scratch) and <strong>import</strong> to create and update products in one go. Rows are matched by <strong>Slug</strong> — an existing slug updates that product, a new or blank slug creates one. Imported products come in as <strong>Drafts</strong> unless the Status column says <code>active</code>. Columns: <?php echo esc_html(implode(', ', lmeg_products_csv_headers())); ?>. Price/Min price/Shipping in dollars; Stock blank = unlimited; Variants like <code>S:10, M:5, L</code>; Featured <code>1</code>/<code>0</code>.</p>
-        <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0">
-            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_products'), 'lmeg_export_products')); ?>" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export products (CSV)</a>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" style="display:inline-flex;gap:8px;align-items:center;margin:0">
-                <?php wp_nonce_field('lmeg_import_products', 'lmeg_import_nonce'); ?>
-                <input type="hidden" name="action" value="lmeg_import_products">
-                <input type="file" name="csv" accept=".csv,text/csv" required>
-                <button type="submit" class="button button-primary" onclick="return confirm('Import products from this CSV? Existing products with a matching slug will be updated.');">⬆ Import</button>
-            </form>
-        </p>
-        <?php if (function_exists('lmeg_shop_configured') && lmeg_shop_configured()) : ?>
-        <p style="margin:14px 0 0;padding-top:12px;border-top:1px solid #e2e2e8">
-            <strong><?php echo lmeg_store_icon('bag', 14, ['style' => 'vertical-align:-2px;margin-right:4px']); ?>Import from Shopify</strong>
-            <span class="description" style="display:block;margin:4px 0 8px;max-width:780px">Pull your products straight from your connected Shopify store (<code><?php echo esc_html(lmeg_get_settings()['shopify_domain'] ?? ''); ?></code>) — titles, descriptions, prices, images, tags and variants come across and land as <strong>Drafts</strong> to review before publishing. Matched by handle/slug, so re-running updates instead of duplicating. Shopify's multi-option variants (e.g. Size × Colour) are simplified to one option list. Doesn't touch your Shopify orders, customers or checkout — catalogue only. Needs a token with <code>read_products</code>.</span>
-            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_shop_import'), 'lmeg_shop_import')); ?>" class="button button-primary" style="display:inline-flex;align-items:center;gap:6px" onclick="return confirm('Import products from your connected Shopify store? They will be created/updated as drafts.');"><?php echo lmeg_store_icon('bag', 14); ?>Import from Shopify</a>
-        </p>
-        <?php endif; ?>
-    </details>
     <?php
-    // Import result notice.
-    if (isset($_GET['imported']) && ($ir = get_transient('lmeg_import_result'))) {
-        delete_transient('lmeg_import_result');
-        $bits = [];
-        if ($ir['created']) $bits[] = '<strong>' . (int) $ir['created'] . '</strong> created';
-        if ($ir['updated']) $bits[] = '<strong>' . (int) $ir['updated'] . '</strong> updated';
-        if ($ir['skipped']) $bits[] = '<strong>' . (int) $ir['skipped'] . '</strong> skipped';
-        $cls = !empty($ir['errors']) ? 'notice-warning' : 'notice-success';
-        echo '<div class="notice ' . $cls . ' is-dismissible" style="max-width:840px"><p>CSV import: ' . ($bits ? implode(' · ', $bits) : 'nothing to import') . '.';
-        if (!empty($ir['errors'])) echo '<br><span style="color:#8a6d00">' . esc_html(implode(' · ', array_slice($ir['errors'], 0, 25))) . '</span>';
-        echo '</p></div>';
-    }
     $has_samples = false;
     foreach ($rows as $rp) { if (strpos($rp->slug, 'sample-') === 0 && $rp->status === 'draft') { $has_samples = true; break; } }
     if ($has_samples) echo '<div class="notice notice-info inline" style="margin:0 0 18px;max-width:840px"><p>👋 We added a few <strong>sample products</strong> to get you started — they are <strong>Drafts</strong>, so fans can\'t see them yet. Edit one to make it yours (and set it <em>Active</em> to sell it), or delete them.</p></div>';
@@ -3170,43 +3117,74 @@ function lmeg_admin_products() {
     </table>
     <?php echo lmeg_products_bulk_js(); ?>
     <?php
-    // Physical orders awaiting shipment.
-    $orders = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' AND pp.fulfillment='unshipped' ORDER BY pp.id ASC LIMIT 100");
-    if ($orders) : ?>
-        <h2 id="orders" style="margin-top:26px">Orders to ship (<?php echo count($orders); ?>)</h2>
-        <table class="widefat striped" style="max-width:980px">
-            <thead><tr><th>When</th><th>Item</th><th>Ship to</th><th>Amount</th><th></th></tr></thead>
-            <tbody><?php foreach ($orders as $o) : ?>
-                <tr>
-                    <td><?php echo esc_html($o->paid_at); ?></td>
-                    <td><?php echo esc_html($o->title); ?><?php echo $o->variant ? ' · <strong>' . esc_html($o->variant) . '</strong>' : ''; ?></td>
-                    <?php list($o_pick, $o_addr) = function_exists('lmeg_pickup_parse') ? lmeg_pickup_parse($o->ship_address ?? '') : [false, $o->ship_address]; ?>
-                    <td><?php echo esc_html($o->ship_name ?: '—'); ?><?php echo $o->email ? ' · ' . esc_html($o->email) : ''; ?><?php echo $o_addr ? '<br><span style="white-space:pre-line;color:#666;font-size:12px">' . ($o_pick ? '<strong style="color:#B4247E">Pick up:</strong> ' : '') . esc_html($o_addr) . '</span>' : ''; ?></td>
-                    <td><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int)$o->amount_cents, $o->currency) : '$'.number_format($o->amount_cents/100,2)); ?></td>
-                    <td><form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><?php wp_nonce_field('lmeg_ship_order', 'lmeg_ship_nonce'); ?><input type="hidden" name="action" value="lmeg_ship_order"><input type="hidden" name="purchase_id" value="<?php echo (int) $o->id; ?>">
-                        <select name="carrier" style="max-width:120px"><option value="">Carrier…</option><?php foreach (['USPS','UPS','FedEx','Canada Post','DHL','Other'] as $cc) : ?><option value="<?php echo esc_attr($cc); ?>"><?php echo esc_html($cc); ?></option><?php endforeach; ?></select>
-                        <input type="text" name="tracking" placeholder="Tracking # or link" style="width:150px">
-                        <button class="button button-small button-primary" type="submit">Mark shipped</button>
-                        <span class="description" style="flex-basis:100%;margin:0">Adds a "your order shipped" email with a tracking link (optional).</span>
-                    </form></td>
-                </tr>
-            <?php endforeach; ?></tbody>
-        </table>
-    <?php endif;
-
-    $recent = $wpdb->get_results("SELECT pp.*, pr.title FROM $ptbl pp LEFT JOIN $tbl pr ON pr.id = pp.product_id WHERE pp.status='paid' ORDER BY pp.id DESC LIMIT 15");
-    if ($recent) : ?>
-        <h2 style="margin-top:26px">Recent sales <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-orders')); ?>" style="font-size:13px;font-weight:400;text-decoration:none">· all orders →</a></h2>
-        <table class="widefat striped" style="max-width:820px">
-            <thead><tr><th>When</th><th>Product</th><th>Buyer</th><th>Amount</th></tr></thead>
-            <tbody><?php foreach ($recent as $r) : ?>
-                <tr><td><?php echo esc_html($r->paid_at); ?></td><td><?php echo esc_html($r->title); ?><?php echo ($r->processor === 'demo') ? ' <span style="font-size:11px;background:rgba(225,95,168,.14);color:#b03083;padding:1px 7px;border-radius:999px;vertical-align:middle">demo</span>' : ''; ?></td><td><?php echo esc_html($r->email ?: '—'); ?></td><td><?php echo esc_html(function_exists('lmeg_format_price') ? lmeg_format_price((int)$r->amount_cents, $r->currency) : '$'.number_format($r->amount_cents/100,2)); ?></td></tr>
-            <?php endforeach; ?></tbody>
-        </table>
-    <?php endif;
 
     // Discounts, Bundles, Shows, Waitlist and Abandoned carts now live on their
     // own Store sub-pages (Promotions / Shows / Stock) to keep this page clean.
+    echo '</div>';
+}
+
+/** Store → Tools sub-page: shortcodes reference + CSV / Shopify import & export. */
+function lmeg_admin_store_tools() {
+    if (!current_user_can('manage_options')) return;
+    global $wpdb;
+    $rows = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}lmeg_products ORDER BY id DESC");
+    echo '<div class="wrap"><h1>Store tools</h1>';
+    echo '<p class="description" style="max-width:720px;margin:6px 0 12px;">Shortcodes to place your shop on any page, plus bulk import &amp; export.</p>';
+    ?>
+    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
+        <summary style="cursor:pointer;font-weight:600">Shortcodes &amp; links — how to show your shop</summary>
+        <table class="widefat" style="margin:10px 0 4px"><tbody>
+            <tr><td style="width:230px"><code>[fanloop_store]</code></td><td>Your whole shop as a grid.</td></tr>
+            <tr><td><code>[fanloop_store controls="on"]</code></td><td>Force the <strong>search + sort</strong> bar (auto-shows at 5+ products).</td></tr>
+            <tr><td><code>[fanloop_store type="digital"]</code></td><td>Only digital (or <code>type="physical"</code>).</td></tr>
+            <tr><td><code>[fanloop_store min="200"]</code></td><td>Smaller cards / more per row (grid min px).</td></tr>
+            <tr><td><code>[fanloop_store cols="4"]</code></td><td>A fixed <strong>number of columns</strong> (1–6). Steps down automatically on tablet/phone.</td></tr>
+            <tr><td><code>[fanloop_store card="minimal"]</code></td><td>A <strong>cleaner card</strong>: hides the description, "· ships" label, per-card share button and quantity stepper.</td></tr>
+            <tr><td><code>[fanloop_store tags="off"]</code></td><td>Hide the <strong>tag/category filter chips</strong> above the grid.</td></tr>
+            <tr><td><code>[fanloop_store desc="off" share="off" ships="off" qty="off"]</code></td><td>Turn off individual card bits (description / share button / "· ships" / qty stepper). Mix &amp; match with <code>card</code>.</td></tr>
+            <tr><td><code>[fanloop_store ids="12,7,3"]</code></td><td>A <strong>curated collection</strong> — just those products, in that order (great for a landing or feature section).</td></tr>
+            <tr><td><code>[fanloop_store tag="vinyl"]</code></td><td>Only products with that <strong>tag</strong> — a ready-made section page.</td></tr>
+            <tr><td><code>[fanloop_store per="12"]</code></td><td>Show 12 at a time with a <strong>Load more</strong> button (great for big catalogues).</td></tr>
+            <tr><td><code>[fanloop_product id="<?php echo (int) ($rows[0]->id ?? 1); ?>"]</code></td><td>One product (or <code>slug="…"</code>).</td></tr>
+            <tr><td><code>[fanloop_purchases]</code></td><td>A "find my downloads" box for fans.</td></tr>
+            <tr><td><code><?php echo esc_html(home_url('/?lmeg_product=your-slug')); ?></code></td><td>A product's own shareable page (URL shown on each product's edit screen).</td></tr>
+            <tr><td><code><?php echo esc_html(add_query_arg(['lmeg_purchases' => 'find'], home_url('/'))); ?></code></td><td>Direct find-my-purchases link.</td></tr>
+        </tbody></table>
+        <p class="description" style="margin:6px 0 0">Sort options in the bar: Featured · Newest · Price · Best selling · Name. Pin a product to the top with the ⭐ <strong>Featured</strong> checkbox on its edit screen. Every <code>fanloop_</code> code also works as <code>loony_</code>.</p>
+    </details>
+    <details style="max-width:840px;margin:0 0 14px;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:10px 16px">
+        <summary style="cursor:pointer;font-weight:600">Import / export products (CSV)</summary>
+        <p class="description" style="margin:10px 0">Bulk-manage your catalogue in a spreadsheet. <strong>Export</strong> to download every product as a CSV; edit it (or build one from scratch) and <strong>import</strong> to create and update products in one go. Rows are matched by <strong>Slug</strong> — an existing slug updates that product, a new or blank slug creates one. Imported products come in as <strong>Drafts</strong> unless the Status column says <code>active</code>. Columns: <?php echo esc_html(implode(', ', lmeg_products_csv_headers())); ?>. Price/Min price/Shipping in dollars; Stock blank = unlimited; Variants like <code>S:10, M:5, L</code>; Featured <code>1</code>/<code>0</code>.</p>
+        <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0">
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_export_products'), 'lmeg_export_products')); ?>" class="button" style="display:inline-flex;align-items:center;gap:6px"><?php echo lmeg_store_icon('download', 14); ?>Export products (CSV)</a>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" style="display:inline-flex;gap:8px;align-items:center;margin:0">
+                <?php wp_nonce_field('lmeg_import_products', 'lmeg_import_nonce'); ?>
+                <input type="hidden" name="action" value="lmeg_import_products">
+                <input type="file" name="csv" accept=".csv,text/csv" required>
+                <button type="submit" class="button button-primary" onclick="return confirm('Import products from this CSV? Existing products with a matching slug will be updated.');">⬆ Import</button>
+            </form>
+        </p>
+        <?php if (function_exists('lmeg_shop_configured') && lmeg_shop_configured()) : ?>
+        <p style="margin:14px 0 0;padding-top:12px;border-top:1px solid #e2e2e8">
+            <strong><?php echo lmeg_store_icon('bag', 14, ['style' => 'vertical-align:-2px;margin-right:4px']); ?>Import from Shopify</strong>
+            <span class="description" style="display:block;margin:4px 0 8px;max-width:780px">Pull your products straight from your connected Shopify store (<code><?php echo esc_html(lmeg_get_settings()['shopify_domain'] ?? ''); ?></code>) — titles, descriptions, prices, images, tags and variants come across and land as <strong>Drafts</strong> to review before publishing. Matched by handle/slug, so re-running updates instead of duplicating. Shopify's multi-option variants (e.g. Size × Colour) are simplified to one option list. Doesn't touch your Shopify orders, customers or checkout — catalogue only. Needs a token with <code>read_products</code>.</span>
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_shop_import'), 'lmeg_shop_import')); ?>" class="button button-primary" style="display:inline-flex;align-items:center;gap:6px" onclick="return confirm('Import products from your connected Shopify store? They will be created/updated as drafts.');"><?php echo lmeg_store_icon('bag', 14); ?>Import from Shopify</a>
+        </p>
+        <?php endif; ?>
+    </details>
+    <?php
+    // Import result notice.
+    if (isset($_GET['imported']) && ($ir = get_transient('lmeg_import_result'))) {
+        delete_transient('lmeg_import_result');
+        $bits = [];
+        if ($ir['created']) $bits[] = '<strong>' . (int) $ir['created'] . '</strong> created';
+        if ($ir['updated']) $bits[] = '<strong>' . (int) $ir['updated'] . '</strong> updated';
+        if ($ir['skipped']) $bits[] = '<strong>' . (int) $ir['skipped'] . '</strong> skipped';
+        $cls = !empty($ir['errors']) ? 'notice-warning' : 'notice-success';
+        echo '<div class="notice ' . $cls . ' is-dismissible" style="max-width:840px"><p>CSV import: ' . ($bits ? implode(' · ', $bits) : 'nothing to import') . '.';
+        if (!empty($ir['errors'])) echo '<br><span style="color:#8a6d00">' . esc_html(implode(' · ', array_slice($ir['errors'], 0, 25))) . '</span>';
+        echo '</p></div>';
+    }
     echo '</div>';
 }
 

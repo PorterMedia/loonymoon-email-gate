@@ -39,6 +39,7 @@ function lmeg_admin_hub_map() {
         'store'     => ['label' => 'Store',     'pages' => [
             ['lmeg-products', 'Products'], ['lmeg-orders', 'Orders'], ['lmeg-store-promos', 'Promotions'],
             ['lmeg-store-shows', 'Shows'], ['lmeg-store-stock', 'Stock'], ['lmeg-shop', 'Revenue'],
+            ['lmeg-store-tools', 'Tools'],
         ]],
         'engage'    => ['label' => 'Engage',    'pages' => [
             ['lmeg-contests', 'Contests'], ['lmeg-surveys', 'Surveys'], ['lmeg-tour', 'Tour'],
