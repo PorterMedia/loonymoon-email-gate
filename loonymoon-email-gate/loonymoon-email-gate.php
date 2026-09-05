@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.137.0');
+define('LMEG_VERSION',     '3.138.0');
 define('LMEG_DB_VERSION',  '3.105.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');

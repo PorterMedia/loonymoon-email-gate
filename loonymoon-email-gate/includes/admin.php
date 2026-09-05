@@ -5852,6 +5852,75 @@ function lmeg_render_demo_overview() {
     <?php
 }
 
+/**
+ * "Needs attention" — the timely, actionable things an artist should see the
+ * moment they open Fanloop: operational warnings (orders to ship, bouncing
+ * emails, abandoned carts) and prep-worthy dates (an upcoming drop or pre-save
+ * release). Every item is grounded in real data and guarded so a missing module
+ * or table simply drops that item. Returns [ ['tone','label','detail','href'], … ].
+ */
+function lmeg_overview_attention() {
+    global $wpdb;
+    $items = [];
+    $now   = current_time('timestamp');
+
+    $table_exists = function ($t) use ($wpdb) {
+        return (string) $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $t)) === $t;
+    };
+    $in_days = function ($ts) use ($now) {
+        $d = (int) ceil(($ts - $now) / DAY_IN_SECONDS);
+        if ($d <= 0) return 'today';
+        if ($d === 1) return 'tomorrow';
+        return "in $d days";
+    };
+
+    // Orders awaiting fulfillment.
+    if (function_exists('lmeg_orders_toship_count')) {
+        $n = (int) lmeg_orders_toship_count();
+        if ($n > 0) $items[] = ['tone' => 'warn', 'label' => $n . ' ' . _n('order to ship', 'orders to ship', $n, 'lmeg'),
+            'detail' => 'Paid · unshipped', 'href' => admin_url('admin.php?page=lmeg-orders')];
+    }
+
+    // Bouncing email addresses dragging down deliverability.
+    $bounced = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE email_status = 'bounced' AND unsubscribed_at IS NULL");
+    if ($bounced >= 5) $items[] = ['tone' => 'warn', 'label' => number_format_i18n($bounced) . ' emails bouncing',
+        'detail' => 'Clean these off your list', 'href' => admin_url('admin.php?page=lmeg-deliverability')];
+
+    // Abandoned carts not yet recovered.
+    if ($table_exists($wpdb->prefix . 'lmeg_abandoned')) {
+        $open = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_abandoned WHERE recovered = 0");
+        if ($open > 0) $items[] = ['tone' => 'info', 'label' => $open . ' ' . _n('cart abandoned', 'carts abandoned', $open, 'lmeg'),
+            'detail' => 'Win them back', 'href' => admin_url('admin.php?page=lmeg-products#abandoned')];
+    }
+
+    // Nearest upcoming drop (within 21 days).
+    if (function_exists('lmeg_drops_all')) {
+        $soonest = null;
+        foreach (lmeg_drops_all(50) as $d) {
+            if (empty($d->release_at) || ($d->status ?? '') === 'released') continue;
+            $ts = strtotime($d->release_at);
+            if ($ts <= $now || $ts > $now + 21 * DAY_IN_SECONDS) continue;
+            if ($soonest === null || $ts < strtotime($soonest->release_at)) $soonest = $d;
+        }
+        if ($soonest) $items[] = ['tone' => 'info', 'label' => 'Drop “' . mb_substr((string) $soonest->title, 0, 30) . '” ' . $in_days(strtotime($soonest->release_at)),
+            'detail' => 'Ready your release-day broadcast', 'href' => admin_url('admin.php?page=lmeg-releases')];
+    }
+
+    // Nearest upcoming pre-save release (within 21 days).
+    if (function_exists('lmeg_presave_active_campaigns')) {
+        foreach (lmeg_presave_active_campaigns() as $c) {
+            if (empty($c->release_date)) continue;
+            $ts = strtotime($c->release_date);
+            if ($ts <= $now || $ts > $now + 21 * DAY_IN_SECONDS) continue;
+            $items[] = ['tone' => 'info', 'label' => 'Pre-save “' . mb_substr((string) ($c->title ?? 'release'), 0, 26) . '” ' . $in_days($ts),
+                'detail' => 'Fans are being collected', 'href' => admin_url('admin.php?page=lmeg-presaves')];
+            break; // just the nearest
+        }
+    }
+
+    return $items;
+}
+
 function lmeg_admin_overview() {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
@@ -5932,6 +6001,28 @@ function lmeg_admin_overview() {
     <div class="wrap">
         <h1>Overview</h1>
         <?php echo lmeg_demo_preview_button('lmeg-overview'); ?>
+
+        <!-- needs attention -->
+        <?php $attn = lmeg_overview_attention(); ?>
+        <div class="lmeg-att">
+            <div class="lmeg-att__title"><?php echo lmeg_icon('sparkle', ['size' => 14, 'sw' => 2]); ?> Needs attention</div>
+            <?php if (empty($attn)) : ?>
+                <div class="lmeg-att__clear"><span class="lmeg-att__dot lmeg-att__dot--good"></span>You&rsquo;re all caught up — nothing needs attention right now.</div>
+            <?php else : ?>
+                <div class="lmeg-att__cards">
+                    <?php foreach ($attn as $it) : ?>
+                        <a class="lmeg-att__card lmeg-att__card--<?php echo esc_attr($it['tone']); ?>" href="<?php echo esc_url($it['href']); ?>">
+                            <span class="lmeg-att__dot lmeg-att__dot--<?php echo esc_attr($it['tone']); ?>"></span>
+                            <span class="lmeg-att__body">
+                                <span class="lmeg-att__label"><?php echo esc_html($it['label']); ?></span>
+                                <span class="lmeg-att__detail"><?php echo esc_html($it['detail']); ?></span>
+                            </span>
+                            <span class="lmeg-att__arrow" aria-hidden="true">→</span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
 
         <!-- headline KPIs -->
         <div class="lmeg-ov-kpis">
@@ -6038,6 +6129,24 @@ function lmeg_admin_overview() {
     </div>
 
     <style>
+    .lmeg-admin .lmeg-att{margin:16px 0 4px;}
+    .lmeg-admin .lmeg-att__title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin-bottom:8px;}
+    .lmeg-admin .lmeg-att__title svg{color:#FBBF24;}
+    .lmeg-admin .lmeg-att__clear{display:flex;align-items:center;gap:9px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px 16px;font-size:13.5px;color:#C7CBD1;}
+    .lmeg-admin .lmeg-att__cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;}
+    .lmeg-admin .lmeg-att__card{display:flex;align-items:center;gap:11px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-left-width:3px;border-radius:12px;padding:12px 14px;text-decoration:none!important;color:#F4F5F7;transition:transform .12s ease,border-color .12s ease;}
+    .lmeg-admin .lmeg-att__card:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.2);}
+    .lmeg-admin .lmeg-att__card--warn{border-left-color:#FBBF24;}
+    .lmeg-admin .lmeg-att__card--info{border-left-color:#7C6CF6;}
+    .lmeg-admin .lmeg-att__dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;}
+    .lmeg-admin .lmeg-att__dot--warn{background:#FBBF24;box-shadow:0 0 0 4px rgba(251,191,36,.14);}
+    .lmeg-admin .lmeg-att__dot--info{background:#7C6CF6;box-shadow:0 0 0 4px rgba(124,108,246,.14);}
+    .lmeg-admin .lmeg-att__dot--good{background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.14);}
+    .lmeg-admin .lmeg-att__body{display:flex;flex-direction:column;flex:1;min-width:0;}
+    .lmeg-admin .lmeg-att__label{font-size:13.5px;font-weight:600;line-height:1.25;}
+    .lmeg-admin .lmeg-att__detail{font-size:11.5px;color:#8B90A0;margin-top:1px;}
+    .lmeg-admin .lmeg-att__arrow{flex:0 0 auto;color:#8B90A0;font-size:15px;transition:transform .12s ease;}
+    .lmeg-admin .lmeg-att__card:hover .lmeg-att__arrow{transform:translateX(2px);color:#F4F5F7;}
     .lmeg-admin .lmeg-ov-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:18px 0;}
     .lmeg-admin .lmeg-ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:8px 0 20px;}
     .lmeg-admin .lmeg-ov-panel{background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:16px 18px;}
