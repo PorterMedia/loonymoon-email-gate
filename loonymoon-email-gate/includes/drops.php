@@ -415,7 +415,19 @@ function lmeg_drop_standalone_page() {
     status_header(200);
     nocache_headers();
     get_header();
-    echo '<div class="lmeg-drop-standalone" style="max-width:680px;margin:48px auto;padding:0 18px;">';
+    // Immersive full-page backdrop: the release art, blurred + darkened, fixed
+    // behind everything so the drop card floats over its own cover.
+    if (!empty($drop->cover_url)) {
+        echo '<style>
+          body.lmeg-drop-bg-on{position:relative;}
+          .lmeg-drop-bg{position:fixed;inset:0;z-index:0;background-image:url(' . esc_url($drop->cover_url) . ');background-size:cover;background-position:center;filter:blur(42px) saturate(1.25);transform:scale(1.18);opacity:.9;pointer-events:none;}
+          .lmeg-drop-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 0%,rgba(0,0,0,.35),rgba(0,0,0,.72) 70%,rgba(0,0,0,.9));}
+          .lmeg-drop-standalone{position:relative;z-index:1;}
+        </style>';
+        echo '<div class="lmeg-drop-bg" aria-hidden="true"></div>';
+        echo '<script>document.body.classList.add("lmeg-drop-bg-on");</script>';
+    }
+    echo '<div class="lmeg-drop-standalone" style="max-width:680px;margin:0 auto;padding:56px 18px;min-height:100vh;display:flex;align-items:center;justify-content:center;">';
     echo do_shortcode('[fanloop_drop slug="' . esc_attr($drop->slug) . '"]');
     echo '</div>';
     get_footer();

@@ -336,6 +336,107 @@ function lmeg_release_linked($rel) {
     return $out;
 }
 
+/** Public URL for a release: its WP release page, else its drop share link. */
+function lmeg_release_public_url($rel) {
+    if (!empty($rel->page_id) && function_exists('get_permalink')) {
+        $u = get_permalink((int) $rel->page_id);
+        if ($u) return $u;
+    }
+    if (!empty($rel->drop_id) && function_exists('lmeg_drop_get') && function_exists('lmeg_drop_url')) {
+        $d = lmeg_drop_get((int) $rel->drop_id);
+        if ($d) return lmeg_drop_url($d);
+    }
+    return '';
+}
+
+/* ---------------------------------------------------------------------------
+ * [fanloop_releases] / [fanloop_carousel] — a horizontally-scrolling carousel
+ * of releases (artwork + title + date), each linking to its release page or
+ * drop. Drop it into any site; theme-agnostic (inherits text colour), keyboard
+ * + touch friendly, with prev/next arrows. Attrs: limit (default 12),
+ * heading (optional title above the row).
+ * ------------------------------------------------------------------------- */
+add_shortcode('fanloop_releases', 'lmeg_shortcode_releases');
+add_shortcode('fanloop_carousel', 'lmeg_shortcode_releases');
+function lmeg_shortcode_releases($atts = []) {
+    $atts = shortcode_atts(['limit' => 12, 'heading' => ''], $atts, 'fanloop_releases');
+    global $wpdb;
+    $t = lmeg_releases_table();
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $t WHERE artwork_url <> '' AND status <> 'draft'
+         ORDER BY COALESCE(release_at, created_at) DESC LIMIT %d", max(1, (int) $atts['limit'])
+    ));
+    if (!$rows) return '';
+
+    static $n = 0; $n++; $id = 'lmeg-rc-' . $n;
+    static $css_done = false;
+
+    ob_start();
+    if (!$css_done) : $css_done = true; ?>
+    <style>
+      .lmeg-rc{position:relative;margin:24px 0;font-family:inherit;color:inherit;}
+      .lmeg-rc__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;}
+      .lmeg-rc__head h3{margin:0;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
+      .lmeg-rc__nav{display:flex;gap:8px;}
+      .lmeg-rc__btn{width:36px;height:36px;border-radius:999px;border:1px solid currentColor;background:transparent;color:inherit;opacity:.7;cursor:pointer;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:opacity .15s,transform .15s;}
+      .lmeg-rc__btn:hover{opacity:1;transform:scale(1.06);}
+      .lmeg-rc__btn[disabled]{opacity:.2;cursor:default;transform:none;}
+      .lmeg-rc__track{display:flex;gap:16px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x mandatory;padding:4px 2px 14px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+      .lmeg-rc__track::-webkit-scrollbar{display:none;}
+      .lmeg-rc__item{flex:0 0 auto;width:190px;scroll-snap-align:start;text-decoration:none;color:inherit;}
+      .lmeg-rc__art{position:relative;width:190px;height:190px;border-radius:14px;overflow:hidden;background:rgba(127,127,127,.12);box-shadow:0 10px 30px rgba(0,0,0,.18);}
+      .lmeg-rc__art img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s ease;}
+      .lmeg-rc__item:hover .lmeg-rc__art img{transform:scale(1.05);}
+      .lmeg-rc__play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;background:rgba(0,0,0,.28);}
+      .lmeg-rc__item:hover .lmeg-rc__play{opacity:1;}
+      .lmeg-rc__play span{width:46px;height:46px;border-radius:999px;background:rgba(255,255,255,.92);color:#111;display:flex;align-items:center;justify-content:center;font-size:18px;padding-left:3px;}
+      .lmeg-rc__t{margin:10px 2px 1px;font-weight:600;font-size:15px;line-height:1.25;}
+      .lmeg-rc__d{margin:0 2px;font-size:12.5px;opacity:.6;}
+      @media(max-width:520px){.lmeg-rc__item,.lmeg-rc__art{width:150px;}.lmeg-rc__art{height:150px;}}
+    </style>
+    <?php endif; ?>
+    <div class="lmeg-rc" id="<?php echo esc_attr($id); ?>">
+        <div class="lmeg-rc__head">
+            <h3><?php echo esc_html($atts['heading'] ?: 'Releases'); ?></h3>
+            <div class="lmeg-rc__nav">
+                <button type="button" class="lmeg-rc__btn" data-dir="-1" aria-label="Previous">&#8249;</button>
+                <button type="button" class="lmeg-rc__btn" data-dir="1" aria-label="Next">&#8250;</button>
+            </div>
+        </div>
+        <div class="lmeg-rc__track">
+            <?php foreach ($rows as $r) :
+                $url  = lmeg_release_public_url($r);
+                $date = !empty($r->release_at) ? date_i18n('M j, Y', strtotime($r->release_at)) : '';
+                $tag  = $url ? 'a' : 'div';
+                $href = $url ? ' href="' . esc_url($url) . '"' : '';
+            ?>
+                <<?php echo $tag . $href; ?> class="lmeg-rc__item">
+                    <div class="lmeg-rc__art">
+                        <img src="<?php echo esc_url($r->artwork_url); ?>" alt="<?php echo esc_attr($r->title); ?>" loading="lazy" />
+                        <?php if ($url) : ?><div class="lmeg-rc__play"><span>&#9654;</span></div><?php endif; ?>
+                    </div>
+                    <div class="lmeg-rc__t"><?php echo esc_html($r->title); ?></div>
+                    <?php if ($date) : ?><div class="lmeg-rc__d"><?php echo esc_html($date); ?></div><?php endif; ?>
+                </<?php echo $tag; ?>>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <script>
+    (function(){
+        var root=document.getElementById('<?php echo esc_js($id); ?>'); if(!root)return;
+        var track=root.querySelector('.lmeg-rc__track');
+        var btns=root.querySelectorAll('.lmeg-rc__btn');
+        function step(){ return Math.max(track.clientWidth*0.8, 206); }
+        btns.forEach(function(b){ b.addEventListener('click',function(){ track.scrollBy({left:step()*parseInt(b.getAttribute('data-dir'),10),behavior:'smooth'}); }); });
+        function sync(){ var s=track.scrollLeft, max=track.scrollWidth-track.clientWidth-2;
+            btns[0].disabled = s<=2; btns[1].disabled = s>=max; }
+        track.addEventListener('scroll',sync,{passive:true}); window.addEventListener('resize',sync); sync();
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
 /** Small coloured status pill for the admin list. */
 function lmeg_release_status_pill($s) {
     $c = ['draft' => '#6b7280', 'scheduled' => '#2563eb', 'released' => '#15803d'];
