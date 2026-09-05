@@ -527,15 +527,16 @@ function lmeg_releases_render_import() {
     $new_count = 0;
     foreach ($releases as $r) { if (!lmeg_release_by_apple_id((int) $r['apple_id'])) $new_count++; }
     ?>
-    <form method="post" style="max-width:920px;">
+    <form method="post" id="lmeg-import-form" style="max-width:920px;">
         <?php wp_nonce_field('lmeg_import', 'lmeg_import_nonce'); ?>
         <input type="hidden" name="lmeg_import_action" value="import">
         <input type="hidden" name="artist_name" value="<?php echo esc_attr($artist_name); ?>">
         <input type="hidden" name="releases_json" value="<?php echo esc_attr(wp_json_encode($releases)); ?>">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 10px;">
             <strong><?php echo count($releases); ?> releases for <?php echo esc_html($artist_name); ?> &middot; <?php echo (int) $new_count; ?> new</strong>
-            <button class="button button-primary button-hero">Build selected in Fanloop</button>
+            <button type="submit" class="button button-primary button-hero lmeg-build-btn">Build selected in Fanloop</button>
         </div>
+        <p class="description" style="margin:0 0 12px;">Each release becomes a drop, a release page, a shop product and a tracklist &mdash; so a full catalog can take up to a minute to build. You&rsquo;ll get a confirmation and the new cards when it&rsquo;s done.</p>
         <table class="widefat striped">
             <thead><tr><th style="width:32px;"></th><th style="width:52px;"></th><th>Release</th><th>Type</th><th>Released</th><th>Status</th></tr></thead>
             <tbody>
@@ -553,8 +554,30 @@ function lmeg_releases_render_import() {
             <?php endforeach; ?>
             </tbody>
         </table>
-        <p style="margin-top:12px;"><button class="button button-primary button-hero">Build selected in Fanloop</button></p>
+        <p style="margin-top:12px;"><button type="submit" class="button button-primary button-hero lmeg-build-btn">Build selected in Fanloop</button></p>
+        <p id="lmeg-build-status" role="status" aria-live="polite" style="display:none;margin-top:10px;padding:12px 14px;border-radius:10px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.12);color:#F4F5F7;font-size:13.5px;"></p>
     </form>
+    <script>
+    (function(){
+        var f = document.getElementById('lmeg-import-form');
+        if (!f) return;
+        f.addEventListener('submit', function(){
+            var n = f.querySelectorAll('input[name="pick[]"]:checked').length;
+            if (!n) return; // nothing chosen — let it submit as a no-op
+            f.querySelectorAll('.lmeg-build-btn').forEach(function(b){
+                b.disabled = true;
+                b.textContent = '⏳ Building…';
+                b.style.opacity = '.7';
+            });
+            var st = document.getElementById('lmeg-build-status');
+            if (st) {
+                st.style.display = 'block';
+                st.innerHTML = '⏳ Building <strong>' + n + '</strong> release' + (n === 1 ? '' : 's') +
+                    ' — creating a drop, release page, shop product and tracklist for each. This can take up to a minute; keep this tab open. The page will refresh with your new releases when it&rsquo;s done.';
+            }
+        });
+    })();
+    </script>
     <?php
 }
 
