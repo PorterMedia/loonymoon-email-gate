@@ -560,12 +560,26 @@ function lmeg_admin_spotify_insights() {
             </div>
             <?php endif; ?>
             <?php if ($playlists) : ?>
-            <div style="<?php echo $card; ?>">
-                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top playlists</div>
-                <?php foreach (array_slice($playlists, 0, 8) as $p) :
+            <div style="<?php echo $card; ?>max-height:360px;overflow:auto;">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top playlists <span style="color:#8B90A0;font-weight:400;">(<?php echo count($playlists); ?>)</span></div>
+                <?php
+                $pl_type = ['curated' => 'Editorial', 'listener' => 'Listener', 'personalized' => 'Algorithmic'];
+                foreach (array_slice($playlists, 0, 10) as $p) :
                     if (!is_array($p)) continue;
-                    $name = (string) ($p['name'] ?? ''); $val = isset($p['streams']) ? number_format_i18n((int) $p['streams']) : ''; ?>
-                    <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;"><span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($name); ?></span><span style="color:#8B90A0;font-variant-numeric:tabular-nums;"><?php echo esc_html($val); ?></span></div>
+                    $name = (string) ($p['title'] ?? $p['name'] ?? '');
+                    if ($name === '') continue;
+                    $val = isset($p['streams']) ? number_format_i18n((int) $p['streams']) : '';
+                    $tl  = $pl_type[(string) ($p['type'] ?? '')] ?? '';
+                    $fol = (isset($p['followers']) && $p['followers'] !== null && $p['followers'] !== '') ? (int) $p['followers'] : null;
+                    $sub = trim(implode(' · ', array_filter([(string) ($p['author'] ?? ''), $tl, $fol !== null ? number_format_i18n($fol) . ' followers' : ''])));
+                ?>
+                    <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;">
+                            <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($name); ?></span>
+                            <span style="color:#F4F5F7;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo esc_html($val); ?></span>
+                        </div>
+                        <?php if ($sub) : ?><div style="font-size:11px;color:#8B90A0;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($sub); ?></div><?php endif; ?>
+                    </div>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
