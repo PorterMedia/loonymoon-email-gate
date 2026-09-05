@@ -63,75 +63,98 @@ function lmeg_admin_sectionnav_js() {
 document.addEventListener('DOMContentLoaded', function () {
     var wrap = document.querySelector('#wpbody-content .wrap');
     if (!wrap) return;
-    // Section headers = h2s that actually start a block of settings.
     var h2s = Array.prototype.filter.call(wrap.querySelectorAll('h2'), function (h) {
         return h.textContent.trim().length > 1 && h.offsetParent !== null;
     });
     if (h2s.length < 3) return;
 
-    var nav = document.createElement('div');
-    nav.className = 'lmeg-jumpnav';
-    var lbl = document.createElement('span');
-    lbl.className = 'lmeg-jumpnav__label';
-    lbl.textContent = 'Jump to';
-    nav.appendChild(lbl);
+    function shortLabel(h) {
+        var s = h.textContent.trim().split('—')[0].split('(')[0].trim();
+        return s.length > 22 ? s.slice(0, 21) + '…' : s;
+    }
 
+    // Wrap each section (h2 + following content up to the next h2) so it can be shown/hidden.
+    var sections = [];
     h2s.forEach(function (h, i) {
         if (!h.id) h.id = 'lmeg-sec-' + i;
         h.classList.add('lmeg-sec-h');
-
-        // Wrap everything between this h2 and the next sibling h2 so it can collapse.
         var body = document.createElement('div');
         body.className = 'lmeg-sec-body';
         var n = h.nextElementSibling;
-        while (n && !(n.tagName === 'H2')) {
-            var next = n.nextElementSibling;
-            body.appendChild(n);
-            n = next;
-        }
+        while (n && n.tagName !== 'H2') { var next = n.nextElementSibling; body.appendChild(n); n = next; }
         h.parentNode.insertBefore(body, h.nextElementSibling);
-
-        h.addEventListener('click', function () {
-            h.classList.toggle('is-collapsed');
-            body.classList.toggle('is-collapsed');
-        });
-
-        var short = h.textContent.trim().split('—')[0].split('(')[0].trim();
-        if (short.length > 22) short = short.slice(0, 21) + '…';
-        var a = document.createElement('a');
-        a.href = '#' + h.id;
-        a.textContent = short;
-        a.addEventListener('click', function (e) {
-            e.preventDefault();
-            if (h.classList.contains('is-collapsed')) {
-                h.classList.remove('is-collapsed');
-                body.classList.remove('is-collapsed');
-            }
-            h.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            history.replaceState(null, '', '#' + h.id);
-        });
-        a.dataset.sec = h.id;
-        nav.appendChild(a);
+        sections.push({ h: h, body: body, id: h.id, label: shortLabel(h) });
     });
 
-    var h1 = wrap.querySelector('h1');
-    if (h1 && h1.nextSibling) h1.parentNode.insertBefore(nav, h1.nextSibling);
-    else wrap.insertBefore(nav, wrap.firstChild);
+    var isSettings = /[?&]page=lmeg-settings(?:&|$)/.test(location.search);
 
-    // Scrollspy: highlight the section currently in view.
-    var links = {};
-    nav.querySelectorAll('a[data-sec]').forEach(function (a) { links[a.dataset.sec] = a; });
-    if ('IntersectionObserver' in window) {
-        var obs = new IntersectionObserver(function (entries) {
-            entries.forEach(function (en) {
-                if (en.isIntersecting) {
-                    Object.keys(links).forEach(function (k) { links[k].classList.remove('is-active'); });
-                    if (links[en.target.id]) links[en.target.id].classList.add('is-active');
-                }
-            });
-        }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
-        h2s.forEach(function (h) { obs.observe(h); });
+    if (!isSettings) {
+        // Non-settings long forms (e.g. Compose): jump-nav + click-to-collapse.
+        var jn = document.createElement('div'); jn.className = 'lmeg-jumpnav';
+        var lbl = document.createElement('span'); lbl.className = 'lmeg-jumpnav__label'; lbl.textContent = 'Jump to'; jn.appendChild(lbl);
+        sections.forEach(function (s) {
+            s.h.addEventListener('click', function () { s.h.classList.toggle('is-collapsed'); s.body.classList.toggle('is-collapsed'); });
+            var a = document.createElement('a'); a.href = '#' + s.id; a.textContent = s.label; a.dataset.sec = s.id;
+            a.addEventListener('click', function (e) { e.preventDefault(); s.h.classList.remove('is-collapsed'); s.body.classList.remove('is-collapsed'); s.h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+            jn.appendChild(a);
+        });
+        var h1b = wrap.querySelector('h1');
+        if (h1b && h1b.nextSibling) h1b.parentNode.insertBefore(jn, h1b.nextSibling); else wrap.insertBefore(jn, wrap.firstChild);
+        return;
     }
+
+    // SETTINGS: tabbed — one section at a time; all stay in the single form so Save posts everything.
+    var st = document.createElement('style');
+    st.textContent = '.lmeg-settabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;border-bottom:1px solid rgba(255,255,255,.10);padding-bottom:12px}'
+        + '.lmeg-settab{appearance:none;-webkit-appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#C7CBD1;font:600 13px/1 "DM Sans",-apple-system,sans-serif;padding:8px 14px;border-radius:9px;cursor:pointer}'
+        + '.lmeg-settab:hover{color:#F4F5F7;background:rgba(255,255,255,.10)}'
+        + '.lmeg-settab.is-active{color:#fff;background:linear-gradient(135deg,#D05FA2,#7C6CF6);border-color:transparent}'
+        + '.lmeg-sec-h{margin-top:0!important;cursor:default!important}'
+        + '.lmeg-settings-save{position:sticky;bottom:0;margin-top:18px;padding:14px 0 10px;background:linear-gradient(0deg,#0E0F16 62%,rgba(14,15,22,0))}';
+    document.head.appendChild(st);
+
+    var tabbar = document.createElement('div'); tabbar.className = 'lmeg-settabs';
+    sections.forEach(function (s) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'lmeg-settab'; b.textContent = s.label; b.dataset.sec = s.id;
+        b.addEventListener('click', function () { show(s.id); });
+        tabbar.appendChild(b); s.tab = b;
+    });
+    var h1 = wrap.querySelector('h1');
+    if (h1 && h1.nextSibling) h1.parentNode.insertBefore(tabbar, h1.nextSibling); else wrap.insertBefore(tabbar, wrap.firstChild);
+
+    function show(id) {
+        sections.forEach(function (s) {
+            var on = (s.id === id);
+            s.h.style.display = on ? '' : 'none';
+            s.body.style.display = on ? '' : 'none';
+            if (s.tab) s.tab.classList.toggle('is-active', on);
+        });
+        try { localStorage.setItem('lmeg_settings_tab', id); } catch (e) {}
+        history.replaceState(null, '', '#' + id);
+    }
+
+    // Keep Save always visible: lift its container out of the (hideable) section body into a sticky bar.
+    var form = wrap.querySelector('form');
+    if (form) {
+        var subs = Array.prototype.slice.call(form.querySelectorAll('button[type=submit], input[type=submit]'));
+        var submit = null;
+        subs.forEach(function (b) { var t = (b.textContent || b.value || ''); if (/save/i.test(t)) submit = b; });
+        if (!submit && subs.length) submit = subs[subs.length - 1];
+        if (submit) {
+            var holder = submit.closest('p') || submit;
+            var bar = document.createElement('div'); bar.className = 'lmeg-settings-save';
+            if (holder.parentNode) holder.parentNode.removeChild(holder);
+            bar.appendChild(holder);
+            form.appendChild(bar);
+        }
+    }
+
+    var initial = null;
+    var hid = location.hash ? location.hash.slice(1) : '';
+    if (hid && sections.some(function (s) { return s.id === hid; })) initial = hid;
+    if (!initial) { try { var sv = localStorage.getItem('lmeg_settings_tab'); if (sv && sections.some(function (s) { return s.id === sv; })) initial = sv; } catch (e) {} }
+    if (!initial) initial = sections[0].id;
+    show(initial);
 });
 JS;
 }
