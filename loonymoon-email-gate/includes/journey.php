@@ -252,10 +252,11 @@ function lmeg_journey_enqueue() {
  * Stage 2 — the Journey report (admin) + enable toggle
  * ------------------------------------------------------------------------- */
 
-add_action('admin_menu', 'lmeg_journey_admin_menu');
-function lmeg_journey_admin_menu() {
-    add_submenu_page('lmeg', 'Journey', 'Journey', 'manage_options', 'lmeg-journey', 'lmeg_admin_journey');
-}
+// NOTE: the Journey submenu is registered in admin.php's core lmeg_admin_menu()
+// alongside every other Fanloop page. A standalone add_action('admin_menu', …)
+// here failed to land the page in the live menu (WP then 403'd it as
+// unregistered), so registration was consolidated into the core menu builder.
+// The page callback lmeg_admin_journey() lives below and is unchanged.
 
 /** Flip journey tracking on/off from the report page (own nonce + cap). */
 add_action('admin_post_lmeg_journey_toggle', 'lmeg_journey_handle_toggle');

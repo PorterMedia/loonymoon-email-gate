@@ -19,6 +19,12 @@ function lmeg_admin_menu() {
     add_submenu_page('lmeg', 'Get Started',       'Get Started',       $cap, 'lmeg-setup',           'lmeg_admin_setup');
     add_submenu_page('lmeg', 'Subscribers',       'Subscribers',       $cap, 'lmeg',                 'lmeg_admin_subscribers');
     add_submenu_page('lmeg', 'Audience',          'Audience',          $cap, 'lmeg-audience',        'lmeg_admin_audience');
+    // Journey is registered here (not via a standalone hook in journey.php,
+    // which failed to land the page in the live menu → WP 403'd it). Callback
+    // lmeg_admin_journey() lives in journey.php (loaded before this file).
+    if (function_exists('lmeg_admin_journey')) {
+        add_submenu_page('lmeg', 'Journey', 'Journey', $cap, 'lmeg-journey', 'lmeg_admin_journey');
+    }
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
     add_submenu_page('lmeg', 'Release Drops',     'Release Drops',     $cap, 'lmeg-drops',           'lmeg_admin_drops');
     add_submenu_page('lmeg', 'Store (Beta)',      'Store (Beta)',      $cap, 'lmeg-products',        'lmeg_admin_products');

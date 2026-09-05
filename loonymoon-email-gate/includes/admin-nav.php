@@ -41,7 +41,10 @@ function lmeg_admin_hub_map() {
         ]],
         'engage'    => ['label' => 'Engage',    'pages' => [
             ['lmeg-contests', 'Contests'], ['lmeg-surveys', 'Surveys'], ['lmeg-tour', 'Tour'],
-            ['lmeg-bio', 'Smart Bio'], ['lmeg-shortcodes', 'Shortcodes'], ['lmeg-social', 'Social'],
+            ['lmeg-bio', 'Smart Bio'], ['lmeg-shortcodes', 'Shortcodes'],
+        ]],
+        'social'    => ['label' => 'Social',    'pages' => [
+            ['lmeg-social', 'Social Listening'],
         ]],
         'connect'   => ['label' => 'Connect',   'pages' => [
             ['lmeg-instagram', 'Instagram'], ['lmeg-spotify', 'Spotify'], ['lmeg-wallet', 'Wallet'],

@@ -395,6 +395,33 @@ function lmeg_drop_expand_links($body, $replacement) {
 
 add_shortcode('loony_drop', 'lmeg_shortcode_drop');
 add_shortcode('fanloop_drop', 'lmeg_shortcode_drop');
+
+/**
+ * Make shareable drop links work on their own. lmeg_drop_url() hands out
+ * home_url('/?drop=<slug>'), but that only renders if the front page happens to
+ * contain [fanloop_drop]. When someone opens /?drop=<slug> at the site root and
+ * the slug is a real drop, render a standalone, theme-wrapped drop page instead
+ * of silently showing the homepage. Scoped to the front page so it never
+ * overrides a page that intentionally embeds the shortcode.
+ */
+add_action('template_redirect', 'lmeg_drop_standalone_page');
+function lmeg_drop_standalone_page() {
+    if (empty($_GET['drop']) || is_admin()) return;
+    if (!(is_front_page() || is_home())) return;
+    $slug = sanitize_title(wp_unslash($_GET['drop']));
+    $drop = function_exists('lmeg_drop_get') ? lmeg_drop_get($slug) : null;
+    if (!$drop) return; // unknown slug → let WP render normally
+
+    status_header(200);
+    nocache_headers();
+    get_header();
+    echo '<div class="lmeg-drop-standalone" style="max-width:680px;margin:48px auto;padding:0 18px;">';
+    echo do_shortcode('[fanloop_drop slug="' . esc_attr($drop->slug) . '"]');
+    echo '</div>';
+    get_footer();
+    exit;
+}
+
 function lmeg_shortcode_drop($atts = []) {
     $atts = shortcode_atts(['id' => '', 'slug' => ''], $atts, 'loony_drop');
 
