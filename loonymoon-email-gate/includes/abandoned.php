@@ -163,7 +163,7 @@ function lmeg_handle_nudge_cart() {
         lmeg_abandoned_send_nudge($row);
         $wpdb->update($wpdb->prefix . 'lmeg_abandoned', ['nudged' => 1, 'nudged_at' => current_time('mysql')], ['id' => $id]);
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&nudged=1#abandoned')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-stock&nudged=1#abandoned')); exit;
 }
 
 /* ---------------------------------------------------------------------------

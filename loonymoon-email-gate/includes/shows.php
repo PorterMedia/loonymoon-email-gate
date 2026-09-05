@@ -94,7 +94,7 @@ function lmeg_handle_save_show() {
     $venue = trim(sanitize_text_field(wp_unslash($_POST['venue'] ?? '')));
     $city  = trim(sanitize_text_field(wp_unslash($_POST['city'] ?? '')));
     if ($venue === '' && $city === '') {
-        wp_safe_redirect(admin_url('admin.php?page=lmeg-products&showerr=1#shows')); exit;
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&showerr=1#shows')); exit;
     }
     // Normalise the datetime-local value ("2026-10-28T20:00") to MySQL, or blank.
     $raw_date = sanitize_text_field(wp_unslash($_POST['show_date'] ?? ''));
@@ -120,7 +120,7 @@ function lmeg_handle_save_show() {
         $data['created_at'] = current_time('mysql');
         $wpdb->insert($tbl, $data);
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&showsaved=1#shows')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&showsaved=1#shows')); exit;
 }
 
 add_action('admin_post_lmeg_delete_show', 'lmeg_handle_delete_show');
@@ -130,7 +130,7 @@ function lmeg_handle_delete_show() {
     global $wpdb;
     $id = (int) ($_POST['show_id'] ?? 0);
     if ($id) $wpdb->delete($wpdb->prefix . 'lmeg_shows', ['id' => $id]);
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&showdeleted=1#shows')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&showdeleted=1#shows')); exit;
 }
 
 add_action('admin_post_lmeg_save_pickup', 'lmeg_handle_save_pickup');
@@ -143,7 +143,7 @@ function lmeg_handle_save_pickup() {
     $opts['store_bandsintown_appid']  = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['store_bandsintown_appid'] ?? ''))), 0, 190);
     $opts['store_gigpress_sync']      = empty($_POST['store_gigpress_sync']) ? 0 : 1;
     update_option(LMEG_OPTION, $opts);
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&pickupsaved=1#shows')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&pickupsaved=1#shows')); exit;
 }
 
 /* ---------------------------------------------------------------------------
@@ -211,9 +211,9 @@ function lmeg_handle_sync_bandsintown() {
     check_admin_referer('lmeg_sync_bit', 'lmeg_bit_nonce');
     $r = lmeg_bandsintown_sync();
     if (is_wp_error($r)) {
-        wp_safe_redirect(admin_url('admin.php?page=lmeg-products&biterr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&biterr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&bitok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&bitok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
 }
 
 /** Daily background sync (only when configured). Scheduled on load. */
@@ -375,9 +375,9 @@ function lmeg_handle_sync_gigpress() {
     check_admin_referer('lmeg_sync_gp', 'lmeg_gp_nonce');
     $r = lmeg_gigpress_sync();
     if (is_wp_error($r)) {
-        wp_safe_redirect(admin_url('admin.php?page=lmeg-products&gperr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
+        wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&gperr=' . rawurlencode($r->get_error_message()) . '#shows')); exit;
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&gpok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-shows&gpok=' . (int) $r[0] . '-' . (int) $r[1] . '#shows')); exit;
 }
 
 /** Daily background sync (only when enabled AND GigPress is present). */

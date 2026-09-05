@@ -33,6 +33,10 @@ function lmeg_admin_menu() {
             ? lmeg_orders_menu_title(lmeg_orders_toship_count()) : 'Orders';
         add_submenu_page('lmeg', 'Orders', $orders_title, $cap, 'lmeg-orders', 'lmeg_admin_orders');
     }
+    // Store sub-pages (sections split out of the long Store page).
+    if (function_exists('lmeg_admin_store_promos')) add_submenu_page('lmeg', 'Promotions', 'Promotions', $cap, 'lmeg-store-promos', 'lmeg_admin_store_promos');
+    if (function_exists('lmeg_admin_store_shows'))  add_submenu_page('lmeg', 'Shows',      'Shows',      $cap, 'lmeg-store-shows',  'lmeg_admin_store_shows');
+    if (function_exists('lmeg_admin_store_stock'))  add_submenu_page('lmeg', 'Stock',      'Stock',      $cap, 'lmeg-store-stock',  'lmeg_admin_store_stock');
     add_submenu_page('lmeg', 'Smart Bio',         'Smart Bio',         $cap, 'lmeg-bio',             'lmeg_admin_bio');
     add_submenu_page('lmeg', 'Shortcodes',        'Shortcodes',        $cap, 'lmeg-shortcodes',      'lmeg_admin_shortcodes');
     add_submenu_page('lmeg', 'Members (Paid)',    'Members (Paid)',    $cap, 'lmeg-members',         'lmeg_admin_members');

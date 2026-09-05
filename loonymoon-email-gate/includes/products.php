@@ -3140,7 +3140,16 @@ function lmeg_admin_products() {
         ?>
             <tr>
                 <td style="text-align:center"><input type="checkbox" class="lmeg-pbulk" value="<?php echo (int) $p->id; ?>" aria-label="Select product"></td>
-                <td><?php echo !empty($p->featured) ? lmeg_store_icon('star', 13, ['fill' => true, 'style' => 'color:#E0A800;margin-right:5px;vertical-align:-2px']) : ''; ?><strong><?php echo esc_html($p->title); ?></strong></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <?php if (!empty($p->cover_url)) : ?>
+                            <img src="<?php echo esc_url($p->cover_url); ?>" alt="" loading="lazy" style="width:42px;height:42px;object-fit:cover;border-radius:8px;flex:0 0 auto;border:1px solid rgba(0,0,0,.12);">
+                        <?php else : ?>
+                            <span style="width:42px;height:42px;border-radius:8px;flex:0 0 auto;background:rgba(0,0,0,.05);display:inline-flex;align-items:center;justify-content:center;color:#9A9DB0;"><?php echo lmeg_store_icon('box', 16); ?></span>
+                        <?php endif; ?>
+                        <span><?php echo !empty($p->featured) ? lmeg_store_icon('star', 13, ['fill' => true, 'style' => 'color:#E0A800;margin-right:5px;vertical-align:-2px']) : ''; ?><strong><?php echo esc_html($p->title); ?></strong></span>
+                    </div>
+                </td>
                 <td><?php echo ($p->type === 'physical') ? lmeg_store_icon('box', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Physical' : lmeg_store_icon('download', 13, ['style' => 'margin-right:4px;vertical-align:-2px']) . 'Digital'; ?></td>
                 <td><?php echo esc_html($price); ?><?php echo ($p->type === 'physical' && (int)$p->shipping_cents > 0) ? ' <span style="color:#888">+ ship</span>' : ''; ?></td>
                 <td><?php echo ($p->processor === 'square') ? 'Square' : 'Stripe'; ?></td>
@@ -3196,9 +3205,35 @@ function lmeg_admin_products() {
         </table>
     <?php endif;
 
+    // Discounts, Bundles, Shows, Waitlist and Abandoned carts now live on their
+    // own Store sub-pages (Promotions / Shows / Stock) to keep this page clean.
+    echo '</div>';
+}
+
+/** Store → Promotions sub-page: discounts + bundles. */
+function lmeg_admin_store_promos() {
+    if (!current_user_can('manage_options')) return;
+    echo '<div class="wrap"><h1>Promotions</h1>';
+    echo '<p class="description" style="max-width:720px;margin:6px 0 4px;">Discount codes and product bundles for your store.</p>';
     if (function_exists('lmeg_discounts_admin_section')) lmeg_discounts_admin_section();
     if (function_exists('lmeg_bundles_admin_section'))   lmeg_bundles_admin_section();
-    if (function_exists('lmeg_shows_admin_section'))     lmeg_shows_admin_section();
+    echo '</div>';
+}
+
+/** Store → Shows sub-page: live shows + in-person pickup + tour sync. */
+function lmeg_admin_store_shows() {
+    if (!current_user_can('manage_options')) return;
+    echo '<div class="wrap"><h1>Shows</h1>';
+    echo '<p class="description" style="max-width:720px;margin:6px 0 4px;">Live dates, in-person pickup at shows, and tour-date sync.</p>';
+    if (function_exists('lmeg_shows_admin_section')) lmeg_shows_admin_section();
+    echo '</div>';
+}
+
+/** Store → Stock sub-page: back-in-stock waitlist + abandoned carts. */
+function lmeg_admin_store_stock() {
+    if (!current_user_can('manage_options')) return;
+    echo '<div class="wrap"><h1>Stock &amp; recovery</h1>';
+    echo '<p class="description" style="max-width:720px;margin:6px 0 4px;">Back-in-stock waitlists and abandoned-cart recovery.</p>';
     if (function_exists('lmeg_waitlist_admin_section'))  lmeg_waitlist_admin_section();
     if (function_exists('lmeg_abandoned_admin_section')) lmeg_abandoned_admin_section();
     echo '</div>';

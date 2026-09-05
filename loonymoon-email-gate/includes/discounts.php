@@ -111,7 +111,7 @@ function lmeg_handle_save_discount() {
     $tbl = $wpdb->prefix . 'lmeg_discounts';
 
     $code = lmeg_discount_norm($_POST['code'] ?? '');
-    if ($code === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-products&derr=code#discounts')); exit; }
+    if ($code === '') { wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos&derr=code#discounts')); exit; }
     $kind = ($_POST['kind'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
     $to_cents = function ($v) { return (int) round(((float) preg_replace('/[^0-9.]/', '', (string) $v)) * 100); };
     $value = ($kind === 'percent') ? max(1, min(100, (int) $_POST['value'])) : max(0, $to_cents($_POST['value'] ?? 0));
@@ -132,7 +132,7 @@ function lmeg_handle_save_discount() {
         $data['created_at'] = current_time('mysql');
         $wpdb->insert($tbl, $data);
     }
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&dsaved=1#discounts')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos&dsaved=1#discounts')); exit;
 }
 
 add_action('admin_post_lmeg_delete_discount', 'lmeg_handle_delete_discount');
@@ -142,7 +142,7 @@ function lmeg_handle_delete_discount() {
     global $wpdb;
     $id = (int) ($_POST['discount_id'] ?? 0);
     if ($id) $wpdb->delete($wpdb->prefix . 'lmeg_discounts', ['id' => $id]);
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&ddeleted=1#discounts')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos&ddeleted=1#discounts')); exit;
 }
 
 /* ---------------------------------------------------------------------------

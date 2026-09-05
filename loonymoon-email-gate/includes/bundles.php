@@ -268,7 +268,7 @@ function lmeg_handle_save_bundle() {
     global $wpdb;
     $tbl = $wpdb->prefix . 'lmeg_bundles';
     $do  = sanitize_key($_POST['do'] ?? 'create');
-    $back = admin_url('admin.php?page=lmeg-products#bundles');
+    $back = admin_url('admin.php?page=lmeg-store-promos#bundles');
 
     if ($do === 'toggle') {
         $id = (int) ($_POST['bundle_id'] ?? 0);
@@ -281,7 +281,7 @@ function lmeg_handle_save_bundle() {
     $pct   = max(1, min(90, (int) ($_POST['pct'] ?? 10)));
     $pids  = [];
     foreach ((array) ($_POST['pids'] ?? []) as $x) { $id = (int) $x; if ($id > 0 && !in_array($id, $pids, true)) $pids[] = $id; }
-    if ($title === '' || count($pids) < 2) { wp_safe_redirect(admin_url('admin.php?page=lmeg-products&bundle_err=1#bundles')); exit; }
+    if ($title === '' || count($pids) < 2) { wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos&bundle_err=1#bundles')); exit; }
 
     $wpdb->insert($tbl, [
         'title'       => $title,
@@ -290,7 +290,7 @@ function lmeg_handle_save_bundle() {
         'active'      => 1,
         'created_at'  => current_time('mysql'),
     ]);
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products&bundle_saved=1#bundles')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos&bundle_saved=1#bundles')); exit;
 }
 
 add_action('admin_post_lmeg_delete_bundle', 'lmeg_handle_delete_bundle');
@@ -300,5 +300,5 @@ function lmeg_handle_delete_bundle() {
     global $wpdb;
     $id = (int) ($_POST['bundle_id'] ?? 0);
     if ($id) $wpdb->delete($wpdb->prefix . 'lmeg_bundles', ['id' => $id]);
-    wp_safe_redirect(admin_url('admin.php?page=lmeg-products#bundles')); exit;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-store-promos#bundles')); exit;
 }

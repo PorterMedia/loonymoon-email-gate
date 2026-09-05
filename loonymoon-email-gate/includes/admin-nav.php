@@ -37,7 +37,8 @@ function lmeg_admin_hub_map() {
             ['lmeg-smartlinks', 'Smartlinks'],
         ]],
         'store'     => ['label' => 'Store',     'pages' => [
-            ['lmeg-products', 'Store'], ['lmeg-orders', 'Orders'], ['lmeg-shop', 'Revenue'],
+            ['lmeg-products', 'Products'], ['lmeg-orders', 'Orders'], ['lmeg-store-promos', 'Promotions'],
+            ['lmeg-store-shows', 'Shows'], ['lmeg-store-stock', 'Stock'], ['lmeg-shop', 'Revenue'],
         ]],
         'engage'    => ['label' => 'Engage',    'pages' => [
             ['lmeg-contests', 'Contests'], ['lmeg-surveys', 'Surveys'], ['lmeg-tour', 'Tour'],

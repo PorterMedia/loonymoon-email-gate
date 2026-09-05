@@ -299,21 +299,20 @@ function lmeg_releases_admin_page() {
     $edit   = isset($_GET['edit']) ? lmeg_release_get((int) $_GET['edit']) : null;
 
     echo '<div class="wrap">';
-    echo '<h1 style="display:flex;align-items:center;gap:12px;">Releases';
-    if ($action !== 'new' && $action !== 'import' && !$edit) {
-        echo ' <a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=new')) . '" class="button button-primary">New release</a>';
-        echo ' <a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=import')) . '" class="button">Import from Apple Music</a>';
-    }
-    echo '</h1>';
+    echo '<h1 style="margin-bottom:6px;">Releases</h1>';
     echo $notice;
 
     if ($action !== 'new' && $action !== 'import' && !$edit) {
-        echo '<form method="post" style="margin:-4px 0 14px;">';
+        echo '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 2px;">';
+        echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=new')) . '" class="button button-primary">New release</a>';
+        echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=import')) . '" class="button">Import from Apple Music</a>';
+        echo '<form method="post" style="margin:0;">';
         wp_nonce_field('lmeg_refresh_links', 'lmeg_refresh_nonce');
         echo '<input type="hidden" name="lmeg_release_action" value="refresh_links">';
         echo '<button class="button" onclick="return confirm(\'Fetch Spotify + Deezer links for every release? This can take a moment.\');">&#8635; Refresh streaming links</button>';
-        echo '<span class="description" style="margin-left:8px;">Adds Spotify &amp; Deezer buttons alongside Apple Music on every release.</span>';
         echo '</form>';
+        echo '</div>';
+        echo '<p class="description" style="margin:2px 0 18px;">Refresh fills in Spotify, Apple Music, YouTube &amp; Deezer links on every release &mdash; your custom links are left untouched.</p>';
     }
 
     if ($action === 'import') {
