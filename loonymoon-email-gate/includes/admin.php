@@ -1790,6 +1790,7 @@ function lmeg_admin_compose() {
         'body_sms'         => '',
         'tag_ids'          => [],
         'tag_match'        => 'any',
+        'exclude_tag_ids'  => [],
         'radius_km'        => '',
         'radius_city'      => '',
         'wallet_send'      => false,
@@ -1867,6 +1868,7 @@ function lmeg_admin_compose() {
         $vals['body_sms']   = sanitize_textarea_field(wp_unslash($_POST['body_sms'] ?? ''));
         $vals['tag_ids']    = array_filter(array_map('intval', (array) ($_POST['tag_ids'] ?? [])));
         $vals['tag_match']  = ($_POST['tag_match'] ?? 'any') === 'all' ? 'all' : 'any';
+        $vals['exclude_tag_ids'] = array_filter(array_map('intval', (array) ($_POST['exclude_tag_ids'] ?? [])));
         $vals['radius_km']   = ($_POST['radius_km'] ?? '') !== '' ? max(0, (float) $_POST['radius_km']) : '';
         $vals['radius_city'] = sanitize_text_field(wp_unslash($_POST['radius_city'] ?? ''));
 
@@ -1911,8 +1913,9 @@ function lmeg_admin_compose() {
                     'body_email'     => $vals['body_email'],
                     'body_sms'       => $vals['body_sms'],
                     'tag_filter'     => [
-                        'tag_ids' => $vals['tag_ids'],
-                        'match'   => $vals['tag_match'],
+                        'tag_ids'         => $vals['tag_ids'],
+                        'match'           => $vals['tag_match'],
+                        'exclude_tag_ids' => $vals['exclude_tag_ids'],
                     ],
                     'radius_filter'  => ($vals['radius_km'] !== '' && (float) $vals['radius_km'] > 0 && $vals['radius_city'] !== '')
                         ? ['km' => (float) $vals['radius_km'], 'city' => $vals['radius_city']]
@@ -2044,6 +2047,13 @@ function lmeg_admin_compose() {
                                 <label><input type="radio" name="tag_match" value="any" <?php checked($vals['tag_match'], 'any'); ?> /> Match <strong>any</strong> selected tag</label>
                                 <label><input type="radio" name="tag_match" value="all" <?php checked($vals['tag_match'], 'all'); ?> /> Match <strong>all</strong> selected tags</label>
                             </div>
+                            <details style="margin-top:10px;"<?php echo !empty($vals['exclude_tag_ids']) ? ' open' : ''; ?>>
+                                <summary style="cursor:pointer;color:#E58BBD;font-size:13px;">Exclude tags (optional) &mdash; leave these fans out</summary>
+                                <div style="margin-top:8px;">
+                                    <?php echo lmeg_render_tag_picker($all_tags, $vals['exclude_tag_ids'], 'exclude_tag_ids[]'); ?>
+                                    <p class="description">Anyone with an excluded tag is dropped from the send &mdash; e.g. include <em>All fans</em> but exclude <em>already-purchased</em> or <em>vip</em>. Include + exclude combine as <strong>match</strong> AND <strong>NOT excluded</strong>.</p>
+                                </div>
+                            </details>
                             <div class="lmeg-audience-count" id="lmeg-audience-count">
                                 Sending to <strong>—</strong> subscribers
                             </div>
@@ -2367,6 +2377,7 @@ function lmeg_admin_compose() {
         var taSms    = document.getElementById('body_sms');
         var matchRadios = document.querySelectorAll('input[name="tag_match"]');
         var tagBoxes    = document.querySelectorAll('input[name="tag_ids[]"]');
+        var exclBoxes   = document.querySelectorAll('input[name="exclude_tag_ids[]"]');
         var radiusKm    = document.getElementById('radius_km');
         var radiusCity  = document.getElementById('radius_city');
         var smsRate     = <?php echo (float) apply_filters('lmeg_sms_est_rate', 0.0083); ?>; // est. $/SMS segment
@@ -2388,6 +2399,7 @@ function lmeg_admin_compose() {
             fd.append('action', 'lmeg_audience_count');
             fd.append('nonce',  nonce);
             tagBoxes.forEach(function (b) { if (b.checked) fd.append('tag_ids[]', b.value); });
+            exclBoxes.forEach(function (b) { if (b.checked) fd.append('exclude_tag_ids[]', b.value); });
             var match = 'any';
             matchRadios.forEach(function (r) { if (r.checked) match = r.value; });
             fd.append('match', match);
@@ -2436,6 +2448,7 @@ function lmeg_admin_compose() {
         }
 
         tagBoxes.forEach(function (b) { b.addEventListener('change', refresh); });
+        exclBoxes.forEach(function (b) { b.addEventListener('change', refresh); });
         matchRadios.forEach(function (r) { r.addEventListener('change', refresh); });
         if (taEmail) taEmail.addEventListener('input', debounce(refresh, 350));
         if (taSms)   taSms.addEventListener('input',   debounce(refresh, 350));
@@ -4035,6 +4048,7 @@ function lmeg_ajax_audience_count() {
     check_ajax_referer('lmeg_audience', 'nonce');
 
     $tag_ids   = array_filter(array_map('intval', (array) ($_POST['tag_ids'] ?? [])));
+    $excl_ids  = array_filter(array_map('intval', (array) ($_POST['exclude_tag_ids'] ?? [])));
     $match     = ($_POST['match'] ?? 'any') === 'all' ? 'all' : 'any';
     $has_email = !empty($_POST['has_email']);
     $has_sms   = !empty($_POST['has_sms']);
@@ -4057,14 +4071,14 @@ function lmeg_ajax_audience_count() {
         if (!$center) {
             wp_send_json_success(['count' => 0, 'radius_error' => 'couldn\'t place "' . $radius_city . '" on the map']);
         }
-        $aud = ['tag_ids' => $tag_ids, 'match' => $match];
+        $aud = ['tag_ids' => $tag_ids, 'exclude_tag_ids' => $excl_ids, 'match' => $match];
         $count = lmeg_audience_radius_count($aud, ['email' => $has_email, 'sms' => $has_sms], $center, $radius_km);
         $ec = $has_email ? lmeg_audience_radius_count($aud, ['email' => true, 'sms' => false], $center, $radius_km) : 0;
         $sc = $has_sms   ? lmeg_audience_radius_count($aud, ['email' => false, 'sms' => true], $center, $radius_km) : 0;
         wp_send_json_success(['count' => $count, 'email_count' => (int) $ec, 'sms_count' => (int) $sc, 'radius' => round($radius_km) . ' km of ' . $radius_city]);
     }
 
-    $aud   = ['tag_ids' => $tag_ids, 'match' => $match];
+    $aud   = ['tag_ids' => $tag_ids, 'exclude_tag_ids' => $excl_ids, 'match' => $match];
     $count = lmeg_audience_count($aud, ['email' => $has_email, 'sms' => $has_sms]);
     $ec    = $has_email ? lmeg_audience_count($aud, ['email' => true, 'sms' => false]) : 0;
     $sc    = $has_sms   ? lmeg_audience_count($aud, ['email' => false, 'sms' => true]) : 0;

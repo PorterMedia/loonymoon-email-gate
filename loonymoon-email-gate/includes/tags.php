@@ -211,34 +211,54 @@ function lmeg_apply_auto_tags($sub) {
  * Build a SQL fragment + params that constrains lmeg_subscribers.id to the
  * audience matching the given tag filter. Returns [where_sql, params_array].
  *
- * @param array $filter ['tag_ids' => int[], 'match' => 'any'|'all']
- * @return array [string, array]  -- empty WHERE if no tags specified
+ * Include: match ANY (OR) or ALL (AND) of `tag_ids`.
+ * Exclude: drop anyone carrying ANY of `exclude_tag_ids` (NOT) — combined with
+ * AND, and it works even with no include tags (exclude-only audience).
+ *
+ * @param array $filter ['tag_ids' => int[], 'match' => 'any'|'all', 'exclude_tag_ids' => int[]]
+ * @return array [string, array]  -- empty WHERE if no include AND no exclude tags
  */
 function lmeg_audience_where($filter) {
     global $wpdb;
     $subtags = $wpdb->prefix . 'lmeg_subscriber_tags';
 
     $tag_ids = array_filter(array_map('intval', (array) ($filter['tag_ids'] ?? [])));
-    if (!$tag_ids) {
+    $excl    = array_filter(array_map('intval', (array) ($filter['exclude_tag_ids'] ?? [])));
+    // Never let a tag be both included and excluded — exclude wins is confusing;
+    // drop the overlap from the exclude set so an explicit include always counts.
+    if ($tag_ids && $excl) $excl = array_values(array_diff($excl, $tag_ids));
+
+    if (!$tag_ids && !$excl) {
         return ['', []];
     }
-    $placeholders = implode(',', array_fill(0, count($tag_ids), '%d'));
-    $match        = ($filter['match'] ?? 'any') === 'all' ? 'all' : 'any';
 
-    if ($match === 'any') {
-        $sql    = "id IN (SELECT DISTINCT subscriber_id FROM $subtags WHERE tag_id IN ($placeholders))";
-        $params = $tag_ids;
-    } else {
-        $sql    = "id IN (
-            SELECT subscriber_id FROM $subtags
-            WHERE tag_id IN ($placeholders)
-            GROUP BY subscriber_id
-            HAVING COUNT(DISTINCT tag_id) = %d
-        )";
-        $params = array_merge($tag_ids, [count($tag_ids)]);
+    $clauses = [];
+    $params  = [];
+
+    if ($tag_ids) {
+        $placeholders = implode(',', array_fill(0, count($tag_ids), '%d'));
+        $match        = ($filter['match'] ?? 'any') === 'all' ? 'all' : 'any';
+        if ($match === 'any') {
+            $clauses[] = "id IN (SELECT DISTINCT subscriber_id FROM $subtags WHERE tag_id IN ($placeholders))";
+            $params    = array_merge($params, $tag_ids);
+        } else {
+            $clauses[] = "id IN (
+                SELECT subscriber_id FROM $subtags
+                WHERE tag_id IN ($placeholders)
+                GROUP BY subscriber_id
+                HAVING COUNT(DISTINCT tag_id) = %d
+            )";
+            $params    = array_merge($params, $tag_ids, [count($tag_ids)]);
+        }
     }
 
-    return [$sql, $params];
+    if ($excl) {
+        $ep        = implode(',', array_fill(0, count($excl), '%d'));
+        $clauses[] = "id NOT IN (SELECT DISTINCT subscriber_id FROM $subtags WHERE tag_id IN ($ep))";
+        $params    = array_merge($params, $excl);
+    }
+
+    return ['(' . implode(' AND ', $clauses) . ')', $params];
 }
 
 /**

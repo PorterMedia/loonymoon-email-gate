@@ -544,8 +544,8 @@ function lmeg_queue_broadcast($args) {
     $where_parts = ['(' . implode(' OR ', $clauses) . ')', 'unsubscribed_at IS NULL'];
     $params = [];
 
-    // Apply tag-based audience filter, if any.
-    if (!empty($args['tag_filter']) && !empty($args['tag_filter']['tag_ids'])) {
+    // Apply tag-based audience filter, if any (include and/or exclude).
+    if (!empty($args['tag_filter']) && (!empty($args['tag_filter']['tag_ids']) || !empty($args['tag_filter']['exclude_tag_ids']))) {
         list($tag_sql, $tag_params) = lmeg_audience_where($args['tag_filter']);
         if ($tag_sql) {
             $where_parts[] = $tag_sql;
