@@ -363,13 +363,13 @@ function lmeg_admin_journey() {
     $toggle_url = wp_nonce_url(admin_url('admin-post.php?action=lmeg_journey_toggle'), 'lmeg_journey_toggle');
 
     echo '<div class="wrap"><h1 style="display:flex;align-items:center;gap:12px;">Journey'
-       . '<span style="font:600 11px/1 system-ui;letter-spacing:.08em;text-transform:uppercase;color:#6b21a8;background:#f3e8ff;border:1px solid #e9d5ff;padding:4px 8px;border-radius:999px;">Fan analytics</span></h1>';
-    echo '<p style="max-width:680px;color:#3a3a44;font-size:14px;">Where fans go when they leave your site — every stream, ticket link and merch click — and, because Fanloop knows who they are, which of those journeys end in a purchase.</p>';
+       . '<span style="font:600 11px/1 system-ui;letter-spacing:.08em;text-transform:uppercase;color:#C4B5FD;background:rgba(124,108,246,.18);border:1px solid rgba(124,108,246,.35);padding:4px 8px;border-radius:999px;">Fan analytics</span></h1>';
+    echo '<p style="max-width:680px;color:#C7CBD1;font-size:14px;">Where fans go when they leave your site — every stream, ticket link and merch click — and, because Fanloop knows who they are, which of those journeys end in a purchase.</p>';
 
     if (!$enabled) {
-        echo '<div style="max-width:680px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:28px;margin-top:14px;">'
-           . '<h2 style="margin:0 0 8px;color:#17141f;">Tracking is off</h2>'
-           . '<p style="color:#3a3a44;margin:0 0 18px;">Turn it on to start recording pageviews and outbound clicks (classified into Spotify, Apple Music, Tickets, and so on). Nothing is collected until you do. It has no effect on your store, checkout, or emails.</p>'
+        echo '<div style="max-width:680px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:28px;margin-top:14px;">'
+           . '<h2 style="margin:0 0 8px;color:#F4F5F7;">Tracking is off</h2>'
+           . '<p style="color:#C7CBD1;margin:0 0 18px;">Turn it on to start recording pageviews and outbound clicks (classified into Spotify, Apple Music, Tickets, and so on). Nothing is collected until you do. It has no effect on your store, checkout, or emails.</p>'
            . '<a href="' . esc_url($toggle_url) . '" class="button button-primary button-hero">Enable journey tracking</a>'
            . '</div></div>';
         return;
@@ -394,11 +394,11 @@ function lmeg_admin_journey() {
         $on = $k === $days;
         echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-journey&days=' . $k)) . '" style="'
            . 'font:600 13px/1 system-ui;padding:7px 13px;border-radius:8px;text-decoration:none;border:1px solid '
-           . ($on ? esc_attr($accent) : 'rgba(0,0,0,.12)') . ';color:' . ($on ? '#fff' : '#17141f') . ';background:' . ($on ? esc_attr($accent) : '#fff') . ';">'
+           . ($on ? esc_attr($accent) : 'rgba(255,255,255,.18)') . ';color:' . ($on ? '#fff' : '#F4F5F7') . ';background:' . ($on ? esc_attr($accent) : '#fff') . ';">'
            . esc_html($label) . '</a>';
     }
     echo '</div>';
-    echo '<a href="' . esc_url($toggle_url) . '" style="font:500 13px/1 system-ui;color:#3a3a44;text-decoration:none;border:1px solid rgba(0,0,0,.12);background:#fff;padding:7px 13px;border-radius:8px;">Tracking on · turn off</a>';
+    echo '<a href="' . esc_url($toggle_url) . '" style="font:500 13px/1 system-ui;color:#C7CBD1;text-decoration:none;border:1px solid rgba(255,255,255,.14);background:linear-gradient(160deg,#161826,#1C1F2E);padding:7px 13px;border-radius:8px;">Tracking on · turn off</a>';
     echo '</div>';
 
     // ---- KPI strip (plain type + hairlines, no cards) -------------------
@@ -409,13 +409,13 @@ function lmeg_admin_journey() {
         ['Visitors',         $nf($d['visitors'])],
         ['Known fans seen',  $nf($d['fans_seen'])],
     ];
-    echo '<div style="display:flex;flex-wrap:wrap;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;overflow:hidden;">';
+    echo '<div style="display:flex;flex-wrap:wrap;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;">';
     $i = 0;
     foreach ($kpis as $k) {
         $bl = $i++ > 0 ? 'border-left:1px solid rgba(0,0,0,.08);' : '';
         echo '<div style="flex:1 1 150px;padding:18px 20px;' . $bl . '">'
-           . '<div style="font:700 30px/1.05 system-ui;color:#17141f;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">' . esc_html($k[1]) . '</div>'
-           . '<div style="font:600 11px/1 system-ui;letter-spacing:.07em;text-transform:uppercase;color:#55555f;margin-top:7px;">' . esc_html($k[0]) . '</div>'
+           . '<div style="font:700 30px/1.05 system-ui;color:#F4F5F7;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">' . esc_html($k[1]) . '</div>'
+           . '<div style="font:600 11px/1 system-ui;letter-spacing:.07em;text-transform:uppercase;color:#8B90A0;margin-top:7px;">' . esc_html($k[0]) . '</div>'
            . '</div>';
     }
     echo '</div>';
@@ -427,20 +427,20 @@ function lmeg_admin_journey() {
         ['Purchased',           (int) $d['fan_bought'],   $money($d['fan_revenue']) . ' from these fans'],
     ];
     $fmax = max(1, $d['fans_seen']);
-    echo '<div style="background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;margin-top:16px;">';
-    echo '<h2 style="margin:0 0 4px;color:#17141f;font-size:16px;">Fan funnel · source → action → purchase</h2>';
-    echo '<p style="margin:0 0 16px;color:#55555f;font-size:13px;">Identified fans only — the path an anonymous pixel can’t follow.</p>';
+    echo '<div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;margin-top:16px;">';
+    echo '<h2 style="margin:0 0 4px;color:#F4F5F7;font-size:16px;">Fan funnel · source → action → purchase</h2>';
+    echo '<p style="margin:0 0 16px;color:#8B90A0;font-size:13px;">Identified fans only — the path an anonymous pixel can’t follow.</p>';
     foreach ($stages as $n => $st) {
         $pct  = round($st[1] / $fmax * 100);
         $conv = $n > 0 && $stages[0][1] > 0 ? round($st[1] / $stages[0][1] * 100) : ($n === 0 ? 100 : 0);
         echo '<div style="margin-bottom:12px;">';
         echo '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
-           . '<span style="font:600 14px/1 system-ui;color:#17141f;">' . esc_html($st[0]) . '</span>'
-           . '<span style="font:600 14px/1 system-ui;color:#17141f;font-variant-numeric:tabular-nums;">' . $nf($st[1])
-           . ' <span style="color:#55555f;font-weight:500;">· ' . esc_html($st[2]) . '</span></span></div>';
-        echo '<div style="height:12px;background:#f1eef8;border-radius:6px;overflow:hidden;">'
+           . '<span style="font:600 14px/1 system-ui;color:#F4F5F7;">' . esc_html($st[0]) . '</span>'
+           . '<span style="font:600 14px/1 system-ui;color:#F4F5F7;font-variant-numeric:tabular-nums;">' . $nf($st[1])
+           . ' <span style="color:#8B90A0;font-weight:500;">· ' . esc_html($st[2]) . '</span></span></div>';
+        echo '<div style="height:12px;background:rgba(255,255,255,.10);border-radius:6px;overflow:hidden;">'
            . '<div style="height:100%;width:' . max(2, $pct) . '%;background:' . esc_attr($accent) . ';border-radius:6px;"></div></div>';
-        if ($n > 0) echo '<div style="font:500 12px/1 system-ui;color:#55555f;margin-top:4px;">' . $conv . '% of active fans</div>';
+        if ($n > 0) echo '<div style="font:500 12px/1 system-ui;color:#8B90A0;margin-top:4px;">' . $conv . '% of active fans</div>';
         echo '</div>';
     }
     echo '</div>';
@@ -451,19 +451,19 @@ function lmeg_admin_journey() {
     // Handoffs by category.
     $catmax = 1; foreach ($d['by_cat'] as $r) $catmax = max($catmax, (int) $r['c']);
     $dsp = function_exists('lmeg_journey_dsp_categories') ? lmeg_journey_dsp_categories() : [];
-    echo '<div style="flex:1 1 320px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;">';
-    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Handoffs by destination type</h2>';
+    echo '<div style="flex:1 1 320px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;">';
+    echo '<h2 style="margin:0 0 14px;color:#F4F5F7;font-size:16px;">Handoffs by destination type</h2>';
     if (!$d['by_cat']) {
-        echo '<p style="color:#55555f;font-size:13px;margin:0;">No outbound clicks recorded yet in this window.</p>';
+        echo '<p style="color:#8B90A0;font-size:13px;margin:0;">No outbound clicks recorded yet in this window.</p>';
     } else {
         foreach ($d['by_cat'] as $r) {
             $isdsp = in_array($r['category'], $dsp, true);
             $pct = round((int) $r['c'] / $catmax * 100);
             echo '<div style="margin-bottom:11px;">';
-            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#17141f;margin-bottom:4px;">'
+            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#F4F5F7;margin-bottom:4px;">'
                . '<span>' . esc_html($r['category']) . ($isdsp ? ' <span style="color:#1DB954;">♪</span>' : '') . '</span>'
                . '<span style="font-variant-numeric:tabular-nums;">' . $nf($r['c']) . '</span></div>';
-            echo '<div style="height:9px;background:#f1eef8;border-radius:5px;overflow:hidden;">'
+            echo '<div style="height:9px;background:rgba(255,255,255,.10);border-radius:5px;overflow:hidden;">'
                . '<div style="height:100%;width:' . max(3, $pct) . '%;background:' . ($isdsp ? '#1DB954' : esc_attr($accent)) . ';border-radius:5px;"></div></div>';
             echo '</div>';
         }
@@ -471,10 +471,10 @@ function lmeg_admin_journey() {
     echo '</div>';
 
     // Top destinations.
-    echo '<div style="flex:1 1 320px;background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;">';
-    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Top outbound links</h2>';
+    echo '<div style="flex:1 1 320px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;">';
+    echo '<h2 style="margin:0 0 14px;color:#F4F5F7;font-size:16px;">Top outbound links</h2>';
     if (!$d['top_dest']) {
-        echo '<p style="color:#55555f;font-size:13px;margin:0;">Nothing yet.</p>';
+        echo '<p style="color:#8B90A0;font-size:13px;margin:0;">Nothing yet.</p>';
     } else {
         echo '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
         foreach ($d['top_dest'] as $r) {
@@ -482,9 +482,9 @@ function lmeg_admin_journey() {
             $short = preg_replace('#^https?://(www\.)?#', '', $u);
             if (strlen($short) > 46) $short = substr($short, 0, 45) . '…';
             echo '<tr style="border-top:1px solid rgba(0,0,0,.07);">'
-               . '<td style="padding:8px 0;color:#17141f;"><a href="' . esc_url($u) . '" target="_blank" rel="noopener" style="color:#17141f;text-decoration:none;">' . esc_html($short) . '</a>'
-               . '<div style="color:#55555f;font-size:11px;">' . esc_html((string) $r['category']) . '</div></td>'
-               . '<td style="padding:8px 0;text-align:right;color:#17141f;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;">' . $nf($r['c']) . '</td></tr>';
+               . '<td style="padding:8px 0;color:#F4F5F7;"><a href="' . esc_url($u) . '" target="_blank" rel="noopener" style="color:#F4F5F7;text-decoration:none;">' . esc_html($short) . '</a>'
+               . '<div style="color:#8B90A0;font-size:11px;">' . esc_html((string) $r['category']) . '</div></td>'
+               . '<td style="padding:8px 0;text-align:right;color:#F4F5F7;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;">' . $nf($r['c']) . '</td></tr>';
         }
         echo '</table>';
     }
@@ -500,24 +500,24 @@ function lmeg_admin_journey() {
     arsort($sources);
     $sources = array_slice($sources, 0, 10, true);
     $smax = 1; foreach ($sources as $c) $smax = max($smax, $c);
-    echo '<div style="background:#fff;border:1px solid rgba(0,0,0,.10);border-radius:12px;padding:20px 22px;margin-top:16px;max-width:640px;">';
-    echo '<h2 style="margin:0 0 14px;color:#17141f;font-size:16px;">Where visitors came from</h2>';
+    echo '<div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;margin-top:16px;max-width:640px;">';
+    echo '<h2 style="margin:0 0 14px;color:#F4F5F7;font-size:16px;">Where visitors came from</h2>';
     if (!$sources) {
-        echo '<p style="color:#55555f;font-size:13px;margin:0;">No pageviews recorded yet in this window.</p>';
+        echo '<p style="color:#8B90A0;font-size:13px;margin:0;">No pageviews recorded yet in this window.</p>';
     } else {
         foreach ($sources as $name => $c) {
             $pct = round($c / $smax * 100);
             echo '<div style="margin-bottom:10px;">';
-            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#17141f;margin-bottom:4px;">'
+            echo '<div style="display:flex;justify-content:space-between;font:600 13px/1.2 system-ui;color:#F4F5F7;margin-bottom:4px;">'
                . '<span>' . esc_html($name) . '</span><span style="font-variant-numeric:tabular-nums;">' . $nf($c) . '</span></div>';
             echo '<div style="height:8px;background:#eef1f6;border-radius:5px;overflow:hidden;">'
-               . '<div style="height:100%;width:' . max(3, $pct) . '%;background:#3a3a44;border-radius:5px;"></div></div>';
+               . '<div style="height:100%;width:' . max(3, $pct) . '%;background:#C7CBD1;border-radius:5px;"></div></div>';
             echo '</div>';
         }
     }
     echo '</div>';
 
-    echo '<p style="color:#55555f;font-size:12px;margin-top:14px;">Numbers cached ~3 min · add <code>?lmeg_fresh=1</code> to force-refresh.</p>';
+    echo '<p style="color:#8B90A0;font-size:12px;margin-top:14px;">Numbers cached ~3 min · add <code>?lmeg_fresh=1</code> to force-refresh.</p>';
     echo '</div>'; // .wrap
 }
 

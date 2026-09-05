@@ -133,6 +133,24 @@ function lmeg_link_click_redirect() {
         ]);
     }
 
+    // Feed the click into the Fan Journey as an outbound handoff — classified
+    // (Spotify / Apple Music / Tickets / …) and tied to the fan when known — so
+    // release/drop clicks show in the journey funnel, not just the click log.
+    // Gated on the journey toggle so nothing is recorded until it's turned on.
+    if (function_exists('lmeg_journey_enabled') && lmeg_journey_enabled() && function_exists('lmeg_journey_record')) {
+        $ref = substr((string) ($_SERVER['HTTP_REFERER'] ?? ''), 0, 500);
+        lmeg_journey_record([
+            'event_type' => 'outbound',
+            'category'   => function_exists('lmeg_link_category')
+                ? lmeg_link_category($target, function_exists('lmeg_journey_site_host') ? lmeg_journey_site_host() : '', (string) ($link['label'] ?? ''))
+                : 'DSP Button',
+            'url'        => $target,
+            'link_text'  => substr((string) ($link['label'] ?? ''), 0, 120),
+            'page_url'   => $ref,
+            'referrer'   => $ref,
+        ]);
+    }
+
     wp_redirect(esc_url_raw($target), 302);
     exit;
 }
