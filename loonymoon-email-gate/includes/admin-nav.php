@@ -111,35 +111,37 @@ function lmeg_admin_hubs_resolve($current, $registered) {
     return ['hubs' => $hubs, 'active' => $active];
 }
 
-add_action('in_admin_header', 'lmeg_admin_hub_bar');
-function lmeg_admin_hub_bar() {
-    $current = lmeg_admin_current_slug();
-    if ($current === '') return;
-
+/**
+ * The current hub's sub-tabs (for the second nav row). Returns [[slug,label], …]
+ * or [] when the active hub has only one page (no sub-row needed).
+ * Consumed by lmeg_admin_app_bar() in admin.php.
+ */
+function lmeg_admin_hub_subtabs($current) {
     $resolved = lmeg_admin_hubs_resolve($current, lmeg_admin_registered_slugs());
-    $hubs     = $resolved['hubs'];
     $active   = $resolved['active'];
-    if (empty($hubs)) return;
+    $pages    = isset($resolved['hubs'][$active]) ? $resolved['hubs'][$active]['pages'] : [];
+    return (count($pages) > 1) ? $pages : [];
+}
 
-    $url = function ($slug) { return admin_url('admin.php?page=' . $slug); };
-    ?>
-    <div class="lmeg-hubbar" role="navigation" aria-label="Fanloop sections">
-        <div class="lmeg-hubbar__row lmeg-hubbar__row--hubs">
-            <span class="lmeg-hubbar__brand">Fanloop</span>
-            <?php foreach ($hubs as $key => $hub):
-                $first = $hub['pages'][0][0]; ?>
-                <a class="lmeg-hub<?php echo $key === $active ? ' is-active' : ''; ?>"
-                   href="<?php echo esc_url($url($first)); ?>"><?php echo esc_html($hub['label']); ?></a>
-            <?php endforeach; ?>
-        </div>
-        <?php $sub = isset($hubs[$active]) ? $hubs[$active]['pages'] : []; if (count($sub) > 1): ?>
-        <div class="lmeg-hubbar__row lmeg-hubbar__row--tabs">
-            <?php foreach ($sub as $p): ?>
-                <a class="lmeg-subtab<?php echo $p[0] === $current ? ' is-active' : ''; ?>"
-                   href="<?php echo esc_url($url($p[0])); ?>"><?php echo esc_html($p[1]); ?></a>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-    <?php
+/**
+ * Sub-tab row styling, printed INLINE in the admin head. This codebase's own
+ * comment (lmeg_admin_contrast_css) notes optimization plugins serve a stale
+ * cacheable admin.css, so nav chrome that must always be correct is inlined.
+ * The hub row (row 1) reuses the existing .lmeg-appbar__* classes.
+ */
+add_action('admin_head', 'lmeg_admin_nav_css', 98);
+function lmeg_admin_nav_css() {
+    if (lmeg_admin_current_slug() === '') return;
+    echo "<style id='lmeg-nav-css'>\n"
+       . ".lmeg-subbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;"
+       . "margin:-4px 20px 0 2px;padding:8px 14px;background:var(--lmegA-bg2,#12141F);"
+       . "border:1px solid var(--lmegA-border,rgba(255,255,255,.07));border-top:0;"
+       . "border-radius:0 0 12px 12px;font-family:var(--lmegA-font,'DM Sans',sans-serif);}\n"
+       . ".lmeg-subbar__link{display:inline-block;padding:5px 12px;border-radius:999px;"
+       . "font-size:12.5px;font-weight:500;line-height:1;color:var(--lmegA-muted,#8B90A0)!important;"
+       . "text-decoration:none!important;transition:color .15s ease,background-color .15s ease;}\n"
+       . ".lmeg-subbar__link:hover{color:var(--lmegA-text,#F4F5F7)!important;background:rgba(255,255,255,.05);}\n"
+       . ".lmeg-subbar__link.is-active{color:#fff!important;background:var(--lmegA-accent,#D05FA2);}\n"
+       . ".lmeg-subbar__link:focus-visible{outline:2px solid var(--lmegA-accent,#D05FA2);outline-offset:1px;}\n"
+       . "</style>\n";
 }

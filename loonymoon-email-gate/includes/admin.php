@@ -244,27 +244,26 @@ function lmeg_admin_contrast_css() {
 }
 
 /**
- * App-style header bar rendered above every plugin page — brand mark +
- * primary nav pills. Injected once via in_admin_header, no per-page edits.
+ * App-style header bar rendered above every plugin page — brand mark + hub
+ * nav (row 1) and the current hub's sub-tabs (row 2). Injected once via
+ * in_admin_header, no per-page edits. Hubs and sub-tabs come from the hub
+ * model in includes/admin-nav.php, built from the pages ACTUALLY registered
+ * so conditional/cap-gated pages appear only when present and nothing 404s.
  */
 add_action('in_admin_header', 'lmeg_admin_app_bar');
 function lmeg_admin_app_bar() {
-    if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
-    $current = sanitize_text_field($_GET['page']);
-    $items = [
-        'lmeg-overview'   => 'Overview',
-        'lmeg'            => 'Fans',
-        'lmeg-audience'   => 'Audience',
-        'lmeg-compose'    => 'Compose',
-        'lmeg-broadcasts' => 'Broadcasts',
-        'lmeg-releases'   => 'Releases',
-        'lmeg-shop'       => 'Revenue',
-        'lmeg-members'    => 'Members',
-        'lmeg-presaves'   => 'Pre-Saves',
-        'lmeg-social'     => 'Social Listening',
-        'lmeg-ai'         => 'Ask AI',
-        'lmeg-settings'   => 'Settings',
-    ];
+    $current = function_exists('lmeg_admin_current_slug') ? lmeg_admin_current_slug() : '';
+    if ($current === '') {
+        if (empty($_GET['page']) || strpos((string) $_GET['page'], 'lmeg') !== 0) return;
+        $current = sanitize_text_field($_GET['page']);
+    }
+
+    // Prefer the grouped hub model; fall back to a flat pill list if unavailable.
+    $hubs = []; $active = '';
+    if (function_exists('lmeg_admin_hubs_resolve') && function_exists('lmeg_admin_registered_slugs')) {
+        $resolved = lmeg_admin_hubs_resolve($current, lmeg_admin_registered_slugs());
+        $hubs = $resolved['hubs']; $active = $resolved['active'];
+    }
     ?>
     <div class="lmeg-appbar">
         <a class="lmeg-appbar__brand" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-overview')); ?>">
@@ -272,17 +271,32 @@ function lmeg_admin_app_bar() {
             <?php echo esc_html(lmeg_product()); ?>
         </a>
         <nav class="lmeg-appbar__nav" aria-label="Fanloop sections">
-            <?php foreach ($items as $slug => $label) :
-                // Spotify now lives under Social Listening — keep that pill active on the Spotify sub-page.
-                $active = ($current === $slug) || ($slug === 'lmeg-social' && $current === 'lmeg-spotify');
-            ?>
-                <a class="lmeg-appbar__link<?php echo $active ? ' is-active' : ''; ?>"
-                   href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>"><?php echo esc_html($label); ?></a>
-            <?php endforeach; ?>
+            <?php if ($hubs) :
+                foreach ($hubs as $key => $hub) :
+                    $first = $hub['pages'][0][0]; ?>
+                    <a class="lmeg-appbar__link<?php echo $key === $active ? ' is-active' : ''; ?>"
+                       href="<?php echo esc_url(admin_url('admin.php?page=' . $first)); ?>"><?php echo esc_html($hub['label']); ?></a>
+                <?php endforeach;
+            else :
+                foreach (['lmeg-overview'=>'Overview','lmeg'=>'Fans','lmeg-audience'=>'Audience','lmeg-compose'=>'Compose','lmeg-releases'=>'Releases','lmeg-shop'=>'Revenue','lmeg-ai'=>'Ask AI','lmeg-settings'=>'Settings'] as $slug => $label) : ?>
+                    <a class="lmeg-appbar__link<?php echo $current === $slug ? ' is-active' : ''; ?>"
+                       href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>"><?php echo esc_html($label); ?></a>
+                <?php endforeach;
+            endif; ?>
         </nav>
         <a class="lmeg-appbar__site" href="<?php echo esc_url(home_url('/')); ?>" target="_blank" rel="noopener">View site ↗</a>
     </div>
     <?php
+    // Row 2 — the current hub's sub-tabs (only when the hub has more than one page).
+    $subtabs = function_exists('lmeg_admin_hub_subtabs') ? lmeg_admin_hub_subtabs($current) : [];
+    if ($subtabs) : ?>
+    <div class="lmeg-subbar" role="navigation" aria-label="<?php echo esc_attr(($hubs[$active]['label'] ?? '') . ' pages'); ?>">
+        <?php foreach ($subtabs as $p) : ?>
+            <a class="lmeg-subbar__link<?php echo $p[0] === $current ? ' is-active' : ''; ?>"
+               href="<?php echo esc_url(admin_url('admin.php?page=' . $p[0])); ?>"><?php echo esc_html($p[1]); ?></a>
+        <?php endforeach; ?>
+    </div>
+    <?php endif;
 }
 
 /* ---------------------------------------------------------------------------
