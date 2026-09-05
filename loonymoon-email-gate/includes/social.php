@@ -577,13 +577,14 @@ function lmeg_social_sentiment($force = false) {
         . "\"themes\" (array of up to 5 short strings — what fans are talking about); "
         . "\"highlights\" (array of up to 3 short verbatim standout positive comments); "
         . "\"questions\" (array of up to 3 short verbatim questions fans are asking that deserve a reply); "
-        . "\"watch\" (array of up to 2 short notes on negative/complaint themes, or empty).";
+        . "\"watch\" (array of up to 2 short notes on negative/complaint themes, or empty); "
+        . "\"scored\" (array of up to 24 objects, one per notable comment, each {\"text\": the short verbatim comment, \"sentiment\": \"positive\"|\"neutral\"|\"negative\"} — a representative mix, most engaging first).";
     $resp = wp_remote_post(LMEG_AI_ENDPOINT, [
-        'timeout' => 45,
+        'timeout' => 60,
         'headers' => ['x-api-key' => $s['ai_api_key'], 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'],
         'body'    => wp_json_encode([
             'model'      => $model,
-            'max_tokens' => 900,
+            'max_tokens' => 1600,
             'system'     => $system,
             'messages'   => [['role' => 'user', 'content' => "Comments:\n" . $list]],
         ]),
@@ -848,10 +849,65 @@ function lmeg_social_demo() {
             'highlights' => ['this song is on repeat, obsessed 😭🖤', 'saw u live and cried, best night ever', 'ur the best artist of our generation fr'],
             'questions'  => ['when are u coming to vancouver??', 'is the vinyl restocking?', 'what mic do u use for vocals'],
             'watch'      => ['a few fans frustrated the presale sold out fast'],
+            'scored'     => [
+                ['text' => 'this song is on repeat, obsessed 😭🖤', 'sentiment' => 'positive'],
+                ['text' => 'saw u live and cried, best night ever', 'sentiment' => 'positive'],
+                ['text' => 'when are u coming to vancouver??', 'sentiment' => 'neutral'],
+                ['text' => 'ur the best artist of our generation fr', 'sentiment' => 'positive'],
+                ['text' => 'is the vinyl restocking? need it', 'sentiment' => 'neutral'],
+                ['text' => 'the presale sold out in like 2 minutes 😤', 'sentiment' => 'negative'],
+                ['text' => 'what mic do u use for vocals', 'sentiment' => 'neutral'],
+                ['text' => 'this is my whole personality now', 'sentiment' => 'positive'],
+                ['text' => 'please add a Montreal date 🙏', 'sentiment' => 'neutral'],
+                ['text' => 'the video is a masterpiece', 'sentiment' => 'positive'],
+                ['text' => 'shipping took forever tbh', 'sentiment' => 'negative'],
+                ['text' => 'goosebumps every single time', 'sentiment' => 'positive'],
+            ],
             '_count'     => 80,
         ],
         'digest'     => "You’re on a strong run: Instagram is up ~+" . (end($ig_vals) - $ig_vals[0]) . " in 30 days and “SOFT THING” is driving your best engagement in months — Reels are landing about 2× your photos. Fan sentiment is 79% positive; the community is hyped on the single and asking for more tour cities.\n\n**Do next:** 1) Cut the acoustic version as a Reel and post it Friday (your best day). 2) Answer the top question in a story — fans want a Vancouver date. 3) Restock the vinyl; people are actively asking.",
     ];
+}
+
+/**
+ * Per-comment sentiment list (Cobrand's Comments tab) — a scannable list of
+ * recent comments each tagged positive/neutral/negative, with filter chips.
+ * Shared markup so the demo (PHP) and the live AJAX path render identically;
+ * a single delegated script (lmeg_social_scored_js) wires the filtering.
+ */
+function lmeg_social_scored_html($scored) {
+    $scored = array_filter((array) $scored, function ($r) { return !empty($r['text']); });
+    if (!$scored) return '';
+    $col = ['positive' => '#34D399', 'neutral' => '#8B90A0', 'negative' => '#F87171'];
+    $counts = ['positive' => 0, 'neutral' => 0, 'negative' => 0];
+    foreach ($scored as $r) { $s = $r['sentiment'] ?? 'neutral'; if (isset($counts[$s])) $counts[$s]++; }
+    $chip = function ($f, $label, $c) {
+        return '<button type="button" class="lmeg-scored__chip" data-f="' . esc_attr($f) . '" style="cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7;border-radius:999px;padding:3px 11px;font-size:12px;">'
+             . ($c !== null ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' . $c . ';margin-right:5px;vertical-align:middle;"></span>' : '') . esc_html($label) . '</button>';
+    };
+    $h  = '<div class="lmeg-scored" style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;margin-top:10px;color:#F4F5F7;max-width:820px;">';
+    $h .= '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
+        . $chip('all', 'All (' . count($scored) . ')', null)
+        . $chip('positive', 'Positive ' . $counts['positive'], $col['positive'])
+        . $chip('neutral', 'Neutral ' . $counts['neutral'], $col['neutral'])
+        . $chip('negative', 'Negative ' . $counts['negative'], $col['negative'])
+        . '</div>';
+    foreach ($scored as $r) {
+        $s = isset($col[$r['sentiment'] ?? '']) ? $r['sentiment'] : 'neutral';
+        $h .= '<div class="lmeg-scored__item" data-sent="' . esc_attr($s) . '" style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">'
+            . '<span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:' . $col[$s] . ';margin-top:5px;"></span>'
+            . '<span style="font-size:13px;line-height:1.4;">' . esc_html($r['text']) . '</span></div>';
+    }
+    $h .= '</div>';
+    return $h;
+}
+
+/** One-time delegated filter script for any .lmeg-scored block (demo or live). */
+function lmeg_social_scored_js() {
+    static $done = false;
+    if ($done) return '';
+    $done = true;
+    return '<script>(function(){document.addEventListener("click",function(e){var b=e.target.closest(".lmeg-scored__chip");if(!b)return;var box=b.closest(".lmeg-scored");if(!box)return;var f=b.getAttribute("data-f");box.querySelectorAll(".lmeg-scored__chip").forEach(function(c){c.style.outline=c===b?"2px solid #7C6CF6":"none";});box.querySelectorAll(".lmeg-scored__item").forEach(function(it){it.style.display=(f==="all"||it.getAttribute("data-sent")===f)?"flex":"none";});});})();</script>';
 }
 
 /* ---------------------------------------------------------------------------
@@ -1330,12 +1386,17 @@ function lmeg_admin_social() {
                 <p style="margin:16px 0 6px;font-weight:600;color:#FBBF24;">Worth watching</p><ul style="margin:0 0 0 18px;line-height:1.6;"><?php foreach ($x['watch'] as $w) : ?><li><?php echo esc_html($w); ?></li><?php endforeach; ?></ul>
                 <p class="description" style="margin-top:12px;">Based on <?php echo (int) $x['_count']; ?> recent comments.</p>
             </div>
+            <?php if (!empty($x['scored'])) : ?>
+                <p style="margin:16px 0 6px;font-weight:600;">Every comment, scored</p>
+                <?php echo lmeg_social_scored_html($x['scored']); echo lmeg_social_scored_js(); ?>
+            <?php endif; ?>
         <?php elseif ((!$ig_ok && !$fb_ok) || !$ai_ok) : ?>
             <p class="description" style="max-width:820px;">Needs <?php echo (!$ig_ok && !$fb_ok) ? 'Instagram or Facebook connected' : ''; echo ((!$ig_ok && !$fb_ok) && !$ai_ok) ? ' and ' : ''; echo !$ai_ok ? 'your Anthropic API key (Settings → AI assistant)' : ''; ?>. Then Fanloop reads your recent comments and summarizes the mood, themes, standout comments, and questions worth answering.</p>
         <?php else : ?>
             <p style="max-width:820px;">Reads the comments on your recent Instagram and Facebook posts and summarizes the mood — powered by your AI key. Cached ~6h.</p>
             <p><button type="button" class="button button-primary" id="lmeg-sent-btn">Analyze recent comments</button> <span id="lmeg-sent-status" style="font-size:12px;margin-left:8px;"></span></p>
             <div id="lmeg-sent-out" style="max-width:820px;"></div>
+            <?php echo lmeg_social_scored_js(); ?>
         <?php endif; ?>
 
         <?php if ($ai_ok && ($ig_ok || $fb_ok || $sp_ok)) : ?>
@@ -1355,6 +1416,16 @@ function lmeg_admin_social() {
             var ajax = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>, nonce = <?php echo wp_json_encode(wp_create_nonce('lmeg_social')); ?>;
             function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
             function md(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>'); }
+            function scoredHtml(arr){
+                var col={positive:'#34D399',neutral:'#8B90A0',negative:'#F87171'};
+                var cnt={positive:0,neutral:0,negative:0};
+                arr.forEach(function(r){ var s=col[r.sentiment]?r.sentiment:'neutral'; cnt[s]++; });
+                function chip(f,label,c){ return '<button type="button" class="lmeg-scored__chip" data-f="'+f+'" style="cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7;border-radius:999px;padding:3px 11px;font-size:12px;">'+(c?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-right:5px;vertical-align:middle;"></span>':'')+esc(label)+'</button>'; }
+                var h='<div class="lmeg-scored" style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;margin-top:10px;color:#F4F5F7;">';
+                h+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'+chip('all','All ('+arr.length+')','')+chip('positive','Positive '+cnt.positive,col.positive)+chip('neutral','Neutral '+cnt.neutral,col.neutral)+chip('negative','Negative '+cnt.negative,col.negative)+'</div>';
+                arr.forEach(function(r){ var s=col[r.sentiment]?r.sentiment:'neutral'; h+='<div class="lmeg-scored__item" data-sent="'+s+'" style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:'+col[s]+';margin-top:5px;"></span><span style="font-size:13px;line-height:1.4;">'+esc(r.text||'')+'</span></div>'; });
+                return h+'</div>';
+            }
 
             var sBtn = document.getElementById('lmeg-sent-btn');
             if (sBtn) {
@@ -1372,6 +1443,7 @@ function lmeg_admin_social() {
                             if (x.questions && x.questions.length) html += '<p style="margin:16px 0 6px;font-weight:600;">Questions to answer</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.questions.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ul>';
                             if (x.watch && x.watch.length) html += '<p style="margin:16px 0 6px;font-weight:600;color:#FBBF24;">Worth watching</p><ul style="margin:0 0 0 18px;line-height:1.6;">'+x.watch.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul>';
                             html += '<p class="description" style="margin-top:10px;">Based on '+(parseInt(x._count||0,10))+' recent comments.</p></div>';
+                            if (x.scored && x.scored.length) html += '<p style="margin:16px 0 6px;font-weight:600;">Every comment, scored</p>' + scoredHtml(x.scored);
                             sOut.innerHTML = html; sSt.textContent = '';
                         } else { sSt.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error'); }
                     }).catch(function(){ sSt.textContent = '⚠ network error'; }).finally(function(){ sBtn.disabled = false; });
