@@ -351,7 +351,7 @@ function lmeg_admin_collect() {
                     <td><strong><a href="<?php echo esc_url(add_query_arg('campaign', (int) $cp->id, admin_url('admin.php?page=lmeg-collect'))); ?>"><?php echo esc_html($cp->title); ?></a></strong></td>
                     <td style="color:#8B90A0;"><?php echo esc_html(['both' => 'Photos & videos', 'image' => 'Photos', 'video' => 'Videos'][$cp->accept] ?? $cp->accept); ?></td>
                     <td><a href="<?php echo esc_url(add_query_arg('campaign', (int) $cp->id, admin_url('admin.php?page=lmeg-collect'))); ?>"><?php echo (int) $n; ?></a></td>
-                    <td><code>[fanloop_collect slug="<?php echo esc_attr($cp->slug); ?>"]</code></td>
+                    <td><a href="<?php echo esc_url(lmeg_collect_url($cp)); ?>" target="_blank" rel="noopener">Share link ↗</a><br><code style="font-size:11px;">[fanloop_collect slug="<?php echo esc_attr($cp->slug); ?>"]</code></td>
                     <td><?php echo $cp->status === 'active' ? '<span style="color:#34D399;">● Active</span>' : '<span style="color:#8B90A0;">○ Off</span>'; ?></td>
                     <td>
                         <form method="post" style="display:inline;">
@@ -368,4 +368,34 @@ function lmeg_admin_collect() {
         <?php endif; ?>
     </div>
     <?php
+}
+
+/* ---------------------------------------------------------------------------
+ * Standalone shareable page — /?collect=<slug>. So a campaign works with just
+ * a link (no need to place the shortcode in a theme/Elementor widget), the
+ * same way drops share via /?drop=<slug>. Scoped to the front page so it never
+ * overrides a page that intentionally embeds [fanloop_collect].
+ * ------------------------------------------------------------------------- */
+
+function lmeg_collect_url($camp) {
+    $slug = is_object($camp) ? $camp->slug : (string) $camp;
+    return home_url('/?collect=' . rawurlencode($slug));
+}
+
+add_action('template_redirect', 'lmeg_collect_standalone_page');
+function lmeg_collect_standalone_page() {
+    if (empty($_GET['collect']) || is_admin()) return;
+    if (!(is_front_page() || is_home())) return;
+    $camp = lmeg_collect_get(sanitize_title(wp_unslash($_GET['collect'])));
+    if (!$camp) return;
+
+    status_header(200);
+    nocache_headers();
+    get_header();
+    echo '<div class="lmeg-collect-standalone" style="max-width:600px;margin:48px auto;padding:0 18px;">';
+    if ($camp->title) echo '<h1 style="text-align:center;margin:0 0 18px;">' . esc_html($camp->title) . '</h1>';
+    echo do_shortcode('[fanloop_collect slug="' . esc_attr($camp->slug) . '"]');
+    echo '</div>';
+    get_footer();
+    exit;
 }
