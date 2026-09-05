@@ -258,6 +258,45 @@ function lmeg_si_callouts($snap, $meta) {
     return $out;
 }
 
+/** Normalize a gender distribution — Spotify {female,male,nonbinary,unknown} OR
+ *  Instagram {F,M,U} — into comparable Women/Men/Non-binary/Unknown percentages.
+ *  Returns ['total'=>N,'rows'=>[{label,color,pct},…]] or null when empty. */
+function lmeg_si_norm_gender($g) {
+    if (!is_array($g)) return null;
+    $women = (int) ($g['female'] ?? $g['F'] ?? $g['FEMALE'] ?? 0);
+    $men   = (int) ($g['male'] ?? $g['M'] ?? $g['MALE'] ?? 0);
+    $nb    = (int) ($g['nonbinary'] ?? $g['nonBinary'] ?? $g['NONBINARY'] ?? 0);
+    $unk   = (int) ($g['unknown'] ?? $g['U'] ?? $g['UNKNOWN'] ?? 0);
+    $tot = $women + $men + $nb + $unk;
+    if ($tot <= 0) return null;
+    $rows = [];
+    foreach ([['Women', '#D05FA2', $women], ['Men', '#7C6CF6', $men], ['Non-binary', '#34D399', $nb], ['Unknown', '#8B90A0', $unk]] as $r) {
+        if ($r[2] > 0) $rows[] = ['label' => $r[0], 'color' => $r[1], 'pct' => $r[2] / $tot * 100];
+    }
+    return ['total' => $tot, 'rows' => $rows];
+}
+
+/** Normalize an age distribution to canonical buckets as percentages. Accepts
+ *  the Spotify shape ([{label,total}], from lmeg_si_age_rows) or the Instagram
+ *  shape ({bucket=>count}). Returns {canonBucket=>pct} or null when empty. */
+function lmeg_si_norm_age($src) {
+    $canon = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+    $map = ['0–17' => '<18', '0-17' => '<18', '13-17' => '<18', '13–17' => '<18'];
+    $counts = array_fill_keys($canon, 0); $tot = 0;
+    $add = function ($label, $v) use (&$counts, &$tot, $map, $canon) {
+        $l = str_replace('–', '-', trim((string) $label));
+        $l = $map[$l] ?? $l;
+        if (!in_array($l, $canon, true)) return;
+        $counts[$l] += (int) $v; $tot += (int) $v;
+    };
+    if (isset($src[0]) && is_array($src[0])) { foreach ((array) $src as $r) $add($r['label'] ?? '', $r['total'] ?? 0); }
+    else { foreach ((array) $src as $k => $v) $add($k, $v); }
+    if ($tot <= 0) return null;
+    $out = [];
+    foreach ($canon as $b) $out[$b] = $counts[$b] / $tot * 100;
+    return $out;
+}
+
 /** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
 function lmeg_si_pct_change($cur, $prev) {
     if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
@@ -293,6 +332,11 @@ function lmeg_admin_spotify_insights() {
 
     $ov = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null;
     if (is_wp_error($ov)) $ov = null;
+
+    // Social side — for the cross-platform profile. Each is null when unconfigured.
+    $ig_stats = function_exists('lmeg_ig_account_stats') ? lmeg_ig_account_stats() : null;
+    $fb_stats = function_exists('lmeg_fb_page_stats') ? lmeg_fb_page_stats() : null;
+    $ig_demo  = function_exists('lmeg_social_ig_demographics') ? lmeg_social_ig_demographics() : null;
 
     $has_s4a = (bool) $snap;
     $has_api = is_array($ov);
@@ -568,6 +612,67 @@ function lmeg_admin_spotify_insights() {
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- ACROSS PLATFORMS (streaming ↔ social — one audience) ------------->
+        <?php
+        $sp_gender = lmeg_si_norm_gender($meta['gender'] ?? null);
+        $ig_gender = lmeg_si_norm_gender(($ig_demo['gender'] ?? null));
+        $sp_age    = lmeg_si_norm_age(lmeg_si_age_rows($meta['gender_by_age'] ?? null));
+        $ig_age    = lmeg_si_norm_age(($ig_demo['age'] ?? null));
+        $any_social = $ig_stats || $fb_stats || $ig_demo;
+        if ($any_social) :
+            $genderBar = function ($norm) {
+                if (!$norm) return '<span style="color:#8B90A0;font-size:12px;">Not connected yet</span>';
+                $h = '<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.06);margin-bottom:6px;">';
+                foreach ($norm['rows'] as $r) $h .= '<div title="' . esc_attr($r['label']) . '" style="width:' . round($r['pct'], 2) . '%;background:' . $r['color'] . ';"></div>';
+                $h .= '</div><div style="font-size:12px;color:#8B90A0;">';
+                foreach ($norm['rows'] as $r) if (in_array($r['label'], ['Women', 'Men'], true)) $h .= '<span style="margin-right:12px;"><span style="color:#F4F5F7;font-weight:600;">' . round($r['pct']) . '%</span> ' . esc_html($r['label']) . '</span>';
+                return $h . '</div>';
+            };
+        ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;">Across platforms · one audience</div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;">How your streaming audience (Spotify) lines up with your social audience (Instagram).</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;">
+                <?php
+                $reach = function ($plat, $val, $sub) use ($lbl) {
+                    if ($val === null) return;
+                    echo '<div style="background:#12141F;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;">'
+                        . '<div style="font:800 18px/1 var(--lmegA-font,inherit);font-variant-numeric:tabular-nums;color:#F4F5F7;">' . esc_html(number_format_i18n((int) $val)) . '</div>'
+                        . '<div style="' . $lbl . 'margin-top:5px;">' . esc_html($plat) . '</div>'
+                        . ($sub ? '<div style="font-size:11px;color:#8B90A0;margin-top:2px;">' . esc_html($sub) . '</div>' : '') . '</div>';
+                };
+                if ($snap && $snap->monthly_listeners !== null) $reach('Spotify · listeners', $snap->monthly_listeners, 'monthly');
+                if ($followers !== null) $reach('Spotify · followers', $followers, '');
+                if ($ig_stats) $reach('Instagram', $ig_stats['followers'] ?? null, 'followers' . (!empty($ig_stats['username']) ? ' · @' . $ig_stats['username'] : ''));
+                if ($fb_stats) $reach('Facebook', $fb_stats['followers'] ?? null, 'followers');
+                ?>
+            </div>
+            <?php if ($sp_gender || $ig_gender) : ?>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+                <div><div style="<?php echo $lbl; ?>margin-bottom:8px;color:#1DB954;">Spotify · gender</div><?php echo $genderBar($sp_gender); ?></div>
+                <div><div style="<?php echo $lbl; ?>margin-bottom:8px;color:#E58BBD;">Instagram · gender</div><?php echo $genderBar($ig_gender); ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if ($sp_age || $ig_age) : $canon = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65+']; ?>
+            <div style="margin-top:16px;">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Age — <span style="color:#1DB954;">Spotify</span> vs <span style="color:#E58BBD;">Instagram</span></div>
+                <?php foreach ($canon as $b) : $sv = $sp_age[$b] ?? null; $iv = $ig_age[$b] ?? null; if ($sv === null && $iv === null) continue; ?>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <span style="width:46px;color:#8B90A0;font-size:12px;flex:0 0 auto;font-variant-numeric:tabular-nums;"><?php echo esc_html($b); ?></span>
+                    <div style="flex:1 1 auto;">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;"><span style="flex:1 1 auto;height:7px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $sv !== null ? round($sv) : 0; ?>%;background:#1DB954;border-radius:5px;"></span></span><span style="width:36px;text-align:right;font-size:11px;color:#8B90A0;font-variant-numeric:tabular-nums;"><?php echo $sv !== null ? round($sv) . '%' : '—'; ?></span></div>
+                        <div style="display:flex;align-items:center;gap:6px;"><span style="flex:1 1 auto;height:7px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $iv !== null ? round($iv) : 0; ?>%;background:#E58BBD;border-radius:5px;"></span></span><span style="width:36px;text-align:right;font-size:11px;color:#8B90A0;font-variant-numeric:tabular-nums;"><?php echo $iv !== null ? round($iv) . '%' : '—'; ?></span></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <?php if (!$ig_demo && ($ig_stats || $fb_stats)) : ?>
+            <p style="color:#8B90A0;font-size:12px;margin:14px 0 0;">Connect Instagram insights to compare audience demographics — <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-social')); ?>">Social Listening →</a></p>
             <?php endif; ?>
         </div>
         <?php endif; ?>
