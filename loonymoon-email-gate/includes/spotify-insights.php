@@ -663,6 +663,15 @@ function lmeg_admin_spotify_insights() {
         </div>
         <?php endif; ?>
 
+        <!-- STALE-SNAPSHOT HINT (enriched sections need a fresh import) -------->
+        <?php
+        $has_enriched = !empty($meta['gender']) || !empty($meta['top_cities']) || !empty($releases) || !empty($playlists);
+        if ($has_s4a && !$has_enriched) : ?>
+        <div style="background:rgba(124,108,246,.10);border:1px solid rgba(124,108,246,.35);border-radius:12px;padding:12px 14px;margin-bottom:14px;max-width:1040px;color:#F4F5F7;font-size:13px;line-height:1.5;">
+            Your latest snapshot predates <strong>demographics, playlists &amp; release breakdowns</strong>. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-s4a')); ?>">Import a fresh Spotify&nbsp;for&nbsp;Artists export</a> to unlock those sections.
+        </div>
+        <?php endif; ?>
+
         <!-- FRESHNESS + LINKS ------------------------------------------------->
         <p style="<?php echo $t['muted']; ?>font-size:12px;max-width:1040px;">
             <?php if ($has_s4a) : ?>Streaming data captured <?php echo esc_html($snap->captured_date); ?> · <?php endif; ?>
