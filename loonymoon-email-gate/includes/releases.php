@@ -789,6 +789,7 @@ function lmeg_release_render_clicks_panel($rel) {
     $by      = lmeg_link_clicks_by_label($drop_id);
     $recent  = lmeg_link_clicks_recent($drop_id, 15);
     ?>
+    <?php
     $td = 'padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.07);color:#F4F5F7;font-size:13px;';
     $th = 'text-align:left;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.12);color:#8B90A0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;';
     ?>
