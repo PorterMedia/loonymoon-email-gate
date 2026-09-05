@@ -155,6 +155,15 @@ function lmeg_si_song_movers($songs28, $songs7d) {
     return ['by_title' => $by, 'biggest' => $biggest];
 }
 
+/** Extract a Spotify album id (22 chars) from a spotify:album:ID uri OR an
+ *  open.spotify.com/album/ID url. Returns '' when none. */
+function lmeg_si_spotify_album_id($s) {
+    $s = (string) $s;
+    if (preg_match('~spotify:album:([A-Za-z0-9]{22})~', $s, $m)) return $m[1];
+    if (preg_match('~open\.spotify\.com/album/([A-Za-z0-9]{22})~', $s, $m)) return $m[1];
+    return '';
+}
+
 /**
  * Filter + sort the compact release summary (from snapshot meta) by 28-day
  * streams, descending. Drops entries with no name. Returns [] when empty.
@@ -435,6 +444,19 @@ function lmeg_admin_spotify_insights() {
         <?php
         $rel_meta = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
         $releases = lmeg_si_releases_sorted($rel_meta['releases'] ?? []);
+        // Cross-link to Fanloop release pages — exact match by Spotify album id
+        // (from the release's stored links), else by normalized title.
+        $fl_by_id = []; $fl_by_title = [];
+        if ($releases && function_exists('lmeg_releases_all') && function_exists('lmeg_release_public_url')) {
+            foreach ((array) lmeg_releases_all() as $fr) {
+                $u = lmeg_release_public_url($fr);
+                if (!$u) continue;
+                $aid = lmeg_si_spotify_album_id((string) ($fr->links ?? ''));
+                if ($aid !== '') $fl_by_id[$aid] = $u;
+                $nt = strtolower(trim((string) ($fr->title ?? '')));
+                if ($nt !== '' && !isset($fl_by_title[$nt])) $fl_by_title[$nt] = $u;
+            }
+        }
         if ($releases) : $maxR = 1; foreach ($releases as $r) { $maxR = max($maxR, $r['streams']); } ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:12px;">Releases · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($releases); ?>)</span></div>
@@ -443,13 +465,17 @@ function lmeg_admin_spotify_insights() {
                     $st = (int) $r['streams']; $w = max(2, round($st / $maxR * 100));
                     $yr = ($r['date'] && strlen($r['date']) >= 4) ? substr($r['date'], 0, 4) : '';
                     $type = $r['type'] ? ucwords(strtolower(str_replace('_', ' ', $r['type']))) : '';
-                    $sub = trim(implode(' · ', array_filter([$type, $yr]))); ?>
+                    $sub = trim(implode(' · ', array_filter([$type, $yr])));
+                    $flu = '';
+                    $aid = lmeg_si_spotify_album_id($r['uri']);
+                    if ($aid !== '' && isset($fl_by_id[$aid])) $flu = $fl_by_id[$aid];
+                    elseif (isset($fl_by_title[strtolower(trim($r['name']))])) $flu = $fl_by_title[strtolower(trim($r['name']))]; ?>
                     <div style="display:flex;align-items:center;gap:12px;">
                         <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
                         <div style="flex:1 1 auto;min-width:0;">
                             <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;">
                                 <span style="color:#F4F5F7;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($r['name']); ?><?php if ($sub) : ?> <span style="color:#8B90A0;font-size:11px;font-weight:400;"><?php echo esc_html($sub); ?></span><?php endif; ?></span>
-                                <span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo number_format_i18n($st); ?></span>
+                                <span style="display:flex;align-items:center;gap:8px;flex:0 0 auto;"><?php if ($flu) : ?><a href="<?php echo esc_url($flu); ?>" target="_blank" rel="noopener" title="Open this release's Fanloop page" style="font-size:11px;text-decoration:none;">↗</a><?php endif; ?><span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($st); ?></span></span>
                             </div>
                             <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#D05FA2,#E58BBD);border-radius:6px;"></div></div>
                         </div>
