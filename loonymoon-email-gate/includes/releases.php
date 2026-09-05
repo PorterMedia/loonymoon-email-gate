@@ -789,25 +789,28 @@ function lmeg_release_render_clicks_panel($rel) {
     $by      = lmeg_link_clicks_by_label($drop_id);
     $recent  = lmeg_link_clicks_recent($drop_id, 15);
     ?>
-    <div style="max-width:720px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
-        <strong style="display:block;margin-bottom:2px;">Link clicks
-            <span style="font-weight:400;color:#6b7280;">— <?php echo (int) $total; ?> total</span></strong>
-        <p class="description" style="margin:2px 0 10px;">Every streaming / custom link on this release&rsquo;s page is tracked, including the visitor&rsquo;s IP address. Known fans&rsquo; clicks also land on their timeline.</p>
+    $td = 'padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.07);color:#F4F5F7;font-size:13px;';
+    $th = 'text-align:left;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.12);color:#8B90A0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;';
+    ?>
+    <div style="max-width:720px;background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:14px 16px;margin-bottom:16px;color:#F4F5F7;">
+        <strong style="display:block;margin-bottom:2px;color:#F4F5F7;">Link clicks
+            <span style="font-weight:400;color:#8B90A0;">— <?php echo (int) $total; ?> total</span></strong>
+        <p style="margin:2px 0 12px;color:#8B90A0;font-size:13px;">Every streaming / custom link on this release&rsquo;s page is tracked, including the visitor&rsquo;s IP address. Known fans&rsquo; clicks also land on their timeline.</p>
         <?php if (!$total): ?>
-            <p style="color:#9ca3af;margin:0;">No clicks yet.</p>
+            <p style="color:#8B90A0;margin:0;">No clicks yet.</p>
         <?php else: ?>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
                 <?php foreach ($by as $b): ?>
-                    <span style="display:inline-flex;align-items:center;gap:8px;background:#f6f7f7;border:1px solid #e5e7eb;border-radius:999px;padding:4px 12px;font-size:13px;">
-                        <strong><?php echo esc_html($b['label'] ?: '(link)'); ?></strong>
-                        <span style="color:#6b7280;"><?php echo (int) $b['clicks']; ?></span>
+                    <span style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 12px;font-size:13px;color:#F4F5F7;">
+                        <strong style="color:#F4F5F7;"><?php echo esc_html($b['label'] ?: '(link)'); ?></strong>
+                        <span style="color:#8B90A0;"><?php echo (int) $b['clicks']; ?></span>
                     </span>
                 <?php endforeach; ?>
             </div>
             <details>
-                <summary style="cursor:pointer;color:#2271b1;font-size:13px;">Recent clicks (with IP)</summary>
-                <table class="widefat striped" style="margin-top:8px;">
-                    <thead><tr><th>When</th><th>Link</th><th>IP</th><th>Fan</th></tr></thead>
+                <summary style="cursor:pointer;color:#E58BBD;font-size:13px;">Recent clicks (with IP)</summary>
+                <table style="margin-top:8px;width:100%;border-collapse:collapse;">
+                    <thead><tr><th style="<?php echo $th; ?>">When</th><th style="<?php echo $th; ?>">Link</th><th style="<?php echo $th; ?>">IP</th><th style="<?php echo $th; ?>">Fan</th></tr></thead>
                     <tbody>
                     <?php
                     global $wpdb;
@@ -821,10 +824,10 @@ function lmeg_release_render_clicks_panel($rel) {
                         }
                         ?>
                         <tr>
-                            <td style="white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($c->created_at))); ?></td>
-                            <td><?php echo esc_html($c->label ?: '(link)'); ?></td>
-                            <td style="font-family:monospace;"><?php echo esc_html($c->ip ?: '—'); ?></td>
-                            <td><?php echo $fan ? esc_html($fan) : '<span style="color:#9ca3af;">anon</span>'; ?></td>
+                            <td style="<?php echo $td; ?>white-space:nowrap;"><?php echo esc_html(date_i18n('M j, g:i a', strtotime($c->created_at))); ?></td>
+                            <td style="<?php echo $td; ?>"><?php echo esc_html($c->label ?: '(link)'); ?></td>
+                            <td style="<?php echo $td; ?>font-family:monospace;"><?php echo esc_html($c->ip ?: '—'); ?></td>
+                            <td style="<?php echo $td; ?>"><?php echo $fan ? esc_html($fan) : '<span style="color:#8B90A0;">anon</span>'; ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
