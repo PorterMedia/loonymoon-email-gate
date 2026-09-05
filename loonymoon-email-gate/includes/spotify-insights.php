@@ -490,17 +490,22 @@ function lmeg_admin_spotify_insights() {
     $az_saveRate = ($snap && $snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null;
     $az_sum = 0; $az_max = 0; $az_topTrack = '';
     foreach ($az_songs as $s) { $v = (int) ($s['streams'] ?? 0); $az_sum += $v; if ($v > $az_max) { $az_max = $v; $az_topTrack = (string) ($s['title'] ?? ''); } }
-    // newest release (by date) + its performance vs the catalog median.
+    // Newest release + performance. S4A's releases endpoint returns EMPTY dates,
+    // so the release DATE comes from the public Spotify API (albums), while stream
+    // counts come from S4A — matched by normalized name.
     $az_lastRel = null;
     $az_relRaw = array_values(array_filter((array) ($az_meta['releases'] ?? []), 'is_array'));
-    if ($az_relRaw) {
-        usort($az_relRaw, function ($a, $b) { return strcmp((string) ($b['date'] ?? ''), (string) ($a['date'] ?? '')); });
-        $r0 = $az_relRaw[0];
+    $az_apiRel = ($has_api && !empty($ov['releases'])) ? $ov['releases'] : [];
+    if ($az_apiRel) {
+        usort($az_apiRel, function ($a, $b) { return strcmp((string) ($b['date'] ?? ''), (string) ($a['date'] ?? '')); });
+        $r0 = $az_apiRel[0];
         if (!empty($r0['date']) && ($ts = strtotime((string) $r0['date']))) {
-            $st = array_map(function ($r) { return (int) ($r['streams'] ?? 0); }, $az_relRaw);
-            sort($st); $med = $st ? $st[intdiv(count($st), 2)] : 0;
+            $byName = [];
+            foreach ($az_relRaw as $r) $byName[strtolower(trim((string) ($r['name'] ?? '')))] = (int) ($r['streams'] ?? 0);
+            $streams = $byName[strtolower(trim((string) ($r0['name'] ?? '')))] ?? null;
+            $st = array_values($byName); sort($st); $med = $st ? $st[intdiv(count($st), 2)] : 0;
             $az_lastRel = ['name' => (string) ($r0['name'] ?? ''), 'days_ago' => (int) floor((current_time('timestamp') - $ts) / 86400),
-                'streams' => (int) ($r0['streams'] ?? 0), 'ratio' => ($med > 0 ? (int) ($r0['streams'] ?? 0) / $med : null)];
+                'streams' => $streams, 'ratio' => ($streams !== null && $med > 0 ? $streams / $med : null)];
         }
     }
     $trend = function ($vals) { $vals = array_values(array_filter((array) $vals, function ($v) { return $v !== null; })); $k = count($vals); if ($k < 2) return null; $d = (float) $vals[$k - 1] - (float) $vals[0]; return $d > 0 ? 1 : ($d < 0 ? -1 : 0); };
