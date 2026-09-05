@@ -59,6 +59,55 @@ function lmeg_si_headline($snap, $changes, $ov) {
     return $bits ? implode(' ', $bits) : '';
 }
 
+/**
+ * Normalize the S4A gender object ({female,male,nonbinary,unknown} string counts)
+ * into display rows with share-of-total. Returns [] when empty.
+ */
+function lmeg_si_gender_split($gender) {
+    if (!is_array($gender)) return [];
+    $map = [
+        'female'    => ['label' => 'Women',      'color' => '#D05FA2'],
+        'male'      => ['label' => 'Men',        'color' => '#7C6CF6'],
+        'nonbinary' => ['label' => 'Non-binary', 'color' => '#34D399'],
+        'unknown'   => ['label' => 'Unknown',    'color' => '#8B90A0'],
+    ];
+    $total = 0;
+    foreach ($map as $k => $_) { $total += (int) ($gender[$k] ?? 0); }
+    if ($total <= 0) return [];
+    $rows = [];
+    foreach ($map as $k => $m) {
+        $c = (int) ($gender[$k] ?? 0);
+        if ($c <= 0) continue;
+        $rows[] = ['label' => $m['label'], 'color' => $m['color'], 'count' => $c, 'pct' => $c / $total * 100];
+    }
+    return $rows;
+}
+
+/**
+ * Age-bucket totals from the S4A gender_by_age object. Each bucket total is the
+ * sum of its per-gender split (falls back to the scalar age_X_Y if present).
+ * Returns ordered [ ['label'=>'18–24','total'=>N], … ], [] when empty.
+ */
+function lmeg_si_age_rows($gba) {
+    if (!is_array($gba)) return [];
+    $buckets = [
+        'age_0_17' => '0–17', 'age_18_24' => '18–24', 'age_25_34' => '25–34',
+        'age_35_44' => '35–44', 'age_45_54' => '45–54', 'age_55_64' => '55–64', 'age_65' => '65+',
+    ];
+    $rows = [];
+    foreach ($buckets as $key => $label) {
+        $total = 0;
+        $split = $gba[$key . '_gender'] ?? null;
+        if (is_array($split)) {
+            foreach (['female', 'male', 'nonbinary', 'unknown'] as $g) { $total += (int) ($split[$g] ?? 0); }
+        } elseif (isset($gba[$key]) && is_scalar($gba[$key])) {
+            $total = (int) $gba[$key];
+        }
+        if ($total > 0) $rows[] = ['label' => $label, 'total' => $total];
+    }
+    return $rows;
+}
+
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
@@ -211,6 +260,64 @@ function lmeg_admin_spotify_insights() {
                 </div>
                 <?php endforeach; ?>
             </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- WHO'S LISTENING (gender · age · cities) -------------------------->
+        <?php
+        $meta   = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
+        $gender = lmeg_si_gender_split($meta['gender'] ?? null);
+        $ages   = lmeg_si_age_rows($meta['gender_by_age'] ?? null);
+        $cities = array_values(array_filter((array) ($meta['top_cities'] ?? []), 'is_array'));
+        if ($gender || $ages || $cities) : ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;max-width:1040px;margin-bottom:14px;">
+            <?php if ($gender) : ?>
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:12px;">Who's listening · gender</div>
+                <div style="display:flex;height:12px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.06);margin-bottom:12px;">
+                    <?php foreach ($gender as $g) : ?>
+                        <div title="<?php echo esc_attr($g['label']); ?>" style="width:<?php echo round($g['pct'], 2); ?>%;background:<?php echo $g['color']; ?>;"></div>
+                    <?php endforeach; ?>
+                </div>
+                <?php foreach ($gender as $g) : ?>
+                    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;">
+                        <span style="width:9px;height:9px;border-radius:3px;background:<?php echo $g['color']; ?>;flex:0 0 auto;"></span>
+                        <span style="color:#F4F5F7;flex:1 1 auto;"><?php echo esc_html($g['label']); ?></span>
+                        <span style="color:#F4F5F7;font-variant-numeric:tabular-nums;font-weight:600;"><?php echo rtrim(rtrim(number_format($g['pct'], 1), '0'), '.'); ?>%</span>
+                        <span style="color:#8B90A0;font-variant-numeric:tabular-nums;min-width:64px;text-align:right;"><?php echo number_format_i18n($g['count']); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($ages) : $maxAge = 1; foreach ($ages as $r) { $maxAge = max($maxAge, $r['total']); } ?>
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:12px;">By age</div>
+                <?php foreach ($ages as $r) : $w = max(2, round($r['total'] / $maxAge * 100)); ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                        <span style="width:44px;color:#8B90A0;font-size:12px;flex:0 0 auto;font-variant-numeric:tabular-nums;"><?php echo esc_html($r['label']); ?></span>
+                        <span style="flex:1 1 auto;height:8px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:6px;"></span></span>
+                        <span style="color:#F4F5F7;font-size:12px;font-variant-numeric:tabular-nums;min-width:56px;text-align:right;flex:0 0 auto;"><?php echo number_format_i18n($r['total']); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($cities) : $maxCity = 1; foreach ($cities as $c) { $maxCity = max($maxCity, (int) ($c['num'] ?? 0)); } ?>
+            <div style="<?php echo $card; ?>max-height:360px;overflow:auto;">
+                <div style="<?php echo $lbl; ?>margin-bottom:12px;">Top cities <span style="color:#8B90A0;font-weight:400;">(<?php echo count($cities); ?>)</span></div>
+                <?php foreach (array_slice($cities, 0, 12) as $c) :
+                    $name = (string) ($c['name'] ?? ''); $num = (int) ($c['num'] ?? 0);
+                    $loc  = trim(implode(', ', array_filter([(string) ($c['region'] ?? ''), (string) ($c['country'] ?? '')])));
+                    $w = max(2, round($num / $maxCity * 100)); ?>
+                    <div style="margin-bottom:9px;">
+                        <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:3px;font-size:13px;">
+                            <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($name); ?><?php if ($loc) : ?> <span style="color:#8B90A0;font-size:11px;"><?php echo esc_html($loc); ?></span><?php endif; ?></span>
+                            <span style="color:#F4F5F7;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo number_format_i18n($num); ?></span>
+                        </div>
+                        <div style="height:5px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#1DB954,#34D399);border-radius:6px;"></div></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 

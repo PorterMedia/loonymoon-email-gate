@@ -120,6 +120,11 @@ function lmeg_s4a_parse($data) {
                 'listening_now'       => $a['listening_now'] ?? null,
                 'pct_streams_from_mal'=> $ad['pct_streams_from_mal'] ?? null,
                 'spotify_artist_id'   => $a['spotify_artist_id'] ?? null,
+                // Listener demographics + city geography the pull fetches — kept in
+                // meta so the Insights page can show WHO and WHERE (no schema change).
+                'gender'              => $a['gender'] ?? null,
+                'gender_by_age'       => $a['gender_by_age'] ?? null,
+                'top_cities'          => array_values((array) ($a['top_cities'] ?? [])),
             ]),
         ];
     }
