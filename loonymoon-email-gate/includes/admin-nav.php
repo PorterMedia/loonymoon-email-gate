@@ -42,7 +42,7 @@ function lmeg_admin_hub_map() {
             ['lmeg-store-tools', 'Tools'],
         ]],
         'engage'    => ['label' => 'Engage',    'pages' => [
-            ['lmeg-contests', 'Contests'], ['lmeg-surveys', 'Surveys'], ['lmeg-tour', 'Tour'],
+            ['lmeg-contests', 'Contests'], ['lmeg-surveys', 'Surveys'], ['lmeg-collect', 'Collect Content'], ['lmeg-tour', 'Tour'],
             ['lmeg-bio', 'Smart Bio'], ['lmeg-shortcodes', 'Shortcodes'],
         ]],
         'social'    => ['label' => 'Social',    'pages' => [
