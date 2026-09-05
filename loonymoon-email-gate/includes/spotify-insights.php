@@ -155,6 +155,28 @@ function lmeg_si_song_movers($songs28, $songs7d) {
     return ['by_title' => $by, 'biggest' => $biggest];
 }
 
+/**
+ * Filter + sort the compact release summary (from snapshot meta) by 28-day
+ * streams, descending. Drops entries with no name. Returns [] when empty.
+ */
+function lmeg_si_releases_sorted($releases) {
+    $out = [];
+    foreach ((array) $releases as $r) {
+        if (!is_array($r)) continue;
+        $name = trim((string) ($r['name'] ?? ''));
+        if ($name === '') continue;
+        $out[] = [
+            'name'    => $name,
+            'streams' => (int) ($r['streams'] ?? 0),
+            'type'    => (string) ($r['type'] ?? ''),
+            'date'    => (string) ($r['date'] ?? ''),
+            'uri'     => (string) ($r['uri'] ?? ''),
+        ];
+    }
+    usort($out, function ($a, $b) { return $b['streams'] <=> $a['streams']; });
+    return $out;
+}
+
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
@@ -321,6 +343,34 @@ function lmeg_admin_spotify_insights() {
                         <?php endif; ?>
                     </div>
                 </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- RELEASES (by streams) --------------------------------------------->
+        <?php
+        $rel_meta = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
+        $releases = lmeg_si_releases_sorted($rel_meta['releases'] ?? []);
+        if ($releases) : $maxR = 1; foreach ($releases as $r) { $maxR = max($maxR, $r['streams']); } ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:12px;">Releases · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($releases); ?>)</span></div>
+            <div style="display:flex;flex-direction:column;gap:9px;max-height:420px;overflow:auto;">
+                <?php foreach (array_slice($releases, 0, 20) as $i => $r) :
+                    $st = (int) $r['streams']; $w = max(2, round($st / $maxR * 100));
+                    $yr = ($r['date'] && strlen($r['date']) >= 4) ? substr($r['date'], 0, 4) : '';
+                    $type = $r['type'] ? ucwords(strtolower(str_replace('_', ' ', $r['type']))) : '';
+                    $sub = trim(implode(' · ', array_filter([$type, $yr]))); ?>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
+                        <div style="flex:1 1 auto;min-width:0;">
+                            <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;">
+                                <span style="color:#F4F5F7;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($r['name']); ?><?php if ($sub) : ?> <span style="color:#8B90A0;font-size:11px;font-weight:400;"><?php echo esc_html($sub); ?></span><?php endif; ?></span>
+                                <span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo number_format_i18n($st); ?></span>
+                            </div>
+                            <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#D05FA2,#E58BBD);border-radius:6px;"></div></div>
+                        </div>
+                    </div>
                 <?php endforeach; ?>
             </div>
         </div>

@@ -128,6 +128,18 @@ function lmeg_s4a_parse($data) {
                 // 7-day per-song streams — lets the Insights page compute momentum
                 // (recent 7d pace vs the 28d run-rate) from a single snapshot.
                 'songs_7d'            => array_values((array) ($a['top_songs_last_7d'] ?? [])),
+                // Per-release 28d streams — a COMPACT summary only (the full
+                // raw.releases with recordingStats is ~50KB and would blow the
+                // TEXT meta column; name/streams/type/date/uri is ~2KB).
+                'releases'            => array_map(function ($r) {
+                    return [
+                        'name'    => (string) ($r['albumName'] ?? ''),
+                        'streams' => (int) ($r['numStreams'] ?? 0),
+                        'type'    => (string) ($r['releaseType'] ?? ''),
+                        'date'    => (string) ($r['releaseDate'] ?? ''),
+                        'uri'     => (string) ($r['albumUri'] ?? ''),
+                    ];
+                }, array_values((array) ($a['releases'] ?? ($a['raw']['releases']['releases'] ?? [])))),
             ]),
         ];
     }
