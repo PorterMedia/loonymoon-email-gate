@@ -177,6 +177,14 @@ function lmeg_si_releases_sorted($releases) {
     return $out;
 }
 
+/** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
+function lmeg_si_pct_change($cur, $prev) {
+    if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
+    $cur = (float) $cur; $prev = (float) $prev;
+    if ($prev == 0.0) return null;
+    return ($cur - $prev) / $prev * 100.0;
+}
+
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
@@ -188,6 +196,19 @@ function lmeg_admin_spotify_insights() {
         : (in_array(lmeg_artist(), $artists, true) ? lmeg_artist() : ($artists[0] ?? lmeg_artist()));
     $snap    = function_exists('lmeg_s4a_latest') ? lmeg_s4a_latest($sel) : null;
     $changes = ($snap && $snap->changes) ? (array) json_decode($snap->changes, true) : [];
+
+    // Period-over-period: when the S4A export didn't carry its own change_pct
+    // (e.g. the URL-pull pipeline doesn't), compute each KPI's change vs the
+    // previous snapshot so the chips + "since last capture" note come alive.
+    $prev = ($snap && function_exists('lmeg_s4a_prev')) ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
+    if ($prev) {
+        foreach (['monthly_listeners', 'streams', 'mal', 'saves', 'playlist_adds', 'followers', 'super_listeners', 'new_active'] as $mk) {
+            if (($changes[$mk] ?? null) === null || $changes[$mk] === '') {
+                $pc = lmeg_si_pct_change($snap->$mk ?? null, $prev->$mk ?? null);
+                if ($pc !== null) $changes[$mk] = round($pc, 1);
+            }
+        }
+    }
 
     $ov = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null;
     if (is_wp_error($ov)) $ov = null;
@@ -262,6 +283,10 @@ function lmeg_admin_spotify_insights() {
             if ($popularity !== null) echo $kpi('Popularity', $popularity, null, '/100');
             ?>
         </div>
+
+        <?php if ($prev) : $days = max(1, (int) round((strtotime($snap->captured_date) - strtotime($prev->captured_date)) / 86400)); ?>
+        <p style="color:#8B90A0;font-size:12px;margin:-4px 0 14px;max-width:1040px;">Change vs your previous capture — <?php echo esc_html($prev->captured_date); ?>, <?php echo (int) $days; ?> day<?php echo $days === 1 ? '' : 's'; ?> earlier.</p>
+        <?php endif; ?>
 
         <!-- TRENDS ------------------------------------------------------------>
         <?php

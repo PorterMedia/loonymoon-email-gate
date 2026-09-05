@@ -176,6 +176,16 @@ function lmeg_s4a_latest($artist = null, $window = '28d') {
     ));
 }
 
+/** The snapshot immediately before $before_date (same artist+window), or null. */
+function lmeg_s4a_prev($artist, $window, $before_date) {
+    global $wpdb;
+    $artist = $artist ?: lmeg_artist();
+    return $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM " . lmeg_s4a_table() . " WHERE artist = %s AND window = %s AND captured_date < %s ORDER BY captured_date DESC LIMIT 1",
+        $artist, $window, $before_date
+    ));
+}
+
 /** A metric's value series over time (oldest→newest) for the trend chart. */
 function lmeg_s4a_series($metric, $artist = null, $window = '28d', $limit = 60) {
     global $wpdb;
