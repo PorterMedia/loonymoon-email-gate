@@ -324,6 +324,91 @@ function lmeg_si_pct_change($cur, $prev) {
     return ($cur - $prev) / $prev * 100.0;
 }
 
+/**
+ * Fanloop's own analysis layer — reads the assembled data context and emits
+ * ranked, plain-language findings + recommendations. Pure (no WP calls beyond
+ * number_format_i18n); every rule fires only when its data is present and clears
+ * a threshold, so nothing is fabricated. Returns up to 7 findings, most
+ * actionable first: ['type'=>opportunity|watch|insight|strength,'title','detail'].
+ */
+function lmeg_si_analyze($c) {
+    $F = [];
+    $p = function ($v) { return rtrim(rtrim(number_format((float) $v, 1), '0'), '.'); };
+    $n = function ($v) { return function_exists('number_format_i18n') ? number_format_i18n((int) $v) : number_format((int) $v); };
+
+    // Rising track — promote while hot.
+    if (!empty($c['mover_up']) && ($c['mover_up']['pace'] ?? 0) >= 10) {
+        $m = $c['mover_up'];
+        $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is gaining',
+            'detail' => 'It ran ' . $p($m['pace']) . '% above its 28-day pace (' . $n($m['s7']) . ' streams in the last 7 days). Put promo behind it while it’s moving.'];
+    }
+    // Falling flagship — watch.
+    if (!empty($c['mover_down']) && ($c['mover_down']['pace'] ?? 0) <= -20) {
+        $m = $c['mover_down'];
+        $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
+            'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
+    }
+    // Playlist dependency vs editorial support.
+    if (isset($c['pl_mix']['Algorithmic'])) {
+        $alg = $c['pl_mix']['Algorithmic']; $ed = $c['pl_mix']['Editorial'] ?? 0;
+        if ($alg >= 70) $F[] = ['type' => 'watch', 'title' => 'Heavily algorithm-driven',
+            'detail' => $p($alg) . '% of your playlist streams come from Spotify’s own algorithm (Radio/Mixes/DJ) and only ' . $p($ed) . '% from editorial. Pitching editorial playlists would de-risk that reach.'];
+        elseif ($ed >= 25) $F[] = ['type' => 'strength', 'title' => 'Editorial support is solid',
+            'detail' => $p($ed) . '% of your playlist streams come from editorial placements.'];
+    }
+    // Cross-platform gender gap.
+    if (isset($c['sp_women'], $c['ig_women']) && $c['sp_women'] !== null && $c['ig_women'] !== null) {
+        $gap = $c['sp_women'] - $c['ig_women'];
+        if (abs($gap) >= 8) $F[] = ['type' => 'insight', 'title' => 'Who streams you ≠ who follows you',
+            'detail' => 'Your Spotify audience is ' . $p(abs($gap)) . ' points ' . ($gap > 0 ? 'more female' : 'more male') . ' than your Instagram following. The people streaming you aren’t exactly your social crowd — worth tailoring content to each.'];
+    }
+    // Cross-platform age skew.
+    if (!empty($c['sp_core_age']) && !empty($c['ig_core_age']) && $c['sp_core_age'] !== $c['ig_core_age']) {
+        $F[] = ['type' => 'insight', 'title' => 'Streaming and social skew different ages',
+            'detail' => 'Your Spotify core is ' . $c['sp_core_age'] . ' while your Instagram core is ' . $c['ig_core_age'] . '. Match each platform’s tone to who’s actually there.'];
+    }
+    // Geography gap.
+    if (!empty($c['sp_top_city']) && !empty($c['ig_top_city']) && strcasecmp($c['sp_top_city'], $c['ig_top_city']) !== 0) {
+        $F[] = ['type' => 'insight', 'title' => 'Reach and streams peak in different cities',
+            'detail' => $c['sp_top_city'] . ' leads your Spotify streams while ' . $c['ig_top_city'] . ' leads your Instagram — a good split for local ads vs. touring routing.'];
+    }
+    // Listener→follower conversion.
+    if (!empty($c['monthly_listeners']) && !empty($c['followers']) && $c['monthly_listeners'] >= 2 * $c['followers']) {
+        $F[] = ['type' => 'opportunity', 'title' => 'Turn listeners into followers',
+            'detail' => $n($c['monthly_listeners']) . ' people listened this month but only ' . $n($c['followers']) . ' follow you on Spotify. A follow CTA converts casual listens into a base that hears every release on day one.'];
+    }
+    // Social ↔ streaming growth direction.
+    if (isset($c['streams_trend'], $c['social_trend']) && $c['streams_trend'] !== null && $c['social_trend'] !== null) {
+        if ($c['streams_trend'] > 0 && $c['social_trend'] > 0) $F[] = ['type' => 'strength', 'title' => 'Growing on both fronts',
+            'detail' => 'Streams and your Instagram following are trending up together — the momentum is broad-based, not just one channel.'];
+        elseif ($c['social_trend'] > 0 && $c['streams_trend'] <= 0) $F[] = ['type' => 'watch', 'title' => 'Social up, streams flat',
+            'detail' => 'Your following is growing but streams aren’t following yet — posts may not be pushing people to listen. Add a clear “listen now” CTA.'];
+        elseif ($c['streams_trend'] > 0 && $c['social_trend'] <= 0) $F[] = ['type' => 'opportunity', 'title' => 'Streams up, social flat',
+            'detail' => 'Streaming is rising without matching social growth — capture these new listeners with a follow/subscribe push before they drift.'];
+    }
+    // Save rate.
+    if (isset($c['save_rate']) && $c['save_rate'] !== null) {
+        if ($c['save_rate'] >= 5) $F[] = ['type' => 'strength', 'title' => 'Listeners are keeping your music',
+            'detail' => 'A ' . $p($c['save_rate']) . '% save rate is strong — real fan intent, not just passive plays.'];
+        elseif ($c['save_rate'] < 2) $F[] = ['type' => 'opportunity', 'title' => 'Low save rate',
+            'detail' => 'Only ' . $p($c['save_rate']) . '% of listeners saved a track. Prompt saves in your posts and release copy — saves feed the algorithm.'];
+    }
+    // Catalog concentration.
+    if (isset($c['top_track_share']) && $c['top_track_share'] !== null && !empty($c['top_track']) && $c['top_track_share'] >= 40) {
+        $F[] = ['type' => 'watch', 'title' => 'One track carries a lot',
+            'detail' => '“' . $c['top_track'] . '” is ' . $p($c['top_track_share']) . '% of your listed streams. Great song — but spread promotion so you’re not reliant on it.'];
+    }
+    // Loyal core.
+    if (isset($c['active_share']) && $c['active_share'] !== null && $c['active_share'] >= 60) {
+        $F[] = ['type' => 'strength', 'title' => 'Loyal core',
+            'detail' => $p($c['active_share']) . '% of streams come from your most active listeners — a dependable base to launch releases to.'];
+    }
+
+    $order = ['opportunity' => 0, 'watch' => 1, 'insight' => 2, 'strength' => 3];
+    usort($F, function ($a, $b) use ($order) { return ($order[$a['type']] ?? 9) <=> ($order[$b['type']] ?? 9); });
+    return array_slice($F, 0, 7);
+}
+
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
@@ -363,6 +448,48 @@ function lmeg_admin_spotify_insights() {
     $followers  = $has_api && !empty($ov['followers']) ? (int) $ov['followers']
                 : ($snap && $snap->followers !== null ? (int) $snap->followers : null);
     $popularity = $has_api ? (int) ($ov['popularity'] ?? 0) : null;
+
+    // ---- assemble the analysis context (Fanloop's own findings) --------------
+    $az_meta  = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
+    $az_songs = $has_s4a ? array_values(array_filter((array) json_decode((string) $snap->top_songs, true), 'is_array')) : [];
+    $az_mv    = lmeg_si_song_movers($az_songs, (array) ($az_meta['songs_7d'] ?? []));
+    $az_down  = null;
+    foreach ($az_songs as $s) { $t = strtolower(trim((string) ($s['title'] ?? ''))); $d = $az_mv['by_title'][$t] ?? null;
+        if ($d && $d['pace'] !== null && $d['pace'] < 0 && ($az_down === null || $d['pace'] < $az_down['pace'])) $az_down = ['title' => (string) $s['title'], 'pace' => $d['pace']]; }
+    $az_mix = []; foreach (lmeg_si_playlist_mix($has_s4a ? (array) json_decode((string) $snap->top_playlists, true) : []) as $r) $az_mix[$r['label']] = $r['pct'];
+    $wpct = function ($ng) { if (!$ng) return null; foreach ($ng['rows'] as $r) if ($r['label'] === 'Women') return $r['pct']; return 0.0; };
+    $coreAge = function ($m) { if (!$m) return null; $b = null; $mx = -1; foreach ($m as $k => $v) if ($v > $mx) { $mx = $v; $b = $k; } return $b; };
+    $az_spCities = lmeg_si_city_list($az_meta['top_cities'] ?? [], 1);
+    $az_igCities = lmeg_si_city_list(($ig_demo['city'] ?? []), 1);
+    $az_saveRate = ($snap && $snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null;
+    $az_sum = 0; $az_max = 0; $az_topTrack = '';
+    foreach ($az_songs as $s) { $v = (int) ($s['streams'] ?? 0); $az_sum += $v; if ($v > $az_max) { $az_max = $v; $az_topTrack = (string) ($s['title'] ?? ''); } }
+    $trend = function ($vals) { $vals = array_values(array_filter((array) $vals, function ($v) { return $v !== null; })); $k = count($vals); if ($k < 2) return null; $d = (float) $vals[$k - 1] - (float) $vals[0]; return $d > 0 ? 1 : ($d < 0 ? -1 : 0); };
+    $az_streamsTrend = ($has_s4a && function_exists('lmeg_s4a_series')) ? $trend(array_map(function ($r) { return (int) $r->v; }, lmeg_s4a_series('streams', $sel, $snap->window))) : null;
+    $az_socialTrend = null;
+    if (function_exists('lmeg_social_snapshots') && function_exists('lmeg_social_series_stats')) {
+        $igs = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
+        if (!empty($igs['vals']) && count($igs['vals']) >= 2) $az_socialTrend = $igs['delta'] > 0 ? 1 : ($igs['delta'] < 0 ? -1 : 0);
+    }
+    $findings = lmeg_si_analyze([
+        'mover_up'          => $az_mv['biggest'] ?? null,
+        'mover_down'        => $az_down,
+        'pl_mix'            => $az_mix,
+        'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
+        'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
+        'sp_core_age'       => $coreAge(lmeg_si_norm_age(lmeg_si_age_rows($az_meta['gender_by_age'] ?? null))),
+        'ig_core_age'       => $coreAge(lmeg_si_norm_age(($ig_demo['age'] ?? null))),
+        'sp_top_city'       => $az_spCities ? $az_spCities[0]['name'] : null,
+        'ig_top_city'       => $az_igCities ? $az_igCities[0]['name'] : null,
+        'monthly_listeners' => $snap ? (int) $snap->monthly_listeners : null,
+        'followers'         => $followers,
+        'streams_trend'     => $az_streamsTrend,
+        'social_trend'      => $az_socialTrend,
+        'save_rate'         => $az_saveRate,
+        'top_track_share'   => $az_sum > 0 ? $az_max / $az_sum * 100 : null,
+        'top_track'         => $az_topTrack,
+        'active_share'      => isset($az_meta['pct_streams_from_mal']) && $az_meta['pct_streams_from_mal'] !== null ? (float) $az_meta['pct_streams_from_mal'] : null,
+    ]);
     ?>
     <div class="wrap lmeg-admin">
         <h1>Fanloop — Spotify Insights</h1>
@@ -408,6 +535,27 @@ function lmeg_admin_spotify_insights() {
                 <a class="button" href="<?php echo esc_url($ov['url']); ?>" target="_blank" rel="noopener" style="flex:0 0 auto;">Open on Spotify ↗</a>
             <?php endif; ?>
         </div>
+
+        <!-- ANALYSIS (Fanloop's own findings) -------------------------------->
+        <?php if ($findings) :
+            $ftok = ['opportunity' => ['#7C6CF6', 'Opportunity'], 'watch' => ['#F59E0B', 'Watch'], 'insight' => ['#E58BBD', 'Insight'], 'strength' => ['#34D399', 'Strength']];
+        ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin:12px 0 14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;">What the data says <span style="color:#8B90A0;font-weight:400;">· Fanloop analysis</span></div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;">Auto-generated from your streaming + social data — the most actionable items first.</p>
+            <div style="display:flex;flex-direction:column;gap:13px;">
+                <?php foreach ($findings as $f) : $tk = $ftok[$f['type']] ?? ['#8B90A0', '']; ?>
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <span style="flex:0 0 auto;margin-top:1px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:<?php echo $tk[0]; ?>;background:<?php echo $tk[0]; ?>1f;border:1px solid <?php echo $tk[0]; ?>55;border-radius:20px;padding:3px 9px;min-width:82px;text-align:center;"><?php echo esc_html($tk[1]); ?></span>
+                    <div style="flex:1 1 auto;min-width:0;">
+                        <div style="color:#F4F5F7;font-size:14px;font-weight:600;margin-bottom:2px;"><?php echo esc_html($f['title']); ?></div>
+                        <div style="color:#C9CCD6;font-size:13px;line-height:1.5;"><?php echo esc_html($f['detail']); ?></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- INSIGHT CALLOUTS ------------------------------------------------->
         <?php
