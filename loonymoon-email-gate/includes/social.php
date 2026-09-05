@@ -5,6 +5,7 @@
  *   • Audience snapshot   — IG + Spotify followers + owned fan-list, at a glance
  *   • Growth trends       — follower sparklines + per-day rate + 30-day change
  *   • Content performance — top posts by engagement, engagement rate, cadence,
+ *                           format breakdown, hashtag performance (lift vs avg),
  *                           story-mention (UGC) count
  *   • Fan sentiment       — AI over recent Instagram comments
  *   • Listening digest    — an AI brief that turns it all into "do next" actions
@@ -223,6 +224,50 @@ function lmeg_social_ig_type_breakdown() {
     }
     usort($out, function ($a, $b) { return $b['avg'] <=> $a['avg']; });
     return $out;
+}
+
+/**
+ * Hashtag performance — which hashtags in the artist's OWN recent captions
+ * correlate with the strongest posts. Derived entirely from the media we
+ * already fetch (no extra API calls), so it lights up the moment Instagram is
+ * connected. "lift" = how a hashtag's average engagement compares with the
+ * account's average post — the listening insight ("#loonybin posts do +34%").
+ *
+ * @return array|null ['avg_all'=>int, 'tags'=>[ ['tag','posts','avg','lift'], … ]]
+ */
+function lmeg_social_ig_hashtags($limit = 10, $min_posts = 2) {
+    $media = lmeg_social_ig_media(25);
+    if (count($media) < 4) return null;
+    $tags = []; $eng_all = 0; $n = 0;
+    foreach ($media as $m) {
+        $eng = (int) $m['likes'] + (int) $m['comments'];
+        $eng_all += $eng; $n++;
+        if (!preg_match_all('/#([\p{L}0-9_]{2,60})/u', (string) $m['caption'], $mm)) continue;
+        $seen = [];
+        foreach ($mm[1] as $raw) {
+            $tag = function_exists('mb_strtolower') ? mb_strtolower($raw) : strtolower($raw);
+            if (isset($seen[$tag])) continue; // count a tag once per post
+            $seen[$tag] = 1;
+            if (!isset($tags[$tag])) $tags[$tag] = ['posts' => 0, 'eng' => 0];
+            $tags[$tag]['posts']++;
+            $tags[$tag]['eng']  += $eng;
+        }
+    }
+    $avg_all = $n ? $eng_all / $n : 0;
+    $out = [];
+    foreach ($tags as $tag => $d) {
+        if ($d['posts'] < $min_posts) continue;
+        $avg = $d['eng'] / max(1, $d['posts']);
+        $out[] = [
+            'tag'   => $tag,
+            'posts' => (int) $d['posts'],
+            'avg'   => (int) round($avg),
+            'lift'  => $avg_all > 0 ? (int) round(100 * ($avg - $avg_all) / $avg_all) : 0,
+        ];
+    }
+    if (!$out) return null;
+    usort($out, function ($a, $b) { return $b['avg'] <=> $a['avg']; });
+    return ['avg_all' => (int) round($avg_all), 'tags' => array_slice($out, 0, (int) $limit)];
 }
 
 /** Story mentions received in the last N days (UGC signal). */
@@ -468,6 +513,13 @@ function lmeg_social_ai_digest($force = false) {
         if ($cs) $lines[] = "Recent " . $cs['count'] . " posts: avg " . $cs['avg_eng'] . " engagements each, " . $cs['eng_rate'] . "% engagement rate, ~" . $cs['cadence'] . " days between posts.";
         $sm = lmeg_social_story_mentions(30);
         $lines[] = "Story mentions (30d): " . $sm . ".";
+        $ht = lmeg_social_ig_hashtags();
+        if ($ht && !empty($ht['tags'])) {
+            $tops = array_slice($ht['tags'], 0, 3);
+            $bits = [];
+            foreach ($tops as $h) $bits[] = '#' . $h['tag'] . ' (' . ($h['lift'] >= 0 ? '+' : '') . $h['lift'] . '% vs avg, ' . $h['posts'] . ' posts)';
+            $lines[] = "Top-performing hashtags: " . implode(', ', $bits) . ".";
+        }
     }
     if (lmeg_fb_configured()) {
         $fb = lmeg_fb_page_stats();
@@ -614,6 +666,14 @@ function lmeg_social_demo() {
             ['label' => 'Carousels', 'count' => 6, 'avg' => 1490],
             ['label' => 'Photos', 'count' => 6, 'avg' => 1090],
         ],
+        'hashtags'   => ['avg_all' => 1360, 'tags' => [
+            ['tag' => 'softthing',  'posts' => 5, 'avg' => 2480, 'lift' => 82],
+            ['tag' => 'loonybin',   'posts' => 9, 'avg' => 1990, 'lift' => 46],
+            ['tag' => 'newmusic',   'posts' => 6, 'avg' => 1720, 'lift' => 26],
+            ['tag' => 'liveshow',   'posts' => 4, 'avg' => 1610, 'lift' => 18],
+            ['tag' => 'artpop',     'posts' => 7, 'avg' => 1180, 'lift' => -13],
+            ['tag' => 'studio',     'posts' => 3, 'avg' => 980,  'lift' => -28],
+        ]],
         'sentiment'  => [
             'positive' => 79, 'neutral' => 17, 'negative' => 4,
             'themes'     => ['the new single', 'tour dates', 'merch', 'your voice', 'the music video'],
@@ -658,6 +718,7 @@ function lmeg_admin_social() {
         $fb = $dd['fb']; $fb_stats = $dd['fb_stats']; $fb_content = $dd['fb_content'];
         $fan_ct = $dd['fan_ct']; $stories = $dd['stories']; $content = $dd['content'];
         $best_day = $dd['best_day']; $types = $dd['types'];
+        $hashtags = $dd['hashtags'];
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
@@ -673,6 +734,7 @@ function lmeg_admin_social() {
         $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
         $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
         $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
+        $hashtags = $ig_ok ? lmeg_social_ig_hashtags() : null;
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
@@ -806,6 +868,27 @@ function lmeg_admin_social() {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php endif; ?>
+
+            <?php if (!empty($hashtags) && !empty($hashtags['tags'])) :
+                $ht_max = 0; foreach ($hashtags['tags'] as $h) $ht_max = max($ht_max, (int) $h['avg']); ?>
+            <h3 style="margin:16px 0 4px;">Hashtag performance</h3>
+            <p class="description" style="max-width:820px;margin:0 0 8px;">Which hashtags in your captions ride with your strongest posts — vs your average post (<?php echo number_format_i18n($hashtags['avg_all']); ?> engagements).</p>
+            <div style="max-width:640px;">
+                <?php foreach ($hashtags['tags'] as $h) :
+                    $w    = $ht_max ? max(4, round(100 * $h['avg'] / $ht_max)) : 0;
+                    $lift = (int) $h['lift'];
+                    $lc   = $lift > 0 ? '#34D399' : ($lift < 0 ? '#8B90A0' : '#8B90A0');
+                    $ls   = ($lift > 0 ? '+' : '') . $lift . '%'; ?>
+                    <div style="display:flex;align-items:center;gap:10px;margin:7px 0;">
+                        <span style="flex:0 0 150px;font-size:13px;color:#E58BBD;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">#<?php echo esc_html($h['tag']); ?></span>
+                        <span style="flex:1;height:9px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:5px;"></span></span>
+                        <span style="flex:0 0 84px;text-align:right;font-size:12.5px;color:#F4F5F7;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($h['avg']); ?></span>
+                        <span style="flex:0 0 42px;text-align:right;font-size:11px;color:#8B90A0;"><?php echo (int) $h['posts']; ?>×</span>
+                        <span style="flex:0 0 52px;text-align:right;font-size:12px;font-weight:600;color:<?php echo $lc; ?>;"><?php echo esc_html($ls); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
             <?php endif; ?>
         <?php endif; ?>
 
