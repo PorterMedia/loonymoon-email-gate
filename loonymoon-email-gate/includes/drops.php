@@ -521,7 +521,7 @@ function lmeg_drop_styles() {
     if ($done) return '';
     $done = true;
     return '<style>
-    .lmeg-drop{max-width:440px;margin:24px auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.14);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#2f2a2c;}
+    .lmeg-drop{max-width:440px;margin:100px auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.14);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#2f2a2c;}
     .lmeg-drop--empty{padding:28px;text-align:center;color:#9a8f94;}
     .lmeg-drop__cover img{display:block;width:100%;height:auto;}
     .lmeg-drop__body{padding:24px 26px 28px;}
