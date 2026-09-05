@@ -784,6 +784,15 @@ function lmeg_social_demo() {
             'country' => ['CA' => 13380, 'US' => 7620, 'MX' => 940, 'GB' => 860, 'AU' => 520, 'DE' => 410],
             'city'    => ['Toronto' => 4820, 'Los Angeles' => 1910, 'New York City' => 1680, 'Montreal' => 1240, 'Vancouver' => 980, 'Mexico City' => 610],
         ],
+        'tt'         => ['username' => 'loonymoonchild', 'followers' => 41230, 'likes' => 1284000, 'videos' => 87],
+        'tt_videos'  => [
+            ['caption' => 'SOFT THING sped up 🖤 #newmusic', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-31T15:00:00+0000', 'views' => 412000, 'likes' => 38200, 'comments' => 1240, 'shares' => 5600],
+            ['caption' => 'studio session, which one hits 🎹', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-25T20:00:00+0000', 'views' => 288000, 'likes' => 24100, 'comments' => 2010, 'shares' => 3100],
+            ['caption' => 'the LOONYBIN behind the scenes 👀', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-19T16:00:00+0000', 'views' => 196000, 'likes' => 17400, 'comments' => 640, 'shares' => 1900],
+            ['caption' => 'acoustic snippet 🥹 should i drop it', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-13T21:00:00+0000', 'views' => 154000, 'likes' => 15900, 'comments' => 1520, 'shares' => 2200],
+            ['caption' => 'get ready with me for the show 💜', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-10T22:00:00+0000', 'views' => 121000, 'likes' => 11200, 'comments' => 430, 'shares' => 980],
+            ['caption' => 'replying to @fan the vinyl is coming 💿', 'type' => 'VIDEO', 'permalink' => '#', 'timestamp' => '2026-07-05T18:00:00+0000', 'views' => 98000, 'likes' => 8700, 'comments' => 560, 'shares' => 740],
+        ],
         'sentiment'  => [
             'positive' => 79, 'neutral' => 17, 'negative' => 4,
             'themes'     => ['the new single', 'tour dates', 'merch', 'your voice', 'the music video'],
@@ -806,7 +815,7 @@ function lmeg_social_demo() {
 
 function lmeg_social_render_post_cards($posts, $platform = 'instagram', $metrics = null) {
     if (!$posts) return;
-    $glyph = $platform === 'facebook' ? 'facebook' : 'instagram';
+    $glyph = $platform === 'facebook' ? 'facebook' : ($platform === 'tiktok' ? 'tiktok' : 'instagram');
     if ($metrics === null) {
         $metrics = [['icon' => 'heart', 'key' => 'likes'], ['icon' => 'message', 'key' => 'comments']];
     }
@@ -816,7 +825,11 @@ function lmeg_social_render_post_cards($posts, $platform = 'instagram', $metrics
         $cap = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string) ($p['caption'] ?? ''))));
         $cap = $cap !== '' ? mb_substr($cap, 0, 90) : '(no caption)';
         $type = strtoupper((string) ($p['type'] ?? ''));
-        $badge = strpos($type, 'VIDEO') !== false ? 'Reel' : (strpos($type, 'CAROUSEL') !== false ? 'Carousel' : (strpos($type, 'IMAGE') !== false ? 'Photo' : ''));
+        if ($platform === 'tiktok') {
+            $badge = ''; // every TikTok is a video — no need to label each
+        } else {
+            $badge = strpos($type, 'VIDEO') !== false ? 'Reel' : (strpos($type, 'CAROUSEL') !== false ? 'Carousel' : (strpos($type, 'IMAGE') !== false ? 'Photo' : ''));
+        }
         $thumb = (string) ($p['thumb'] ?? '');
         $href  = (string) ($p['permalink'] ?? '');
         $linkable = $href !== '' && $href !== '#';
@@ -881,6 +894,7 @@ function lmeg_admin_social() {
         $best_day = $dd['best_day']; $types = $dd['types'];
         $hashtags = $dd['hashtags'];
         $demographics = $dd['demographics'];
+        $tt = $dd['tt']; $tt_videos = $dd['tt_videos']; $tt_ok = true;
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
@@ -898,6 +912,9 @@ function lmeg_admin_social() {
         $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
         $hashtags = $ig_ok ? lmeg_social_ig_hashtags() : null;
         $demographics = $ig_ok ? lmeg_social_ig_demographics(!empty($_GET['ig_demo_refresh'])) : null;
+        $tt_ok    = function_exists('lmeg_tiktok_configured') && lmeg_tiktok_configured();
+        $tt       = $tt_ok ? lmeg_tiktok_user_info() : null;
+        $tt_videos = $tt_ok ? lmeg_tiktok_videos(12) : [];
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
@@ -916,6 +933,13 @@ function lmeg_admin_social() {
 
         <?php if (!$ig_ok) : ?>
             <div class="notice notice-info" style="max-width:900px;"><p><strong>Connect Instagram</strong> (<a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-settings')); ?>">Settings → Instagram</a>) to light up followers, top posts, story mentions, and comment sentiment — your <strong>Facebook Page</strong> comes with the same connection. Spotify + your fan list show below now.</p></div>
+        <?php endif; ?>
+        <?php if (!empty($_GET['tt_connected'])) : ?>
+            <div class="notice notice-success" style="max-width:900px;"><p><strong>TikTok connected.</strong> Follower stats and top videos are in the TikTok section below.</p></div>
+        <?php elseif (!empty($_GET['tt_saved'])) : ?>
+            <div class="notice notice-success" style="max-width:900px;"><p>TikTok keys saved. Now click <strong>Connect TikTok</strong> in the TikTok section below.</p></div>
+        <?php elseif (!empty($_GET['tt_disc'])) : ?>
+            <div class="notice notice-success" style="max-width:900px;"><p>TikTok disconnected.</p></div>
         <?php endif; ?>
 
         <h2>Audience</h2>
@@ -938,6 +962,13 @@ function lmeg_admin_social() {
                 <div style="font-size:12px;color:#8B90A0;"><?php echo (!$ov || is_wp_error($ov)) ? 'not connected' : 'followers · popularity ' . (int) $ov['popularity'] . '/100'; ?></div>
                 <?php echo $delta_html($sp_stats['delta'], $sp_stats['per_day'], $sp_stats['days']); ?>
             </div>
+            <?php if (!empty($tt_ok) && $tt) : ?>
+            <div style="<?php echo $card; ?>">
+                <?php echo lmeg_card_head('tiktok', '#F4F5F7', 'TikTok'); ?>
+                <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($tt['followers']); ?></div>
+                <div style="font-size:12px;color:#8B90A0;">followers · <?php echo number_format_i18n($tt['likes']); ?> likes</div>
+            </div>
+            <?php endif; ?>
             <div style="<?php echo $card; ?>">
                 <?php echo lmeg_card_head('users', '#7C6CF6', 'Your fan list'); ?>
                 <div style="font-size:24px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($fan_ct); ?></div>
@@ -1109,6 +1140,52 @@ function lmeg_admin_social() {
                 ['icon' => 'message', 'key' => 'comments'],
                 ['icon' => 'send', 'key' => 'shares'],
             ]); ?>
+        <?php endif; ?>
+
+        <h2 style="margin-top:24px;">TikTok</h2>
+        <?php if (!empty($tt_ok) && $tt) : ?>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:760px;margin-bottom:10px;">
+                <div style="<?php echo $card; ?>"><?php echo lmeg_card_head('tiktok', '#F4F5F7', 'Followers'); ?><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($tt['followers']); ?></div><div style="font-size:12px;color:#8B90A0;"><?php echo esc_html($tt['username'] ? '@' . $tt['username'] : 'connected'); ?></div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Total likes</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($tt['likes']); ?></div><div style="font-size:12px;color:#8B90A0;">across all videos</div></div>
+                <div style="<?php echo $card; ?>"><div style="font-weight:600;font-size:13px;">Videos</div><div style="font-size:22px;font-weight:700;color:#F4F5F7;"><?php echo number_format_i18n($tt['videos']); ?></div><div style="font-size:12px;color:#8B90A0;">posted</div></div>
+            </div>
+            <p style="margin:0 0 10px;font-size:12px;color:#8B90A0;"><?php echo esc_html($tt['username'] ? '@' . $tt['username'] : 'Connected'); ?> · <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_tiktok_disconnect'), 'lmeg_tt_disc')); ?>">Disconnect</a></p>
+            <?php if ($tt_videos) : ?>
+            <h3 style="margin:14px 0 8px;">Top TikTok posts</h3>
+            <?php lmeg_social_render_post_cards($tt_videos, 'tiktok', [
+                ['icon' => 'eye', 'key' => 'views'],
+                ['icon' => 'heart', 'key' => 'likes'],
+                ['icon' => 'message', 'key' => 'comments'],
+            ]); ?>
+            <?php else : ?>
+            <p class="description" style="max-width:820px;">Connected — no videos returned yet.</p>
+            <?php endif; ?>
+        <?php elseif (!$demo) : ?>
+            <?php
+                $tt_has_app = function_exists('lmeg_tiktok_has_app') && lmeg_tiktok_has_app();
+                $tt_msg = get_transient('lmeg_tt_oauth_msg'); if ($tt_msg) delete_transient('lmeg_tt_oauth_msg');
+                $tt_s = lmeg_get_settings();
+            ?>
+            <div style="<?php echo $dash; ?>max-width:900px;">
+                <p style="margin:0 0 4px;font-weight:600;color:#F4F5F7;">Connect TikTok</p>
+                <p class="description" style="margin:0 0 10px;">Pulls your <strong>follower count, total likes</strong> and <strong>top videos</strong> (views · likes · comments) into this dashboard. Create a free app at <a href="https://developers.tiktok.com/" target="_blank" rel="noopener">developers.tiktok.com</a> → add <strong>Login Kit</strong> → request the <code>user.info.*</code> + <code>video.list</code> scopes, then paste the keys below. Add this exact <strong>Redirect URI</strong> to the app: <code><?php echo esc_html(lmeg_tiktok_redirect_uri()); ?></code>. <em>Note: TikTok's open API doesn't share follower demographics, comment text, or sound-usage.</em></p>
+                <?php if (!empty($_GET['tt_err'])) : ?>
+                    <p class="description" style="margin:0 0 10px;color:#E58BBD;">Couldn't connect<?php echo $tt_msg ? ': "' . esc_html($tt_msg) . '"' : ' (' . esc_html(sanitize_text_field(wp_unslash($_GET['tt_err']))) . ')'; ?>.</p>
+                <?php endif; ?>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:0 0 10px;">
+                    <?php wp_nonce_field('lmeg_tt_app'); ?>
+                    <input type="hidden" name="action" value="lmeg_tiktok_save_app" />
+                    <label style="font-size:12px;color:#8B90A0;">Client Key<br><input type="text" name="tiktok_client_key" value="<?php echo esc_attr($tt_s['tiktok_client_key'] ?? ''); ?>" class="regular-text" autocomplete="off" style="min-width:220px;" /></label>
+                    <label style="font-size:12px;color:#8B90A0;">Client Secret<br><input type="password" name="tiktok_client_secret" value="<?php echo esc_attr($tt_s['tiktok_client_secret'] ?? ''); ?>" class="regular-text" autocomplete="new-password" style="min-width:220px;" /></label>
+                    <button type="submit" class="button">Save keys</button>
+                </form>
+                <?php if ($tt_has_app) : ?>
+                    <a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lmeg_tiktok_oauth_start'), 'lmeg_tt_oauth')); ?>">Connect TikTok</a>
+                <?php else : ?>
+                    <p class="description" style="margin:0;">Save your Client Key + Secret first, then a <strong>Connect TikTok</strong> button appears here.</p>
+                <?php endif; ?>
+                <a class="button button-small" href="<?php echo esc_url(add_query_arg('demo', 1)); ?>" style="margin-left:6px;">Preview with demo data</a>
+            </div>
         <?php endif; ?>
 
         <?php if ($sp_ok && $ov && !is_wp_error($ov)) : ?>
