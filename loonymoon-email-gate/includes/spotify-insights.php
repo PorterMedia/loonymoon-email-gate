@@ -108,6 +108,53 @@ function lmeg_si_age_rows($gba) {
     return $rows;
 }
 
+/**
+ * Per-song momentum from a single snapshot: compare each song's last-7-days
+ * streams against its 28-day run-rate (streams/4). A positive pace means the song
+ * is running hotter than its 28-day average — i.e. rising.
+ *
+ * @param array $songs28 [{title,streams}, …] — the 28-day song list.
+ * @param array $songs7d [{title,streams}, …] — the last-7-days song list (top N).
+ * @return array ['by_title'=>[normTitle=>['pace'=>float|null,'s7'=>int|null,'s28'=>int]],
+ *                'biggest'=>['title','pace','s7','s28']|null]
+ */
+function lmeg_si_song_movers($songs28, $songs7d) {
+    $norm = function ($s) { return strtolower(trim((string) $s)); };
+    $map7 = [];
+    $max7 = 0;
+    foreach ((array) $songs7d as $s) {
+        if (!is_array($s)) continue;
+        $t = $norm($s['title'] ?? $s['trackName'] ?? '');
+        if ($t === '') continue;
+        $v = (int) ($s['streams'] ?? 0);
+        $map7[$t] = $v;
+        $max7 = max($max7, $v);
+    }
+    $by = [];
+    $biggest = null;
+    $floor = max(100, (int) round($max7 * 0.05)); // ignore low-volume noise for the callout
+    foreach ((array) $songs28 as $s) {
+        if (!is_array($s)) continue;
+        $title = (string) ($s['title'] ?? $s['trackName'] ?? '');
+        $t = $norm($title);
+        if ($t === '') continue;
+        $s28 = (int) ($s['streams'] ?? 0);
+        $s7  = array_key_exists($t, $map7) ? (int) $map7[$t] : null;
+        $pace = null;
+        if ($s7 !== null && $s28 > 0) {
+            $expected = $s28 / 4.0;
+            if ($expected > 0) $pace = ($s7 - $expected) / $expected * 100.0;
+        }
+        $by[$t] = ['pace' => $pace, 's7' => $s7, 's28' => $s28];
+        if ($pace !== null && $pace > 0 && $s7 !== null && $s7 >= $floor) {
+            if ($biggest === null || $pace > $biggest['pace']) {
+                $biggest = ['title' => $title, 'pace' => $pace, 's7' => $s7, 's28' => $s28];
+            }
+        }
+    }
+    return ['by_title' => $by, 'biggest' => $biggest];
+}
+
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
@@ -230,9 +277,17 @@ function lmeg_admin_spotify_insights() {
         if ($songs) :
             $max = 1;
             foreach ($songs as $s) { $max = max($max, (int) ($s['streams'] ?? 0)); }
+            $meta_songs = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
+            $movers = lmeg_si_song_movers($songs, (array) ($meta_songs['songs_7d'] ?? []));
         ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:12px;">Your songs · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($songs); ?>)</span></div>
+            <?php if (!empty($movers['biggest'])) : $bm = $movers['biggest']; $bmpace = rtrim(rtrim(number_format($bm['pace'], 1), '0'), '.'); ?>
+            <div style="background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;">
+                <span style="font-size:18px;flex:0 0 auto;" aria-hidden="true">🔥</span>
+                <div style="font-size:13px;color:#F4F5F7;line-height:1.5;"><strong><?php echo esc_html($bm['title']); ?></strong> is heating up — <strong style="color:#34D399;"><?php echo number_format_i18n($bm['s7']); ?></strong> streams in the last 7 days, running <strong style="color:#34D399;"><?php echo esc_html($bmpace); ?>% above</strong> its 28-day pace.</div>
+            </div>
+            <?php endif; ?>
             <div style="display:flex;flex-direction:column;gap:9px;max-height:520px;overflow:auto;">
                 <?php foreach (array_slice($songs, 0, 40) as $i => $s) :
                     $title = (string) ($s['title'] ?? $s['trackName'] ?? '—');
@@ -244,9 +299,17 @@ function lmeg_admin_spotify_insights() {
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
                     <div style="flex:1 1 auto;min-width:0;">
+                        <?php
+                        $rp = $movers['by_title'][strtolower(trim($title))]['pace'] ?? null;
+                        $rchip = '';
+                        if ($rp !== null && abs($rp) >= 8) {
+                            $up = $rp > 0; $rc = $up ? '#34D399' : '#F87171';
+                            $rchip = '<span title="vs 28-day pace" style="font-size:11px;font-weight:600;color:' . $rc . ';margin-left:6px;">' . ($up ? '▲' : '▼') . number_format(abs($rp), 0) . '%</span>';
+                        }
+                        ?>
                         <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;">
                             <span style="color:#F4F5F7;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($title); ?></span>
-                            <span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo number_format_i18n($st); ?></span>
+                            <span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo number_format_i18n($st); echo $rchip; ?></span>
                         </div>
                         <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;">
                             <div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:6px;"></div>

@@ -125,6 +125,9 @@ function lmeg_s4a_parse($data) {
                 'gender'              => $a['gender'] ?? null,
                 'gender_by_age'       => $a['gender_by_age'] ?? null,
                 'top_cities'          => array_values((array) ($a['top_cities'] ?? [])),
+                // 7-day per-song streams — lets the Insights page compute momentum
+                // (recent 7d pace vs the 28d run-rate) from a single snapshot.
+                'songs_7d'            => array_values((array) ($a['top_songs_last_7d'] ?? [])),
             ]),
         ];
     }
