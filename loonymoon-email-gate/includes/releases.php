@@ -493,8 +493,11 @@ function lmeg_releases_admin_page() {
 
     $action = isset($_GET['action']) ? sanitize_key($_GET['action']) : '';
     if ($import_stage) $action = 'import';
-    if (!empty($_GET['demo']) && function_exists('lmeg_releases_render_demo')) $action = 'demo';   // sample release + analytics preview
     $edit   = isset($_GET['edit']) ? lmeg_release_get((int) $_GET['edit']) : null;
+    // ?demo=1: on the list → the sample release; on an edit view → THIS release
+    // with the analytics panel filled with sample data (preview the layout).
+    $demo_req = !empty($_GET['demo']);
+    if ($demo_req && !$edit && function_exists('lmeg_releases_render_demo')) $action = 'demo';
 
     echo '<div class="wrap">';
     echo '<h1 style="margin-bottom:6px;">Releases</h1>';
@@ -527,7 +530,7 @@ function lmeg_releases_admin_page() {
     } elseif ($action === 'import') {
         lmeg_releases_render_import();
     } elseif ($action === 'new' || $edit) {
-        lmeg_releases_render_form($edit);
+        lmeg_releases_render_form($edit, $demo_req && $edit);
     } else {
         lmeg_releases_render_list();
     }
@@ -1138,7 +1141,7 @@ function lmeg_release_render_clicks_panel($rel, $demo = false) {
             <span style="<?php echo $lbl; ?>">Streaming-link clicks · with IP</span>
         </div>
         <?php if (!$total): ?>
-            <div style="<?php echo $card; ?>padding:22px;color:#8B90A0;">No clicks yet — this fills in as fans tap the links on the release page.</div>
+            <div style="<?php echo $card; ?>padding:22px;color:#8B90A0;">No clicks yet — this fills in as fans tap the links on the release page.<?php if (!$demo && !empty($rel->id)): ?> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases&edit=' . (int) $rel->id . '&demo=1')); ?>" style="color:#E58BBD;">Preview with demo data →</a><?php endif; ?></div>
         <?php else: ?>
             <!-- KPI tiles -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
@@ -1261,10 +1264,14 @@ function lmeg_release_render_clicks_panel($rel, $demo = false) {
 }
 
 /** The create / edit form (the record itself; cascade wiring lands next slice). */
-function lmeg_releases_render_form($edit = null) {
+function lmeg_releases_render_form($edit = null, $demo = false) {
     if (function_exists('lmeg_media_enqueue')) lmeg_media_enqueue();
     $r = $edit ?: (object) ['id' => 0, 'title' => '', 'artwork_url' => '', 'preview_url' => '', 'release_at' => null, 'description' => '', 'links' => '', 'formats' => "Digital\nCD\nVinyl", 'status' => 'draft'];
     $release_local = $r->release_at ? date('Y-m-d\TH:i', strtotime($r->release_at)) : '';
+    if ($demo && $edit && function_exists('lmeg_demo_banner')) {
+        // Banner links back to THIS release's live view, not the list.
+        echo str_replace(admin_url('admin.php?page=lmeg-releases'), admin_url('admin.php?page=lmeg-releases&edit=' . (int) $edit->id), lmeg_demo_banner('lmeg-releases'));
+    }
     ?>
     <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
     <?php $linked = $edit ? lmeg_release_linked($edit) : []; if ($linked): ?>
@@ -1284,7 +1291,7 @@ function lmeg_releases_render_form($edit = null) {
             </div>
         </div>
     <?php endif; ?>
-    <?php if ($edit && !empty($edit->drop_id) && function_exists('lmeg_link_clicks_total')): lmeg_release_render_clicks_panel($edit); endif; ?>
+    <?php if ($edit && ($demo || !empty($edit->drop_id)) && function_exists('lmeg_link_clicks_total')): lmeg_release_render_clicks_panel($edit, (bool) $demo); endif; ?>
     <form method="post" style="max-width:720px;">
         <?php wp_nonce_field('lmeg_release_save', 'lmeg_release_nonce'); ?>
         <input type="hidden" name="lmeg_release_action" value="save">
