@@ -743,6 +743,15 @@ function lmeg_si_weekday_name($n, $plural = false) {
  * The "five rings" strip (shared by Spotify Insights and the Overview).
  * $rings from lmeg_si_fan_rings_shape / lmeg_si_fan_rings_data. Returns HTML.
  */
+/** Darken a #RRGGBB hex by a factor (0–1) — the far end of each ring tile's gradient. */
+function lmeg_si_shade($hex, $f) {
+    $hex = ltrim((string) $hex, '#');
+    if (strlen($hex) !== 6) return '#' . $hex;
+    $out = '#';
+    foreach ([0, 2, 4] as $i) { $out .= str_pad(dechex(max(0, min(255, (int) round(hexdec(substr($hex, $i, 2)) * $f)))), 2, '0', STR_PAD_LEFT); }
+    return $out;
+}
+
 function lmeg_si_render_fan_rings($rings, $card, $lbl) {
     if (!$rings) return '';
     ob_start(); ?>
@@ -755,17 +764,18 @@ function lmeg_si_render_fan_rings($rings, $card, $lbl) {
             <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
                 <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
                 <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
-                <div style="flex:1 1 0;min-width:150px;background:linear-gradient(160deg,<?php echo $r['tone']; ?>2E,rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 12px 10px;">
-                    <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;<?php echo $val === null ? 'color:#8B90A0;' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
-                    <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:7px 0 4px;">
-                        <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
+                <?php $tone = (string) $r['tone']; $deep = lmeg_si_shade($tone, 0.62); ?>
+                <div style="flex:1 1 0;min-width:150px;background:radial-gradient(120% 90% at 0% 0%,rgba(255,255,255,.22),transparent 55%),linear-gradient(135deg,<?php echo $tone; ?> 0%,<?php echo $deep; ?> 100%);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:12px 12px 10px;color:#fff;box-shadow:0 10px 26px <?php echo $tone; ?>44;">
+                    <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.25);<?php echo $val === null ? 'color:rgba(255,255,255,.6);' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
+                    <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.85);margin:7px 0 4px;">
+                        <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#fff !important;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.55);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
                     </div>
-                    <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
+                    <div style="font-size:11px;color:rgba(255,255,255,.92);line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
                     <?php if (!empty($r['change'])) : $cdir = (int) $r['change'][1]; ?>
-                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '→ '); ?><?php echo esc_html($r['change'][0]); ?></div>
+                    <div style="margin-top:6px;display:inline-block;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.22);border-radius:8px;padding:2px 7px;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '→ '); ?><?php echo esc_html($r['change'][0]); ?></div>
                     <?php endif; ?>
                     <?php if ($r['pct'] !== null) : ?>
-                    <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
+                    <div style="margin-top:6px;font-size:11px;font-weight:800;color:#fff;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:rgba(255,255,255,.82);font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
