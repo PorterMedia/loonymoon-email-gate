@@ -819,27 +819,6 @@ function lmeg_admin_spotify_insights() {
             <?php endif; ?>
         </div>
 
-        <!-- ANALYSIS (Fanloop's own findings) -------------------------------->
-        <?php if ($findings) :
-            $ftok = ['opportunity' => ['#7C6CF6', 'Opportunity'], 'watch' => ['#F59E0B', 'Watch'], 'insight' => ['#E58BBD', 'Insight'], 'strength' => ['#34D399', 'Strength']];
-        ?>
-        <div style="<?php echo $card; ?>max-width:1040px;margin:12px 0 14px;">
-            <div style="<?php echo $lbl; ?>margin-bottom:4px;">What the data says <span style="color:#8B90A0;font-weight:400;">· Fanloop analysis</span></div>
-            <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;">Auto-generated from your streaming + social data — the most actionable items first.</p>
-            <div style="display:flex;flex-direction:column;gap:13px;">
-                <?php foreach ($findings as $f) : $tk = $ftok[$f['type']] ?? ['#8B90A0', '']; ?>
-                <div style="display:flex;gap:12px;align-items:flex-start;">
-                    <span style="flex:0 0 auto;margin-top:1px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:<?php echo $tk[0]; ?>;background:<?php echo $tk[0]; ?>1f;border:1px solid <?php echo $tk[0]; ?>55;border-radius:20px;padding:3px 9px;min-width:82px;text-align:center;"><?php echo esc_html($tk[1]); ?></span>
-                    <div style="flex:1 1 auto;min-width:0;">
-                        <div style="color:#F4F5F7;font-size:14px;font-weight:600;margin-bottom:2px;"><?php echo esc_html($f['title']); ?></div>
-                        <div style="color:#C9CCD6;font-size:13px;line-height:1.5;"><?php echo esc_html($f['detail']); ?></div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <?php endif; ?>
-
         <!-- INSIGHT CALLOUTS ------------------------------------------------->
         <?php
         $callouts = lmeg_si_callouts($snap, ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : []);
@@ -869,13 +848,44 @@ function lmeg_admin_spotify_insights() {
             echo $kpi('Active listeners',  $snap ? $snap->mal : null,               $changes['mal'] ?? null);
             echo $kpi('Saves',             $snap ? $snap->saves : null,             $changes['saves'] ?? null);
             echo $kpi('Streams / listener', $snap && $snap->streams_per_listener !== null ? (float) $snap->streams_per_listener : null);
-            echo $kpi('Followers',         $followers,                              $changes['followers'] ?? null);
+            // Followers intentionally omitted here — it already shows in the Social
+            // audience tiles (Spotify) right below, so this strip stays non-redundant.
             if ($popularity !== null) echo $kpi('Popularity', $popularity, null, '/100');
             ?>
         </div>
 
         <?php if ($prev) : $days = max(1, (int) round((strtotime($snap->captured_date) - strtotime($prev->captured_date)) / 86400)); ?>
         <p style="color:#8B90A0;font-size:12px;margin:-4px 0 14px;max-width:1040px;">Change vs your previous capture — <?php echo esc_html($prev->captured_date); ?>, <?php echo (int) $days; ?> day<?php echo $days === 1 ? '' : 's'; ?> earlier.</p>
+        <?php endif; ?>
+
+        <!-- ANALYSIS (Fanloop's own findings) — compact + scrollable ---------->
+        <?php if ($findings) :
+            $ftok = ['opportunity' => ['#7C6CF6', 'Opportunity'], 'watch' => ['#F59E0B', 'Watch'], 'insight' => ['#E58BBD', 'Insight'], 'strength' => ['#34D399', 'Strength']];
+        ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin:0 0 14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;">What the data says <span style="color:#8B90A0;font-weight:400;">· Fanloop analysis</span></div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;">Auto-generated from your streaming + social data — the most actionable items first. Scroll for more.</p>
+            <div style="display:flex;flex-direction:column;gap:12px;max-height:320px;overflow-y:auto;padding-right:8px;">
+                <?php foreach ($findings as $f) : $tk = $ftok[$f['type']] ?? ['#8B90A0', '']; ?>
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <span style="flex:0 0 auto;margin-top:1px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:<?php echo $tk[0]; ?>;background:<?php echo $tk[0]; ?>1f;border:1px solid <?php echo $tk[0]; ?>55;border-radius:20px;padding:3px 9px;min-width:82px;text-align:center;"><?php echo esc_html($tk[1]); ?></span>
+                    <div style="flex:1 1 auto;min-width:0;">
+                        <div style="color:#F4F5F7;font-size:14px;font-weight:600;margin-bottom:2px;"><?php echo esc_html($f['title']); ?></div>
+                        <div style="color:#C9CCD6;font-size:13px;line-height:1.5;"><?php echo esc_html($f['detail']); ?></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- SOCIAL — audience + growth (hoisted from Social Listening) --------->
+        <?php if (function_exists('lmeg_admin_social')) : ?>
+        <div style="height:1px;background:rgba(255,255,255,.12);max-width:1040px;margin:4px 0 16px;"></div>
+        <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social</h2>
+        <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;max-width:1040px;">Your audience and growth across platforms — from your connected accounts.</p>
+        <?php lmeg_admin_social(true, 'audience_growth'); ?>
+        <div style="height:14px;"></div>
         <?php endif; ?>
 
         <!-- TRENDS ------------------------------------------------------------>
@@ -1308,9 +1318,9 @@ function lmeg_admin_spotify_insights() {
         <!-- SOCIAL (merged from Social Listening — one page) ----------------->
         <?php if (function_exists('lmeg_admin_social')) : ?>
         <div style="height:1px;background:rgba(255,255,255,.12);max-width:1040px;margin:26px 0 16px;"></div>
-        <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social</h2>
-        <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;max-width:1040px;">Your social presence — audience, growth, content, and how fans feel — from your connected accounts.</p>
-        <?php lmeg_admin_social(true); ?>
+        <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social · content &amp; sentiment</h2>
+        <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;max-width:1040px;">What you're posting, who's engaging, and how fans feel — from your connected accounts. Audience &amp; growth are up top.</p>
+        <?php lmeg_admin_social(true, 'rest'); ?>
         <?php endif; ?>
 
         <!-- STALE-SNAPSHOT HINT (enriched sections need a fresh import) -------->

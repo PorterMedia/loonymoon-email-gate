@@ -973,7 +973,7 @@ add_action('admin_menu', function () {
     add_submenu_page('lmeg', 'Social Listening', 'Social Listening', 'manage_options', 'lmeg-social', 'lmeg_admin_social');
 }, 21);
 
-function lmeg_admin_social($embed = false) {
+function lmeg_admin_social($embed = false, $only = null) {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
     $artist = function_exists('lmeg_artist') ? lmeg_artist() : get_bloginfo('name');
@@ -1051,6 +1051,7 @@ function lmeg_admin_social($embed = false) {
         <?php endif; ?>
         <?php endif; /* !$embed — page chrome (wrap + heading + notices) */ ?>
 
+        <?php if ($only !== 'rest') : /* Audience + Growth — hoisted into Insights via $only='audience_growth' */ ?>
         <h2>Audience</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:1000px;margin-bottom:8px;">
             <div style="<?php echo $card; ?>">
@@ -1123,7 +1124,9 @@ function lmeg_admin_social($embed = false) {
             <div style="<?php echo $dash; ?>"><?php echo lmeg_card_head('spotify', '#1DB954', 'Spotify'); ?><p class="description"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect</a> to track follower growth.</p></div>
             <?php endif; ?>
         </div>
+        <?php endif; /* $only !== 'rest' — end of Audience + Growth */ ?>
 
+        <?php if ($only !== 'audience_growth') : /* everything below Audience + Growth */ ?>
         <?php if ($ig_ok) : ?>
         <h2 style="margin-top:24px;">Who your followers are</h2>
         <?php if (empty($demographics)) : ?>
@@ -1470,6 +1473,7 @@ function lmeg_admin_social($embed = false) {
 
         <h2 style="margin-top:24px;">Sound usage</h2>
         <p class="description" style="max-width:820px;">Tracking where your song is used across other people's Reels/TikToks needs a third-party sound-recognition data provider (that's Cobrand's edge — a 100M-sound database). It can't be pulled from your own accounts, so it isn't part of Fanloop. If you subscribe to a provider with an API, tell me and I can wire it in.</p>
+        <?php endif; /* $only !== 'audience_growth' */ ?>
     <?php if (!$embed) : ?>
     </div>
     <?php endif; ?>
