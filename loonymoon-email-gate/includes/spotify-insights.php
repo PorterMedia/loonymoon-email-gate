@@ -483,6 +483,25 @@ function lmeg_si_analyze($c) {
         $F[] = ['type' => 'insight', 'title' => 'Reach and streams peak in different cities',
             'detail' => $c['sp_top_city'] . ' leads your Spotify streams while ' . $c['ig_top_city'] . ' leads your Instagram — a good split for local ads vs. touring routing.'];
     }
+    // Audience geographic concentration + strongest secondary markets. Uses the
+    // per-country monthly-listener breakdown (meta.countries), which no other
+    // finding touches — turns "where they listen" into an actionable call.
+    if (!empty($c['geo']['top']) && ($c['geo']['pct'] ?? null) !== null) {
+        $g = $c['geo'];
+        if ($g['pct'] >= 40) {
+            $sec = '';
+            if (!empty($g['second'])) {
+                $sec = ' Your strongest secondary market is ' . $g['second']
+                     . (!empty($g['third']) ? ', then ' . $g['third'] : '')
+                     . ' — the clearest places to target ads or route a tour.';
+            }
+            $F[] = ['type' => 'insight', 'title' => 'Your audience centers on ' . $g['top'],
+                'detail' => $p($g['pct']) . '% of your monthly listeners are in ' . $g['top'] . '.' . $sec];
+        } elseif ($g['pct'] < 25 && ($g['count'] ?? 0) >= 12) {
+            $F[] = ['type' => 'strength', 'title' => 'Your reach is global',
+                'detail' => 'No single country is more than ' . $p($g['pct']) . '% of your listeners — you’re spread across ' . (int) $g['count'] . ' markets, which is resilient, diversified reach.'];
+        }
+    }
     // Listener→follower conversion.
     if (!empty($c['monthly_listeners']) && !empty($c['followers']) && $c['monthly_listeners'] >= 2 * $c['followers']) {
         $F[] = ['type' => 'opportunity', 'title' => 'Turn listeners into followers',
@@ -615,7 +634,19 @@ function lmeg_admin_spotify_insights() {
         $igs = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
         if (!empty($igs['vals']) && count($igs['vals']) >= 2) $az_socialTrend = $igs['delta'] > 0 ? 1 : ($igs['delta'] < 0 ? -1 : 0);
     }
+    // Audience geographic concentration (from the per-country breakdown).
+    $az_ctys  = lmeg_si_country_rows((array) ($az_meta['countries'] ?? []), 3);
+    $az_geo   = null;
+    if ($az_ctys) {
+        $ml = $snap ? (int) $snap->monthly_listeners : 0;
+        $share = ($az_ctys[0]['pct'] !== null && $az_ctys[0]['pct'] > 0) ? (float) $az_ctys[0]['pct'] * 100
+               : ($ml > 0 ? $az_ctys[0]['num'] / $ml * 100 : null);
+        $gc = 0; foreach ((array) ($az_meta['countries'] ?? []) as $cc) if (is_array($cc) && (int) ($cc['num'] ?? 0) > 0) $gc++;
+        $az_geo = ['top' => $az_ctys[0]['name'], 'pct' => $share !== null ? round($share, 1) : null,
+                   'second' => $az_ctys[1]['name'] ?? null, 'third' => $az_ctys[2]['name'] ?? null, 'count' => $gc];
+    }
     $findings = lmeg_si_analyze([
+        'geo'               => $az_geo,
         'mover_up'          => $az_mv['biggest'] ?? null,
         'mover_down'        => $az_down,
         'pl_mix'            => $az_mix,
