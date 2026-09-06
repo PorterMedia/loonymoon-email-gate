@@ -508,6 +508,31 @@ function lmeg_si_digest_html() {
         $lift = lmeg_si_campaign_lift($daily['dates'], (array) ($daily['streams'] ?? []), lmeg_si_campaign_marks(14));
         if ($lift) { $L = end($lift); $rows[] = ['✉️', 'Last send → streams', esc_html($L['subject']) . ' — ' . ($L['pct'] >= 0 ? '+' : '') . $L['pct'] . '% over the 3 days after']; }
     }
+    // A recent launch (≤35 days) gets its own line: first 7 / first 28 days.
+    $sd_entries = (array) ($meta['song_daily'] ?? []);
+    $ovd = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null; if (is_wp_error($ovd)) $ovd = null;
+    $launch = lmeg_si_launch_compare((is_array($ovd) && !empty($ovd['releases'])) ? $ovd['releases'] : [], $map);
+    if ($launch && (int) $launch[0]['days'] <= 35) {
+        $L0 = $launch[0];
+        $rows[] = ['🚀', 'Launch · ' . esc_html($L0['name']), number_format_i18n($L0['first7']) . ' streams in its first 7 days' . ($L0['first28'] !== null ? ' · ' . number_format_i18n($L0['first28']) . ' in its first 28' : ' · ' . (int) $L0['days'] . ' days in')];
+    }
+    // Same engine inputs as the page, so Monday's "What to do" matches it.
+    $cm = lmeg_si_catalogue_monthly($sd_entries);
+    $moves = null; $mdays = 0;
+    if (!empty($meta['countries']) && function_exists('lmeg_s4a_at')) {
+        $base = lmeg_s4a_at($sel, $snap->window, date('Y-m-d', strtotime($snap->captured_date . ' -7 days')));
+        if ((!$base || $base->captured_date >= $snap->captured_date) && $prev) { $pm = (array) json_decode((string) $prev->meta, true); $base = (object) ['captured_date' => $prev->captured_date, 'countries' => wp_json_encode($pm['countries'] ?? [])]; }
+        if ($base && $base->captured_date < $snap->captured_date) { $moves = lmeg_si_country_movers($meta['countries'], json_decode((string) $base->countries, true)); $mdays = max(1, (int) round((strtotime($snap->captured_date) - strtotime($base->captured_date)) / 86400)); }
+    }
+    $extra_ctx = [
+        'weekday'       => lmeg_si_weekday_profile($sd_entries),
+        'quarter'       => $cm ? $cm['q90'] : null,
+        'launch'        => $launch,
+        'playlist_diff' => $prev ? lmeg_si_playlist_diff(json_decode((string) $snap->top_playlists, true), json_decode((string) $prev->top_playlists, true)) : null,
+        'prev_date'     => $prev ? (string) $prev->captured_date : null,
+        'country_moves' => $moves,
+        'moves_days'    => $mdays,
+    ];
     $html = '<h3 style="margin:22px 0 10px;">Spotify this week</h3><table style="border-collapse:collapse;">';
     foreach ($rows as $r) {
         $html .= '<tr><td style="padding:6px 10px 6px 0;font-size:18px;">' . $r[0] . '</td>'
@@ -523,7 +548,7 @@ function lmeg_si_digest_html() {
         'monthly_listeners' => (int) $snap->monthly_listeners,
         'followers'         => $fs ? (int) end($fs) : null,
         'save_rate'         => ($snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null,
-    ];
+    ] + $extra_ctx;
     $F = array_slice(lmeg_si_analyze($ctx), 0, 3);
     if ($F) {
         $html .= '<p style="margin:14px 0 6px;font-weight:600;">What to do</p><ul style="margin:0;padding-left:18px;">';
