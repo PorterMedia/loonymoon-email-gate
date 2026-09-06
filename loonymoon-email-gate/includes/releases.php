@@ -1274,6 +1274,33 @@ function lmeg_releases_render_form($edit = null, $demo = false) {
     }
     ?>
     <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
+    <?php if ($edit) :
+        // Identity card — artwork, title, when, and the public page URL (with a
+        // one-tap copy) — so the release is recognisable before the form + panels.
+        $pub  = function_exists('lmeg_release_public_url') ? (string) lmeg_release_public_url($edit) : '';
+        $when = $edit->release_at ? date_i18n('M j, Y', strtotime($edit->release_at)) : '';
+        $st   = ucfirst((string) ($edit->status ?: 'draft'));
+        $stc  = ($edit->status === 'published') ? '#1f9d63' : (($edit->status === 'scheduled') ? '#7C6CF6' : '#646970'); ?>
+        <div style="max-width:720px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;">
+            <?php if (!empty($edit->artwork_url)) : ?>
+                <img src="<?php echo esc_url($edit->artwork_url); ?>" alt="" width="72" height="72" style="width:72px;height:72px;border-radius:10px;object-fit:cover;flex:0 0 auto;box-shadow:0 2px 8px rgba(0,0,0,.18);">
+            <?php else : ?>
+                <div style="width:72px;height:72px;border-radius:10px;background:linear-gradient(135deg,#7C6CF6,#D05FA2);flex:0 0 auto;" aria-hidden="true"></div>
+            <?php endif; ?>
+            <div style="min-width:0;flex:1 1 auto;">
+                <div style="font-size:17px;font-weight:700;color:#1d2327;line-height:1.2;"><?php echo esc_html($edit->title); ?></div>
+                <div style="margin-top:4px;font-size:12px;color:#1d2327;"><span style="display:inline-block;padding:1px 8px;border-radius:20px;background:<?php echo $stc; ?>;color:#fff;font-weight:600;font-size:11px;"><?php echo esc_html($st); ?></span><?php if ($when) : ?> <span style="margin-left:6px;">Released <?php echo esc_html($when); ?></span><?php endif; ?></div>
+                <?php if ($pub) : ?>
+                <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <a href="<?php echo esc_url($pub); ?>" target="_blank" rel="noopener" style="font-size:13px;word-break:break-all;"><?php echo esc_html($pub); ?></a>
+                    <button type="button" class="button button-small" onclick="var a=this.previousElementSibling,b=this;if(navigator.clipboard){navigator.clipboard.writeText(a.href).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy link';},1500);});}">Copy link</button>
+                </div>
+                <?php else : ?>
+                <div style="margin-top:8px;font-size:12px;color:#1d2327;">No public page yet — it’s created when the release is saved.</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    <?php endif; ?>
     <?php $linked = $edit ? lmeg_release_linked($edit) : []; if ($linked): ?>
         <div style="max-width:720px;background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
             <strong style="display:block;margin-bottom:8px;">Connected pieces</strong>

@@ -591,6 +591,41 @@ function lmeg_si_weekday_profile($entries, $weeks = 12) {
             'trough_pct' => $mean > 0 ? round(($avg[$trough] - $mean) / $mean * 100, 1) : 0];
 }
 
+/**
+ * Long-range catalogue trend from the per-song daily series (top songs, up to
+ * 365 days): streams summed across songs per calendar month (the current
+ * month flagged partial with its day count), plus the last 90 days vs the 90
+ * before. Honest label: it's the TOP songs' streams, not the whole catalogue.
+ * null when fewer than ~2 months of data. Pure.
+ */
+function lmeg_si_catalogue_monthly($entries, $months = 12) {
+    $day = [];
+    foreach ((array) $entries as $e) {
+        if (!is_array($e) || empty($e['s']) || empty($e['d0'])) continue;
+        $t0 = strtotime($e['d0']); if (!$t0) continue;
+        foreach (array_values((array) $e['s']) as $i => $v) { $k = date('Y-m-d', $t0 + $i * 86400); $day[$k] = ($day[$k] ?? 0) + (int) $v; }
+    }
+    if (count($day) < 45) return null;
+    ksort($day);
+    $by = [];
+    foreach ($day as $d => $v) { $ym = substr($d, 0, 7); if (!isset($by[$ym])) $by[$ym] = ['ym' => $ym, 'streams' => 0, 'days' => 0]; $by[$ym]['streams'] += $v; $by[$ym]['days']++; }
+    $by = array_values($by);
+    $by = array_slice($by, -$months);
+    $last = end($day); $lastDate = array_key_last($day);
+    foreach ($by as &$m) {
+        $dim = (int) date('t', strtotime($m['ym'] . '-01'));
+        $m['partial'] = $m['days'] < $dim;
+        $m['label'] = date_i18n('M', strtotime($m['ym'] . '-01'));
+        $m['year']  = (int) substr($m['ym'], 0, 4);
+    }
+    unset($m);
+    // Best FULL month, and last 90 days vs the 90 before.
+    $best = null; foreach ($by as $m) { if (!$m['partial'] && ($best === null || $m['streams'] > $best['streams'])) $best = $m; }
+    $vals = array_values($day); $n = count($vals); $q = null;
+    if ($n >= 180) { $l90 = array_sum(array_slice($vals, -90)); $p90 = array_sum(array_slice($vals, -180, 90)); if ($p90 > 0) $q = ['last' => $l90, 'prior' => $p90, 'pct' => round(($l90 - $p90) / $p90 * 100, 1)]; }
+    return ['months' => $by, 'best' => $best, 'q90' => $q, 'days' => $n, 'through' => $lastDate];
+}
+
 /** Monday…Sunday names for the profile (1..7). */
 function lmeg_si_weekday_name($n, $plural = false) {
     $names = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
@@ -1026,6 +1061,15 @@ function lmeg_si_analyze($c) {
                 'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
         }
     }
+    // Long-range momentum — the last 90 days vs the 90 before (top songs).
+    // Sits above the weekly noise: a quarter is long enough to be a trend.
+    if (!empty($c['quarter']) && is_array($c['quarter']) && isset($c['quarter']['pct'])) {
+        $q = $c['quarter']; $qp = (float) $q['pct'];
+        if ($qp >= 15) $F[] = ['type' => 'strength', 'title' => 'The last quarter is your strongest',
+            'detail' => 'Your top songs did ' . $n($q['last']) . ' streams in the last 90 days — ' . $p($qp) . '% more than the 90 days before. That’s a trend, not a spike: keep the cadence that got you here.'];
+        elseif ($qp <= -15) $F[] = ['type' => 'watch', 'title' => 'The last quarter ran below the one before',
+            'detail' => 'Your top songs did ' . $n($q['last']) . ' streams in the last 90 days, ' . $p(abs($qp)) . '% fewer than the 90 before. A longer slide than a soft week — new music or a proper campaign moves this, a single post won’t.'];
+    }
     // Weekly rhythm — which day your listeners show up (top songs, 12 weeks).
     // Only worth saying when the peak is clearly above an average day.
     if (!empty($c['weekday']) && is_array($c['weekday']) && ($c['weekday']['peak_pct'] ?? 0) >= 12) {
@@ -1305,6 +1349,8 @@ function lmeg_admin_spotify_insights() {
         'song_wow'          => lmeg_si_song_wow_summary(lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? []))),
         // Day-of-week rhythm from the same per-song daily data (last 12 weeks).
         'weekday'           => lmeg_si_weekday_profile((array) ($az_meta['song_daily'] ?? [])),
+        // Long-range: last 90 days vs the 90 before (top songs).
+        'quarter'           => (($cm_ = lmeg_si_catalogue_monthly((array) ($az_meta['song_daily'] ?? []))) ? $cm_['q90'] : null),
         'pl_mix'            => $az_mix,
         'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
         'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
@@ -1575,6 +1621,26 @@ function lmeg_admin_spotify_insights() {
                         'color' => '#7C6CF6', 'uid' => 'si-followers', 'h' => 70, 'suffix' => ' followers',
                         'labels' => array_map(function ($r) { return date_i18n('M j', strtotime($r['date'])); }, $hist),
                     ]); ?>
+                </div>
+            <?php endif; ?>
+            <?php
+            // Long range — streams by month from the per-song daily data (top songs).
+            $cmo = lmeg_si_catalogue_monthly((array) ($az_meta['song_daily'] ?? []));
+            if ($cmo && count($cmo['months']) >= 2) : $mmax = 1; foreach ($cmo['months'] as $m) $mmax = max($mmax, $m['streams']); ?>
+                <div style="<?php echo $card; ?>">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px;">
+                        <div style="<?php echo $lbl; ?>">Streams by month <span style="color:#8B90A0;font-weight:400;">· top songs, <?php echo (int) round($cmo['days'] / 30); ?> months</span></div>
+                        <?php if ($cmo['q90']) : $qp = (float) $cmo['q90']['pct']; ?><div style="font-size:11px;color:#C9CCD6;">Last 90 days <strong style="color:<?php echo $qp >= 0 ? '#34D399' : '#F87171'; ?>;"><?php echo ($qp >= 0 ? '+' : '') . esc_html(rtrim(rtrim(number_format($qp, 1), '0'), '.')); ?>%</strong> vs the 90 before</div><?php endif; ?>
+                    </div>
+                    <div style="display:flex;gap:5px;align-items:flex-end;height:78px;">
+                        <?php foreach ($cmo['months'] as $m) : $h = max(3, round($m['streams'] / $mmax * 60)); $isBest = $cmo['best'] && $m['ym'] === $cmo['best']['ym']; ?>
+                        <div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;" title="<?php echo esc_attr($m['label'] . ' ' . $m['year'] . ' · ' . number_format_i18n($m['streams']) . ' streams' . ($m['partial'] ? ' (' . (int) $m['days'] . ' days so far)' : '')); ?>">
+                            <div style="width:100%;height:<?php echo $h; ?>px;border-radius:4px 4px 2px 2px;background:<?php echo $isBest ? '#34D399' : ($m['partial'] ? 'rgba(52,211,153,.35)' : 'rgba(29,185,84,.55)'); ?>;<?php echo $m['partial'] ? 'background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.18) 0 3px,transparent 3px 6px);' : ''; ?>"></div>
+                            <div style="font-size:10px;color:<?php echo $isBest ? '#F4F5F7' : '#8B90A0'; ?>;font-weight:<?php echo $isBest ? '700' : '500'; ?>;white-space:nowrap;"><?php echo esc_html($m['label']); ?></div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div style="margin-top:6px;font-size:11px;color:#8B90A0;"><?php if ($cmo['best']) : ?>Best month <strong style="color:#F4F5F7;"><?php echo esc_html($cmo['best']['label'] . ' ' . $cmo['best']['year']); ?></strong> · <?php echo number_format_i18n($cmo['best']['streams']); ?> streams · <?php endif; ?>striped = month in progress</div>
                 </div>
             <?php endif; ?>
         </div>
