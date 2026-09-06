@@ -564,7 +564,7 @@ function lmeg_social_ig_comments($max = 80) {
 
 function lmeg_social_sentiment($force = false) {
     $cache = 'lmeg_social_sentiment';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_string($c)) { $d = json_decode($c, true); if (is_array($d)) return $d; } elseif (is_array($c)) return $c; }
     if (!function_exists('lmeg_ai_configured') || !lmeg_ai_configured()) {
         return new WP_Error('lmeg_ai_unconfigured', 'Add your Anthropic API key in Settings → AI assistant to analyze sentiment.');
     }
@@ -609,7 +609,7 @@ function lmeg_social_sentiment($force = false) {
     $parsed = json_decode($text, true);
     if (!is_array($parsed)) return new WP_Error('lmeg_ai_parse', 'Unexpected AI response — try again.');
     $parsed['_count'] = count($comments);
-    set_transient($cache, $parsed, 6 * HOUR_IN_SECONDS);
+    set_transient($cache, wp_json_encode($parsed), 6 * HOUR_IN_SECONDS); // ASCII-safe: comment text carries emoji
     return $parsed;
 }
 
@@ -628,7 +628,7 @@ function lmeg_ajax_social_sentiment() {
 
 function lmeg_social_ai_digest($force = false) {
     $cache = 'lmeg_social_digest';
-    if (!$force) { $c = get_transient($cache); if (is_string($c) && $c !== '') return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_string($c) && $c !== '') { $d = json_decode($c, true); return (is_array($d) && isset($d['t'])) ? (string) $d['t'] : $c; } }
     if (!function_exists('lmeg_ai_configured') || !lmeg_ai_configured()) {
         return new WP_Error('lmeg_ai_unconfigured', 'Add your Anthropic API key in Settings → AI assistant.');
     }
@@ -675,7 +675,7 @@ function lmeg_social_ai_digest($force = false) {
         $ov = lmeg_spotify_overview();
         if (!is_wp_error($ov)) $lines[] = "Spotify: " . number_format($ov['followers']) . " followers, popularity " . $ov['popularity'] . "/100.";
     }
-    $sent = get_transient('lmeg_social_sentiment');
+    $sent = get_transient('lmeg_social_sentiment'); if (is_string($sent)) { $sd = json_decode($sent, true); $sent = is_array($sd) ? $sd : null; }
     if (is_array($sent)) {
         $lines[] = "Comment sentiment: {$sent['positive']}% positive / {$sent['neutral']}% neutral / {$sent['negative']}% negative. Themes: " . implode(', ', array_slice((array) ($sent['themes'] ?? []), 0, 5)) . ".";
     }
@@ -707,7 +707,7 @@ function lmeg_social_ai_digest($force = false) {
     }
     $text = trim($text);
     if ($text === '') return new WP_Error('lmeg_ai_empty', 'The model returned no text.');
-    set_transient($cache, $text, 6 * HOUR_IN_SECONDS);
+    set_transient($cache, wp_json_encode(['t' => $text]), 6 * HOUR_IN_SECONDS); // ASCII-safe (emoji)
     return $text;
 }
 
