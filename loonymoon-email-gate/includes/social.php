@@ -1017,19 +1017,18 @@ function lmeg_admin_social($embed = false, $only = null) {
         $sp_snaps = ($sp_ok && function_exists('lmeg_spotify_snapshots')) ? lmeg_spotify_snapshots(60) : [];
         $sp_stats = lmeg_social_series_stats($sp_snaps);
         $fan_ct   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE unsubscribed_at IS NULL");
-        $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
-        $content  = ($ig_ok && $need_rest) ? lmeg_social_ig_content_stats() : null;
-        $best_day = ($ig_ok && $need_rest) ? lmeg_social_ig_best_time() : null;
-        $types    = ($ig_ok && $need_rest) ? lmeg_social_ig_type_breakdown() : null;
-        $hashtags = ($ig_ok && $need_rest) ? lmeg_social_ig_hashtags() : null;
-        $demographics = $ig_ok ? lmeg_social_ig_demographics(!empty($_GET['ig_demo_refresh'])) : null;
+        $__pc = []; $__tm = function ($k, $fn) use (&$__pc) { $s = microtime(true); $r = $fn(); $__pc[$k] = (microtime(true) - $s) * 1000; return $r; };
+        $stories  = $ig_ok ? $__tm('stories', function () { return lmeg_social_story_mentions(30); }) : 0;
+        $content  = ($ig_ok && $need_rest) ? $__tm('content', function () { return lmeg_social_ig_content_stats(); }) : null;
+        $best_day = ($ig_ok && $need_rest) ? $__tm('best_day', function () { return lmeg_social_ig_best_time(); }) : null;
+        $types    = ($ig_ok && $need_rest) ? $__tm('types', function () { return lmeg_social_ig_type_breakdown(); }) : null;
+        $hashtags = ($ig_ok && $need_rest) ? $__tm('hashtags', function () { return lmeg_social_ig_hashtags(); }) : null;
+        $demographics = $ig_ok ? $__tm('demographics', function () { return lmeg_social_ig_demographics(!empty($_GET['ig_demo_refresh'])); }) : null;
         $tt_ok    = function_exists('lmeg_tiktok_configured') && lmeg_tiktok_configured();
-        $__t1 = microtime(true);
-        $tt       = $tt_ok ? lmeg_tiktok_user_info() : null;
-        $tt_videos = ($tt_ok && $need_rest) ? lmeg_tiktok_videos(12) : [];
-        $__tt = microtime(true) - $__t1;
-        $story_fans = ($ig_ok && $need_rest) ? lmeg_social_story_fans() : [];
-        if (!empty($_GET['lmeg_prof'])) echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms tiktok=" . number_format($__tt * 1000) . "ms -->\n";
+        $tt       = $tt_ok ? $__tm('tt_user', function () { return lmeg_tiktok_user_info(); }) : null;
+        $tt_videos = ($tt_ok && $need_rest) ? $__tm('tt_videos', function () { return lmeg_tiktok_videos(12); }) : [];
+        $story_fans = ($ig_ok && $need_rest) ? $__tm('story_fans', function () { return lmeg_social_story_fans(); }) : [];
+        if (!empty($_GET['lmeg_prof'])) { $__s = []; foreach ($__pc as $k => $v) $__s[] = $k . '=' . number_format($v) . 'ms'; echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms " . implode(' ', $__s) . " -->\n"; }
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
