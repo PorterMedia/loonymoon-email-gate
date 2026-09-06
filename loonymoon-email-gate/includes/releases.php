@@ -493,16 +493,18 @@ function lmeg_releases_admin_page() {
 
     $action = isset($_GET['action']) ? sanitize_key($_GET['action']) : '';
     if ($import_stage) $action = 'import';
+    if (!empty($_GET['demo']) && function_exists('lmeg_releases_render_demo')) $action = 'demo';   // sample release + analytics preview
     $edit   = isset($_GET['edit']) ? lmeg_release_get((int) $_GET['edit']) : null;
 
     echo '<div class="wrap">';
     echo '<h1 style="margin-bottom:6px;">Releases</h1>';
     echo $notice;
 
-    if ($action !== 'new' && $action !== 'import' && !$edit) {
+    if ($action !== 'new' && $action !== 'import' && $action !== 'demo' && !$edit) {
         echo '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 2px;">';
         echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=new')) . '" class="button button-primary">New release</a>';
         echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&action=import')) . '" class="button">Import from Apple Music</a>';
+        echo '<a href="' . esc_url(admin_url('admin.php?page=lmeg-releases&demo=1')) . '" class="button">Preview with demo data</a>';
         echo '<form method="post" style="margin:0;">';
         wp_nonce_field('lmeg_refresh_links', 'lmeg_refresh_nonce');
         echo '<input type="hidden" name="lmeg_release_action" value="refresh_links">';
@@ -520,7 +522,9 @@ function lmeg_releases_admin_page() {
         echo '<p class="description" style="margin:2px 0 18px;">Fills in Spotify, Apple Music, YouTube &amp; Deezer links and imports each release&rsquo;s <strong>tracklist</strong> (song titles + 30-sec previews) from Apple Music &mdash; your custom links are left untouched.</p>';
     }
 
-    if ($action === 'import') {
+    if ($action === 'demo') {
+        lmeg_releases_render_demo();
+    } elseif ($action === 'import') {
         lmeg_releases_render_import();
     } elseif ($action === 'new' || $edit) {
         lmeg_releases_render_form($edit);
@@ -1004,16 +1008,104 @@ function lmeg_releases_render_list() {
 }
 
 /** Streaming-link click analytics for one release (totals + IPs). */
-function lmeg_release_render_clicks_panel($rel) {
+/* ---------------------------------------------------------------------------
+ * Demo release — ?demo=1 on the Releases page shows a sample single with a
+ * fully populated analytics panel (same shapes the link-tracking helpers
+ * return), so the layout can be shown before a real drop exists. Deterministic,
+ * never written. Mirrors the Fans/Audience/Insights demo previews.
+ * ------------------------------------------------------------------------- */
+function lmeg_release_demo_release() {
+    $released = strtotime(current_time('Y-m-d')) - 19 * 86400;
+    return (object) [
+        'id' => 0, 'title' => 'Blue Hour', 'artwork_url' => '', 'preview_url' => '', 'apple_id' => '',
+        'release_at' => date('Y-m-d 00:00:00', $released),
+        'description' => 'Late-summer single — the first taste of the next record.',
+        'links' => wp_json_encode(['Spotify' => 'https://open.spotify.com/', 'Apple Music' => 'https://music.apple.com/', 'YouTube' => 'https://www.youtube.com/', 'Deezer' => 'https://www.deezer.com/', 'Bandcamp' => 'https://bandcamp.com/']),
+        'formats' => "Digital\nVinyl", 'tracks' => '', 'status' => 'published', 'drop_id' => 0, 'product_id' => 0, 'page_id' => 0,
+    ];
+}
+
+/** Synthetic click analytics in the exact shapes lmeg_link_clicks_* return. */
+function lmeg_release_demo_analytics() {
+    $seed = 7;
+    $rnd = function ($lo, $hi) use (&$seed) { $seed = ($seed * 1103515245 + 12345) % 2147483648; return $lo + ($seed / 2147483648) * ($hi - $lo); };
+    $today = strtotime(current_time('Y-m-d'));
+    // 30 days, oldest→newest: pre-release trickle, release-day spike (19 days
+    // ago), decay, a second bump when the email went out (9 days ago).
+    $daily = [];
+    for ($i = 29; $i >= 0; $i--) {
+        $d = date('Y-m-d', $today - $i * 86400);
+        if ($i > 19)      $v = $rnd(4, 14);
+        elseif ($i == 19) $v = 214;
+        elseif ($i == 9)  $v = 126;
+        elseif ($i == 8)  $v = 88;
+        else              $v = 120 * pow(0.78, 19 - $i) + $rnd(12, 26) + ($i == 7 ? 20 : 0);
+        $daily[$d] = (int) round($v);
+    }
+    $total = array_sum($daily);
+    $split = function ($shares) use ($total) { $out = []; $acc = 0; $keys = array_keys($shares); foreach ($keys as $k => $key) { $n = ($k === count($keys) - 1) ? $total - $acc : (int) round($total * $shares[$key]); $acc += $n; $out[$key] = $n; } return $out; };
+    $bySvc = $split(['Spotify' => .54, 'Apple Music' => .23, 'YouTube' => .12, 'Bandcamp' => .07, 'Deezer' => .04]);
+    $by = []; foreach ($bySvc as $label => $n) $by[] = ['label' => $label, 'clicks' => $n, 'last' => date('Y-m-d H:i:s', $today - (int) $rnd(600, 86400))];
+    $sources = $split(['instagram.com' => .41, '(direct)' => .27, 'facebook.com' => .12, 'tiktok.com' => .09, 'google.com' => .06, 'x.com' => .05]);
+    $geoN = $split(['US' => .46, 'CA' => .21, 'GB' => .11, 'DE' => .06, 'AU' => .05, 'FR' => .04, 'NL' => .04, 'BR' => .03]);
+    $geo = []; foreach ($geoN as $cc => $n) $geo[] = ['cc' => $cc, 'n' => $n];
+    $labels = array_keys($bySvc); $ccs = array_keys($geoN);
+    $fans = ['maya.k@example.com', 'j.ortiz@example.com', '', '', 'sam.lee@example.com', '', 'priya@example.com', '', '', 'theo.b@example.com', '', ''];
+    $recent = [];
+    for ($k = 0; $k < 12; $k++) {
+        $recent[] = (object) [
+            'id' => 0, 'drop_id' => 0, 'release_id' => 0, 'label' => $labels[(int) $rnd(0, 4.99)], 'target_url' => '', 'subscriber_id' => 0,
+            'ip' => '203.0.113.' . (int) $rnd(2, 250), 'country' => $ccs[(int) $rnd(0, 7.99)], 'user_agent' => '', 'referrer' => '',
+            'created_at' => date('Y-m-d H:i:s', $today + 86400 - (int) $rnd(900, 3 * 86400)), 'fan_label' => $fans[$k],
+        ];
+    }
+    usort($recent, function ($a, $b) { return strcmp($b->created_at, $a->created_at); });
+    return [
+        'stats'   => ['total' => $total, 'unique' => (int) round($total * 0.71), 'known' => (int) round($total * 0.18)],
+        'by' => $by, 'sources' => $sources, 'recent' => $recent, 'daily' => $daily, 'geo' => $geo,
+    ];
+}
+
+/** The demo view: banner + sample release header + the analytics panel in demo mode. */
+function lmeg_releases_render_demo() {
+    $rel = lmeg_release_demo_release();
+    $links = (array) json_decode((string) $rel->links, true);
+    $card = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.09);border-radius:14px;color:#F4F5F7;';
+    if (function_exists('lmeg_demo_banner')) echo lmeg_demo_banner('lmeg-releases');
+    ?>
+    <p style="margin-top:6px;"><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>">&larr; All releases</a></p>
+    <div style="<?php echo $card; ?>max-width:900px;padding:16px 18px;margin-bottom:18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-family:var(--lmegA-font,-apple-system,'Segoe UI',Roboto,sans-serif);">
+        <div style="width:84px;height:84px;border-radius:14px;background:linear-gradient(135deg,#7C6CF6,#D05FA2);flex:0 0 auto;box-shadow:0 6px 20px rgba(0,0,0,.4);" aria-hidden="true"></div>
+        <div style="flex:1 1 260px;min-width:220px;">
+            <div style="font:800 24px/1.1 var(--lmegA-font,inherit);"><?php echo esc_html($rel->title); ?> <span style="font-size:12px;font-weight:600;color:#34D399;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);border-radius:20px;padding:2px 9px;vertical-align:middle;margin-left:6px;">Sample</span></div>
+            <div style="margin-top:6px;font-size:13px;color:#C9CCD6;">Single · released <?php echo esc_html(date_i18n('M j, Y', strtotime($rel->release_at))); ?> · <?php echo esc_html($rel->description); ?></div>
+            <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+                <?php foreach ($links as $label => $url) : ?>
+                    <span style="font-size:11px;font-weight:700;color:#F4F5F7;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:4px 10px;"><?php echo esc_html($label); ?></span>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php
+    lmeg_release_render_clicks_panel($rel, true);
+}
+
+function lmeg_release_render_clicks_panel($rel, $demo = false) {
     global $wpdb;
     $drop_id = (int) $rel->drop_id;
-    $stats   = lmeg_link_clicks_stats($drop_id);
+    if ($demo) {
+        // Sample analytics — same shapes as the helpers below, nothing read.
+        $D = lmeg_release_demo_analytics();
+        $stats = $D['stats']; $by = $D['by']; $sources = $D['sources']; $recent = $D['recent']; $daily = $D['daily']; $geo = $D['geo'];
+    } else {
+        $stats   = lmeg_link_clicks_stats($drop_id);
+        $by      = lmeg_link_clicks_by_label($drop_id);
+        $sources = lmeg_link_clicks_by_source($drop_id, 6);
+        $recent  = lmeg_link_clicks_recent($drop_id, 12);
+        $daily   = lmeg_link_clicks_daily($drop_id, 30);
+        $geo     = function_exists('lmeg_link_clicks_by_country') ? lmeg_link_clicks_by_country($drop_id, 8) : [];
+    }
     $total   = (int) $stats['total'];
-    $by      = lmeg_link_clicks_by_label($drop_id);
-    $sources = lmeg_link_clicks_by_source($drop_id, 6);
-    $recent  = lmeg_link_clicks_recent($drop_id, 12);
-    $daily   = lmeg_link_clicks_daily($drop_id, 30);
-    $geo     = function_exists('lmeg_link_clicks_by_country') ? lmeg_link_clicks_by_country($drop_id, 8) : [];
 
     // Brand colour per streaming service (for the bars + dots).
     $svc = function ($label) {
@@ -1144,7 +1236,9 @@ function lmeg_release_render_clicks_panel($rel) {
                     <tbody>
                     <?php foreach ($recent as $cl):
                         $fan = '';
-                        if ((int) $cl->subscriber_id) {
+                        if (!empty($cl->fan_label)) {
+                            $fan = (string) $cl->fan_label;   // demo rows carry the label inline
+                        } elseif ((int) $cl->subscriber_id) {
                             $sub = defined('LMEG_TABLE') ? $wpdb->get_row($wpdb->prepare(
                                 "SELECT * FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE id = %d", (int) $cl->subscriber_id
                             )) : null;
