@@ -1799,6 +1799,7 @@ function lmeg_admin_spotify_insights() {
                         <span style="color:#8B90A0;font-size:12px;">to</span>
                         <input type="date" id="lmeg-song-ov-to" style="background:#0E0F16;color:#F4F5F7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:4px 8px;font-size:12px;">
                     </span>
+                    <select id="lmeg-song-ov-cmp" aria-label="Compare with another song" style="margin-left:auto;background:#0E0F16;color:#F4F5F7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:4px 8px;font-size:12px;max-width:230px;"></select>
                 </div>
                 <div id="lmeg-song-ov-chart" style="min-height:190px;"></div>
                 <p id="lmeg-song-ov-note" style="color:#8B90A0;font-size:12px;margin:10px 0 0;"></p>
@@ -1820,9 +1821,9 @@ function lmeg_admin_spotify_insights() {
             var DM = [['s','Streams / day'],['li','Listeners / day'],['sv','Saves / day']];
             var HM = [['s28','Streams · 28d window'],['s7','Streams · 7d window'],['li','Listeners'],['sv','Saves']];
             var RANGES = [['7','Last 7 days'],['28','Last 28 days'],['90','Last 90 days'],['all','All'],['custom','Custom']];
-            var state = {key:null, daily:null, metric:'s', range:'28'};
+            var state = {key:null, daily:null, metric:'s', range:'28', cmp:null};
             var $ = function(id){ return document.getElementById(id); };
-            var ov=$('lmeg-song-ov'), kick=$('lmeg-song-ov-kicker'), ttl=$('lmeg-song-ov-title'), stats=$('lmeg-song-ov-stats'), mWrap=$('lmeg-song-ov-metric'), rWrap=$('lmeg-song-ov-range'), cust=$('lmeg-song-ov-custom'), fromI=$('lmeg-song-ov-from'), toI=$('lmeg-song-ov-to'), chart=$('lmeg-song-ov-chart'), note=$('lmeg-song-ov-note');
+            var ov=$('lmeg-song-ov'), kick=$('lmeg-song-ov-kicker'), ttl=$('lmeg-song-ov-title'), stats=$('lmeg-song-ov-stats'), mWrap=$('lmeg-song-ov-metric'), rWrap=$('lmeg-song-ov-range'), cust=$('lmeg-song-ov-custom'), fromI=$('lmeg-song-ov-from'), toI=$('lmeg-song-ov-to'), chart=$('lmeg-song-ov-chart'), note=$('lmeg-song-ov-note'), cmpSel=$('lmeg-song-ov-cmp');
             if(!ov) return;
             var n = function(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); };
             var fmt = function(v){ return (v===null||v===undefined) ? '—' : Number(v).toLocaleString(); };
@@ -1850,12 +1851,21 @@ function lmeg_admin_spotify_insights() {
                 else if(state.range==='custom'){ var f=fromI.value?parse(fromI.value):null, t=toI.value?parse(toI.value):null; pts=pts.filter(function(p){ var x=parse(p.d); return (!f||x>=f)&&(!t||x<=t); }); }
                 return pts;
             }
+            // Comparison song (daily mode only): its values aligned to the same dates.
+            function cmpVals(pts){
+                if(!state.daily || !state.cmp) return null;
+                var arr = state.cmp[state.metric]; if(!arr) return null;
+                var cm = {}; arr.forEach(function(v,i){ cm[iso(addDays(state.cmp.d0,i))] = v; });
+                return pts.map(function(p){ return (p.d in cm) ? cm[p.d] : null; });
+            }
             function svg(pts){
                 var W=680,Hh=190,P={l:52,r:14,t:14,b:28};
                 var vals=pts.map(function(p){return p.v;});
+                var cv = cmpVals(pts);
                 // Daily mode reads from a zero baseline (a per-day count); history
                 // mode autoscales so a slow-moving window total still shows shape.
                 var mn=state.daily?0:Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+                if(cv){ cv.forEach(function(v){ if(v!==null && v>mx) mx=v; }); }
                 if(mn===mx){ mn=state.daily?0:mn*0.95; mx=(mx*1.05)||1; }
                 var iw=W-P.l-P.r, ih=Hh-P.t-P.b;
                 var x=function(i){ return P.l+(pts.length===1?iw/2:i*iw/(pts.length-1)); };
@@ -1867,6 +1877,11 @@ function lmeg_admin_spotify_insights() {
                 s+='<text x="'+(P.l-8)+'" y="'+(P.t+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mx))+'</text>';
                 s+='<text x="'+(P.l-8)+'" y="'+(Hh-P.b+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mn))+'</text>';
                 if(pts.length>1){ s+='<path d="'+area+'" fill="#34D399" fill-opacity=".10"/><path d="'+d+'" fill="none" stroke="#34D399" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'; }
+                if(cv){ // second line, violet, broken where the other song has no data on that date
+                    var d2='', pen=false; cv.forEach(function(v,i){ if(v===null){ pen=false; return; } d2+=(pen?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' '; pen=true; });
+                    if(d2) s+='<path d="'+d2.trim()+'" fill="none" stroke="#7C6CF6" stroke-width="2" stroke-dasharray="5 3" stroke-linejoin="round" stroke-linecap="round"/>';
+                    s+='<text x="'+(W-P.r)+'" y="'+(P.t+2)+'" text-anchor="end" font-size="11" fill="#34D399">'+(state.daily?state.daily.t:'')+'</text><text x="'+(W-P.r)+'" y="'+(P.t+15)+'" text-anchor="end" font-size="11" fill="#7C6CF6">'+state.cmp.t+'</text>';
+                }
                 var dots = pts.length<=60;
                 pts.forEach(function(p,i){ var last=i===pts.length-1; if(!dots&&!last) return; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p.v)+'</title></circle>'; });
                 if(!dots){ var pi=0; vals.forEach(function(v,i){ if(v>vals[pi]) pi=i; }); s+='<circle cx="'+x(pi).toFixed(1)+'" cy="'+y(vals[pi]).toFixed(1)+'" r="3.5" fill="#D05FA2" stroke="#0E0F16" stroke-width="1"><title>Best day — '+lab(pts[pi].d)+': '+fmt(vals[pi])+'</title></circle>'; }
@@ -1894,6 +1909,7 @@ function lmeg_admin_spotify_insights() {
                 mWrap.innerHTML=''; mlist.forEach(function(m){ mWrap.appendChild(btn(m[1], state.metric===m[0], function(){ state.metric=m[0]; render(); })); });
                 rWrap.innerHTML=''; RANGES.forEach(function(r){ if(r[0]==='90' && !state.daily) return; rWrap.appendChild(btn(r[1], state.range===r[0], function(){ state.range=r[0]; render(); })); });
                 cust.style.display = (state.range==='custom') ? 'inline-flex' : 'none';
+                if(cmpSel) cmpSel.style.display = state.daily ? '' : 'none';
                 var all = series(), pts = filtered(all);
                 chips(all, pts);
                 if(!pts.length){ chart.innerHTML='<div style="color:#8B90A0;font-size:13px;padding:30px 0;text-align:center;">No data in this range for this metric.</div>'; }
@@ -1907,7 +1923,9 @@ function lmeg_admin_spotify_insights() {
                     var lifts=[]; if(B.length){ var ai={}; all.forEach(function(p,i){ ai[p.d]=i; }); var inR={}; pts.forEach(function(p){ inR[p.d]=1; });
                         B.forEach(function(m){ if(!(m.d in ai)||!inR[m.d]) return; var i=ai[m.d]; if(i-3<0||i+2>=all.length) return; var bf=(all[i-3].v+all[i-2].v+all[i-1].v)/3, af=(all[i].v+all[i+1].v+all[i+2].v)/3; if(bf<=0) return; lifts.push({d:m.d,s:m.subject||'broadcast',pct:(af-bf)/bf*100}); }); }
                     var liftTxt = lifts.slice(-2).map(function(l){ return ' ✉ '+lab(l.d)+' “'+l.s+'”: '+(l.pct>=0?'+':'')+l.pct.toFixed(1)+'% over the 3 days after'; }).join(' ·');
-                    note.textContent = 'Day by day from Spotify for Artists · '+len+' day'+(len===1?'':'s')+' · '+fmt(total)+' total'+(ch!==null?(' · '+(ch>=0?'+':'')+ch.toFixed(1)+'% vs the previous '+len+' days'):'')+(all.length?(' · through '+lab(all[all.length-1].d)):'')+'.'+(liftTxt?(' Campaign lift —'+liftTxt+'.'):'');
+                    var cmpTxt = '';
+                    if(state.cmp){ var cv2 = cmpVals(pts) || [], ct = 0, cn = 0; cv2.forEach(function(v){ if(v!==null){ ct+=v; cn++; } }); if(cn){ var rel = ct>0 ? (total-ct)/ct*100 : null; cmpTxt = ' Compared with “'+state.cmp.t+'”: '+fmt(ct)+' over the same '+cn+' day'+(cn===1?'':'s')+(rel!==null?(' — this song '+(rel>=0?'+':'')+rel.toFixed(1)+'% vs it'):'')+'.'; } }
+                    note.textContent = 'Day by day from Spotify for Artists · '+len+' day'+(len===1?'':'s')+' · '+fmt(total)+' total'+(ch!==null?(' · '+(ch>=0?'+':'')+ch.toFixed(1)+'% vs the previous '+len+' days'):'')+(all.length?(' · through '+lab(all[all.length-1].d)):'')+'.'+(liftTxt?(' Campaign lift —'+liftTxt+'.'):'')+cmpTxt;
                 } else {
                     var delta=(pts.length>1)?(pts[pts.length-1].v-pts[0].v):null, caps=all.length;
                     note.textContent = 'History builds one point per daily capture — '+caps+' capture'+(caps===1?'':'s')+' so far'+(delta!==null?(' · '+(delta>=0?'+':'')+fmt(delta)+' over this range'):'')+'.'+(DL.length?' Day-by-day detail covers the top 20 songs by streams.':' Day-by-day detail for the top 20 songs arrives with the next pull.');
@@ -1916,7 +1934,12 @@ function lmeg_admin_spotify_insights() {
             function open(title){
                 var e = find(title), dd = D[n(title)] || null;
                 if(!e && !dd) return;
-                state.daily = dd; state.key = null;
+                state.daily = dd; state.key = null; state.cmp = null;
+                if(cmpSel){ // other songs with day-by-day data
+                    cmpSel.innerHTML = '<option value="">Compare with…</option>';
+                    Object.keys(D).forEach(function(k){ if(dd && D[k]===dd) return; var o=document.createElement('option'); o.value=k; o.textContent=D[k].t; cmpSel.appendChild(o); });
+                    cmpSel.value = '';
+                }
                 if(e){ for(var key in H){ if(H[key]===e){ state.key=key; break; } } }
                 var mlist = dd ? DM : HM;
                 if(!mlist.some(function(m){ return m[0]===state.metric; })) state.metric = mlist[0][0];
@@ -1956,6 +1979,7 @@ function lmeg_admin_spotify_insights() {
             ov.addEventListener('click', function(ev){ if(ev.target===ov) close(); });
             document.addEventListener('keydown', function(ev){ if(ev.key==='Escape' && ov.style.display!=='none') close(); });
             fromI.addEventListener('change', render); toI.addEventListener('change', render);
+            if(cmpSel) cmpSel.addEventListener('change', function(){ state.cmp = D[cmpSel.value] || null; render(); });
         })();
         </script>
         <?php endif; ?>
