@@ -511,9 +511,13 @@ function lmeg_si_analyze($c) {
     if (!empty($c['velocity']) && ($c['velocity']['prior7'] ?? 0) > 0) {
         $v = $c['velocity']; $wow = (float) $v['wow'];
         if ($wow <= -12) {
-            $streak = ($v['weeks_down'] ?? 0) >= 3 ? ' — and each of the last ' . (int) $v['weeks_down'] . ' weeks came in below the one before' : '';
+            $streak = ($v['weeks_down'] ?? 0) >= 3 ? ', and each of the last ' . (int) $v['weeks_down'] . ' weeks came in below the one before' : '';
+            // Acknowledge the month-over-month picture so this doesn't read as a
+            // contradiction next to a period-over-period "streams up" finding.
+            $pop = (isset($c['streams_pop']) && $c['streams_pop'] !== null && (float) $c['streams_pop'] > 0)
+                ? ' Your 28-day total is still up ' . $p((float) $c['streams_pop']) . '% overall, but the recent momentum is softening.' : '';
             $F[] = ['type' => 'watch', 'title' => 'Streams are cooling',
-                'detail' => 'The last 7 days ran ' . $p(abs($wow)) . '% below the previous 7 (' . $n($v['last7']) . ' vs ' . $n($v['prior7']) . ' streams)' . $streak . '. A re-push, a fresh drop, or a playlist pitch could reverse the slide.'];
+                'detail' => 'The last 7 days ran ' . $p(abs($wow)) . '% below the previous 7 (' . $n($v['last7']) . ' vs ' . $n($v['prior7']) . ' streams)' . $streak . '.' . $pop . ' A re-push, a fresh drop, or a playlist pitch could reverse the slide.'];
         } elseif ($wow >= 15) {
             $streak = ($v['weeks_up'] ?? 0) >= 3 ? ' — rising ' . (int) $v['weeks_up'] . ' weeks straight' : '';
             $F[] = ['type' => 'strength', 'title' => 'Streams are accelerating',
@@ -749,6 +753,7 @@ function lmeg_admin_spotify_insights() {
         'geo'               => $az_geo,
         'saver'             => lmeg_si_top_saver($az_songs),
         'velocity'          => lmeg_si_stream_velocity((array) ($az_meta['daily']['streams'] ?? [])),
+        'streams_pop'       => (isset($changes['streams']) && $changes['streams'] !== '' && $changes['streams'] !== null) ? (float) $changes['streams'] : null,
         'mover_up'          => $az_mv['biggest'] ?? null,
         'mover_down'        => $az_down,
         'pl_mix'            => $az_mix,
