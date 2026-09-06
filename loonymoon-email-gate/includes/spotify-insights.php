@@ -1319,6 +1319,10 @@ function lmeg_admin_spotify_insights() {
 }
 
 function lmeg_admin_spotify_insights_render() {
+    // Section timings — printed as an HTML comment at the end when an admin
+    // adds ?lmeg_prof=1 (the page was measured at 12s on a busy site).
+    $prof = ['start' => microtime(true)]; $prof_on = !empty($_GET['lmeg_prof']);
+    $mark = function ($k) use (&$prof) { $prof[$k] = microtime(true); };
     $t = lmeg_si_tokens();
     // Pull every token out up front: `$t` gets reused as a loop variable
     // further down (song titles, API tracks), and `$t['muted']` on a string is
@@ -1362,13 +1366,16 @@ function lmeg_admin_spotify_insights_render() {
         }
     }
 
+    $mark('snapshot');
     $ov = $demo ? lmeg_si_demo_overview($sel) : (function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null);
     if (is_wp_error($ov)) $ov = null;
+    $mark('overview_api');
 
     // Social side — for the cross-platform profile. Each is null when unconfigured.
     $ig_stats = function_exists('lmeg_ig_account_stats') ? lmeg_ig_account_stats() : null;
     $fb_stats = function_exists('lmeg_fb_page_stats') ? lmeg_fb_page_stats() : null;
     $ig_demo  = function_exists('lmeg_social_ig_demographics') ? lmeg_social_ig_demographics() : null;
+    $mark('social_stats');
 
     $has_s4a = (bool) $snap;
     $has_api = is_array($ov);
@@ -1493,6 +1500,7 @@ function lmeg_admin_spotify_insights_render() {
         'active_share'      => isset($az_meta['pct_streams_from_mal']) && $az_meta['pct_streams_from_mal'] !== null ? (float) $az_meta['pct_streams_from_mal'] : null,
         'last_release'      => $az_lastRel,
     ]);
+    $mark('analysis');
     ?>
     <div class="wrap lmeg-admin">
         <h1>Fanloop — Insights</h1>
@@ -1674,6 +1682,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- SOCIAL — audience + growth (hoisted from Social Listening) --------->
+        <?php $mark('top_cards'); ?>
         <?php if (function_exists('lmeg_admin_social')) : ?>
         <div style="height:1px;background:rgba(255,255,255,.12);max-width:1040px;margin:4px 0 16px;"></div>
         <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social</h2>
@@ -1683,6 +1692,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- TRENDS ------------------------------------------------------------>
+        <?php $mark('social_audience'); ?>
         <?php
         // Prefer the DAILY 28-day series (from a single snapshot's stats endpoint)
         // over the sparse snapshot-to-snapshot charts when it's available.
@@ -1795,6 +1805,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- THE SONGS (the point of the page) --------------------------------->
+        <?php $mark('trends'); ?>
         <?php
         $songs = $has_s4a ? (array) json_decode((string) $snap->top_songs, true) : [];
         $songs = array_values(array_filter($songs, 'is_array'));
@@ -2124,6 +2135,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- RELEASES (by streams) --------------------------------------------->
+        <?php $mark('songs'); ?>
         <?php
         $rel_meta = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
         $releases = lmeg_si_releases_sorted($rel_meta['releases'] ?? []);
@@ -2190,6 +2202,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- WHO'S LISTENING (gender · age · cities) -------------------------->
+        <?php $mark('releases'); ?>
         <?php
         $meta   = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
         $gender = lmeg_si_gender_split($meta['gender'] ?? null);
@@ -2413,8 +2426,10 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- MOMENTUM / IMPACT ------------------------------------------------->
+        <?php $mark('who_cross_secondary'); ?>
         <?php
         $impact = function_exists('lmeg_impact_rows') ? lmeg_impact_rows(7) : [];
+        $mark('impact_rows');
         if ($impact) : ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:4px;">Momentum · what moved the needle</div>
@@ -2444,6 +2459,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- SOCIAL (merged from Social Listening — one page) ----------------->
+        <?php $mark('momentum'); ?>
         <?php if (function_exists('lmeg_admin_social')) : ?>
         <div style="height:1px;background:rgba(255,255,255,.12);max-width:1040px;margin:26px 0 16px;"></div>
         <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social · content &amp; sentiment</h2>
@@ -2452,6 +2468,7 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- STALE-SNAPSHOT HINT (enriched sections need a fresh import) -------->
+        <?php $mark('social_rest'); ?>
         <?php
         $has_enriched = !empty($meta['gender']) || !empty($meta['top_cities']) || !empty($releases) || !empty($playlists);
         if ($has_s4a && !$has_enriched) : ?>
@@ -2470,4 +2487,9 @@ function lmeg_admin_spotify_insights_render() {
         </p>
     </div>
     <?php
+    if ($prof_on) {
+        $mark('end'); $out = []; $last = $prof['start'];
+        foreach ($prof as $k => $ts) { if ($k === 'start') continue; $out[] = $k . '=' . number_format(($ts - $last) * 1000) . 'ms'; $last = $ts; }
+        echo "\n<!-- lmeg_prof total=" . number_format(($prof['end'] - $prof['start']) * 1000) . "ms " . implode(' ', $out) . " -->\n";
+    }
 }
