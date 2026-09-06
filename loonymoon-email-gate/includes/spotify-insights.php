@@ -354,35 +354,43 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = []) {
  * (stable strings from lmeg_si_analyze) + its optional 'song'/'uri' keys.
  */
 function lmeg_si_finding_actions($f) {
-    $t = (string) ($f['title'] ?? ''); $song = (string) ($f['song'] ?? ''); $uri = (string) ($f['uri'] ?? '');
-    $compose = function ($angle, $label) use ($song, $uri) {
+    $t = (string) ($f['title'] ?? ''); $song = (string) ($f['song'] ?? ''); $uri = (string) ($f['uri'] ?? ''); $cc = strtoupper((string) ($f['country'] ?? ''));
+    // $group = a Fanbase group key (superfans / active / atrisk …) and $country
+    // an ISO2 code — Compose pre-targets that audience by tagging it.
+    $compose = function ($angle, $label, $group = null, $country = null) use ($song, $uri) {
         $a = ['prefill' => 'insight', 'angle' => $angle];
         if ($song !== '') $a['song'] = $song;
         if ($uri !== '') $a['uri'] = $uri;
+        if ($group) $a['group'] = $group;
+        if ($country) $a['country'] = $country;
         return ['label' => $label, 'page' => 'lmeg-compose', 'args' => $a];
     };
+    $cname = (strlen($cc) === 2 && function_exists('lmeg_si_country_name')) ? lmeg_si_country_name($cc) : $cc;
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
     $spotify = preg_match('/^spotify:track:([A-Za-z0-9]{22})$/', $uri, $mm) ? [['label' => 'Open on Spotify ↗', 'href' => 'https://open.spotify.com/track/' . $mm[1]]] : [];
     $ends = function ($s) use ($t) { return substr($t, -strlen($s)) === $s; };
-    if ($ends('is breaking out this week') || $ends('is gaining'))  return array_merge([$compose('mover', 'Send it to your list')], $spotify);
-    if ($song !== '' && $ends('is cooling'))                          return array_merge([$compose('repush', 'Re-push it to your list')], $spotify);
-    if (strpos($t, 'Fans keep') === 0)                                return array_merge([$compose('save', 'Ask fans to save it')], $spotify);
-    if (in_array($t, ['Lift across the catalogue', 'Streams are accelerating', 'Growing on both fronts', 'Your latest release is landing'], true)) return [$compose('lift', 'Tell your fans')];
-    if (in_array($t, ['Soft week across the catalogue', 'Streams are cooling'], true)) return [$go('lmeg-drops', 'Plan a drop'), $go('lmeg-contests', 'Run a contest'), $compose('listen', 'Nudge your list')];
+    if ($ends('is breaking out this week') || $ends('is gaining'))  return array_merge([$compose('mover', 'Send it to your list'), $compose('mover', 'Superfans first', 'superfans')], $spotify);
+    if ($song !== '' && $ends('is cooling'))                          return array_merge([$compose('repush', 'Re-push it to your list'), $compose('repush', 'Re-push to active fans', 'active')], $spotify);
+    if (strpos($t, 'Fans keep') === 0)                                return array_merge([$compose('save', 'Ask fans to save it'), $compose('lift', 'Tell your superfans', 'superfans')], $spotify);
+    if (in_array($t, ['Lift across the catalogue', 'Streams are accelerating', 'Growing on both fronts', 'Your latest release is landing'], true)) return [$compose('lift', 'Tell your fans'), $compose('lift', 'Tell your superfans', 'superfans')];
+    if (in_array($t, ['Soft week across the catalogue', 'Streams are cooling'], true)) return [$compose('listen', 'Win back the quiet ones', 'atrisk'), $go('lmeg-drops', 'Plan a drop'), $go('lmeg-contests', 'Run a contest')];
     if (in_array($t, ['Time for new music', 'One track carries a lot'], true))          return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
-    if ($t === 'Latest release is under its potential')               return [$compose('release', 'Push the release')];
-    if ($t === 'Turn listeners into followers')                       return [$compose('follow', 'Ask your list to follow'), $go('lmeg-presaves', 'Set up a pre-save')];
-    if ($t === 'Low save rate')                                       return [$compose('save', 'Ask fans to save')];
-    if (strpos($t, 'Your audience centers on') === 0)                 return [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-fanbase', 'See your fanbase')];
+    if ($t === 'Latest release is under its potential')               return [$compose('release', 'Push the release'), $compose('release', 'Push it to active fans', 'active')];
+    if ($t === 'Turn listeners into followers')                       return [$compose('follow', 'Ask active fans to follow', 'active'), $go('lmeg-presaves', 'Set up a pre-save')];
+    if ($t === 'Low save rate')                                       return [$compose('save', 'Ask active fans to save', 'active'), $compose('save', 'Ask everyone')];
+    if (strpos($t, 'Your audience centers on') === 0)                 return array_merge($cc !== '' ? [$compose('listen', 'Email fans in ' . $cname, null, $cc)] : [], [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-fanbase', 'See your fanbase')]);
     if ($t === 'Streams up, social flat')                             return [$go('lmeg-instagram', 'Post about it')];
-    if ($t === 'Social up, streams flat')                             return [$compose('listen', 'Send your list to Spotify')];
-    if ($t === 'Loyal core')                                          return [$go('lmeg-fanbase', 'See your superfans')];
-    if (strpos($t, 'New editorial playlist') === 0)                   return [$compose('lift', 'Tell your fans'), $go('lmeg-instagram', 'Post about it')];
-    if ($ends('is your fastest-growing market') || $ends('is slipping')) return [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-segments', 'Target fans there')];
-    if (strpos($t, 'opened bigger than') !== false)                   return array_merge([$compose('mover', 'Send it to your list')], $spotify);
-    if (strpos($t, 'opened smaller than') !== false)                  return [$go('lmeg-presaves', 'Set up a pre-save'), $compose('repush', 'Re-push it to your list')];
-    if (strpos($t, 'Dropped from') === 0)                             return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
+    if ($t === 'Social up, streams flat')                             return [$compose('listen', 'Send your list to Spotify'), $compose('listen', 'Start with new fans', 'new')];
+    if ($t === 'Loyal core')                                          return [$compose('lift', 'Thank your superfans', 'superfans'), $go('lmeg-fanbase', 'See your superfans')];
+    if ($t === 'Listeners are keeping your music')                    return [$compose('lift', 'Tell your superfans', 'superfans')];
     if ($t === 'Heavily algorithm-driven')                            return [$go('lmeg-presaves', 'Set up a pre-save')];
+    if (strpos($t, 'New editorial playlist') === 0)                   return [$compose('lift', 'Tell your superfans', 'superfans'), $compose('lift', 'Tell everyone'), $go('lmeg-instagram', 'Post about it')];
+    if (strpos($t, 'Dropped from') === 0)                             return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
+    if ($ends('is your fastest-growing market') || $ends('is slipping')) return array_merge($cc !== '' ? [$compose('listen', 'Email fans in ' . $cname, null, $cc)] : [], [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-segments', 'Target fans there')]);
+    if (strpos($t, 'opened bigger than') !== false)                   return array_merge([$compose('mover', 'Send it to your list'), $compose('mover', 'Superfans first', 'superfans')], $spotify);
+    if (strpos($t, 'opened smaller than') !== false)                  return [$go('lmeg-presaves', 'Set up a pre-save'), $compose('repush', 'Re-push it to your list'), $compose('repush', 'Re-push to active fans', 'active')];
+    if ($t === 'The last quarter is your strongest')                  return [$compose('lift', 'Tell your fans'), $compose('lift', 'Tell your superfans', 'superfans')];
+    if ($t === 'The last quarter ran below the one before')           return [$go('lmeg-releases', 'Plan a release'), $compose('listen', 'Win back the quiet ones', 'atrisk')];
     return [];
 }
 
@@ -475,11 +483,16 @@ function lmeg_si_demo_marks() {
  * findings with their action links. '' when the site has no S4A snapshot.
  * Light email HTML (inline styles, light background — it lands in the inbox).
  */
-function lmeg_si_digest_html() {
-    if (!function_exists('lmeg_s4a_latest')) return '';
+/**
+ * Everything the digest and the Overview need from the latest snapshot in one
+ * pass: snapshot + previous, decoded meta, headline rows, launches and the full
+ * analysis-engine context (same inputs as the Insights page). null without S4A.
+ */
+function lmeg_si_quick_context() {
+    if (!function_exists('lmeg_s4a_latest')) return null;
     $sel  = lmeg_artist();
     $snap = lmeg_s4a_latest($sel);
-    if (!$snap) return '';
+    if (!$snap) return null;
     $meta = $snap->meta ? (array) json_decode((string) $snap->meta, true) : [];
     $prev = function_exists('lmeg_s4a_prev') ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
     $pct  = function ($a, $b) { return ($b !== null && (int) $b > 0 && $a !== null) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
@@ -533,13 +546,6 @@ function lmeg_si_digest_html() {
         'country_moves' => $moves,
         'moves_days'    => $mdays,
     ];
-    $html = '<h3 style="margin:22px 0 10px;">Spotify this week</h3><table style="border-collapse:collapse;">';
-    foreach ($rows as $r) {
-        $html .= '<tr><td style="padding:6px 10px 6px 0;font-size:18px;">' . $r[0] . '</td>'
-               . '<td style="padding:6px 18px 6px 0;color:#777;white-space:nowrap;">' . $r[1] . '</td>'
-               . '<td style="padding:6px 0;font-weight:600;">' . $r[2] . '</td></tr>';
-    }
-    $html .= '</table>';
     // Top 3 findings, each with up to two of its action links.
     $ctx = [
         'song_wow'          => $sw,
@@ -549,6 +555,26 @@ function lmeg_si_digest_html() {
         'followers'         => $fs ? (int) end($fs) : null,
         'save_rate'         => ($snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null,
     ] + $extra_ctx;
+    return compact('sel', 'snap', 'prev', 'meta', 'map', 'sw', 'daily', 'rows', 'launch', 'ctx', 'sp', 'mlp');
+}
+
+/** Top findings from the same engine + context the page uses. */
+function lmeg_si_quick_findings($limit = 2) {
+    $q = lmeg_si_quick_context();
+    return $q ? array_slice(lmeg_si_analyze($q['ctx']), 0, max(1, (int) $limit)) : [];
+}
+
+function lmeg_si_digest_html() {
+    $q = lmeg_si_quick_context();
+    if (!$q) return '';
+    extract($q);
+    $html = '<h3 style="margin:22px 0 10px;">Spotify this week</h3><table style="border-collapse:collapse;">';
+    foreach ($rows as $r) {
+        $html .= '<tr><td style="padding:6px 10px 6px 0;font-size:18px;">' . $r[0] . '</td>'
+               . '<td style="padding:6px 18px 6px 0;color:#777;white-space:nowrap;">' . $r[1] . '</td>'
+               . '<td style="padding:6px 0;font-weight:600;">' . $r[2] . '</td></tr>';
+    }
+    $html .= '</table>';
     $F = array_slice(lmeg_si_analyze($ctx), 0, 3);
     if ($F) {
         $html .= '<p style="margin:14px 0 6px;font-weight:600;">What to do</p><ul style="margin:0;padding-left:18px;">';
@@ -711,6 +737,41 @@ function lmeg_si_weekday_name($n, $plural = false) {
     $names = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
     $s = $names[(int) $n] ?? '';
     return $plural && $s ? $s . 's' : $s;
+}
+
+/**
+ * The "five rings" strip (shared by Spotify Insights and the Overview).
+ * $rings from lmeg_si_fan_rings_shape / lmeg_si_fan_rings_data. Returns HTML.
+ */
+function lmeg_si_render_fan_rings($rings, $card, $lbl) {
+    if (!$rings) return '';
+    ob_start(); ?>
+
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
+                <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
+                <div style="font-size:11px;color:#8B90A0;">Anonymous listeners on the left, people you can actually reach on the right — the % is each ring's share of the one before.</div>
+            </div>
+            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
+                <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
+                <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
+                <div style="flex:1 1 0;min-width:150px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-top:3px solid <?php echo $r['tone']; ?>;border-radius:12px;padding:12px 12px 10px;">
+                    <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;<?php echo $val === null ? 'color:#8B90A0;' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
+                    <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:7px 0 4px;">
+                        <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
+                    </div>
+                    <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
+                    <?php if (!empty($r['change'])) : $cdir = (int) $r['change'][1]; ?>
+                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '· '); ?><?php echo esc_html($r['change'][0]); ?></div>
+                    <?php endif; ?>
+                    <?php if ($r['pct'] !== null) : ?>
+                    <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php return ob_get_clean();
 }
 
 /** Normalized title key shared by the song-daily map and the row lookup. */
@@ -1284,7 +1345,7 @@ function lmeg_si_analyze($c) {
                      . (!empty($g['third']) ? ', then ' . $g['third'] : '')
                      . ' — the clearest places to target ads or route a tour.';
             }
-            $F[] = ['type' => 'insight', 'title' => 'Your audience centers on ' . $g['top'],
+            $F[] = ['type' => 'insight', 'title' => 'Your audience centers on ' . $g['top'], 'country' => (string) ($g['cc'] ?? ''),
                 'detail' => $p($g['pct']) . '% of your monthly listeners are in ' . $g['top'] . '.' . $sec];
         } elseif ($g['pct'] < 25 && ($g['count'] ?? 0) >= 12) {
             $F[] = ['type' => 'strength', 'title' => 'Your reach is global',
@@ -1510,7 +1571,7 @@ function lmeg_admin_spotify_insights_render() {
         $share = ($az_ctys[0]['pct'] !== null && $az_ctys[0]['pct'] > 0) ? (float) $az_ctys[0]['pct'] * 100
                : ($ml > 0 ? $az_ctys[0]['num'] / $ml * 100 : null);
         $gc = 0; foreach ((array) ($az_meta['countries'] ?? []) as $cc) if (is_array($cc) && (int) ($cc['num'] ?? 0) > 0) $gc++;
-        $az_geo = ['top' => $az_ctys[0]['name'], 'pct' => $share !== null ? round($share, 1) : null,
+        $az_geo = ['top' => $az_ctys[0]['name'], 'cc' => (string) ($az_ctys[0]['cc'] ?? ''), 'pct' => $share !== null ? round($share, 1) : null,
                    'second' => $az_ctys[1]['name'] ?? null, 'third' => $az_ctys[2]['name'] ?? null, 'count' => $gc];
     }
     // Market movement: compare per-country listeners with the capture ~7 days
@@ -1653,33 +1714,8 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- FAN RINGS — listeners → followers → list → customers → members ---->
-        <?php $rings = $demo ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
-                     : lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); if ($rings) : ?>
-        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
-                <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
-                <div style="font-size:11px;color:#8B90A0;">Anonymous listeners on the left, people you can actually reach on the right — the % is each ring's share of the one before.</div>
-            </div>
-            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
-                <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
-                <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
-                <div style="flex:1 1 0;min-width:150px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-top:3px solid <?php echo $r['tone']; ?>;border-radius:12px;padding:12px 12px 10px;">
-                    <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;<?php echo $val === null ? 'color:#8B90A0;' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
-                    <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:7px 0 4px;">
-                        <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
-                    </div>
-                    <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
-                    <?php if (!empty($r['change'])) : $cdir = (int) $r['change'][1]; ?>
-                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '· '); ?><?php echo esc_html($r['change'][0]); ?></div>
-                    <?php endif; ?>
-                    <?php if ($r['pct'] !== null) : ?>
-                    <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
-                    <?php endif; ?>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <?php endif; ?>
+<?php $rings = $demo ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
+                     : lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); echo lmeg_si_render_fan_rings($rings, $card, $lbl); ?>
 
         <!-- INSIGHT CALLOUTS ------------------------------------------------->
         <?php

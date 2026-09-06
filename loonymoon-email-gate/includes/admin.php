@@ -1844,7 +1844,34 @@ function lmeg_admin_compose() {
         $vals['body_email_mode'] = 'rich';
         $vals['body_email']      = $c[1];
         $vals['body_sms']        = trim($c[2]);
-        $notice = '<div class="notice notice-info"><p><strong>Drafted from a Spotify Insights finding</strong>' . ($song !== '' ? ' about ' . esc_html($q) : '') . '. Review the copy + audience below, then send.</p></div>';
+        // Audience: a Fanbase group (superfans / active / atrisk …) or a country
+        // (ISO2, from the market findings). Same mechanism as the Fanbase page's
+        // one-click: snapshot the group into its tag now, pre-select the tag.
+        $aud_note = '';
+        $group = sanitize_key($_GET['group'] ?? '');
+        if ($group !== '' && function_exists('lmeg_fanbase_defs') && function_exists('lmeg_fanbase_ids') && function_exists('lmeg_get_or_create_tag') && function_exists('lmeg_attach_tag')) {
+            $defs = lmeg_fanbase_defs();
+            if (isset($defs[$group]) && !empty($defs[$group]['tag'])) {
+                $gtag = lmeg_get_or_create_tag($defs[$group]['tag'], $defs[$group]['label'], false, $defs[$group]['color']);
+                if ($gtag) {
+                    $gn = 0; foreach (lmeg_fanbase_ids($group) as $sid) { lmeg_attach_tag((int) $sid, (int) $gtag->id); $gn++; }
+                    $vals['tag_ids'] = [(int) $gtag->id];
+                    $aud_note = ' Audience: <strong>' . esc_html($defs[$group]['label']) . '</strong> — ' . (int) $gn . ' fans, tagged <code>' . esc_html($defs[$group]['tag']) . '</code> just now.';
+                }
+            }
+        }
+        $cc = strtoupper(sanitize_text_field(wp_unslash($_GET['country'] ?? '')));
+        if ($aud_note === '' && preg_match('/^[A-Z]{2}$/', $cc) && function_exists('lmeg_get_or_create_tag') && function_exists('lmeg_attach_tag') && defined('LMEG_TABLE')) {
+            $cname = function_exists('lmeg_si_country_name') ? lmeg_si_country_name($cc) : $cc;
+            $ctag  = lmeg_get_or_create_tag('country-' . strtolower($cc), 'Country · ' . $cname, false, '#1DB954');
+            if ($ctag) {
+                $cids = (array) $wpdb->get_col($wpdb->prepare("SELECT id FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE UPPER(country) = %s AND unsubscribed_at IS NULL", $cc));
+                foreach ($cids as $sid) lmeg_attach_tag((int) $sid, (int) $ctag->id);
+                $vals['tag_ids'] = [(int) $ctag->id];
+                $aud_note = ' Audience: fans in <strong>' . esc_html($cname) . '</strong> — ' . count($cids) . ' tagged <code>country-' . esc_html(strtolower($cc)) . '</code> just now' . (count($cids) ? '' : ' (no fans have that country on file yet)') . '.';
+            }
+        }
+        $notice = '<div class="notice notice-info"><p><strong>Drafted from a Spotify Insights finding</strong>' . ($song !== '' ? ' about ' . esc_html($q) : '') . '.' . $aud_note . ' Review the copy + audience below, then send.</p></div>';
     }
 
     // Deep-link prefill: "Announce presale" from a tour date with a presale link.
@@ -6134,6 +6161,49 @@ function lmeg_admin_overview() {
                 </div>
             <?php endif; ?>
         </div>
+
+        <!-- spotify: fan rings + the top findings (shared with Spotify Insights) -->
+        <?php if (function_exists('lmeg_si_quick_context') && function_exists('lmeg_si_render_fan_rings') && function_exists('lmeg_s4a_latest') && ($ovq = lmeg_si_quick_context())) :
+            $sit = function_exists('lmeg_si_tokens') ? lmeg_si_tokens() : ['card' => '', 'lbl' => ''];
+            // Period-over-period for the listeners ring, same as the Insights page.
+            $ovch = (!empty($ovq['snap']->changes)) ? (array) json_decode((string) $ovq['snap']->changes, true) : [];
+            if (!empty($ovq['prev']) && (($ovch['monthly_listeners'] ?? null) === null || $ovch['monthly_listeners'] === '') && function_exists('lmeg_si_pct_change')) {
+                $pc = lmeg_si_pct_change($ovq['snap']->monthly_listeners ?? null, $ovq['prev']->monthly_listeners ?? null); if ($pc !== null) $ovch['monthly_listeners'] = round($pc, 1);
+            }
+            $ovr = lmeg_si_fan_rings_data($ovq['snap'], is_array($sp) ? $sp : null, is_array($sp), $ovch);
+            $ovf = array_slice(lmeg_si_analyze($ovq['ctx']), 0, 2);
+            $ftok = ['opportunity' => ['#7C6CF6', 'Opportunity'], 'watch' => ['#F59E0B', 'Watch'], 'insight' => ['#E58BBD', 'Insight'], 'strength' => ['#34D399', 'Strength']];
+        ?>
+        <div style="max-width:1040px;margin:0 0 16px;">
+            <?php echo lmeg_si_render_fan_rings($ovr, $sit['card'], $sit['lbl']); ?>
+            <?php if ($ovf) : ?>
+            <div style="<?php echo $sit['card']; ?>margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
+                    <div style="<?php echo $sit['lbl']; ?>">What the data says <span style="color:#8B90A0;font-weight:400;">· Spotify</span></div>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify-insights')); ?>" style="font-size:12px;color:#E58BBD;text-decoration:none;">All findings + charts →</a>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <?php foreach ($ovf as $f) : $tk = $ftok[$f['type']] ?? ['#8B90A0', '']; ?>
+                    <div style="display:flex;gap:12px;align-items:flex-start;">
+                        <span style="flex:0 0 auto;margin-top:1px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:<?php echo $tk[0]; ?>;background:<?php echo $tk[0]; ?>1f;border:1px solid <?php echo $tk[0]; ?>55;border-radius:20px;padding:3px 9px;min-width:82px;text-align:center;"><?php echo esc_html($tk[1]); ?></span>
+                        <div style="flex:1 1 auto;min-width:0;">
+                            <div style="color:#F4F5F7;font-size:14px;font-weight:600;margin-bottom:2px;"><?php echo esc_html($f['title']); ?></div>
+                            <div style="color:#C9CCD6;font-size:13px;line-height:1.5;"><?php echo esc_html($f['detail']); ?></div>
+                            <?php $acts = function_exists('lmeg_si_finding_actions') ? lmeg_si_finding_actions($f) : []; if ($acts) : ?>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">
+                                <?php foreach ($acts as $a) : $ext = !empty($a['href']); $href = $ext ? $a['href'] : admin_url('admin.php?' . http_build_query(array_merge(['page' => $a['page']], (array) ($a['args'] ?? [])))); ?>
+                                <a href="<?php echo esc_url($href); ?>"<?php echo $ext ? ' target="_blank" rel="noopener"' : ''; ?> style="font-size:11px;font-weight:700;color:#F4F5F7 !important;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:4px 10px;text-decoration:none;line-height:1.2;"><?php echo esc_html($a['label']); ?></a>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <!-- headline KPIs -->
         <div class="lmeg-ov-kpis">
