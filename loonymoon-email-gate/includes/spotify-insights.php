@@ -378,6 +378,7 @@ function lmeg_si_finding_actions($f) {
     if ($t === 'Social up, streams flat')                             return [$compose('listen', 'Send your list to Spotify')];
     if ($t === 'Loyal core')                                          return [$go('lmeg-fanbase', 'See your superfans')];
     if (strpos($t, 'New editorial playlist') === 0)                   return [$compose('lift', 'Tell your fans'), $go('lmeg-instagram', 'Post about it')];
+    if ($ends('is your fastest-growing market') || $ends('is slipping')) return [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-segments', 'Target fans there')];
     if (strpos($t, 'Dropped from') === 0)                             return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
     if ($t === 'Heavily algorithm-driven')                            return [$go('lmeg-presaves', 'Set up a pre-save')];
     return [];
@@ -1028,6 +1029,29 @@ function lmeg_si_country_rows($countries, $limit = 8) {
     return $rows;
 }
 
+/**
+ * Market movement between two captures' per-country listener counts
+ * (meta.countries: [{cc,num,…}]). Returns ['up'=>[…],'down'=>[…],'all'=>[cc=>pct]]
+ * with entries ['cc','name','num','prev','pct'] — up/down only for markets with
+ * ≥ $min_num listeners now and |change| ≥ $min_pct, sorted by |pct|. Pure.
+ */
+function lmeg_si_country_movers($cur, $prev, $min_num = 500, $min_pct = 10) {
+    $ix = function ($list) { $o = []; foreach ((array) $list as $c) { if (!is_array($c)) continue; $cc = strtoupper((string) ($c['cc'] ?? '')); if (strlen($cc) === 2) $o[$cc] = (int) ($c['num'] ?? 0); } return $o; };
+    $c = $ix($cur); $p = $ix($prev);
+    $up = []; $down = []; $all = [];
+    foreach ($c as $cc => $num) {
+        if (!isset($p[$cc]) || $p[$cc] <= 0) continue;
+        $pct = round(($num - $p[$cc]) / $p[$cc] * 100, 1);
+        $all[$cc] = $pct;
+        if ($num < $min_num) continue;
+        $e = ['cc' => $cc, 'name' => lmeg_si_country_name($cc), 'num' => $num, 'prev' => $p[$cc], 'pct' => $pct];
+        if ($pct >= $min_pct) $up[] = $e; elseif ($pct <= -$min_pct) $down[] = $e;
+    }
+    usort($up, function ($a, $b) { return $b['pct'] <=> $a['pct']; });
+    usort($down, function ($a, $b) { return $a['pct'] <=> $b['pct']; });
+    return ['up' => $up, 'down' => $down, 'all' => $all];
+}
+
 /** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
 function lmeg_si_pct_change($cur, $prev) {
     if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
@@ -1110,6 +1134,20 @@ function lmeg_si_analyze($c) {
             $x = $pd['gone'][0];
             $F[] = ['type' => 'watch', 'title' => 'Dropped from “' . $x['title'] . '”',
                 'detail' => 'The editorial playlist “' . $x['title'] . '”' . $fl($x) . ' no longer shows in your top playlists' . $since . ' — it was ' . $n($x['streams']) . ' streams in the window. Expect a dip; a fresh pitch or a new single is the way back in.'];
+        }
+    }
+    // Market movement — the fastest-growing country (and a top market slipping).
+    if (!empty($c['country_moves']) && is_array($c['country_moves'])) {
+        $mv = $c['country_moves']; $md = max(1, (int) ($c['moves_days'] ?? 1)); $span = $md . ' day' . ($md === 1 ? '' : 's');
+        if (!empty($mv['up'])) {
+            $u = $mv['up'][0]; $more = count($mv['up']) > 1 ? ' ' . $mv['up'][1]['name'] . ' is up ' . $p($mv['up'][1]['pct']) . '% too.' : '';
+            $F[] = ['type' => 'insight', 'title' => $u['name'] . ' is your fastest-growing market', 'country' => $u['cc'],
+                'detail' => 'Monthly listeners there went from ' . $n($u['prev']) . ' to ' . $n($u['num']) . ' in ' . $span . ' (' . ($u['pct'] >= 0 ? '+' : '') . $p($u['pct']) . '%).' . $more . ' Worth a show, a local playlist pitch, or a post in their morning.'];
+        }
+        if (!empty($mv['down'])) {
+            $d = $mv['down'][0];
+            $F[] = ['type' => 'watch', 'title' => $d['name'] . ' is slipping', 'country' => $d['cc'],
+                'detail' => 'Monthly listeners there fell from ' . $n($d['prev']) . ' to ' . $n($d['num']) . ' in ' . $span . ' (' . $p($d['pct']) . '%). One market cooling isn’t a crisis — but if it’s a core one, a targeted send there is cheap.'];
         }
     }
     // Long-range momentum — the last 90 days vs the 90 before (top songs).
@@ -1388,6 +1426,21 @@ function lmeg_admin_spotify_insights() {
         $az_geo = ['top' => $az_ctys[0]['name'], 'pct' => $share !== null ? round($share, 1) : null,
                    'second' => $az_ctys[1]['name'] ?? null, 'third' => $az_ctys[2]['name'] ?? null, 'count' => $gc];
     }
+    // Market movement: compare per-country listeners with the capture ~7 days
+    // back (or the previous capture while history is short). Slim query.
+    $az_moves = ['moves' => null, 'days' => 0];
+    if ($has_s4a && !empty($az_meta['countries'])) {
+        $base = null;
+        if ($demo) { $base = (object) ['captured_date' => $demo_rows[0]['captured_date'], 'countries' => wp_json_encode(json_decode((string) $demo_rows[0]['meta'], true)['countries'] ?? [])]; }
+        elseif (function_exists('lmeg_s4a_at')) {
+            $base = lmeg_s4a_at($sel, $snap->window, date('Y-m-d', strtotime($snap->captured_date . ' -7 days')));
+            if ((!$base || $base->captured_date >= $snap->captured_date) && $prev) $base = (object) ['captured_date' => $prev->captured_date, 'countries' => wp_json_encode(((array) json_decode((string) $prev->meta, true))['countries'] ?? [])];
+        }
+        if ($base && $base->captured_date < $snap->captured_date) {
+            $az_moves['moves'] = lmeg_si_country_movers($az_meta['countries'], json_decode((string) $base->countries, true));
+            $az_moves['days']  = max(1, (int) round((strtotime($snap->captured_date) - strtotime($base->captured_date)) / 86400));
+        }
+    }
     $findings = lmeg_si_analyze([
         'geo'               => $az_geo,
         'saver'             => lmeg_si_top_saver($az_songs),
@@ -1405,6 +1458,9 @@ function lmeg_admin_spotify_insights() {
         // Playlists that picked you up (or dropped you) since the previous capture.
         'playlist_diff'     => ($has_s4a && $prev) ? lmeg_si_playlist_diff(json_decode((string) $snap->top_playlists, true), json_decode((string) $prev->top_playlists, true)) : null,
         'prev_date'         => $prev ? (string) $prev->captured_date : null,
+        // Market movement vs the capture ~7 days back (slim row; falls back to the previous capture).
+        'country_moves'     => $az_moves['moves'],
+        'moves_days'        => $az_moves['days'],
         'pl_mix'            => $az_mix,
         'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
         'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
@@ -2271,14 +2327,14 @@ function lmeg_admin_spotify_insights() {
             $country_rows = $has_s4a ? lmeg_si_country_rows((array) ($meta['countries'] ?? []), 8) : [];
             if ($country_rows) : ?>
             <div style="<?php echo $card; ?>">
-                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where they listen <span style="color:#8B90A0;font-weight:400;">· monthly listeners</span></div>
-                <?php foreach ($country_rows as $i => $c) : ?>
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where they listen <span style="color:#8B90A0;font-weight:400;">· monthly listeners<?php if (!empty($az_moves['moves'])) : ?> · vs <?php echo (int) $az_moves['days']; ?>d ago<?php endif; ?></span></div>
+                <?php $mv_all = !empty($az_moves['moves']) ? $az_moves['moves']['all'] : []; foreach ($country_rows as $i => $c) : $mp = $mv_all[$c['cc']] ?? null; ?>
                     <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
                         <div style="display:flex;align-items:center;gap:9px;font-size:13px;">
                             <span style="color:#8B90A0;width:14px;flex:0 0 auto;font-variant-numeric:tabular-nums;"><?php echo $i + 1; ?></span>
                             <span style="flex:0 0 auto;font-size:15px;line-height:1;"><?php echo esc_html($c['flag']); ?></span>
                             <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($c['name']); ?></span>
-                            <span style="color:#F4F5F7;margin-left:auto;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo esc_html(number_format_i18n($c['num'])); ?></span>
+                            <span style="color:#F4F5F7;margin-left:auto;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo esc_html(number_format_i18n($c['num'])); ?><?php if ($mp !== null) : ?> <span style="font-size:11px;font-weight:600;color:<?php echo $mp >= 1 ? '#34D399' : ($mp <= -1 ? '#F87171' : '#8B90A0'); ?>;" title="vs <?php echo (int) $az_moves['days']; ?> days ago"><?php echo $mp >= 1 ? '▲' : ($mp <= -1 ? '▼' : '·'); ?><?php echo esc_html(rtrim(rtrim(number_format(abs($mp), 1), '0'), '.')); ?>%</span><?php endif; ?></span>
                         </div>
                         <div style="height:5px;border-radius:3px;background:rgba(255,255,255,.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:<?php echo (float) $c['share']; ?>%;background:#1DB954;border-radius:3px;"></div></div>
                     </div>

@@ -440,6 +440,32 @@ function lmeg_s4a_latest($artist = null, $window = '28d') {
     ));
 }
 
+/**
+ * The snapshot on or before a date (same artist+window) — slim: just the
+ * columns the market-movement comparison needs (countries via JSON_EXTRACT,
+ * full-meta fallback). null when nothing that old exists.
+ */
+function lmeg_s4a_at($artist, $window, $on_or_before) {
+    global $wpdb;
+    $artist = $artist ?: lmeg_artist();
+    $t = lmeg_s4a_table();
+    $row = $wpdb->get_row($wpdb->prepare(
+        "SELECT captured_date, monthly_listeners, JSON_EXTRACT(meta, '$.countries') AS countries FROM $t
+         WHERE artist = %s AND window = %s AND captured_date <= %s ORDER BY captured_date DESC LIMIT 1",
+        $artist, $window, $on_or_before
+    ));
+    if ($wpdb->last_error) {
+        $wpdb->last_error = '';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT captured_date, monthly_listeners, meta FROM $t
+             WHERE artist = %s AND window = %s AND captured_date <= %s ORDER BY captured_date DESC LIMIT 1",
+            $artist, $window, $on_or_before
+        ));
+        if ($row && isset($row->meta)) { $m = json_decode((string) $row->meta, true); $row->countries = wp_json_encode($m['countries'] ?? []); unset($row->meta); }
+    }
+    return $row ?: null;
+}
+
 /** The snapshot immediately before $before_date (same artist+window), or null. */
 function lmeg_s4a_prev($artist, $window, $before_date) {
     global $wpdb;
