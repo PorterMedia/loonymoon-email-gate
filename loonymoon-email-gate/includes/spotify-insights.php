@@ -1308,7 +1308,10 @@ function lmeg_si_analyze($c) {
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
     $t = lmeg_si_tokens();
-    $card = $t['card']; $lbl = $t['lbl'];
+    // Pull every token out up front: `$t` gets reused as a loop variable
+    // further down (song titles, API tracks), and `$t['muted']` on a string is
+    // a TypeError on PHP 8 that silently truncated the page.
+    $card = $t['card']; $lbl = $t['lbl']; $muted = $t['muted'] ?? 'color:#8B90A0;';
 
     // "Email me this week's digest" — sends the Monday owner digest (with the
     // Spotify section) to the digest address right now.
@@ -2403,7 +2406,7 @@ function lmeg_admin_spotify_insights() {
         if ($impact) : ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:4px;">Momentum · what moved the needle</div>
-            <p style="<?php echo $t['muted']; ?>font-size:12px;margin:0 0 10px;">Follower &amp; popularity change in the 7 days after each release and broadcast. Directional, not causal.</p>
+            <p style="<?php echo $muted; ?>font-size:12px;margin:0 0 10px;">Follower &amp; popularity change in the 7 days after each release and broadcast. Directional, not causal.</p>
             <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="<?php echo $lbl; ?>text-align:left;">
@@ -2446,7 +2449,7 @@ function lmeg_admin_spotify_insights() {
         <?php endif; ?>
 
         <!-- FRESHNESS + LINKS ------------------------------------------------->
-        <p style="<?php echo $t['muted']; ?>font-size:12px;max-width:1040px;">
+        <p style="<?php echo $muted; ?>font-size:12px;max-width:1040px;">
             <?php if ($has_s4a) : ?>Streaming data captured <?php echo esc_html($snap->captured_date); ?> · <?php endif; ?>
             <?php if (!$has_s4a) : ?><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-s4a')); ?>">Import Spotify for Artists</a> for streams &amp; per-song data · <?php endif; ?>
             <?php if (!$has_api) : ?><a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect Spotify</a> for followers &amp; popularity · <?php endif; ?>
