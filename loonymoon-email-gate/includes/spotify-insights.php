@@ -243,6 +243,68 @@ function lmeg_si_stream_velocity($daily_streams) {
     return ['wow' => ($last7 - $prior7) / $prior7 * 100, 'last7' => $last7, 'prior7' => $prior7, 'weeks_down' => $down, 'weeks_up' => $up];
 }
 
+/** Normalized title key shared by the song-daily map and the row lookup. */
+function lmeg_si_song_key($s) {
+    $s = trim((string) $s);
+    $s = function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
+    return preg_replace('/\s+/', ' ', $s);
+}
+
+/**
+ * meta.song_daily ([{t,u,d0,s,li,sv}] from lmeg_s4a_song_daily) → [normTitle =>
+ * entry] for O(1) row lookup; entries without a usable streams series are
+ * dropped and `s` is coerced to ints. Pure.
+ */
+function lmeg_si_song_daily_map($list) {
+    $out = [];
+    foreach ((array) $list as $e) {
+        if (!is_array($e) || empty($e['s']) || !is_array($e['s']) || trim((string) ($e['t'] ?? '')) === '') continue;
+        $e['s'] = array_map('intval', array_values($e['s']));
+        $out[lmeg_si_song_key($e['t'])] = $e;
+    }
+    return $out;
+}
+
+/**
+ * TRUE week-over-week from a daily series: sum of the last 7 values vs the 7
+ * before, as a % (1dp). null when fewer than 14 days or the prior week is 0. Pure.
+ */
+function lmeg_si_week_over_week($vals) {
+    $vals = array_values(array_map('intval', (array) $vals));
+    if (count($vals) < 14) return null;
+    $last = array_sum(array_slice($vals, -7));
+    $prev = array_sum(array_slice($vals, -14, 7));
+    if ($prev <= 0) return null;
+    return round(($last - $prev) / $prev * 100, 1);
+}
+
+/**
+ * Tiny inline SVG sparkline (soft area + line + endpoint dot) for a series of
+ * ints, zero baseline, fixed box. '' with fewer than 2 points. Coordinates are
+ * formatted with number_format (sprintf %f is locale-sensitive). Pure.
+ */
+function lmeg_si_sparkline($vals, $w = 96, $h = 26, $color = '#34D399') {
+    $vals = array_values(array_map('intval', (array) $vals));
+    $n = count($vals);
+    if ($n < 2) return '';
+    $mx = max(1, max($vals));
+    $p = 3; $iw = $w - 2 * $p; $ih = $h - 2 * $p;
+    $f = function ($v) { return number_format((float) $v, 1, '.', ''); };
+    $pts = [];
+    foreach ($vals as $i => $v) {
+        $pts[] = $f($p + $i * $iw / ($n - 1)) . ',' . $f($p + (1 - max(0, $v) / $mx) * $ih);
+    }
+    $line  = implode(' ', $pts);
+    $area  = $line . ' ' . $f($p + $iw) . ',' . $f($h - $p) . ' ' . $f($p) . ',' . $f($h - $p);
+    $color = preg_match('/^#[0-9a-fA-F]{3,8}$/', $color) ? $color : '#34D399';
+    list($lx, $ly) = explode(',', end($pts));
+    return '<svg viewBox="0 0 ' . (int) $w . ' ' . (int) $h . '" width="' . (int) $w . '" height="' . (int) $h . '" style="display:block;overflow:visible;" aria-hidden="true">'
+        . '<polygon points="' . $area . '" fill="' . $color . '" fill-opacity=".12"/>'
+        . '<polyline points="' . $line . '" fill="none" stroke="' . $color . '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>'
+        . '<circle cx="' . $lx . '" cy="' . $ly . '" r="2.2" fill="' . $color . '"/>'
+        . '</svg>';
+}
+
 /**
  * Per-song history across daily snapshots — one point per capture. Input: rows
  * from lmeg_s4a_history() (captured_date, top_songs JSON [{title,streams,
@@ -997,6 +1059,9 @@ function lmeg_admin_spotify_insights() {
             $meta_songs = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
             $movers = lmeg_si_song_movers($songs, (array) ($meta_songs['songs_7d'] ?? []));
             $reconcile = lmeg_si_reconcile_tracks($songs, ($has_api ? ($ov['top_tracks'] ?? []) : []));
+            // Per-song day-by-day (top 20) → inline 28-day sparkline + a TRUE
+            // week-over-week chip (last 7 days vs the 7 before) on each row.
+            $sd_map = lmeg_si_song_daily_map((array) ($meta_songs['song_daily'] ?? []));
         ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:<?php echo $reconcile['both'] ? '4' : '12'; ?>px;">Your songs · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($songs); ?>)</span></div>
@@ -1019,9 +1084,15 @@ function lmeg_admin_spotify_insights() {
                     <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
                     <div style="flex:1 1 auto;min-width:0;">
                         <?php
+                        $sd = $sd_map[lmeg_si_song_key($title)] ?? null;
+                        $wow = $sd ? lmeg_si_week_over_week($sd['s']) : null;
                         $rp = $movers['by_title'][strtolower(trim($title))]['pace'] ?? null;
                         $rchip = '';
-                        if ($rp !== null && abs($rp) >= 8) {
+                        if ($wow !== null && abs($wow) >= 5) {
+                            // Real day-by-day: last 7 days vs the 7 before.
+                            $up = $wow > 0; $rc = $up ? '#34D399' : '#F87171';
+                            $rchip = '<span title="Last 7 days vs the 7 days before" style="font-size:11px;font-weight:600;color:' . $rc . ';margin-left:6px;">' . ($up ? '▲' : '▼') . number_format(abs($wow), 0) . '% wk</span>';
+                        } elseif ($wow === null && $rp !== null && abs($rp) >= 8) {
                             $up = $rp > 0; $rc = $up ? '#34D399' : '#F87171';
                             $rchip = '<span title="vs 28-day pace" style="font-size:11px;font-weight:600;color:' . $rc . ';margin-left:6px;">' . ($up ? '▲' : '▼') . number_format(abs($rp), 0) . '%</span>';
                         }
@@ -1043,6 +1114,9 @@ function lmeg_admin_spotify_insights() {
                         <div style="margin-top:3px;font-size:11px;color:#8B90A0;"><?php echo implode(' · ', $parts); ?></div>
                         <?php endif; ?>
                     </div>
+                    <?php if ($sd) : ?>
+                    <div style="flex:0 0 96px;" title="Last 28 days, day by day" aria-hidden="true"><?php echo lmeg_si_sparkline(array_slice($sd['s'], -28), 96, 26, ($wow !== null && $wow < -5) ? '#F87171' : '#34D399'); ?></div>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
