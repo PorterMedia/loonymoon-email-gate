@@ -467,25 +467,11 @@ function lmeg_si_analyze($c) {
         elseif ($ed >= 25) $F[] = ['type' => 'strength', 'title' => 'Editorial support is solid',
             'detail' => $p($ed) . '% of your playlist streams come from editorial placements.'];
     }
-    // Cross-platform gender gap.
-    if (isset($c['sp_women'], $c['ig_women']) && $c['sp_women'] !== null && $c['ig_women'] !== null) {
-        $gap = $c['sp_women'] - $c['ig_women'];
-        if (abs($gap) >= 8) $F[] = ['type' => 'insight', 'title' => 'Who streams you ≠ who follows you',
-            'detail' => 'Your Spotify audience is ' . $p(abs($gap)) . ' points ' . ($gap > 0 ? 'more female' : 'more male') . ' than your Instagram following. The people streaming you aren’t exactly your social crowd — worth tailoring content to each.'];
-    }
-    // Cross-platform age skew.
-    if (!empty($c['sp_core_age']) && !empty($c['ig_core_age']) && $c['sp_core_age'] !== $c['ig_core_age']) {
-        $F[] = ['type' => 'insight', 'title' => 'Streaming and social skew different ages',
-            'detail' => 'Your Spotify core is ' . $c['sp_core_age'] . ' while your Instagram core is ' . $c['ig_core_age'] . '. Match each platform’s tone to who’s actually there.'];
-    }
-    // Geography gap.
-    if (!empty($c['sp_top_city']) && !empty($c['ig_top_city']) && strcasecmp($c['sp_top_city'], $c['ig_top_city']) !== 0) {
-        $F[] = ['type' => 'insight', 'title' => 'Reach and streams peak in different cities',
-            'detail' => $c['sp_top_city'] . ' leads your Spotify streams while ' . $c['ig_top_city'] . ' leads your Instagram — a good split for local ads vs. touring routing.'];
-    }
     // Audience geographic concentration + strongest secondary markets. Uses the
     // per-country monthly-listener breakdown (meta.countries), which no other
-    // finding touches — turns "where they listen" into an actionable call.
+    // finding touches. Leads the insight tier: it's Spotify-only (no IG needed)
+    // and directly actionable for ad targeting / tour routing, so it should
+    // surface even on data-rich artists where cross-platform insights compete.
     if (!empty($c['geo']['top']) && ($c['geo']['pct'] ?? null) !== null) {
         $g = $c['geo'];
         if ($g['pct'] >= 40) {
@@ -501,6 +487,22 @@ function lmeg_si_analyze($c) {
             $F[] = ['type' => 'strength', 'title' => 'Your reach is global',
                 'detail' => 'No single country is more than ' . $p($g['pct']) . '% of your listeners — you’re spread across ' . (int) $g['count'] . ' markets, which is resilient, diversified reach.'];
         }
+    }
+    // Cross-platform gender gap.
+    if (isset($c['sp_women'], $c['ig_women']) && $c['sp_women'] !== null && $c['ig_women'] !== null) {
+        $gap = $c['sp_women'] - $c['ig_women'];
+        if (abs($gap) >= 8) $F[] = ['type' => 'insight', 'title' => 'Who streams you ≠ who follows you',
+            'detail' => 'Your Spotify audience is ' . $p(abs($gap)) . ' points ' . ($gap > 0 ? 'more female' : 'more male') . ' than your Instagram following. The people streaming you aren’t exactly your social crowd — worth tailoring content to each.'];
+    }
+    // Cross-platform age skew.
+    if (!empty($c['sp_core_age']) && !empty($c['ig_core_age']) && $c['sp_core_age'] !== $c['ig_core_age']) {
+        $F[] = ['type' => 'insight', 'title' => 'Streaming and social skew different ages',
+            'detail' => 'Your Spotify core is ' . $c['sp_core_age'] . ' while your Instagram core is ' . $c['ig_core_age'] . '. Match each platform’s tone to who’s actually there.'];
+    }
+    // Geography gap.
+    if (!empty($c['sp_top_city']) && !empty($c['ig_top_city']) && strcasecmp($c['sp_top_city'], $c['ig_top_city']) !== 0) {
+        $F[] = ['type' => 'insight', 'title' => 'Reach and streams peak in different cities',
+            'detail' => $c['sp_top_city'] . ' leads your Spotify streams while ' . $c['ig_top_city'] . ' leads your Instagram — a good split for local ads vs. touring routing.'];
     }
     // Listener→follower conversion.
     if (!empty($c['monthly_listeners']) && !empty($c['followers']) && $c['monthly_listeners'] >= 2 * $c['followers']) {
