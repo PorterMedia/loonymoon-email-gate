@@ -125,7 +125,9 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
     static $memo = null;
     if ($memo !== null && !$force) return $memo;
     $cache = 'lmeg_social_ig_media';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $memo = $c; if (get_transient($cache . '_fail')) return $memo = []; }
+    // Cached as an ASCII-safe JSON string: captions carry 4-byte emoji, which a
+    // non-utf8mb4 options table rejects — the array transient never persisted.
+    if (!$force) { $c = get_transient($cache); if (is_string($c)) { $dec = json_decode($c, true); if (is_array($dec)) return $memo = $dec; } elseif (is_array($c)) return $memo = $c; if (get_transient($cache . '_fail')) return $memo = []; }
     $s = lmeg_get_settings();
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id'])
@@ -150,7 +152,7 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
             'comments'  => (int) ($m['comments_count'] ?? 0),
         ];
     }
-    set_transient($cache, $out, HOUR_IN_SECONDS);
+    set_transient($cache, wp_json_encode($out), HOUR_IN_SECONDS);
     return $memo = $out;
 }
 
@@ -445,7 +447,7 @@ function lmeg_fb_page_stats($force = false) {
 function lmeg_fb_posts($limit = 25, $force = false) {
     if (!lmeg_fb_configured()) return [];
     $cache = 'lmeg_fb_posts';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
+    if (!$force) { $c = get_transient($cache); if (is_string($c)) { $dec = json_decode($c, true); if (is_array($dec)) return $dec; } elseif (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
     $s   = lmeg_get_settings();
     $pid = get_option('lmeg_ig_page_id');
     $resp = wp_remote_get(
@@ -470,7 +472,7 @@ function lmeg_fb_posts($limit = 25, $force = false) {
             'shares'    => (int) ($p['shares']['count'] ?? 0),
         ];
     }
-    set_transient($cache, $out, HOUR_IN_SECONDS);
+    set_transient($cache, wp_json_encode($out), HOUR_IN_SECONDS); // ASCII-safe (emoji)
     return $out;
 }
 
@@ -1034,7 +1036,7 @@ function lmeg_admin_social($embed = false, $only = null) {
         $story_fans = ($ig_ok && $need_rest) ? $__tm('story_fans', function () { return lmeg_social_story_fans(); }) : [];
         if (!empty($_GET['lmeg_prof'])) {
             $__s = []; foreach ($__pc as $k => $v) $__s[] = $k . '=' . number_format($v) . 'ms';
-            $__mc = get_transient('lmeg_social_ig_media'); $__diag = 'ig_media_cache=' . gettype($__mc) . (is_array($__mc) ? '(' . count($__mc) . ')' : '') . ' objcache=' . (wp_using_ext_object_cache() ? 'ext' : 'db');
+            $__mc = get_transient('lmeg_social_ig_media'); $__diag = 'ig_media_cache=' . gettype($__mc) . (is_array($__mc) ? '(' . count($__mc) . ')' : (is_string($__mc) ? '(' . strlen($__mc) . 'B)' : '')) . ' objcache=' . (wp_using_ext_object_cache() ? 'ext' : 'db');
             echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms " . implode(' ', $__s) . ' ' . $__diag . " -->\n";
         }
     }

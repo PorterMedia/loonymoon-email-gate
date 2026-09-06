@@ -249,7 +249,7 @@ function lmeg_tiktok_user_info($force = false) {
 function lmeg_tiktok_videos($limit = 12, $force = false) {
     if (!lmeg_tiktok_configured()) return [];
     $cache = 'lmeg_tiktok_videos';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
+    if (!$force) { $c = get_transient($cache); if (is_string($c)) { $dec = json_decode($c, true); if (is_array($dec)) return $dec; } elseif (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
     $tok = lmeg_tiktok_access_token();
     if (!$tok) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return []; }
     $resp = wp_remote_post(
@@ -281,6 +281,6 @@ function lmeg_tiktok_videos($limit = 12, $force = false) {
     }
     usort($out, function ($a, $b) { return $b['views'] <=> $a['views']; });
     $out = array_slice($out, 0, (int) $limit);
-    set_transient($cache, $out, HOUR_IN_SECONDS);
+    set_transient($cache, wp_json_encode($out), HOUR_IN_SECONDS); // ASCII-safe (emoji in captions)
     return $out;
 }
