@@ -96,6 +96,38 @@ function lmeg_s4a_countries_detail($a) {
 }
 
 /**
+ * Compact DAILY timeseries from a pull's stats endpoint
+ * (raw.stats.<metric>.current_period_timeseries → [{x:date,y:count}]). Returns a
+ * shared date axis + one int array per metric, so the Insights page can draw a
+ * real day-by-day trend from a SINGLE snapshot (the snapshot-to-snapshot charts
+ * need ≥2 rows). Small (a few ×~29 ints), no raw blob. [] when absent.
+ */
+function lmeg_s4a_daily_series($a) {
+    $a = (array) $a;
+    $stats = $a['raw']['stats'] ?? ($a['stats'] ?? []);
+    if (!is_array($stats) || !$stats) return [];
+    $pull = function ($metric) use ($stats) {
+        $ts = $stats[$metric]['current_period_timeseries'] ?? ($stats[$metric]['timeseries'] ?? null);
+        if (!is_array($ts) || !$ts) return null;
+        $dates = []; $vals = [];
+        foreach ($ts as $pt) {
+            if (!is_array($pt) || !isset($pt['x'])) continue;
+            $dates[] = (string) $pt['x'];
+            $vals[]  = (int) round((float) ($pt['y'] ?? 0));
+        }
+        return $vals ? ['dates' => $dates, 'vals' => $vals] : null;
+    };
+    $out = [];
+    foreach (['streams', 'listeners', 'followers', 'saves'] as $m) {
+        $s = $pull($m);
+        if (!$s) continue;
+        if (empty($out['dates'])) $out['dates'] = $s['dates'];
+        $out[$m] = $s['vals'];
+    }
+    return $out;
+}
+
+/**
  * Normalize an S4A payload (single-artist object, OR the {artists:[…]} wrapper
  * my export produces) into one or more snapshot rows. Tolerant of missing keys.
  *
@@ -159,6 +191,10 @@ function lmeg_s4a_parse($data) {
                 // top_countries column keeps only names, so the Insights page can
                 // rank and quantify markets from meta without a schema change.
                 'countries'           => lmeg_s4a_countries_detail($a),
+                // Daily 28-day timeseries (streams/listeners/followers/saves) so
+                // the Insights page can draw a real day-by-day trend from a single
+                // snapshot — richer than the sparse snapshot-to-snapshot charts.
+                'daily'               => lmeg_s4a_daily_series($a),
                 // 7-day per-song streams — lets the Insights page compute momentum
                 // (recent 7d pace vs the 28d run-rate) from a single snapshot.
                 'songs_7d'            => array_values((array) ($a['top_songs_last_7d'] ?? [])),

@@ -676,7 +676,20 @@ function lmeg_admin_spotify_insights() {
         }
     }
     $trend = function ($vals) { $vals = array_values(array_filter((array) $vals, function ($v) { return $v !== null; })); $k = count($vals); if ($k < 2) return null; $d = (float) $vals[$k - 1] - (float) $vals[0]; return $d > 0 ? 1 : ($d < 0 ? -1 : 0); };
-    $az_streamsTrend = ($has_s4a && function_exists('lmeg_s4a_series')) ? $trend(array_map(function ($r) { return (int) $r->v; }, lmeg_s4a_series('streams', $sel, $snap->window))) : null;
+    // Streams direction — period-over-period (snapshot-to-snapshot) first, since
+    // that matches the social growth it's paired with. Fall back to the daily
+    // 28-day series (second half vs first half) so single-snapshot artists still
+    // get a direction instead of null.
+    $az_streamsTrend = ($has_s4a && function_exists('lmeg_s4a_series'))
+        ? $trend(array_map(function ($r) { return (int) $r->v; }, lmeg_s4a_series('streams', $sel, $snap->window))) : null;
+    if ($az_streamsTrend === null && $has_s4a) {
+        $ds = array_values(array_filter((array) ($az_meta['daily']['streams'] ?? []), 'is_numeric'));
+        if (count($ds) >= 8) {
+            $h = intdiv(count($ds), 2);
+            $first = array_sum(array_slice($ds, 0, $h)); $second = array_sum(array_slice($ds, $h));
+            $az_streamsTrend = $second > $first ? 1 : ($second < $first ? -1 : 0);
+        }
+    }
     $az_socialTrend = null;
     if (function_exists('lmeg_social_snapshots') && function_exists('lmeg_social_series_stats')) {
         $igs = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
@@ -822,13 +835,33 @@ function lmeg_admin_spotify_insights() {
 
         <!-- TRENDS ------------------------------------------------------------>
         <?php
+        // Prefer the DAILY 28-day series (from a single snapshot's stats endpoint)
+        // over the sparse snapshot-to-snapshot charts when it's available.
+        $daily       = (array) ($az_meta['daily'] ?? []);
+        $daily_dates = array_values((array) ($daily['dates'] ?? []));
+        $dstreams    = array_values(array_filter((array) ($daily['streams'] ?? []), 'is_numeric'));
+        $dfoll       = array_values(array_filter((array) ($daily['followers'] ?? []), 'is_numeric'));
+        $dlab = function ($vals) use ($daily_dates) {
+            $out = []; $off = max(0, count($daily_dates) - count($vals));
+            foreach (array_keys($vals) as $i) { $d = $daily_dates[$off + $i] ?? null; $out[] = $d ? date_i18n('M j', strtotime($d)) : ''; }
+            return $out;
+        };
         $streams_ser = ($has_s4a && function_exists('lmeg_s4a_series')) ? lmeg_s4a_series('streams', $sel, $snap->window) : [];
         $hist = function_exists('lmeg_spotify_history') ? array_reverse(lmeg_spotify_history()) : []; // oldest→newest
-        $has_stream_chart = count($streams_ser) >= 2 && function_exists('lmeg_chart_line');
-        $has_foll_chart   = count($hist) >= 2 && function_exists('lmeg_chart_line');
-        if ($has_stream_chart || $has_foll_chart) : ?>
+        $has_daily_streams = count($dstreams) >= 7 && function_exists('lmeg_chart_line');
+        $has_daily_foll    = count($dfoll)    >= 7 && function_exists('lmeg_chart_line');
+        $has_stream_chart  = !$has_daily_streams && count($streams_ser) >= 2 && function_exists('lmeg_chart_line');
+        $has_foll_chart    = !$has_daily_foll && count($hist) >= 2 && function_exists('lmeg_chart_line');
+        if ($has_daily_streams || $has_daily_foll || $has_stream_chart || $has_foll_chart) : ?>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;max-width:1040px;margin-bottom:14px;">
-            <?php if ($has_stream_chart) : ?>
+            <?php if ($has_daily_streams) : ?>
+                <div style="<?php echo $card; ?>">
+                    <div style="<?php echo $lbl; ?>margin-bottom:8px;">Streams — last 28 days <span style="color:#8B90A0;font-weight:400;">· daily</span></div>
+                    <?php echo lmeg_chart_line($dstreams, [
+                        'color' => '#1DB954', 'uid' => 'si-streams-d', 'h' => 70, 'suffix' => ' streams', 'labels' => $dlab($dstreams),
+                    ]); ?>
+                </div>
+            <?php elseif ($has_stream_chart) : ?>
                 <div style="<?php echo $card; ?>">
                     <div style="<?php echo $lbl; ?>margin-bottom:8px;">Streams over time</div>
                     <?php echo lmeg_chart_line(array_map(function ($r) { return (int) $r->v; }, $streams_ser), [
@@ -837,7 +870,14 @@ function lmeg_admin_spotify_insights() {
                     ]); ?>
                 </div>
             <?php endif; ?>
-            <?php if ($has_foll_chart) : ?>
+            <?php if ($has_daily_foll) : ?>
+                <div style="<?php echo $card; ?>">
+                    <div style="<?php echo $lbl; ?>margin-bottom:8px;">Followers — last 28 days <span style="color:#8B90A0;font-weight:400;">· daily</span></div>
+                    <?php echo lmeg_chart_line($dfoll, [
+                        'color' => '#7C6CF6', 'uid' => 'si-foll-d', 'h' => 70, 'suffix' => ' followers', 'labels' => $dlab($dfoll),
+                    ]); ?>
+                </div>
+            <?php elseif ($has_foll_chart) : ?>
                 <div style="<?php echo $card; ?>">
                     <div style="<?php echo $lbl; ?>margin-bottom:8px;">Followers over time</div>
                     <?php echo lmeg_chart_line(array_map(function ($r) { return (int) $r['followers']; }, $hist), [
