@@ -243,6 +243,80 @@ function lmeg_si_stream_velocity($daily_streams) {
     return ['wow' => ($last7 - $prior7) / $prior7 * 100, 'last7' => $last7, 'prior7' => $prior7, 'weeks_down' => $down, 'weeks_up' => $up];
 }
 
+/**
+ * "Fan rings" — the five concentric audiences Fanloop can see at once, and the
+ * conversion between each: Listeners (Spotify, anonymous) → Followers (Spotify
+ * + Instagram, semi-anonymous) → On your list (named, reachable) → Customers
+ * (paid once) → Members (pay monthly). Pure shaping: takes the raw counts,
+ * returns ordered rings with 'pct' = share of the previous ring (null when
+ * either side is unknown/0). Followers uses the LARGER platform (overlap is
+ * unknown, so a sum would inflate) and lists both underneath.
+ */
+function lmeg_si_fan_rings_shape($n) {
+    $v = function ($k) use ($n) { return (isset($n[$k]) && $n[$k] !== null && $n[$k] !== '') ? max(0, (int) $n[$k]) : null; };
+    $sp = $v('sp_followers'); $ig = $v('ig_followers');
+    $fol = ($sp === null && $ig === null) ? null : max((int) $sp, (int) $ig);
+    $folSub = [];
+    if ($sp !== null) $folSub[] = 'Spotify ' . number_format_i18n($sp);
+    if ($ig !== null) $folSub[] = 'Instagram ' . number_format_i18n($ig);
+    $rings = [
+        ['key' => 'listeners', 'label' => 'Monthly listeners', 'value' => $v('listeners'), 'sub' => 'Spotify · anonymous', 'tone' => '#7C6CF6'],
+        ['key' => 'followers', 'label' => 'Followers',         'value' => $fol,            'sub' => $folSub ? implode(' · ', $folSub) : 'not connected', 'tone' => '#7C6CF6'],
+        ['key' => 'list',      'label' => 'On your list',      'value' => $v('list'),      'sub' => ($v('superfans') !== null ? number_format_i18n($v('superfans')) . ' superfans · ' : '') . 'email, SMS, DM', 'tone' => '#D05FA2', 'href' => 'admin.php?page=lmeg-fanbase'],
+        ['key' => 'customers', 'label' => 'Customers',         'value' => $v('customers'), 'sub' => 'bought at least once', 'tone' => '#D05FA2'],
+        ['key' => 'members',   'label' => 'Members',           'value' => $v('members'),   'sub' => 'paying monthly', 'tone' => '#34D399'],
+    ];
+    $prev = null; $prevLabel = null;
+    foreach ($rings as &$r) {
+        $r['pct'] = ($prev !== null && $prev > 0 && $r['value'] !== null) ? round($r['value'] / $prev * 100, $r['value'] / $prev * 100 < 1 ? 2 : 1) : null;
+        $r['pct_of'] = $r['pct'] !== null ? $prevLabel : null;
+        if ($r['value'] !== null) { $prev = $r['value']; $prevLabel = strtolower($r['label']); }
+    }
+    unset($r);
+    return $rings;
+}
+
+/**
+ * Gather the raw counts for lmeg_si_fan_rings_shape from what this site holds:
+ * S4A snapshot (listeners, Spotify followers), the latest Instagram snapshot,
+ * the Fanbase groups (list total, superfans, members) and distinct buyers
+ * across Shopify-attributed orders + the native store. Every source is
+ * optional — a missing one yields null (rendered as "—"), never a fatal.
+ */
+function lmeg_si_fan_rings_data($snap, $ov, $has_api) {
+    global $wpdb;
+    $n = ['listeners' => null, 'sp_followers' => null, 'ig_followers' => null, 'list' => null, 'superfans' => null, 'customers' => null, 'members' => null];
+    if ($snap) {
+        $n['listeners']    = $snap->monthly_listeners !== null ? (int) $snap->monthly_listeners : null;
+        $n['sp_followers'] = $snap->followers !== null ? (int) $snap->followers : null;
+    }
+    if ($n['sp_followers'] === null && $has_api && !empty($ov['followers'])) $n['sp_followers'] = (int) $ov['followers'];
+    if (function_exists('lmeg_social_snapshots')) {
+        $rows = (array) lmeg_social_snapshots('instagram', 14);
+        if ($rows) { $last = end($rows); $n['ig_followers'] = (int) $last->followers; }
+    }
+    if (function_exists('lmeg_fanbase_counts')) {
+        $c = lmeg_fanbase_counts();
+        $n['list'] = (int) ($c['total'] ?? 0); $n['superfans'] = (int) ($c['superfans'] ?? 0); $n['members'] = (int) ($c['members'] ?? 0);
+    }
+    if (defined('LMEG_TABLE')) {
+        $subs = $wpdb->prefix . LMEG_TABLE; $orders = $wpdb->prefix . 'lmeg_shop_orders'; $store = $wpdb->prefix . 'lmeg_product_purchases';
+        // Distinct people, not orders: union Shopify buyers (by subscriber) with
+        // native-store buyers (by email) — the store table may lack an email
+        // column on older installs, so fall back to Shopify-only on error.
+        $buyers = $wpdb->get_var("SELECT COUNT(DISTINCT e) FROM (
+            SELECT LOWER(s.email) e FROM $orders o JOIN $subs s ON s.id = o.subscriber_id WHERE o.subscriber_id > 0
+            UNION SELECT LOWER(email) FROM $store WHERE email IS NOT NULL AND email <> '' AND status NOT IN ('pending','failed','cancelled','canceled','refunded')
+        ) x");
+        if ($buyers === null || $wpdb->last_error) {
+            $wpdb->last_error = '';
+            $buyers = $wpdb->get_var("SELECT COUNT(DISTINCT subscriber_id) FROM $orders WHERE subscriber_id > 0");
+        }
+        $n['customers'] = $buyers !== null ? (int) $buyers : null;
+    }
+    return lmeg_si_fan_rings_shape($n);
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -986,6 +1060,31 @@ function lmeg_admin_spotify_insights() {
                 <a class="button" href="<?php echo esc_url($ov['url']); ?>" target="_blank" rel="noopener" style="flex:0 0 auto;">Open on Spotify ↗</a>
             <?php endif; ?>
         </div>
+
+        <!-- FAN RINGS — listeners → followers → list → customers → members ---->
+        <?php $rings = lmeg_si_fan_rings_data($snap, $ov, $has_api); if ($rings) : ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
+                <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
+                <div style="font-size:11px;color:#8B90A0;">Anonymous listeners on the left, people you can actually reach on the right — the % is each ring's share of the one before.</div>
+            </div>
+            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
+                <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
+                <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
+                <div style="flex:1 1 0;min-width:150px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-top:3px solid <?php echo $r['tone']; ?>;border-radius:12px;padding:12px 12px 10px;">
+                    <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;<?php echo $val === null ? 'color:#8B90A0;' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
+                    <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:7px 0 4px;">
+                        <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
+                    </div>
+                    <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
+                    <?php if ($r['pct'] !== null) : ?>
+                    <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- INSIGHT CALLOUTS ------------------------------------------------->
         <?php
