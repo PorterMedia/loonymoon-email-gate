@@ -747,7 +747,7 @@ function lmeg_si_render_fan_rings($rings, $card, $lbl) {
     if (!$rings) return '';
     ob_start(); ?>
 
-        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+        <div style="<?php echo $card; ?>margin-bottom:14px;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
                 <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
                 <div style="font-size:11px;color:#8B90A0;">Anonymous listeners on the left, people you can actually reach on the right — the % is each ring's share of the one before.</div>
@@ -762,7 +762,7 @@ function lmeg_si_render_fan_rings($rings, $card, $lbl) {
                     </div>
                     <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
                     <?php if (!empty($r['change'])) : $cdir = (int) $r['change'][1]; ?>
-                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '· '); ?><?php echo esc_html($r['change'][0]); ?></div>
+                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '→ '); ?><?php echo esc_html($r['change'][0]); ?></div>
                     <?php endif; ?>
                     <?php if ($r['pct'] !== null) : ?>
                     <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
@@ -1762,8 +1762,8 @@ function lmeg_admin_spotify_insights_render() {
         ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin:0 0 14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:4px;">What the data says <span style="color:#8B90A0;font-weight:400;">· Fanloop analysis</span></div>
-            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;">Auto-generated from your streaming + social data — the most actionable items first. Scroll for more.</p>
-            <div style="display:flex;flex-direction:column;gap:12px;max-height:320px;overflow-y:auto;padding-right:8px;">
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;">Auto-generated from your streaming + social data — the most actionable items first.</p>
+            <div class="lmeg-si-more" data-more="findings" style="display:flex;flex-direction:column;gap:12px;max-height:320px;overflow-y:auto;padding-right:8px;">
                 <?php foreach ($findings as $f) : $tk = $ftok[$f['type']] ?? ['#8B90A0', '']; ?>
                 <div style="display:flex;gap:12px;align-items:flex-start;">
                     <span style="flex:0 0 auto;margin-top:1px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:<?php echo $tk[0]; ?>;background:<?php echo $tk[0]; ?>1f;border:1px solid <?php echo $tk[0]; ?>55;border-radius:20px;padding:3px 9px;min-width:82px;text-align:center;"><?php echo esc_html($tk[1]); ?></span>
@@ -1952,7 +1952,7 @@ function lmeg_admin_spotify_insights_render() {
                 <div style="font-size:13px;color:#F4F5F7;line-height:1.5;"><strong><?php echo esc_html($banner['title']); ?></strong><?php echo $banner['html']; ?></div>
             </div>
             <?php endif; ?>
-            <div style="display:flex;flex-direction:column;gap:9px;max-height:520px;overflow:auto;">
+            <div class="lmeg-si-more" data-more="songs" style="display:flex;flex-direction:column;gap:9px;max-height:520px;overflow:auto;">
                 <?php foreach (array_slice($songs, 0, 40) as $i => $s) :
                     $title = (string) ($s['title'] ?? $s['trackName'] ?? '—');
                     $st = (int) ($s['streams'] ?? 0);
@@ -2270,7 +2270,7 @@ function lmeg_admin_spotify_insights_render() {
         if ($releases) : $maxR = 1; foreach ($releases as $r) { $maxR = max($maxR, $r['streams']); } ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:12px;">Releases · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($releases); ?>)</span><?php if ($clicks_map) : ?> <span style="color:#8B90A0;font-weight:400;">· ↗ = has a Fanloop release page · clicks are from that page</span><?php endif; ?></div>
-            <div style="display:flex;flex-direction:column;gap:9px;max-height:420px;overflow:auto;">
+            <div class="lmeg-si-more" data-more="releases" style="display:flex;flex-direction:column;gap:9px;max-height:420px;overflow:auto;">
                 <?php foreach (array_slice($releases, 0, 20) as $i => $r) :
                     $st = (int) $r['streams']; $w = max(2, round($st / $maxR * 100));
                     $yr = ($r['date'] && strlen($r['date']) >= 4) ? substr($r['date'], 0, 4) : '';
@@ -2365,8 +2365,9 @@ function lmeg_admin_spotify_insights_render() {
             </div>
             <?php endif; ?>
             <?php if ($cities) : $maxCity = 1; foreach ($cities as $c) { $maxCity = max($maxCity, (int) ($c['num'] ?? 0)); } ?>
-            <div style="<?php echo $card; ?>max-height:360px;overflow:auto;">
+            <div style="<?php echo $card; ?>">
                 <div style="<?php echo $lbl; ?>margin-bottom:12px;">Top cities <span style="color:#8B90A0;font-weight:400;">(<?php echo count($cities); ?>)</span></div>
+                <div class="lmeg-si-more" data-more="cities" style="max-height:300px;overflow:auto;">
                 <?php foreach (array_slice($cities, 0, 12) as $c) :
                     $name = (string) ($c['name'] ?? ''); $num = (int) ($c['num'] ?? 0);
                     $loc  = trim(implode(', ', array_filter([(string) ($c['region'] ?? ''), (string) ($c['country'] ?? '')])));
@@ -2379,6 +2380,7 @@ function lmeg_admin_spotify_insights_render() {
                         <div style="height:5px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#1DB954,#34D399);border-radius:6px;"></div></div>
                     </div>
                 <?php endforeach; ?>
+                </div>
             </div>
             <?php endif; ?>
         </div>
@@ -2502,7 +2504,7 @@ function lmeg_admin_spotify_insights_render() {
             </div>
             <?php endif; ?>
             <?php if ($playlists) : ?>
-            <div style="<?php echo $card; ?>max-height:360px;overflow:auto;">
+            <div style="<?php echo $card; ?>">
                 <div style="<?php echo $lbl; ?>margin-bottom:10px;">Top playlists <span style="color:#8B90A0;font-weight:400;">(<?php echo count($playlists); ?>)</span></div>
                 <?php $mix = lmeg_si_playlist_mix($playlists); if ($mix) : ?>
                 <div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.06);margin-bottom:8px;">
@@ -2517,6 +2519,7 @@ function lmeg_admin_spotify_insights_render() {
                 // NEW chip for playlists that weren't in the previous capture.
                 $pl_new = [];
                 if ($has_s4a && !empty($prev)) { foreach (lmeg_si_playlist_diff($playlists, json_decode((string) $prev->top_playlists, true))['new'] as $np) $pl_new[strtolower(trim($np['title']))] = true; }
+                echo '<div class="lmeg-si-more" data-more="playlists" style="max-height:250px;overflow:auto;">';
                 foreach (array_slice($playlists, 0, 10) as $p) :
                     if (!is_array($p)) continue;
                     $name = (string) ($p['title'] ?? $p['name'] ?? '');
@@ -2535,6 +2538,7 @@ function lmeg_admin_spotify_insights_render() {
                         <?php if ($sub) : ?><div style="font-size:11px;color:#8B90A0;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($sub); ?></div><?php endif; ?>
                     </div>
                 <?php endforeach; ?>
+                </div>
             </div>
             <?php endif; ?>
             <?php if ($toptracks) : ?>
@@ -2609,6 +2613,32 @@ function lmeg_admin_spotify_insights_render() {
             <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-s4a')); ?>">Manage import</a> ·
             <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Spotify settings</a>
         </p>
+
+        <!-- LONG LISTS — clamp with a fade + "Show N more" instead of a silent
+             overflow:auto (Mac overlay scrollbars made the lists look cut off). -->
+        <style>
+        .lmeg-si-more.is-clamped{position:relative;overflow:hidden !important;}
+        .lmeg-si-more.is-clamped::after{content:"";position:absolute;left:0;right:0;bottom:0;height:64px;background:linear-gradient(180deg,rgba(26,29,43,0),#1A1D2B 92%);pointer-events:none;}
+        .lmeg-si-more.is-open{max-height:none !important;overflow:visible !important;}
+        .lmeg-si-more-btn{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font:700 11px/1 var(--lmegA-font,inherit);color:#F4F5F7;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:7px 12px;cursor:pointer;}
+        .lmeg-si-more-btn:hover{background:rgba(255,255,255,.1);}
+        .lmeg-si-more-btn:focus-visible{outline:2px solid #7C6CF6;outline-offset:2px;}
+        </style>
+        <script>
+        (function(){
+            var els = document.querySelectorAll('.lmeg-si-more');
+            Array.prototype.forEach.call(els, function(el){
+                if (el.scrollHeight <= el.clientHeight + 8) return;
+                var noun = el.getAttribute('data-more') || 'items', total = el.children.length;
+                var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'lmeg-si-more-btn';
+                function hidden(){ var h = el.clientHeight, n = 0; Array.prototype.forEach.call(el.children, function(c){ if (c.offsetTop + c.offsetHeight > h) n++; }); return n; }
+                function label(){ if (el.classList.contains('is-open')) { btn.textContent = 'Show fewer ↑'; } else { var n = hidden(); btn.textContent = n > 0 ? ('Show ' + n + ' more ' + noun + ' ↓') : ('Show all ' + total + ' ' + noun + ' ↓'); } }
+                el.classList.add('is-clamped'); label();
+                btn.addEventListener('click', function(){ var open = el.classList.toggle('is-open'); el.classList.toggle('is-clamped', !open); label(); if (!open && el.getBoundingClientRect().top < 0) el.scrollIntoView({block:'start'}); });
+                el.parentNode.insertBefore(btn, el.nextSibling);
+            });
+        })();
+        </script>
     </div>
     <?php
     if ($prof_on) {

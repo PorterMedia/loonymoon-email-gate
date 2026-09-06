@@ -22,6 +22,8 @@ function lmeg_admin_polish_footer() {
     if (!function_exists('lmeg_admin_current_slug') || lmeg_admin_current_slug() === '') return;
     ?>
 <style id="lmeg-polish-css">
+/* Sub-headings: admin.css only themes h1/h2, so WP's default near-black h3/h4 vanished on the dark canvas. */
+body.lmeg-admin .wrap h3,body.lmeg-admin .wrap h4{color:var(--lmegA-text,#F4F5F7);font-family:var(--lmegA-font,inherit);}
 .lmeg-toasts{position:fixed;right:22px;bottom:22px;z-index:100000;display:flex;flex-direction:column;gap:10px;max-width:360px;}
 .lmeg-toast{display:flex;align-items:flex-start;gap:10px;background:linear-gradient(160deg,#161826,#1C1F2E);
   border:1px solid rgba(255,255,255,.10);border-left:3px solid #34D399;border-radius:12px;
