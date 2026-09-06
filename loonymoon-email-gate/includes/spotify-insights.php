@@ -666,6 +666,8 @@ function lmeg_si_launch_compare($api_releases, $sd_map) {
     $out = [];
     foreach ((array) $api_releases as $r) {
         if (!is_array($r) || empty($r['name']) || empty($r['date']) || strlen((string) $r['date']) < 10) continue;
+        // API release names can arrive HTML-escaped ("Ain&#039;t No Sunshine") — decode before matching/display.
+        $r['name'] = html_entity_decode((string) $r['name'], ENT_QUOTES, 'UTF-8');
         $e = $sd_map[lmeg_si_song_key((string) $r['name'])] ?? null;
         if (!$e || empty($e['s']) || empty($e['d0'])) continue;
         $s = array_values(array_map('intval', (array) $e['s']));
