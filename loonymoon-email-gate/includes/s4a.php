@@ -293,6 +293,18 @@ function lmeg_s4a_series($metric, $artist = null, $window = '28d', $limit = 60) 
     return $rows;
 }
 
+/** Every snapshot row for an artist+window, oldest→newest — powers per-song
+ *  history (each row's top_songs + meta.songs_7d is one point per capture). */
+function lmeg_s4a_history($artist = null, $window = '28d', $limit = 120) {
+    global $wpdb;
+    $artist = $artist ?: lmeg_artist();
+    return $wpdb->get_results($wpdb->prepare(
+        "SELECT captured_date, top_songs, meta FROM " . lmeg_s4a_table() . "
+         WHERE artist = %s AND window = %s
+         ORDER BY captured_date ASC LIMIT %d", $artist, $window, (int) $limit
+    ));
+}
+
 /** Distinct artists we have snapshots for (for the switcher). */
 function lmeg_s4a_artists() {
     global $wpdb;

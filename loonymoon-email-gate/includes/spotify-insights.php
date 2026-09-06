@@ -244,6 +244,49 @@ function lmeg_si_stream_velocity($daily_streams) {
 }
 
 /**
+ * Per-song history across daily snapshots — one point per capture. Input: rows
+ * from lmeg_s4a_history() (captured_date, top_songs JSON [{title,streams,
+ * listeners,saves}], meta JSON {songs_7d:[{title,streams}]}); rows may be objects
+ * (wpdb) or arrays (harness). Returns [normTitle => ['title'=>display,'pts'=>[
+ * ['d'=>date,'s28'=>int,'s7'=>int|null,'li'=>int|null,'sv'=>int|null], …]]],
+ * points ascending by date. Keyed by a normalized title so capitalization drift
+ * between captures still lands on ONE series. Pure.
+ */
+function lmeg_si_song_history($rows) {
+    $norm = function ($s) {
+        $s = trim((string) $s);
+        $s = function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
+        return preg_replace('/\s+/', ' ', $s);
+    };
+    $get = function ($r, $k) { return is_object($r) ? ($r->$k ?? null) : ($r[$k] ?? null); };
+    $out = [];
+    foreach ((array) $rows as $r) {
+        $date = (string) $get($r, 'captured_date');
+        if ($date === '') continue;
+        $songs = json_decode((string) ($get($r, 'top_songs') ?? '[]'), true);
+        $meta  = json_decode((string) ($get($r, 'meta') ?? '{}'), true);
+        $s7 = [];
+        foreach ((array) ($meta['songs_7d'] ?? []) as $s) { if (is_array($s)) $s7[$norm($s['title'] ?? '')] = (int) ($s['streams'] ?? 0); }
+        foreach ((array) $songs as $s) {
+            if (!is_array($s)) continue;
+            $t = (string) ($s['title'] ?? $s['trackName'] ?? '');
+            if ($t === '') continue;
+            $k = $norm($t);
+            if (!isset($out[$k])) $out[$k] = ['title' => $t, 'pts' => []];
+            $out[$k]['pts'][] = [
+                'd'   => $date,
+                's28' => (int) ($s['streams'] ?? 0),
+                's7'  => isset($s7[$k]) ? $s7[$k] : null,
+                'li'  => isset($s['listeners']) ? (int) $s['listeners'] : null,
+                'sv'  => isset($s['saves']) ? (int) $s['saves'] : null,
+            ];
+        }
+    }
+    foreach ($out as &$e) { usort($e['pts'], function ($a, $b) { return strcmp($a['d'], $b['d']); }); } unset($e);
+    return $out;
+}
+
+/**
  * Reconcile the two track sources: S4A songs (carry STREAMS) vs the public
  * Spotify API top-tracks (carry POPULARITY, 0–100). Matches by normalized title.
  * Returns:
@@ -972,7 +1015,7 @@ function lmeg_admin_spotify_insights() {
                     $sv = isset($s['saves']) ? (int) $s['saves'] : null;
                     $w = max(2, round($st / $max * 100));
                 ?>
-                <div style="display:flex;align-items:center;gap:12px;">
+                <div class="lmeg-song-row" data-song="<?php echo esc_attr($title); ?>" role="button" tabindex="0" title="Click to see this song's history" style="display:flex;align-items:center;gap:12px;cursor:pointer;border-radius:8px;padding:2px 4px;margin:0 -4px;">
                     <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
                     <div style="flex:1 1 auto;min-width:0;">
                         <?php
@@ -1004,6 +1047,121 @@ function lmeg_admin_spotify_insights() {
                 <?php endforeach; ?>
             </div>
         </div>
+
+        <!-- SONG HISTORY OVERLAY — click a song row for its trend across daily captures -->
+        <?php
+        // One point per daily capture (28d/7d streams, listeners, saves) for every
+        // song — embedded once so the overlay is instant and needs no AJAX.
+        $song_hist = function_exists('lmeg_s4a_history') ? lmeg_si_song_history(lmeg_s4a_history($sel, $snap->window)) : [];
+        ?>
+        <div id="lmeg-song-ov" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(8,9,14,.74);align-items:center;justify-content:center;padding:20px;">
+            <div role="dialog" aria-modal="true" aria-labelledby="lmeg-song-ov-title" style="<?php echo $card; ?>width:min(760px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;">
+                    <div style="min-width:0;">
+                        <div style="<?php echo $lbl; ?>margin-bottom:4px;">Song history</div>
+                        <div id="lmeg-song-ov-title" style="font:800 22px/1.15 var(--lmegA-font,inherit);color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;"></div>
+                    </div>
+                    <button type="button" id="lmeg-song-ov-close" aria-label="Close" style="flex:0 0 auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7;border-radius:10px;width:34px;height:34px;font-size:18px;line-height:1;cursor:pointer;">&times;</button>
+                </div>
+                <div id="lmeg-song-ov-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px;"></div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+                    <span style="<?php echo $lbl; ?>margin-right:4px;">Metric</span>
+                    <div id="lmeg-song-ov-metric" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+                    <span style="<?php echo $lbl; ?>margin-right:4px;">Range</span>
+                    <div id="lmeg-song-ov-range" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                    <span id="lmeg-song-ov-custom" style="display:none;gap:6px;align-items:center;margin-left:4px;">
+                        <input type="date" id="lmeg-song-ov-from" style="background:#0E0F16;color:#F4F5F7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:4px 8px;font-size:12px;">
+                        <span style="color:#8B90A0;font-size:12px;">to</span>
+                        <input type="date" id="lmeg-song-ov-to" style="background:#0E0F16;color:#F4F5F7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:4px 8px;font-size:12px;">
+                    </span>
+                </div>
+                <div id="lmeg-song-ov-chart" style="min-height:190px;"></div>
+                <p id="lmeg-song-ov-note" style="color:#8B90A0;font-size:12px;margin:10px 0 0;"></p>
+            </div>
+        </div>
+        <script>
+        (function(){
+            var H = <?php echo wp_json_encode($song_hist); ?>;
+            var METRICS = [['s28','Streams · 28d window'],['s7','Streams · 7d window'],['li','Listeners'],['sv','Saves']];
+            var RANGES  = [['7','Last 7 days'],['28','Last 28 days'],['all','All'],['custom','Custom']];
+            var state = {key:null, metric:'s28', range:'28'};
+            var $ = function(id){ return document.getElementById(id); };
+            var ov=$('lmeg-song-ov'), ttl=$('lmeg-song-ov-title'), stats=$('lmeg-song-ov-stats'), mWrap=$('lmeg-song-ov-metric'), rWrap=$('lmeg-song-ov-range'), cust=$('lmeg-song-ov-custom'), fromI=$('lmeg-song-ov-from'), toI=$('lmeg-song-ov-to'), chart=$('lmeg-song-ov-chart'), note=$('lmeg-song-ov-note');
+            if(!ov) return;
+            var n = function(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); };
+            var fmt = function(v){ return (v===null||v===undefined) ? '—' : Number(v).toLocaleString(); };
+            var find = function(t){ var k=n(t); if(H[k]) return H[k]; for(var key in H){ if(n(H[key].title)===k) return H[key]; } return null; };
+            var btn = function(label, on, cb){ var b=document.createElement('button'); b.type='button'; b.textContent=label; b.style.cssText='border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '+(on?'#D05FA2':'rgba(255,255,255,.14)')+';background:'+(on?'#D05FA2':'rgba(255,255,255,.04)')+';color:#fff;'; b.addEventListener('click',cb); return b; };
+            var dayMs = 86400000;
+            var parse = function(d){ return new Date(d+'T00:00:00'); };
+            var lab = function(dd){ return parse(dd).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
+            function filtered(entry){
+                var pts = entry.pts.filter(function(p){ return p[state.metric]!==null && p[state.metric]!==undefined; });
+                if(!pts.length) return pts;
+                var last = parse(pts[pts.length-1].d);
+                if(state.range==='7'||state.range==='28'){ var cut=new Date(last.getTime()-(parseInt(state.range,10)-1)*dayMs); pts=pts.filter(function(p){ return parse(p.d)>=cut; }); }
+                else if(state.range==='custom'){ var f=fromI.value?parse(fromI.value):null, t=toI.value?parse(toI.value):null; pts=pts.filter(function(p){ var x=parse(p.d); return (!f||x>=f)&&(!t||x<=t); }); }
+                return pts;
+            }
+            function svg(pts){
+                var W=680,Hh=190,P={l:52,r:14,t:14,b:28};
+                var vals=pts.map(function(p){return p[state.metric];});
+                var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+                if(mn===mx){ mn=mn*0.95; mx=(mx*1.05)||1; }
+                var iw=W-P.l-P.r, ih=Hh-P.t-P.b;
+                var x=function(i){ return P.l+(pts.length===1?iw/2:i*iw/(pts.length-1)); };
+                var y=function(v){ return P.t+(1-(v-mn)/(mx-mn))*ih; };
+                var d=pts.map(function(p,i){ return (i?'L':'M')+x(i).toFixed(1)+' '+y(p[state.metric]).toFixed(1); }).join(' ');
+                var area=d+' L'+x(pts.length-1).toFixed(1)+' '+(Hh-P.b)+' L'+x(0).toFixed(1)+' '+(Hh-P.b)+' Z';
+                var s='<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" height="'+Hh+'" role="img" aria-label="History chart" style="display:block;overflow:visible;">';
+                for(var g=0; g<=3; g++){ var gy=P.t+g*ih/3; s+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+gy.toFixed(1)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'; }
+                s+='<text x="'+(P.l-8)+'" y="'+(P.t+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mx))+'</text>';
+                s+='<text x="'+(P.l-8)+'" y="'+(Hh-P.b+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mn))+'</text>';
+                if(pts.length>1){ s+='<path d="'+area+'" fill="#34D399" fill-opacity=".10"/><path d="'+d+'" fill="none" stroke="#34D399" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'; }
+                pts.forEach(function(p,i){ var last=i===pts.length-1; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p[state.metric]).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p[state.metric])+'</title></circle>'; });
+                s+='<text x="'+P.l+'" y="'+(Hh-6)+'" font-size="11" fill="#8B90A0">'+lab(pts[0].d)+'</text>';
+                if(pts.length>1) s+='<text x="'+(W-P.r)+'" y="'+(Hh-6)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+lab(pts[pts.length-1].d)+'</text>';
+                return s+'</svg>';
+            }
+            function render(){
+                var e = state.key ? H[state.key] : null; if(!e) return;
+                mWrap.innerHTML=''; METRICS.forEach(function(m){ mWrap.appendChild(btn(m[1], state.metric===m[0], function(){ state.metric=m[0]; render(); })); });
+                rWrap.innerHTML=''; RANGES.forEach(function(r){ rWrap.appendChild(btn(r[1], state.range===r[0], function(){ state.range=r[0]; render(); })); });
+                cust.style.display = (state.range==='custom') ? 'inline-flex' : 'none';
+                var pts = filtered(e), total = e.pts.length;
+                if(!pts.length){ chart.innerHTML='<div style="color:#8B90A0;font-size:13px;padding:30px 0;text-align:center;">No captures in this range for this metric.</div>'; }
+                else if(pts.length===1){ chart.innerHTML='<div style="padding:26px 0;text-align:center;"><div style="font:800 34px/1 var(--lmegA-font,inherit);color:#F4F5F7;">'+fmt(pts[0][state.metric])+'</div><div style="color:#8B90A0;font-size:12px;margin-top:6px;">captured '+parse(pts[0].d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — one point so far; the line draws itself as daily captures land</div></div>'; }
+                else { chart.innerHTML = svg(pts); }
+                var delta = (pts.length>1) ? (pts[pts.length-1][state.metric]-pts[0][state.metric]) : null;
+                note.textContent = 'History builds one point per daily capture — '+total+' capture'+(total===1?'':'s')+' so far'+(delta!==null?(' · '+(delta>=0?'+':'')+fmt(delta)+' over this range'):'')+'.';
+            }
+            function open(title){
+                var e = find(title); if(!e) return;
+                for(var key in H){ if(H[key]===e){ state.key=key; break; } }
+                ttl.textContent = e.title;
+                var lastPt = e.pts[e.pts.length-1] || {};
+                var chips = [['Streams · 28d', lastPt.s28],['Streams · 7d', lastPt.s7],['Listeners', lastPt.li],['Saves', lastPt.sv]];
+                stats.innerHTML = chips.map(function(c){ return '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;"><div style="font:800 18px/1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;">'+fmt(c[1])+'</div><div style="font:600 10px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin-top:6px;">'+c[0]+'</div></div>'; }).join('');
+                if(e.pts.length){ fromI.value=e.pts[0].d; toI.value=e.pts[e.pts.length-1].d; }
+                ov.style.display='flex'; document.body.style.overflow='hidden';
+                render();
+                $('lmeg-song-ov-close').focus();
+            }
+            function close(){ ov.style.display='none'; document.body.style.overflow=''; }
+            document.querySelectorAll('.lmeg-song-row').forEach(function(row){
+                row.addEventListener('click', function(){ open(row.getAttribute('data-song')); });
+                row.addEventListener('keydown', function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); open(row.getAttribute('data-song')); } });
+                row.addEventListener('mouseenter', function(){ row.style.background='rgba(255,255,255,.04)'; });
+                row.addEventListener('mouseleave', function(){ row.style.background=''; });
+            });
+            $('lmeg-song-ov-close').addEventListener('click', close);
+            ov.addEventListener('click', function(ev){ if(ev.target===ov) close(); });
+            document.addEventListener('keydown', function(ev){ if(ev.key==='Escape' && ov.style.display!=='none') close(); });
+            fromI.addEventListener('change', render); toI.addEventListener('change', render);
+        })();
+        </script>
         <?php endif; ?>
 
         <!-- TRACKS ON SPOTIFY BUT NOT IN YOUR S4A CATALOG (features/collabs) --->
