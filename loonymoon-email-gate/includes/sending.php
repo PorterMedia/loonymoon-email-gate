@@ -1035,6 +1035,10 @@ function lmeg_send_owner_digest() {
     }
     $body .= '</table>';
 
+    // Spotify this week — streams/listeners/followers deltas, the real mover,
+    // last send's lift, top findings with their actions (spotify-insights.php).
+    if (function_exists('lmeg_si_digest_html')) $body .= lmeg_si_digest_html();
+
     // AI read — best-effort, never blocks the digest.
     if (function_exists('lmeg_ai_ask')) {
         $ai = lmeg_ai_ask('Write a 2-3 sentence Monday morning read on how the last 7 days went and the single most useful action to take this week. Plain text, no greeting.');
@@ -1047,5 +1051,6 @@ function lmeg_send_owner_digest() {
     $to  = !empty($s['digest_email']) && is_email($s['digest_email']) ? $s['digest_email'] : get_option('admin_email');
     $ph  = add_query_arg(['lmeg_unsubscribe' => 1, 'u' => 0, 't' => 'digest'], home_url('/'));
     list($text, $html) = lmeg_build_email_with_footer($body, $ph);
-    lmeg_email_send($to, sprintf('Your week: +%d fans, %s revenue', $new, $fmt($rev)), $text, $html);
+    $sp_bit = function_exists('lmeg_si_digest_subject_bit') ? lmeg_si_digest_subject_bit() : '';
+    lmeg_email_send($to, sprintf('Your week: +%d fans, %s revenue%s', $new, $fmt($rev), $sp_bit), $text, $html);
 }

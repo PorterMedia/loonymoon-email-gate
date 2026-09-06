@@ -461,6 +461,90 @@ function lmeg_si_demo_marks() {
     ];
 }
 
+/**
+ * "Spotify this week" — the block the Monday owner digest (sending.php,
+ * lmeg_send_owner_digest) appends: 28d streams + listeners with period-over-
+ * period change, followers level + 28d delta, the real week-over-week mover
+ * (or the song that cooled most), the last send's streams lift, and the top 3
+ * findings with their action links. '' when the site has no S4A snapshot.
+ * Light email HTML (inline styles, light background — it lands in the inbox).
+ */
+function lmeg_si_digest_html() {
+    if (!function_exists('lmeg_s4a_latest')) return '';
+    $sel  = lmeg_artist();
+    $snap = lmeg_s4a_latest($sel);
+    if (!$snap) return '';
+    $meta = $snap->meta ? (array) json_decode((string) $snap->meta, true) : [];
+    $prev = function_exists('lmeg_s4a_prev') ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
+    $pct  = function ($a, $b) { return ($b !== null && (int) $b > 0 && $a !== null) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
+    $chg  = function ($v) { return $v === null ? '' : ' <span style="color:' . ($v >= 0 ? '#1f9d63' : '#d9534f') . ';font-weight:600;">' . ($v >= 0 ? '+' : '') . $v . '%</span>'; };
+    $sp   = $prev ? $pct($snap->streams, $prev->streams) : null;
+    $mlp  = $prev ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
+    $rows = [];
+    $rows[] = ['🎧', 'Streams (28 days)', number_format_i18n((int) $snap->streams) . $chg($sp)];
+    $rows[] = ['👂', 'Monthly listeners', number_format_i18n((int) $snap->monthly_listeners) . $chg($mlp)];
+    $fs = array_values(array_filter(array_map('intval', (array) ($meta['daily']['followers'] ?? []))));
+    if ($fs) {
+        $fd = count($fs) >= 7 ? (int) end($fs) - (int) $fs[0] : null;
+        $rows[] = ['➕', 'Spotify followers', number_format_i18n((int) end($fs)) . ($fd !== null ? ' <span style="opacity:.6;">(' . ($fd >= 0 ? '+' : '−') . number_format_i18n(abs($fd)) . ' in 28 days)</span>' : '')];
+    }
+    $map = lmeg_si_song_daily_map((array) ($meta['song_daily'] ?? []));
+    $sw  = $map ? lmeg_si_song_wow_summary($map) : null;
+    if ($sw && !empty($sw['up'])) {
+        $g = $sw['up'][0];
+        $rows[] = ['🔥', 'Mover this week', esc_html($g['title']) . ' — +' . $g['wow'] . '% (' . number_format_i18n($g['last7']) . ' streams in 7 days)' . ' <span style="opacity:.6;">· ' . count($sw['up']) . ' up / ' . count($sw['down']) . ' down</span>'];
+    } elseif ($sw && !empty($sw['down'])) {
+        $g = $sw['down'][0];
+        $rows[] = ['🧊', 'Cooled most', esc_html($g['title']) . ' — ' . $g['wow'] . '% <span style="opacity:.6;">· ' . count($sw['down']) . ' songs down, ' . count($sw['up']) . ' up</span>'];
+    }
+    $daily = (array) ($meta['daily'] ?? []);
+    if (!empty($daily['dates']) && function_exists('lmeg_si_campaign_marks')) {
+        $lift = lmeg_si_campaign_lift($daily['dates'], (array) ($daily['streams'] ?? []), lmeg_si_campaign_marks(14));
+        if ($lift) { $L = end($lift); $rows[] = ['✉️', 'Last send → streams', esc_html($L['subject']) . ' — ' . ($L['pct'] >= 0 ? '+' : '') . $L['pct'] . '% over the 3 days after']; }
+    }
+    $html = '<h3 style="margin:22px 0 10px;">Spotify this week</h3><table style="border-collapse:collapse;">';
+    foreach ($rows as $r) {
+        $html .= '<tr><td style="padding:6px 10px 6px 0;font-size:18px;">' . $r[0] . '</td>'
+               . '<td style="padding:6px 18px 6px 0;color:#777;white-space:nowrap;">' . $r[1] . '</td>'
+               . '<td style="padding:6px 0;font-weight:600;">' . $r[2] . '</td></tr>';
+    }
+    $html .= '</table>';
+    // Top 3 findings, each with up to two of its action links.
+    $ctx = [
+        'song_wow'          => $sw,
+        'velocity'          => lmeg_si_stream_velocity((array) ($daily['streams'] ?? [])),
+        'streams_pop'       => $sp,
+        'monthly_listeners' => (int) $snap->monthly_listeners,
+        'followers'         => $fs ? (int) end($fs) : null,
+        'save_rate'         => ($snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null,
+    ];
+    $F = array_slice(lmeg_si_analyze($ctx), 0, 3);
+    if ($F) {
+        $html .= '<p style="margin:14px 0 6px;font-weight:600;">What to do</p><ul style="margin:0;padding-left:18px;">';
+        foreach ($F as $f) {
+            $links = [];
+            foreach (array_slice(lmeg_si_finding_actions($f), 0, 2) as $a) {
+                $href = !empty($a['href']) ? $a['href'] : admin_url('admin.php?' . http_build_query(array_merge(['page' => $a['page']], (array) ($a['args'] ?? []))));
+                $links[] = '<a href="' . esc_url($href) . '">' . esc_html($a['label']) . '</a>';
+            }
+            $html .= '<li style="margin:0 0 8px;"><strong>' . esc_html($f['title']) . '</strong> — ' . esc_html($f['detail']) . ($links ? ' <span style="white-space:nowrap;">' . implode(' · ', $links) . '</span>' : '') . '</li>';
+        }
+        $html .= '</ul>';
+    }
+    $html .= '<p style="margin:10px 0 0;"><a href="' . esc_url(admin_url('admin.php?page=lmeg-spotify-insights')) . '">Open Spotify Insights →</a></p>';
+    return $html;
+}
+
+/** ", streams +4.1%" for the digest subject line, or '' when unknown. */
+function lmeg_si_digest_subject_bit() {
+    if (!function_exists('lmeg_s4a_latest') || !function_exists('lmeg_s4a_prev')) return '';
+    $sel = lmeg_artist(); $snap = lmeg_s4a_latest($sel); if (!$snap) return '';
+    $prev = lmeg_s4a_prev($sel, $snap->window, $snap->captured_date);
+    if (!$prev || (int) $prev->streams <= 0) return '';
+    $p = round(((int) $snap->streams - (int) $prev->streams) / (int) $prev->streams * 100, 1);
+    return ', streams ' . ($p >= 0 ? '+' : '') . $p . '%';
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -1032,6 +1116,16 @@ function lmeg_admin_spotify_insights() {
     $t = lmeg_si_tokens();
     $card = $t['card']; $lbl = $t['lbl'];
 
+    // "Email me this week's digest" — sends the Monday owner digest (with the
+    // Spotify section) to the digest address right now.
+    $si_notice = '';
+    if (($_POST['lmeg_si_action'] ?? '') === 'digest' && check_admin_referer('lmeg_si_digest', 'lmeg_si_digest_nonce') && function_exists('lmeg_send_owner_digest')) {
+        lmeg_send_owner_digest();
+        $s_ = function_exists('lmeg_get_settings') ? lmeg_get_settings() : [];
+        $to_ = !empty($s_['digest_email']) && is_email($s_['digest_email']) ? $s_['digest_email'] : get_option('admin_email');
+        $si_notice = '<div class="notice notice-success is-dismissible"><p>Digest sent to <strong>' . esc_html($to_) . '</strong>. The Monday version goes out automatically when "weekly summary" is on in Settings.</p></div>';
+    }
+
     // ---- gather from both sources (each optional) ----------------------------
     // Per-site isolation: this Fanloop site shows ONLY its own artist — no
     // cross-artist switcher, even if the DB holds other artists' snapshots.
@@ -1181,7 +1275,19 @@ function lmeg_admin_spotify_insights() {
             </div>
         </div>
         <?php return; endif; ?>
-        <?php if (!$demo && function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo lmeg_demo_preview_button('lmeg-spotify-insights'); ?>
+        <?php echo $si_notice; ?>
+        <?php if (!$demo) : ?>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 4px;">
+            <?php if (function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo str_replace(['<p>', '</p>'], '', lmeg_demo_preview_button('lmeg-spotify-insights')); ?>
+            <?php if ($has_s4a && function_exists('lmeg_send_owner_digest')) : ?>
+            <form method="post" style="margin:0;">
+                <?php wp_nonce_field('lmeg_si_digest', 'lmeg_si_digest_nonce'); ?>
+                <input type="hidden" name="lmeg_si_action" value="digest">
+                <button class="button" title="Sends the weekly owner digest — with a Spotify section — to your digest address now">Email me this week’s digest</button>
+            </form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <?php if (count($artists) > 1) : ?>
         <p style="margin:10px 0;">
