@@ -322,6 +322,43 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api) {
     return lmeg_si_fan_rings_shape($n);
 }
 
+/**
+ * "What to do with it" — maps a finding to one-click actions inside Fanloop:
+ * a prefilled Compose draft (angles: mover / repush / save / lift / release /
+ * listen / follow, handled by lmeg_admin_compose's prefill=insight) or the
+ * tool the finding points at (drops, contests, releases, pre-saves, shows,
+ * fanbase, instagram). Pure: returns [['label','page','args'=>[]] | ['label',
+ * 'href'], …]; the renderer builds admin URLs. Matches on the finding's title
+ * (stable strings from lmeg_si_analyze) + its optional 'song'/'uri' keys.
+ */
+function lmeg_si_finding_actions($f) {
+    $t = (string) ($f['title'] ?? ''); $song = (string) ($f['song'] ?? ''); $uri = (string) ($f['uri'] ?? '');
+    $compose = function ($angle, $label) use ($song, $uri) {
+        $a = ['prefill' => 'insight', 'angle' => $angle];
+        if ($song !== '') $a['song'] = $song;
+        if ($uri !== '') $a['uri'] = $uri;
+        return ['label' => $label, 'page' => 'lmeg-compose', 'args' => $a];
+    };
+    $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
+    $spotify = preg_match('/^spotify:track:([A-Za-z0-9]{22})$/', $uri, $mm) ? [['label' => 'Open on Spotify ↗', 'href' => 'https://open.spotify.com/track/' . $mm[1]]] : [];
+    $ends = function ($s) use ($t) { return substr($t, -strlen($s)) === $s; };
+    if ($ends('is breaking out this week') || $ends('is gaining'))  return array_merge([$compose('mover', 'Send it to your list')], $spotify);
+    if ($song !== '' && $ends('is cooling'))                          return array_merge([$compose('repush', 'Re-push it to your list')], $spotify);
+    if (strpos($t, 'Fans keep') === 0)                                return array_merge([$compose('save', 'Ask fans to save it')], $spotify);
+    if (in_array($t, ['Lift across the catalogue', 'Streams are accelerating', 'Growing on both fronts', 'Your latest release is landing'], true)) return [$compose('lift', 'Tell your fans')];
+    if (in_array($t, ['Soft week across the catalogue', 'Streams are cooling'], true)) return [$go('lmeg-drops', 'Plan a drop'), $go('lmeg-contests', 'Run a contest'), $compose('listen', 'Nudge your list')];
+    if (in_array($t, ['Time for new music', 'One track carries a lot'], true))          return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
+    if ($t === 'Latest release is under its potential')               return [$compose('release', 'Push the release')];
+    if ($t === 'Turn listeners into followers')                       return [$compose('follow', 'Ask your list to follow'), $go('lmeg-presaves', 'Set up a pre-save')];
+    if ($t === 'Low save rate')                                       return [$compose('save', 'Ask fans to save')];
+    if (strpos($t, 'Your audience centers on') === 0)                 return [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-fanbase', 'See your fanbase')];
+    if ($t === 'Streams up, social flat')                             return [$go('lmeg-instagram', 'Post about it')];
+    if ($t === 'Social up, streams flat')                             return [$compose('listen', 'Send your list to Spotify')];
+    if ($t === 'Loyal core')                                          return [$go('lmeg-fanbase', 'See your superfans')];
+    if ($t === 'Heavily algorithm-driven')                            return [$go('lmeg-presaves', 'Set up a pre-save')];
+    return [];
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -374,7 +411,7 @@ function lmeg_si_song_wow_summary($map, $min_week = 150) {
         if (count($vals) < 14) continue;
         $last7 = array_sum(array_slice($vals, -7)); $prior7 = array_sum(array_slice($vals, -14, 7));
         $wow = ($prior7 > 0) ? round(($last7 - $prior7) / $prior7 * 100, 1) : null;
-        $rows[] = ['title' => (string) ($e['t'] ?? ''), 'wow' => $wow, 'last7' => $last7, 'prior7' => $prior7];
+        $rows[] = ['title' => (string) ($e['t'] ?? ''), 'uri' => (string) ($e['u'] ?? ''), 'wow' => $wow, 'last7' => $last7, 'prior7' => $prior7];
     }
     if (!$rows) return null;
     $lead = null; foreach ($rows as $r) { if ($lead === null || $r['last7'] > $lead['last7']) $lead = $r; }
@@ -719,12 +756,12 @@ function lmeg_si_analyze($c) {
         $sw = $c['song_wow'];
         if (!empty($sw['up']) && $sw['up'][0]['wow'] >= 25) {
             $m = $sw['up'][0]; $o = $others($sw['up'], $m['title']);
-            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is breaking out this week',
+            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is breaking out this week', 'song' => $m['title'], 'uri' => (string) ($m['uri'] ?? ''),
                 'detail' => 'Up ' . $p($m['wow']) . '% on the week before — ' . $n($m['last7']) . ' streams in the last 7 days vs ' . $n($m['prior7']) . '.' . ($o ? ' Also up: ' . implode(', ', $o) . '.' : '') . ' Put promo behind it while it’s moving.'];
         }
         if (!empty($sw['lead']) && $sw['lead']['wow'] !== null && $sw['lead']['wow'] <= -20) {
             $m = $sw['lead'];
-            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
+            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling', 'song' => $m['title'], 'uri' => (string) ($m['uri'] ?? ''),
                 'detail' => 'Your biggest song this week is down ' . $p(abs($m['wow'])) . '% on the week before (' . $n($m['last7']) . ' vs ' . $n($m['prior7']) . ' streams). If it was a recent focus, the momentum is fading.'];
         } elseif (count($sw['up']) >= 3 && count($sw['up']) >= 3 * count($sw['down'])) {
             // Broad lift: ≥3 up and at least 3× as many up as down.
@@ -740,13 +777,13 @@ function lmeg_si_analyze($c) {
         // Rising track — promote while hot (pace-vs-28d estimate).
         if (!empty($c['mover_up']) && ($c['mover_up']['pace'] ?? 0) >= 10) {
             $m = $c['mover_up'];
-            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is gaining',
+            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is gaining', 'song' => $m['title'],
                 'detail' => 'It ran ' . $p($m['pace']) . '% above its 28-day pace (' . $n($m['s7']) . ' streams in the last 7 days). Put promo behind it while it’s moving.'];
         }
         // Falling flagship — watch.
         if (!empty($c['mover_down']) && ($c['mover_down']['pace'] ?? 0) <= -20) {
             $m = $c['mover_down'];
-            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
+            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling', 'song' => $m['title'],
                 'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
         }
     }
@@ -819,7 +856,7 @@ function lmeg_si_analyze($c) {
                 . ($diverges
                     ? ' It’s not your most-streamed track, but it’s the one fans keep — a strong signal of the sound your core connects with.'
                     : ' That’s both your biggest song and your most-saved — rare, and worth doubling down on.');
-        $F[] = ['type' => 'insight', 'title' => 'Fans keep “' . $s['title'] . '” the most', 'detail' => $detail];
+        $F[] = ['type' => 'insight', 'title' => 'Fans keep “' . $s['title'] . '” the most', 'detail' => $detail, 'song' => $s['title']];
     }
     // Cross-platform gender gap.
     if (isset($c['sp_women'], $c['ig_women']) && $c['sp_women'] !== null && $c['ig_women'] !== null) {
@@ -1144,6 +1181,13 @@ function lmeg_admin_spotify_insights() {
                     <div style="flex:1 1 auto;min-width:0;">
                         <div style="color:#F4F5F7;font-size:14px;font-weight:600;margin-bottom:2px;"><?php echo esc_html($f['title']); ?></div>
                         <div style="color:#C9CCD6;font-size:13px;line-height:1.5;"><?php echo esc_html($f['detail']); ?></div>
+                        <?php $acts = lmeg_si_finding_actions($f); if ($acts) : ?>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;">
+                            <?php foreach ($acts as $a) : $ext = !empty($a['href']); $href = $ext ? $a['href'] : admin_url('admin.php?' . http_build_query(array_merge(['page' => $a['page']], (array) $a['args']))); ?>
+                            <a href="<?php echo esc_url($href); ?>"<?php echo $ext ? ' target="_blank" rel="noopener"' : ''; ?> style="font-size:11px;font-weight:700;color:#F4F5F7 !important;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:4px 10px;text-decoration:none;line-height:1.2;"><?php echo esc_html($a['label']); ?></a>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>

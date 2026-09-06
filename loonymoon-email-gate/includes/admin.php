@@ -1819,6 +1819,33 @@ function lmeg_admin_compose() {
         }
     }
 
+    // Deep-link prefill from Spotify Insights ("What the data says" → action
+    // buttons): drafts email + SMS around a song or a moment. Angles: mover /
+    // repush / save / lift / release / listen / follow. Fills the form only —
+    // the human reviews copy + audience and sends.
+    if (!isset($_POST['lmeg_action']) && ($_GET['prefill'] ?? '') === 'insight') {
+        $song  = sanitize_text_field(wp_unslash($_GET['song'] ?? ''));
+        $angle = sanitize_key($_GET['angle'] ?? 'listen');
+        $url   = preg_match('/^spotify:track:([A-Za-z0-9]{22})$/', (string) ($_GET['uri'] ?? ''), $mm) ? 'https://open.spotify.com/track/' . $mm[1] : '';
+        $q     = $song !== '' ? '“' . $song . '”' : 'the new one';
+        $link  = function ($label) use ($url) { return $url ? '<p><a href="' . esc_url($url) . '">' . esc_html($label) . ' →</a></p>' : ''; };
+        $copy  = [
+            'mover'   => [$q . ' is having a moment 🔥', '<p>' . esc_html($q) . ' has been climbing all week — thank you for that. If it isn’t in your rotation yet, this is the one.</p>' . $link('Listen on Spotify') . '<p>Send it to one person who needs it. 🖤</p>', $q . ' is having a moment this week 🔥 ' . $url],
+            'repush'  => ['Did you miss ' . $q . '?', '<p>I put a lot into ' . esc_html($q) . '. If it slipped past you, give it another spin this week — it means more than you know.</p>' . $link('Listen on Spotify'), 'Did you miss ' . $q . '? Give it another spin 🖤 ' . $url],
+            'save'    => ['One tap that helps more than you think', '<p>If ' . esc_html($q) . ' means something to you, hit the ♡ on Spotify. Saves tell Spotify to show it to more people — the biggest small thing you can do.</p>' . $link('Save it on Spotify'), 'Hit ♡ on ' . $q . ' on Spotify — it helps more than you think 🖤 ' . $url],
+            'lift'    => ['Something’s happening this week', '<p>Streams are up across the board this week — that’s you. Thank you.</p>' . $link('Keep it going on Spotify') . '<p>More soon. 🖤</p>', 'Streams are up across the board this week — that’s you. thank you 🖤 ' . $url],
+            'release' => ['In case you missed it — the new one', '<p>The new release is out and it deserves your ears. Listen, save it, tell a friend.</p>' . $link('Listen on Spotify'), 'New one is out — listen, save it, tell a friend 🖤 ' . $url],
+            'listen'  => ['Take it to Spotify with me', '<p>You’re here, which means the world. The best way to help right now: press play on Spotify and save what you love.</p>' . $link('Open Spotify'), 'Best way to help right now: press play on Spotify + save what you love 🖤 ' . $url],
+            'follow'  => ['One tap: follow me on Spotify', '<p>Following on Spotify means every new release lands in your Release Radar on day one — and it tells Spotify to show me to more people.</p>' . $link('Follow on Spotify'), 'One tap: follow me on Spotify — every release lands in your Release Radar 🖤 ' . $url],
+        ];
+        $c = $copy[$angle] ?? $copy['listen'];
+        $vals['subject']         = $c[0];
+        $vals['body_email_mode'] = 'rich';
+        $vals['body_email']      = $c[1];
+        $vals['body_sms']        = trim($c[2]);
+        $notice = '<div class="notice notice-info"><p><strong>Drafted from a Spotify Insights finding</strong>' . ($song !== '' ? ' about ' . esc_html($q) : '') . '. Review the copy + audience below, then send.</p></div>';
+    }
+
     // Deep-link prefill: "Announce presale" from a tour date with a presale link.
     // Drafts early-access copy + pre-ticks the free Wallet push (the lock screen is
     // the perfect channel for a time-sensitive presale). Human reviews + sends.
