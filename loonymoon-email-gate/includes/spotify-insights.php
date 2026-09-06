@@ -647,12 +647,15 @@ function lmeg_si_analyze($c) {
             $m = $sw['lead'];
             $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
                 'detail' => 'Your biggest song this week is down ' . $p(abs($m['wow'])) . '% on the week before (' . $n($m['last7']) . ' vs ' . $n($m['prior7']) . ' streams). If it was a recent focus, the momentum is fading.'];
-        } elseif (count($sw['up']) >= 3 && !$sw['down']) {
+        } elseif (count($sw['up']) >= 3 && count($sw['up']) >= 3 * count($sw['down'])) {
+            // Broad lift: ≥3 up and at least 3× as many up as down.
+            $nd = count($sw['down']);
             $F[] = ['type' => 'strength', 'title' => 'Lift across the catalogue',
-                'detail' => count($sw['up']) . ' of your top songs grew week-over-week and none fell — ' . implode(', ', $others($sw['up'], null)) . '. Whatever is driving this is reaching more than one track.'];
-        } elseif (count($sw['down']) >= 3 && !$sw['up']) {
+                'detail' => count($sw['up']) . ' of your top songs grew week-over-week' . ($nd ? ' and only ' . $nd . ' fell' : ' and none fell') . ' — ' . implode(', ', $others($sw['up'], null)) . '. Whatever is driving this is reaching more than one track.'];
+        } elseif (count($sw['down']) >= 3 && count($sw['down']) >= 3 * count($sw['up'])) {
+            $nu = count($sw['up']);
             $F[] = ['type' => 'watch', 'title' => 'Soft week across the catalogue',
-                'detail' => count($sw['down']) . ' of your top songs fell week-over-week and none grew — ' . implode(', ', $others($sw['down'], null)) . '. A fresh post, playlist pitch or drop would help more than pushing one track.'];
+                'detail' => count($sw['down']) . ' of your top songs fell week-over-week' . ($nu ? ' and only ' . $nu . ' grew' : ' and none grew') . ' — ' . implode(', ', $others($sw['down'], null)) . '. A fresh post, playlist pitch or drop would help more than pushing one track.'];
         }
     } else {
         // Rising track — promote while hot (pace-vs-28d estimate).
