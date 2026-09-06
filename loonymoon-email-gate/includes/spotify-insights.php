@@ -2040,7 +2040,7 @@ function lmeg_admin_spotify_insights_render() {
                     </span>
                     <select id="lmeg-song-ov-cmp" aria-label="Compare with another song" style="margin-left:auto;background:#0E0F16;color:#F4F5F7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:4px 8px;font-size:12px;max-width:230px;"></select>
                 </div>
-                <div id="lmeg-song-ov-chart" style="min-height:190px;"></div>
+                <div id="lmeg-song-ov-chart" style="min-height:190px;position:relative;"></div>
                 <p id="lmeg-song-ov-note" style="color:#8B90A0;font-size:12px;margin:10px 0 0;"></p>
                 <div id="lmeg-song-ov-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;"></div>
             </div>
@@ -2111,7 +2111,9 @@ function lmeg_admin_spotify_insights_render() {
                 var y=function(v){ return P.t+(1-(v-mn)/(mx-mn))*ih; };
                 var d=pts.map(function(p,i){ return (i?'L':'M')+x(i).toFixed(1)+' '+y(p.v).toFixed(1); }).join(' ');
                 var area=d+' L'+x(pts.length-1).toFixed(1)+' '+(Hh-P.b)+' L'+x(0).toFixed(1)+' '+(Hh-P.b)+' Z';
-                var s='<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" height="'+Hh+'" role="img" aria-label="History chart" style="display:block;overflow:visible;">';
+                var s='<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" height="'+Hh+'" role="img" aria-label="History chart" style="display:block;overflow:visible;cursor:crosshair;">';
+                // Transparent hit area under everything else so hovering empty plot space still reports the nearest day.
+                s+='<rect x="'+P.l+'" y="'+P.t+'" width="'+iw+'" height="'+ih+'" fill="transparent" pointer-events="all"/>';
                 for(var g=0; g<=3; g++){ var gy=P.t+g*ih/3; s+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+gy.toFixed(1)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'; }
                 s+='<text x="'+(P.l-8)+'" y="'+(P.t+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mx))+'</text>';
                 s+='<text x="'+(P.l-8)+'" y="'+(Hh-P.b+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mn))+'</text>';
@@ -2122,13 +2124,53 @@ function lmeg_admin_spotify_insights_render() {
                     s+='<text x="'+(W-P.r)+'" y="'+(P.t+2)+'" text-anchor="end" font-size="11" fill="#34D399">'+(state.daily?state.daily.t:'')+'</text><text x="'+(W-P.r)+'" y="'+(P.t+15)+'" text-anchor="end" font-size="11" fill="#7C6CF6">'+state.cmp.t+'</text>';
                 }
                 var dots = pts.length<=60;
-                pts.forEach(function(p,i){ var last=i===pts.length-1; if(!dots&&!last) return; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p.v)+'</title></circle>'; });
+                pts.forEach(function(p,i){ var last=i===pts.length-1; if(!dots&&!last) return; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"/>'; });
                 if(!dots){ var pi=0; vals.forEach(function(v,i){ if(v>vals[pi]) pi=i; }); s+='<circle cx="'+x(pi).toFixed(1)+'" cy="'+y(vals[pi]).toFixed(1)+'" r="3.5" fill="#D05FA2" stroke="#0E0F16" stroke-width="1"><title>Best day — '+lab(pts[pi].d)+': '+fmt(vals[pi])+'</title></circle>'; }
                 if(state.daily && B.length){ var di={}; pts.forEach(function(p,i){ di[p.d]=i; }); B.forEach(function(m){ if(!(m.d in di)) return; var mx_=x(di[m.d]).toFixed(1); s+='<line x1="'+mx_+'" x2="'+mx_+'" y1="'+P.t+'" y2="'+(Hh-P.b)+'" stroke="#D05FA2" stroke-width="1" stroke-dasharray="3 3" opacity=".75"><title>Sent '+lab(m.d)+': '+(m.subject||'broadcast')+(m.clicks?' · '+fmt(m.clicks)+' clicks':'')+'</title></line><text x="'+mx_+'" y="'+(P.t-2)+'" text-anchor="middle" font-size="10" fill="#D05FA2">✉<title>Sent '+lab(m.d)+': '+(m.subject||'broadcast')+'</title></text>'; }); }
                 s+='<text x="'+P.l+'" y="'+(Hh-6)+'" font-size="11" fill="#8B90A0">'+lab(pts[0].d)+'</text>';
                 if(pts.length>14){ var mi=Math.floor((pts.length-1)/2); s+='<text x="'+x(mi).toFixed(1)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="11" fill="#8B90A0">'+lab(pts[mi].d)+'</text>'; }
                 if(pts.length>1) s+='<text x="'+(W-P.r)+'" y="'+(Hh-6)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+lab(pts[pts.length-1].d)+'</text>';
+                // Hover layer (guide line + highlighted point(s)); positioned by bindHover() from the geometry stashed in G.
+                s+='<g id="lmeg-ov-hv" style="display:none;pointer-events:none;"><line y1="'+P.t+'" y2="'+(Hh-P.b)+'" stroke="rgba(255,255,255,.28)" stroke-dasharray="2 3"/><circle r="5" fill="#34D399" stroke="#0E0F16" stroke-width="2"/>'+(cv?'<circle r="5" fill="#7C6CF6" stroke="#0E0F16" stroke-width="2"/>':'')+'</g>';
+                G = {pts:pts, cv:cv, xs:pts.map(function(p,i){ return +x(i).toFixed(1); }), ys:vals.map(function(v){ return +y(v).toFixed(1); }), cys:cv?cv.map(function(v){ return v===null?null:+y(v).toFixed(1); }):null};
                 return s+'</svg>';
+            }
+            // Hover tooltip: nearest day under the pointer → date, this song's value, the compared song's value (when comparing), and any ✉ send that day.
+            var G = null, tip = null;
+            var escH = function(s){ return String(s===null||s===undefined?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+            function bindHover(){
+                var svgEl = chart.querySelector('svg'); if(!svgEl || !G) return;
+                if(!tip){ tip = document.createElement('div'); tip.id = 'lmeg-song-ov-tip'; tip.style.cssText = 'position:absolute;z-index:5;pointer-events:none;display:none;background:#0E0F16;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.45;color:#F4F5F7;box-shadow:0 10px 30px rgba(0,0,0,.5);white-space:nowrap;'; }
+                if(tip.parentNode !== chart) chart.appendChild(tip); // chart.innerHTML wiped the previous one
+                var hv = svgEl.querySelector('#lmeg-ov-hv'), hl = hv.querySelector('line'), hc = hv.querySelectorAll('circle');
+                function at(i){
+                    var p = G.pts[i], c = G.cv ? G.cv[i] : null, hasC = G.cv && c !== null && c !== undefined;
+                    hv.style.display = ''; hl.setAttribute('x1', G.xs[i]); hl.setAttribute('x2', G.xs[i]);
+                    hc[0].setAttribute('cx', G.xs[i]); hc[0].setAttribute('cy', G.ys[i]);
+                    if(hc[1]){ hc[1].style.display = hasC ? '' : 'none'; if(hasC){ hc[1].setAttribute('cx', G.xs[i]); hc[1].setAttribute('cy', G.cys[i]); } }
+                    var mark = null; if(state.daily && B.length){ B.forEach(function(m){ if(m.d === p.d) mark = m; }); }
+                    var name = state.daily ? state.daily.t : ((state.key && H[state.key]) ? H[state.key].title : 'This song');
+                    var when = state.daily ? parse(p.d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}) : 'captured '+parse(p.d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+                    var html = '<div style="color:#8B90A0;font-size:11px;margin-bottom:3px;">'+escH(when)+'</div>';
+                    html += '<div><span style="color:#34D399;">●</span> <span style="color:#C9CCD6;">'+escH(name)+'</span> <strong style="font-variant-numeric:tabular-nums;">'+fmt(p.v)+'</strong></div>';
+                    if(G.cv){ html += '<div><span style="color:#7C6CF6;">●</span> <span style="color:#C9CCD6;">'+escH(state.cmp.t)+'</span> <strong style="font-variant-numeric:tabular-nums;">'+(hasC ? fmt(c) : 'no data')+'</strong></div>'; }
+                    if(mark){ html += '<div style="color:#D05FA2;margin-top:3px;">✉ '+escH(mark.subject||'broadcast')+(mark.clicks ? ' · '+fmt(mark.clicks)+' clicks' : '')+'</div>'; }
+                    tip.innerHTML = html; tip.style.display = 'block';
+                    var ctm = svgEl.getScreenCTM(), cr = chart.getBoundingClientRect(); if(!ctm) return;
+                    var pt = svgEl.createSVGPoint(); pt.x = G.xs[i]; pt.y = hasC ? Math.min(G.ys[i], G.cys[i]) : G.ys[i]; var sp = pt.matrixTransform(ctm);
+                    var px = sp.x - cr.left, py = sp.y - cr.top, tw = tip.offsetWidth, th = tip.offsetHeight;
+                    var left = Math.max(0, Math.min(cr.width - tw, px - tw/2)), top = py - th - 12; if(top < 0) top = py + 14;
+                    tip.style.left = left+'px'; tip.style.top = top+'px';
+                }
+                function move(e){
+                    var t = (e.touches && e.touches[0]) ? e.touches[0] : e, ctm = svgEl.getScreenCTM(); if(!ctm) return;
+                    var pt = svgEl.createSVGPoint(); pt.x = t.clientX; pt.y = t.clientY; var loc = pt.matrixTransform(ctm.inverse());
+                    var best = 0, bd = Infinity; G.xs.forEach(function(x,i){ var d = Math.abs(x - loc.x); if(d < bd){ bd = d; best = i; } });
+                    at(best);
+                }
+                function leave(){ hv.style.display = 'none'; tip.style.display = 'none'; }
+                svgEl.addEventListener('mousemove', move); svgEl.addEventListener('mouseleave', leave);
+                svgEl.addEventListener('touchstart', move, {passive:true}); svgEl.addEventListener('touchmove', move, {passive:true}); svgEl.addEventListener('touchend', leave);
             }
             function chips(all, pts){
                 var items;
@@ -2151,9 +2193,10 @@ function lmeg_admin_spotify_insights_render() {
                 if(cmpSel) cmpSel.style.display = state.daily ? '' : 'none';
                 var all = series(), pts = filtered(all);
                 chips(all, pts);
+                G = null;
                 if(!pts.length){ chart.innerHTML='<div style="color:#8B90A0;font-size:13px;padding:30px 0;text-align:center;">No data in this range for this metric.</div>'; }
                 else if(pts.length===1){ chart.innerHTML='<div style="padding:26px 0;text-align:center;"><div style="font:800 34px/1 var(--lmegA-font,inherit);color:#F4F5F7;">'+fmt(pts[0].v)+'</div><div style="color:#8B90A0;font-size:12px;margin-top:6px;">'+(state.daily?lab(pts[0].d)+' — one day in this range':'captured '+parse(pts[0].d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — one point so far; the line draws itself as daily captures land')+'</div></div>'; }
-                else { chart.innerHTML = svg(pts); }
+                else { chart.innerHTML = svg(pts); bindHover(); }
                 if(state.daily){
                     var total=sum(pts), len=pts.length, start=len?all.map(function(p){return p.d;}).indexOf(pts[0].d):-1;
                     var prev=(start>=len)?all.slice(start-len,start):[], ch=(prev.length===len&&len)?pct(total,sum(prev)):null;
