@@ -124,6 +124,19 @@ function lmeg_s4a_daily_series($a) {
         if (empty($out['dates'])) $out['dates'] = $s['dates'];
         $out[$m] = $s['vals'];
     }
+    // The API includes the capture day as an incomplete final point that reads 0
+    // across every metric — it would render as a cliff to zero and drag the
+    // velocity math down. Trim trailing days that are all-zero (guard ≥1 left).
+    $metrics = array_values(array_intersect(['streams', 'listeners', 'followers', 'saves'], array_keys($out)));
+    if (!empty($out['dates']) && $metrics) {
+        for ($len = count($out['dates']); $len > 1; $len--) {
+            $allZero = true;
+            foreach ($metrics as $mm) { if ((int) ($out[$mm][$len - 1] ?? 0) !== 0) { $allZero = false; break; } }
+            if (!$allZero) break;
+            array_pop($out['dates']);
+            foreach ($metrics as $mm) array_pop($out[$mm]);
+        }
+    }
     return $out;
 }
 
