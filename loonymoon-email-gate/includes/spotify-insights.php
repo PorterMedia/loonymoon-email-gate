@@ -184,6 +184,41 @@ function lmeg_si_playlist_mix($playlists) {
     return $rows;
 }
 
+/**
+ * Reconcile the two track sources: S4A songs (carry STREAMS) vs the public
+ * Spotify API top-tracks (carry POPULARITY, 0–100). Matches by normalized title.
+ * Returns:
+ *  - pop_by_title: [normTitle => popularity] to enrich the S4A song rows,
+ *  - api_only: API tracks not in the S4A catalog (usually features/collabs on
+ *    other artists' releases), each {name, popularity, album},
+ *  - both / s4a_only: counts for the reconciliation summary.
+ */
+function lmeg_si_reconcile_tracks($s4a_songs, $api_tracks) {
+    $norm = function ($s) { return preg_replace('/\s+/', ' ', strtolower(trim((string) $s))); };
+    $api = [];
+    foreach ((array) $api_tracks as $t) {
+        if (!is_array($t)) continue;
+        $nm = $norm($t['name'] ?? '');
+        if ($nm === '') continue;
+        $pop = (int) ($t['popularity'] ?? 0);
+        if (!isset($api[$nm]) || $pop > $api[$nm]['popularity']) {
+            $api[$nm] = ['name' => (string) ($t['name'] ?? ''), 'popularity' => $pop, 'album' => (string) ($t['album'] ?? '')];
+        }
+    }
+    $pop_by_title = []; $matched = []; $s4a_only = 0;
+    foreach ((array) $s4a_songs as $s) {
+        if (!is_array($s)) continue;
+        $nm = $norm($s['title'] ?? $s['trackName'] ?? '');
+        if ($nm === '') continue;
+        if (isset($api[$nm])) { $pop_by_title[$nm] = $api[$nm]['popularity']; $matched[$nm] = true; }
+        else { $s4a_only++; }
+    }
+    $api_only = [];
+    foreach ($api as $nm => $t) if (empty($matched[$nm])) $api_only[] = $t;
+    usort($api_only, function ($a, $b) { return $b['popularity'] <=> $a['popularity']; });
+    return ['pop_by_title' => $pop_by_title, 'api_only' => $api_only, 'both' => count($matched), 's4a_only' => $s4a_only];
+}
+
 /** Extract a Spotify album id (22 chars) from a spotify:album:ID uri OR an
  *  open.spotify.com/album/ID url. Returns '' when none. */
 function lmeg_si_spotify_album_id($s) {
@@ -679,9 +714,11 @@ function lmeg_admin_spotify_insights() {
             foreach ($songs as $s) { $max = max($max, (int) ($s['streams'] ?? 0)); }
             $meta_songs = ($has_s4a && $snap->meta) ? (array) json_decode((string) $snap->meta, true) : [];
             $movers = lmeg_si_song_movers($songs, (array) ($meta_songs['songs_7d'] ?? []));
+            $reconcile = lmeg_si_reconcile_tracks($songs, ($has_api ? ($ov['top_tracks'] ?? []) : []));
         ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
-            <div style="<?php echo $lbl; ?>margin-bottom:12px;">Your songs · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($songs); ?>)</span></div>
+            <div style="<?php echo $lbl; ?>margin-bottom:<?php echo $reconcile['both'] ? '4' : '12'; ?>px;">Your songs · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($songs); ?>)</span></div>
+            <?php if ($reconcile['both']) : ?><p style="color:#8B90A0;font-size:11px;margin:0 0 12px;">Streams from Spotify&nbsp;for&nbsp;Artists · <span style="color:#E58BBD;">◍</span> = Spotify public popularity (0–100), matched on <?php echo (int) $reconcile['both']; ?> track<?php echo $reconcile['both'] === 1 ? '' : 's'; ?>.</p><?php endif; ?>
             <?php if (!empty($movers['biggest'])) : $bm = $movers['biggest']; $bmpace = rtrim(rtrim(number_format($bm['pace'], 1), '0'), '.'); ?>
             <div style="background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;">
                 <span style="font-size:18px;flex:0 0 auto;" aria-hidden="true">🔥</span>
@@ -706,6 +743,7 @@ function lmeg_admin_spotify_insights() {
                             $up = $rp > 0; $rc = $up ? '#34D399' : '#F87171';
                             $rchip = '<span title="vs 28-day pace" style="font-size:11px;font-weight:600;color:' . $rc . ';margin-left:6px;">' . ($up ? '▲' : '▼') . number_format(abs($rp), 0) . '%</span>';
                         }
+                        $pop = $reconcile['pop_by_title'][preg_replace('/\s+/', ' ', strtolower(trim($title)))] ?? null;
                         ?>
                         <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;">
                             <span style="color:#F4F5F7;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($title); ?></span>
@@ -714,15 +752,32 @@ function lmeg_admin_spotify_insights() {
                         <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;">
                             <div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#7C6CF6,#D05FA2);border-radius:6px;"></div>
                         </div>
-                        <?php if ($li !== null || $sv !== null) : ?>
-                        <div style="margin-top:3px;font-size:11px;color:#8B90A0;">
-                            <?php if ($li !== null) echo esc_html(number_format_i18n($li)) . ' listeners'; ?><?php if ($li !== null && $sv !== null) echo ' · '; ?><?php if ($sv !== null) echo esc_html(number_format_i18n($sv)) . ' saves'; ?>
-                        </div>
+                        <?php if ($li !== null || $sv !== null || $pop !== null) :
+                            $parts = [];
+                            if ($li !== null) $parts[] = esc_html(number_format_i18n($li)) . ' listeners';
+                            if ($sv !== null) $parts[] = esc_html(number_format_i18n($sv)) . ' saves';
+                            if ($pop !== null) $parts[] = '<span style="color:#E58BBD;" title="Spotify public popularity 0–100">◍ ' . (int) $pop . '</span> popularity';
+                        ?>
+                        <div style="margin-top:3px;font-size:11px;color:#8B90A0;"><?php echo implode(' · ', $parts); ?></div>
                         <?php endif; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- TRACKS ON SPOTIFY BUT NOT IN YOUR S4A CATALOG (features/collabs) --->
+        <?php if ($has_s4a && !empty($reconcile['api_only'])) : ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;">Also on Spotify · not in your catalog</div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 10px;">You appear on these in Spotify's public data, but they aren't in your Spotify&nbsp;for&nbsp;Artists catalog — usually features or collabs on other artists' releases.</p>
+            <?php foreach (array_slice($reconcile['api_only'], 0, 8) as $t) : ?>
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;">
+                <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($t['name']); ?><?php if (!empty($t['album'])) : ?> <span style="color:#8B90A0;font-size:11px;"><?php echo esc_html($t['album']); ?></span><?php endif; ?></span>
+                <span style="color:#E58BBD;font-variant-numeric:tabular-nums;flex:0 0 auto;" title="Spotify public popularity 0–100">◍ <?php echo (int) $t['popularity']; ?></span>
+            </div>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
 
