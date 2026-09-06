@@ -185,6 +185,40 @@ function lmeg_si_playlist_mix($playlists) {
 }
 
 /**
+ * The track fans keep most: highest saves/listeners rate among songs with
+ * enough listeners to be meaningful, compared to the catalog's listener-weighted
+ * save rate. A high per-song save rate is fan intent independent of raw stream
+ * volume — the fan-favorite is often NOT the biggest streamer. Pure.
+ * Returns ['title','rate','cat','ratio','listeners','saves'] or null.
+ */
+function lmeg_si_top_saver($songs, $min_listeners = 500, $k = 500) {
+    $tot_s = 0; $tot_l = 0; $cand = [];
+    foreach ((array) $songs as $s) {
+        if (!is_array($s)) continue;
+        $li = (int) ($s['listeners'] ?? 0); $sv = (int) ($s['saves'] ?? 0);
+        if ($li <= 0 || $sv < 0) continue;
+        $tot_s += $sv; $tot_l += $li;
+        if ($li >= $min_listeners) $cand[] = ['title' => (string) ($s['title'] ?? $s['trackName'] ?? ''), 'li' => $li, 'sv' => $sv];
+    }
+    if (!$cand || $tot_l <= 0) return null;
+    $cat = $tot_s / $tot_l * 100;
+    // Rank by a shrunk rate — (saves + k·catRate)/(listeners + k) — so a high rate
+    // on a thin listener base is pulled toward the catalog mean and a well-sampled
+    // track wins. Report the RAW observed rate; rank on the shrunk one.
+    $best = null; $bestShrunk = -1;
+    foreach ($cand as $c) {
+        $shrunk = ($c['sv'] + $k * ($cat / 100)) / ($c['li'] + $k) * 100;
+        if ($shrunk > $bestShrunk) {
+            $bestShrunk = $shrunk;
+            $rate = $c['sv'] / $c['li'] * 100;
+            $best = ['title' => $c['title'], 'rate' => $rate, 'listeners' => $c['li'], 'saves' => $c['sv'],
+                     'cat' => $cat, 'ratio' => $cat > 0 ? $rate / $cat : null];
+        }
+    }
+    return $best;
+}
+
+/**
  * Reconcile the two track sources: S4A songs (carry STREAMS) vs the public
  * Spotify API top-tracks (carry POPULARITY, 0–100). Matches by normalized title.
  * Returns:
@@ -488,6 +522,18 @@ function lmeg_si_analyze($c) {
                 'detail' => 'No single country is more than ' . $p($g['pct']) . '% of your listeners — you’re spread across ' . (int) $g['count'] . ' markets, which is resilient, diversified reach.'];
         }
     }
+    // Fan-intent standout — the track fans KEEP most (save rate), which usually
+    // differs from the biggest streamer. Surfaces loyalty/quality, not volume,
+    // from per-song saves+listeners no other finding uses.
+    if (!empty($c['saver']['title']) && ($c['saver']['ratio'] ?? 0) >= 1.5 && ($c['saver']['rate'] ?? 0) >= 5) {
+        $s = $c['saver'];
+        $diverges = !empty($c['top_track']) && strcasecmp($s['title'], (string) $c['top_track']) !== 0;
+        $detail = $p($s['rate']) . '% of its listeners saved “' . $s['title'] . '” — ' . $p($s['ratio']) . '× your catalog’s save rate.'
+                . ($diverges
+                    ? ' It’s not your most-streamed track, but it’s the one fans keep — a strong signal of the sound your core connects with.'
+                    : ' That’s both your biggest song and your most-saved — rare, and worth doubling down on.');
+        $F[] = ['type' => 'insight', 'title' => 'Fans keep “' . $s['title'] . '” the most', 'detail' => $detail];
+    }
     // Cross-platform gender gap.
     if (isset($c['sp_women'], $c['ig_women']) && $c['sp_women'] !== null && $c['ig_women'] !== null) {
         $gap = $c['sp_women'] - $c['ig_women'];
@@ -649,6 +695,7 @@ function lmeg_admin_spotify_insights() {
     }
     $findings = lmeg_si_analyze([
         'geo'               => $az_geo,
+        'saver'             => lmeg_si_top_saver($az_songs),
         'mover_up'          => $az_mv['biggest'] ?? null,
         'mover_down'        => $az_down,
         'pl_mix'            => $az_mix,
