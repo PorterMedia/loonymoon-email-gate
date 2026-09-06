@@ -545,6 +545,24 @@ function lmeg_si_digest_subject_bit() {
     return ', streams ' . ($p >= 0 ? '+' : '') . $p . '%';
 }
 
+/**
+ * Link clicks per Fanloop release page, in ONE query: [drop_id => ['total',
+ * 'known' (distinct signed-in fans)]] for the given drop ids. Lets the
+ * Releases card put "what your release page did" (clicks) next to "what
+ * Spotify did" (streams). [] when nothing to look up or on error.
+ */
+function lmeg_si_release_clicks_map($drop_ids) {
+    global $wpdb;
+    $ids = array_values(array_unique(array_filter(array_map('intval', (array) $drop_ids))));
+    if (!$ids || empty($wpdb) || !function_exists('lmeg_link_clicks_table')) return [];
+    $rows = $wpdb->get_results("SELECT drop_id, COUNT(*) total, COUNT(DISTINCT CASE WHEN subscriber_id > 0 THEN subscriber_id END) known
+                                  FROM " . lmeg_link_clicks_table() . " WHERE drop_id IN (" . implode(',', $ids) . ") GROUP BY drop_id", ARRAY_A);
+    if ($wpdb->last_error) { $wpdb->last_error = ''; return []; }
+    $out = [];
+    foreach ((array) $rows as $r) $out[(int) $r['drop_id']] = ['total' => (int) $r['total'], 'known' => (int) $r['known']];
+    return $out;
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -1786,30 +1804,45 @@ function lmeg_admin_spotify_insights() {
         $releases = lmeg_si_releases_sorted($rel_meta['releases'] ?? []);
         // Cross-link to Fanloop release pages — exact match by Spotify album id
         // (from the release's stored links), else by normalized title.
-        $fl_by_id = []; $fl_by_title = [];
+        // Each match carries the page URL + the drop id, so link clicks from the
+        // Fanloop release page can sit right next to the Spotify streams.
+        $fl_by_id = []; $fl_by_title = []; $fl_drops = [];
         if ($releases && function_exists('lmeg_releases_all') && function_exists('lmeg_release_public_url')) {
             foreach ((array) lmeg_releases_all() as $fr) {
                 $u = lmeg_release_public_url($fr);
                 if (!$u) continue;
+                $ent = ['url' => $u, 'drop_id' => (int) ($fr->drop_id ?? 0)];
+                if ($ent['drop_id']) $fl_drops[] = $ent['drop_id'];
                 $aid = lmeg_si_spotify_album_id((string) ($fr->links ?? ''));
-                if ($aid !== '') $fl_by_id[$aid] = $u;
+                if ($aid !== '') $fl_by_id[$aid] = $ent;
                 $nt = strtolower(trim((string) ($fr->title ?? '')));
-                if ($nt !== '' && !isset($fl_by_title[$nt])) $fl_by_title[$nt] = $u;
+                if ($nt !== '' && !isset($fl_by_title[$nt])) $fl_by_title[$nt] = $ent;
             }
         }
+        $clicks_map = $fl_drops ? lmeg_si_release_clicks_map($fl_drops) : [];
+        // Demo: the sample "Blue Hour" release page carries the sample analytics.
+        if ($demo && function_exists('lmeg_release_demo_analytics')) {
+            $dA = lmeg_release_demo_analytics();
+            $fl_by_title['blue hour'] = ['url' => admin_url('admin.php?page=lmeg-releases&demo=1'), 'drop_id' => -1];
+            $clicks_map[-1] = ['total' => (int) $dA['stats']['total'], 'known' => (int) $dA['stats']['known']];
+        }
+        $clicks_total = 0; $clicks_pages = 0;
         if ($releases) : $maxR = 1; foreach ($releases as $r) { $maxR = max($maxR, $r['streams']); } ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
-            <div style="<?php echo $lbl; ?>margin-bottom:12px;">Releases · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($releases); ?>)</span></div>
+            <div style="<?php echo $lbl; ?>margin-bottom:12px;">Releases · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($releases); ?>)</span><?php if ($clicks_map) : ?> <span style="color:#8B90A0;font-weight:400;">· ↗ = has a Fanloop release page · clicks are from that page</span><?php endif; ?></div>
             <div style="display:flex;flex-direction:column;gap:9px;max-height:420px;overflow:auto;">
                 <?php foreach (array_slice($releases, 0, 20) as $i => $r) :
                     $st = (int) $r['streams']; $w = max(2, round($st / $maxR * 100));
                     $yr = ($r['date'] && strlen($r['date']) >= 4) ? substr($r['date'], 0, 4) : '';
                     $type = $r['type'] ? ucwords(strtolower(str_replace('_', ' ', $r['type']))) : '';
                     $sub = trim(implode(' · ', array_filter([$type, $yr])));
-                    $flu = '';
+                    $fl = null;
                     $aid = lmeg_si_spotify_album_id($r['uri']);
-                    if ($aid !== '' && isset($fl_by_id[$aid])) $flu = $fl_by_id[$aid];
-                    elseif (isset($fl_by_title[strtolower(trim($r['name']))])) $flu = $fl_by_title[strtolower(trim($r['name']))]; ?>
+                    if ($aid !== '' && isset($fl_by_id[$aid])) $fl = $fl_by_id[$aid];
+                    elseif (isset($fl_by_title[strtolower(trim($r['name']))])) $fl = $fl_by_title[strtolower(trim($r['name']))];
+                    $flu = $fl['url'] ?? '';
+                    $ck  = ($fl && isset($clicks_map[$fl['drop_id']])) ? $clicks_map[$fl['drop_id']] : null;
+                    if ($ck) { $clicks_total += $ck['total']; $clicks_pages++; } ?>
                     <div style="display:flex;align-items:center;gap:12px;">
                         <div style="width:20px;text-align:right;color:#8B90A0;font-size:12px;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo $i + 1; ?></div>
                         <div style="flex:1 1 auto;min-width:0;">
@@ -1818,10 +1851,16 @@ function lmeg_admin_spotify_insights() {
                                 <span style="display:flex;align-items:center;gap:8px;flex:0 0 auto;"><?php if ($flu) : ?><a href="<?php echo esc_url($flu); ?>" target="_blank" rel="noopener" title="Open this release's Fanloop page" style="font-size:11px;text-decoration:none;">↗</a><?php endif; ?><span style="color:#F4F5F7;font-size:13px;font-variant-numeric:tabular-nums;"><?php echo number_format_i18n($st); ?></span></span>
                             </div>
                             <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#D05FA2,#E58BBD);border-radius:6px;"></div></div>
+                            <?php if ($ck) : ?>
+                            <div style="margin-top:3px;font-size:11px;color:#8B90A0;"><span style="color:#E58BBD;">↗</span> <?php echo number_format_i18n($ck['total']); ?> link click<?php echo $ck['total'] === 1 ? '' : 's'; ?> from its Fanloop page<?php if ($ck['known']) : ?> · <?php echo number_format_i18n($ck['known']); ?> known fan<?php echo $ck['known'] === 1 ? '' : 's'; ?><?php endif; ?></div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php if ($clicks_pages) : ?>
+            <p style="margin:10px 0 0;font-size:12px;color:#C9CCD6;"><span style="color:#E58BBD;">↗</span> Your Fanloop release pages sent <strong style="color:#F4F5F7;"><?php echo number_format_i18n($clicks_total); ?></strong> clicks to streaming services across <?php echo (int) $clicks_pages; ?> release<?php echo $clicks_pages === 1 ? '' : 's'; ?> — listeners you sent there yourself.</p>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
