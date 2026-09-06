@@ -1129,10 +1129,31 @@ function lmeg_admin_spotify_insights() {
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="<?php echo $lbl; ?>margin-bottom:<?php echo $reconcile['both'] ? '4' : '12'; ?>px;">Your songs · by streams <span style="color:#8B90A0;font-weight:400;">(<?php echo count($songs); ?>)</span></div>
             <?php if ($reconcile['both']) : ?><p style="color:#8B90A0;font-size:11px;margin:0 0 12px;">Streams from Spotify&nbsp;for&nbsp;Artists · <span style="color:#E58BBD;">◍</span> = Spotify public popularity (0–100), matched on <?php echo (int) $reconcile['both']; ?> track<?php echo $reconcile['both'] === 1 ? '' : 's'; ?>.</p><?php endif; ?>
-            <?php if (!empty($movers['biggest'])) : $bm = $movers['biggest']; $bmpace = rtrim(rtrim(number_format($bm['pace'], 1), '0'), '.'); ?>
-            <div style="background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;">
-                <span style="font-size:18px;flex:0 0 auto;" aria-hidden="true">🔥</span>
-                <div style="font-size:13px;color:#F4F5F7;line-height:1.5;"><strong><?php echo esc_html($bm['title']); ?></strong> is heating up — <strong style="color:#34D399;"><?php echo number_format_i18n($bm['s7']); ?></strong> streams in the last 7 days, running <strong style="color:#34D399;"><?php echo esc_html($bmpace); ?>% above</strong> its 28-day pace.</div>
+            <?php
+            // Momentum banner. Prefer REAL week-over-week (top 20, day-by-day):
+            // the biggest gainer, or in a week with no gainer the song that
+            // cooled most — so this card never contradicts "What the data says".
+            // The pace-vs-28d mover is only the fallback when no daily data exists.
+            $fmtp = function ($v) { return rtrim(rtrim(number_format((float) $v, 1), '0'), '.'); };
+            $sw_card = $sd_map ? lmeg_si_song_wow_summary($sd_map) : null;
+            $banner = null;
+            if ($sw_card && !empty($sw_card['up'])) {
+                $g = $sw_card['up'][0];
+                $banner = ['icon' => '🔥', 'bg' => 'rgba(52,211,153,.10)', 'bd' => 'rgba(52,211,153,.35)', 'c' => '#34D399', 'title' => $g['title'],
+                    'html' => ' is your mover this week — <strong style="color:#34D399;">' . number_format_i18n($g['last7']) . '</strong> streams in the last 7 days, <strong style="color:#34D399;">' . esc_html($fmtp($g['wow'])) . '% up</strong> on the week before.'];
+            } elseif ($sw_card && !empty($sw_card['down'])) {
+                $g = $sw_card['down'][0];
+                $banner = ['icon' => '🧊', 'bg' => 'rgba(248,113,113,.08)', 'bd' => 'rgba(248,113,113,.30)', 'c' => '#F87171', 'title' => $g['title'],
+                    'html' => ' cooled the most this week — <strong style="color:#F87171;">' . number_format_i18n($g['last7']) . '</strong> streams in the last 7 days, <strong style="color:#F87171;">' . esc_html($fmtp(abs($g['wow']))) . '% down</strong> on the week before. No song grew week-over-week.'];
+            } elseif (!$sw_card && !empty($movers['biggest'])) {
+                $bm = $movers['biggest'];
+                $banner = ['icon' => '🔥', 'bg' => 'rgba(52,211,153,.10)', 'bd' => 'rgba(52,211,153,.35)', 'c' => '#34D399', 'title' => $bm['title'],
+                    'html' => ' is heating up — <strong style="color:#34D399;">' . number_format_i18n($bm['s7']) . '</strong> streams in the last 7 days, running <strong style="color:#34D399;">' . esc_html($fmtp($bm['pace'])) . '% above</strong> its 28-day pace.'];
+            }
+            if ($banner) : ?>
+            <div style="background:<?php echo $banner['bg']; ?>;border:1px solid <?php echo $banner['bd']; ?>;border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;">
+                <span style="font-size:18px;flex:0 0 auto;" aria-hidden="true"><?php echo $banner['icon']; ?></span>
+                <div style="font-size:13px;color:#F4F5F7;line-height:1.5;"><strong><?php echo esc_html($banner['title']); ?></strong><?php echo $banner['html']; ?></div>
             </div>
             <?php endif; ?>
             <div style="display:flex;flex-direction:column;gap:9px;max-height:520px;overflow:auto;">
