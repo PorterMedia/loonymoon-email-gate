@@ -347,11 +347,14 @@ function lmeg_s4a_demo_payload($artist, $offset_days = 0) {
     }
     // Daily 28-day artist series (weekly wave + noise) with the capture day as
     // the trailing incomplete 0, exactly like S4A.
-    $ts = function ($base, $amp, $growth = 0, $level = false) use ($rnd, $d, $scale) {
+    // Flows get a bump on the demo send days (lmeg_si_demo_marks: 9 and 23 days
+    // ago) so the "campaign lift" readouts tell a coherent story.
+    $bump = [8 => 1.28, 7 => 1.22, 6 => 1.12, 22 => 1.26, 21 => 1.2, 20 => 1.12];
+    $ts = function ($base, $amp, $growth = 0, $level = false) use ($rnd, $d, $scale, $bump) {
         $out = [];
         for ($i = 27; $i >= 0; $i--) {
             $wave = 1 + $amp * sin(($i % 7) / 7 * 2 * M_PI);
-            $v = $level ? $base + $growth * (27 - $i) : $base * $wave * $rnd(0.9, 1.1) * (1 + $growth * (27 - $i));
+            $v = $level ? $base + $growth * (27 - $i) : $base * $wave * $rnd(0.9, 1.1) * (1 + $growth * (27 - $i)) * ($bump[$i] ?? 1);
             $out[] = ['x' => $d($i + 1), 'y' => (string) (int) round($level ? $v : $v * $scale)];   // levels aren't scaled
         }
         $out[] = ['x' => $d(0), 'y' => '0'];
