@@ -143,6 +143,25 @@ function lmeg_s4a_daily_series($a) {
 }
 
 /**
+ * A LEVEL metric (followers) from the daily series: the last non-zero point,
+ * not the sum. The pull summed every metric's 28-day timeseries — right for
+ * flows (streams, saves) but for followers that produced 28 × the real count
+ * (LOONY read 1,800,280 for ~64K). The trailing capture-day 0 is skipped.
+ * Falls back to $fallback when the series is absent.
+ */
+function lmeg_s4a_level($a, $metric, $fallback = null) {
+    $a = (array) $a;
+    $ts = $a['raw']['stats'][$metric]['current_period_timeseries'] ?? ($a['stats'][$metric]['current_period_timeseries'] ?? null);
+    if (is_array($ts) && $ts) {
+        for ($i = count($ts) - 1; $i >= 0; $i--) {
+            $v = (int) round((float) ($ts[$i]['y'] ?? 0));
+            if ($v > 0) return $v;
+        }
+    }
+    return ($fallback === null || $fallback === '') ? null : (int) round((float) $fallback);
+}
+
+/**
  * Per-song DAY-BY-DAY series (the pull's song_daily: top ~20 songs × up to 365
  * days of {title,uri,from,to,streams[],listeners[],saves[]}). Stored compact as
  * {t,u,d0,s,li,sv} — dates are implied from d0, one per index — with the same
@@ -212,7 +231,7 @@ function lmeg_s4a_parse($data) {
             'super_listeners'      => $num($ad['super_listeners'] ?? null),
             'saves'                => $num($ss['saves'] ?? null),
             'playlist_adds'        => $num($ss['playlist_adds'] ?? null),
-            'followers'            => $num($ss['followers'] ?? null),
+            'followers'            => lmeg_s4a_level($a, 'followers', $ss['followers'] ?? null),
             'streams_per_listener' => isset($ss['streams_per_listener']) ? (float) $ss['streams_per_listener'] : null,
             'changes'              => wp_json_encode([
                 'monthly_listeners' => $ss['monthly_listeners_change_pct'] ?? null,

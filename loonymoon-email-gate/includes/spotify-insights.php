@@ -287,8 +287,13 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api) {
     global $wpdb;
     $n = ['listeners' => null, 'sp_followers' => null, 'ig_followers' => null, 'list' => null, 'superfans' => null, 'customers' => null, 'members' => null];
     if ($snap) {
-        $n['listeners']    = $snap->monthly_listeners !== null ? (int) $snap->monthly_listeners : null;
-        $n['sp_followers'] = $snap->followers !== null ? (int) $snap->followers : null;
+        $n['listeners'] = $snap->monthly_listeners !== null ? (int) $snap->monthly_listeners : null;
+        // Spotify followers is a LEVEL: take the last day of the daily series
+        // (snapshots ingested before v3.198.1 stored a 28-day SUM in the
+        // followers column — never read that here), else the public API.
+        $dm = $snap->meta ? (array) json_decode((string) $snap->meta, true) : [];
+        $fs = array_values(array_filter(array_map('intval', (array) ($dm['daily']['followers'] ?? []))));
+        if ($fs) $n['sp_followers'] = (int) end($fs);
     }
     if ($n['sp_followers'] === null && $has_api && !empty($ov['followers'])) $n['sp_followers'] = (int) $ov['followers'];
     if (function_exists('lmeg_social_snapshots')) {
