@@ -219,6 +219,31 @@ function lmeg_si_top_saver($songs, $min_listeners = 500, $k = 500) {
 }
 
 /**
+ * Streams velocity from the daily 28-day series: last 7 days vs the previous 7
+ * (week-over-week), plus how many consecutive trailing weeks moved the same way.
+ * A within-period momentum read that works from ONE snapshot — catches a trend
+ * turning before it shows in the month-over-month totals. Pure.
+ * Returns ['wow','last7','prior7','weeks_down','weeks_up'] or null (<14 days).
+ */
+function lmeg_si_stream_velocity($daily_streams) {
+    $v = array_map('intval', array_values(array_filter((array) $daily_streams, 'is_numeric')));
+    $n = count($v);
+    if ($n < 14) return null;
+    $last7  = array_sum(array_slice($v, -7));
+    $prior7 = array_sum(array_slice($v, -14, 7));
+    if ($prior7 <= 0) return null;
+    // Trailing 7-day blocks, newest first, to measure a consecutive streak.
+    $blocks = [];
+    for ($k = 0; $k < 6; $k++) { $start = $n - 7 * ($k + 1); if ($start < 0) break; $blocks[] = array_sum(array_slice($v, $start, 7)); }
+    $down = 0; $up = 0; $m = count($blocks);
+    if ($m >= 2) {
+        if ($blocks[0] < $blocks[1]) { $down = 1; for ($i = 1; $i + 1 < $m; $i++) { if ($blocks[$i] < $blocks[$i + 1]) $down++; else break; } }
+        elseif ($blocks[0] > $blocks[1]) { $up = 1; for ($i = 1; $i + 1 < $m; $i++) { if ($blocks[$i] > $blocks[$i + 1]) $up++; else break; } }
+    }
+    return ['wow' => ($last7 - $prior7) / $prior7 * 100, 'last7' => $last7, 'prior7' => $prior7, 'weeks_down' => $down, 'weeks_up' => $up];
+}
+
+/**
  * Reconcile the two track sources: S4A songs (carry STREAMS) vs the public
  * Spotify API top-tracks (carry POPULARITY, 0–100). Matches by normalized title.
  * Returns:
@@ -481,6 +506,20 @@ function lmeg_si_analyze($c) {
         $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
             'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
     }
+    // Streams velocity — catalog-wide week-over-week momentum from the daily
+    // series (distinct from per-song movers and month-over-month deltas).
+    if (!empty($c['velocity']) && ($c['velocity']['prior7'] ?? 0) > 0) {
+        $v = $c['velocity']; $wow = (float) $v['wow'];
+        if ($wow <= -12) {
+            $streak = ($v['weeks_down'] ?? 0) >= 3 ? ' — and each of the last ' . (int) $v['weeks_down'] . ' weeks came in below the one before' : '';
+            $F[] = ['type' => 'watch', 'title' => 'Streams are cooling',
+                'detail' => 'The last 7 days ran ' . $p(abs($wow)) . '% below the previous 7 (' . $n($v['last7']) . ' vs ' . $n($v['prior7']) . ' streams)' . $streak . '. A re-push, a fresh drop, or a playlist pitch could reverse the slide.'];
+        } elseif ($wow >= 15) {
+            $streak = ($v['weeks_up'] ?? 0) >= 3 ? ' — rising ' . (int) $v['weeks_up'] . ' weeks straight' : '';
+            $F[] = ['type' => 'strength', 'title' => 'Streams are accelerating',
+                'detail' => 'The last 7 days ran ' . $p($wow) . '% above the previous 7 (' . $n($v['last7']) . ' vs ' . $n($v['prior7']) . ' streams)' . $streak . '. Lean into whatever you’re doing right now — it’s working.'];
+        }
+    }
     // Release cadence / newest-release performance.
     if (!empty($c['last_release']['name'])) {
         $lr = $c['last_release']; $d = (int) ($lr['days_ago'] ?? 0);
@@ -709,6 +748,7 @@ function lmeg_admin_spotify_insights() {
     $findings = lmeg_si_analyze([
         'geo'               => $az_geo,
         'saver'             => lmeg_si_top_saver($az_songs),
+        'velocity'          => lmeg_si_stream_velocity((array) ($az_meta['daily']['streams'] ?? [])),
         'mover_up'          => $az_mv['biggest'] ?? null,
         'mover_down'        => $az_down,
         'pl_mix'            => $az_mix,
