@@ -149,9 +149,19 @@ function lmeg_s4a_parse($data) {
 /** Upsert a snapshot row (unique on artist+date+window). Returns rows written. */
 function lmeg_s4a_store($rows, $source = 'paste') {
     global $wpdb;
+    $rows = (array) $rows;
+    // Multi-tenant isolation: each Fanloop site stores ONLY its own artist. A
+    // multi-artist import (e.g. a whole-roster push) is filtered down to this
+    // site's artist; a single-artist import is always accepted as-is.
+    if (count($rows) > 1 && function_exists('lmeg_artist')) {
+        $mine = (string) lmeg_artist();
+        $rows = array_values(array_filter($rows, function ($r) use ($mine) {
+            return isset($r['artist']) && strcasecmp((string) $r['artist'], $mine) === 0;
+        }));
+    }
     $t = lmeg_s4a_table();
     $n = 0;
-    foreach ((array) $rows as $r) {
+    foreach ($rows as $r) {
         if (empty($r['captured_date']) || empty($r['artist'])) continue;
         $r['source']     = in_array($source, ['paste', 'push'], true) ? $source : 'paste';
         $r['created_at'] = current_time('mysql');
@@ -248,8 +258,9 @@ function lmeg_admin_s4a() {
         }
     }
 
-    $artists = lmeg_s4a_artists();
-    $sel     = isset($_GET['artist']) ? sanitize_text_field(wp_unslash($_GET['artist'])) : (in_array(lmeg_artist(), $artists, true) ? lmeg_artist() : ($artists[0] ?? lmeg_artist()));
+    // Per-site isolation: show only this site's own artist (no cross-artist switcher).
+    $sel     = lmeg_artist();
+    $artists = [$sel];
     $snap    = lmeg_s4a_latest($sel);
     $changes = $snap && $snap->changes ? (array) json_decode($snap->changes, true) : [];
     $card    = 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 16px;color:#F4F5F7;';

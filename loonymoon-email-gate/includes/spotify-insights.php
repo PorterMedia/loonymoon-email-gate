@@ -441,9 +441,10 @@ function lmeg_admin_spotify_insights() {
     $card = $t['card']; $lbl = $t['lbl'];
 
     // ---- gather from both sources (each optional) ----------------------------
-    $artists = function_exists('lmeg_s4a_artists') ? lmeg_s4a_artists() : [];
-    $sel = isset($_GET['artist']) ? sanitize_text_field(wp_unslash($_GET['artist']))
-        : (in_array(lmeg_artist(), $artists, true) ? lmeg_artist() : ($artists[0] ?? lmeg_artist()));
+    // Per-site isolation: this Fanloop site shows ONLY its own artist — no
+    // cross-artist switcher, even if the DB holds other artists' snapshots.
+    $sel = lmeg_artist();
+    $artists = [$sel];
     $snap    = function_exists('lmeg_s4a_latest') ? lmeg_s4a_latest($sel) : null;
     $changes = ($snap && $snap->changes) ? (array) json_decode($snap->changes, true) : [];
 
