@@ -1307,6 +1307,18 @@ function lmeg_si_analyze($c) {
 
 function lmeg_admin_spotify_insights() {
     if (!current_user_can('manage_options')) return;
+    // A fatal mid-page used to end the output silently (display_errors is off
+    // on production), so a broken section looked like a shorter page. Catch
+    // anything thrown while rendering and say exactly where it broke.
+    try {
+        lmeg_admin_spotify_insights_render();
+    } catch (\Throwable $e) {
+        echo '<div class="notice notice-error" style="max-width:1040px;margin:14px 0;"><p><strong>Spotify Insights hit an error while rendering</strong> — the sections above are fine; the rest of the page couldn’t be drawn.<br>'
+           . '<code>' . esc_html(get_class($e) . ': ' . $e->getMessage()) . '</code><br><span style="opacity:.75;">' . esc_html(basename($e->getFile()) . ':' . $e->getLine()) . '</span></p></div></div>';
+    }
+}
+
+function lmeg_admin_spotify_insights_render() {
     $t = lmeg_si_tokens();
     // Pull every token out up front: `$t` gets reused as a loop variable
     // further down (song titles, API tracks), and `$t['muted']` on a string is
