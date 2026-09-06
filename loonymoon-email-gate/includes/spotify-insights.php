@@ -1423,11 +1423,34 @@ function lmeg_admin_spotify_insights() {
                 <?php $headline = lmeg_si_headline($snap, $changes, $ov); if ($headline) : ?>
                     <p style="margin:10px 0 0;font-size:14px;color:#C9CCD6;max-width:560px;line-height:1.5;"><?php echo wp_kses_post($headline); ?></p>
                 <?php endif; ?>
+                <?php
+                // Freshness chip — how old the streaming data is, at a glance
+                // (green ≤1 day, amber 2–3, red older). Demo shows "Sample data".
+                $fresh_days = ($has_s4a && !$demo && !empty($snap->captured_date)) ? max(0, (int) floor((current_time('timestamp') - strtotime($snap->captured_date . ' 12:00:00')) / 86400)) : null;
+                if ($demo) { $fc = '#7C6CF6'; $ft = 'Sample data'; }
+                elseif ($fresh_days === null) { $fc = null; $ft = ''; }
+                elseif ($fresh_days <= 0) { $fc = '#34D399'; $ft = 'Updated today'; }
+                elseif ($fresh_days === 1) { $fc = '#34D399'; $ft = 'Updated yesterday'; }
+                elseif ($fresh_days <= 3) { $fc = '#F59E0B'; $ft = 'Updated ' . $fresh_days . ' days ago'; }
+                else { $fc = '#F87171'; $ft = 'Updated ' . $fresh_days . ' days ago'; }
+                if ($fc) : ?>
+                    <div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#F4F5F7;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:3px 10px;" title="<?php echo $has_s4a && !$demo ? esc_attr('Spotify for Artists snapshot captured ' . $snap->captured_date) : ''; ?>">
+                        <span style="width:7px;height:7px;border-radius:50%;background:<?php echo $fc; ?>;display:inline-block;" aria-hidden="true"></span><?php echo esc_html($ft); ?><?php if (!$demo) : ?> <span style="color:#8B90A0;font-weight:500;">· Spotify for Artists</span><?php endif; ?>
+                    </div>
+                <?php endif; ?>
             </div>
             <?php if ($has_api && !empty($ov['url'])) : ?>
                 <a class="button" href="<?php echo esc_url($ov['url']); ?>" target="_blank" rel="noopener" style="flex:0 0 auto;">Open on Spotify ↗</a>
             <?php endif; ?>
         </div>
+
+        <!-- STALE DATA WARNING — the daily pull hasn't landed for 3+ days ------>
+        <?php if (isset($fresh_days) && $fresh_days !== null && $fresh_days >= 3) : ?>
+        <div style="background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.40);border-radius:12px;padding:11px 14px;margin:0 0 14px;max-width:1040px;color:#F4F5F7;font-size:13px;line-height:1.5;display:flex;gap:10px;align-items:center;">
+            <span style="font-size:16px;flex:0 0 auto;" aria-hidden="true">⚠️</span>
+            <div>Your Spotify data is <strong><?php echo (int) $fresh_days; ?> days old</strong> — nothing has landed since <?php echo esc_html($snap->captured_date); ?>, so the numbers below are stale. The daily pull may have stopped. <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-s4a')); ?>">Check the Spotify for Artists import →</a></div>
+        </div>
+        <?php endif; ?>
 
         <!-- FAN RINGS — listeners → followers → list → customers → members ---->
         <?php $rings = $demo ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
