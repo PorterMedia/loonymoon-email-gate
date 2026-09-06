@@ -772,9 +772,12 @@ function lmeg_si_song_history($rows) {
         $date = (string) $get($r, 'captured_date');
         if ($date === '') continue;
         $songs = json_decode((string) ($get($r, 'top_songs') ?? '[]'), true);
-        $meta  = json_decode((string) ($get($r, 'meta') ?? '{}'), true);
+        // Slim rows carry just meta.songs_7d (JSON_EXTRACT); full rows carry meta.
+        $s7raw = $get($r, 'songs_7d');
+        if ($s7raw !== null && $s7raw !== '') { $s7list = is_string($s7raw) ? json_decode($s7raw, true) : $s7raw; }
+        else { $meta = json_decode((string) ($get($r, 'meta') ?? '{}'), true); $s7list = $meta['songs_7d'] ?? []; }
         $s7 = [];
-        foreach ((array) ($meta['songs_7d'] ?? []) as $s) { if (is_array($s)) $s7[$norm($s['title'] ?? '')] = (int) ($s['streams'] ?? 0); }
+        foreach ((array) $s7list as $s) { if (is_array($s)) $s7[$norm($s['title'] ?? '')] = (int) ($s['streams'] ?? 0); }
         foreach ((array) $songs as $s) {
             if (!is_array($s)) continue;
             $t = (string) ($s['title'] ?? $s['trackName'] ?? '');

@@ -469,11 +469,26 @@ function lmeg_s4a_series($metric, $artist = null, $window = '28d', $limit = 60) 
 function lmeg_s4a_history($artist = null, $window = '28d', $limit = 120) {
     global $wpdb;
     $artist = $artist ?: lmeg_artist();
-    return $wpdb->get_results($wpdb->prepare(
-        "SELECT captured_date, top_songs, meta FROM " . lmeg_s4a_table() . "
+    $t = lmeg_s4a_table();
+    // meta is ~110KB per row since song_daily (v3.194); per-song history only
+    // needs meta.songs_7d, so pull just that with JSON_EXTRACT (MySQL 5.7+ /
+    // MariaDB 10.2+) — 120 rows × 110KB of JSON decoding otherwise, growing
+    // by a row a day. Falls back to the full column where JSON functions
+    // aren't available.
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT captured_date, top_songs, JSON_EXTRACT(meta, '$.songs_7d') AS songs_7d FROM $t
          WHERE artist = %s AND window = %s
          ORDER BY captured_date ASC LIMIT %d", $artist, $window, (int) $limit
     ));
+    if ($wpdb->last_error) {
+        $wpdb->last_error = '';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT captured_date, top_songs, meta FROM $t
+             WHERE artist = %s AND window = %s
+             ORDER BY captured_date ASC LIMIT %d", $artist, $window, (int) $limit
+        ));
+    }
+    return $rows;
 }
 
 /** Distinct artists we have snapshots for (for the switcher). */
