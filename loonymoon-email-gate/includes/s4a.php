@@ -16,7 +16,9 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!defined('LMEG_S4A_DB_VERSION')) define('LMEG_S4A_DB_VERSION', '1');
+// v2: meta TEXT → MEDIUMTEXT (per-song daily series for the top 20 songs is
+// ~120KB — TEXT's 64KB cap would truncate the JSON, or fail the insert in strict mode).
+if (!defined('LMEG_S4A_DB_VERSION')) define('LMEG_S4A_DB_VERSION', '2');
 
 function lmeg_s4a_table() { global $wpdb; return $wpdb->prefix . 'lmeg_s4a_snapshots'; }
 
@@ -45,7 +47,7 @@ function lmeg_s4a_maybe_install() {
         top_songs TEXT NULL,
         top_playlists TEXT NULL,
         top_countries TEXT NULL,
-        meta TEXT NULL,
+        meta MEDIUMTEXT NULL,
         source VARCHAR(16) NOT NULL DEFAULT 'paste',
         created_at DATETIME NOT NULL,
         PRIMARY KEY (id),
@@ -141,6 +143,42 @@ function lmeg_s4a_daily_series($a) {
 }
 
 /**
+ * Per-song DAY-BY-DAY series (the pull's song_daily: top ~20 songs × up to 365
+ * days of {title,uri,from,to,streams[],listeners[],saves[]}). Stored compact as
+ * {t,u,d0,s,li,sv} — dates are implied from d0, one per index — with the same
+ * trailing all-zero-day trim as lmeg_s4a_daily_series (S4A includes the capture
+ * day as an incomplete 0). li/sv are null unless they align with s. [] when the
+ * pull didn't send it (older bookmarklet / pasted exports).
+ */
+function lmeg_s4a_song_daily($a) {
+    $a = (array) $a;
+    $list = $a['song_daily'] ?? [];
+    if (!is_array($list) || !$list) return [];
+    $out = [];
+    foreach ($list as $e) {
+        if (!is_array($e) || empty($e['from']) || empty($e['streams']) || !is_array($e['streams'])) continue;
+        $s  = array_map('intval', array_values($e['streams']));
+        $li = is_array($e['listeners'] ?? null) ? array_map('intval', array_values($e['listeners'])) : [];
+        $sv = is_array($e['saves'] ?? null) ? array_map('intval', array_values($e['saves'])) : [];
+        for ($len = count($s); $len > 1; $len--) {
+            if ($s[$len - 1] !== 0 || (int) ($li[$len - 1] ?? 0) !== 0 || (int) ($sv[$len - 1] ?? 0) !== 0) break;
+            array_pop($s);
+            if (count($li) >= $len) array_pop($li);
+            if (count($sv) >= $len) array_pop($sv);
+        }
+        $out[] = [
+            't'  => sanitize_text_field((string) ($e['title'] ?? '')),
+            'u'  => (string) ($e['uri'] ?? ''),
+            'd0' => substr((string) $e['from'], 0, 10),
+            's'  => $s,
+            'li' => count($li) === count($s) ? $li : null,
+            'sv' => count($sv) === count($s) ? $sv : null,
+        ];
+    }
+    return $out;
+}
+
+/**
  * Normalize an S4A payload (single-artist object, OR the {artists:[…]} wrapper
  * my export produces) into one or more snapshot rows. Tolerant of missing keys.
  *
@@ -208,6 +246,9 @@ function lmeg_s4a_parse($data) {
                 // the Insights page can draw a real day-by-day trend from a single
                 // snapshot — richer than the sparse snapshot-to-snapshot charts.
                 'daily'               => lmeg_s4a_daily_series($a),
+                // Per-song day-by-day streams/listeners/saves (top 20 songs, up
+                // to 365 days) — powers the song overlay's true 7/28/custom ranges.
+                'song_daily'          => lmeg_s4a_song_daily($a),
                 // 7-day per-song streams — lets the Insights page compute momentum
                 // (recent 7d pace vs the 28d run-rate) from a single snapshot.
                 'songs_7d'            => array_values((array) ($a['top_songs_last_7d'] ?? [])),

@@ -1048,17 +1048,22 @@ function lmeg_admin_spotify_insights() {
             </div>
         </div>
 
-        <!-- SONG HISTORY OVERLAY — click a song row for its trend across daily captures -->
+        <!-- SONG HISTORY OVERLAY — click a song row for its day-by-day chart -->
         <?php
-        // One point per daily capture (28d/7d streams, listeners, saves) for every
-        // song — embedded once so the overlay is instant and needs no AJAX.
+        // Two sources, embedded once so the overlay is instant and needs no AJAX:
+        //  · meta.song_daily — TRUE day-by-day streams/listeners/saves for the top
+        //    20 songs (up to 365 days, from S4A's song-stats endpoint) → real
+        //    7 / 28 / 90 / custom ranges;
+        //  · capture history — one point per daily capture (28d/7d window totals,
+        //    listeners, saves) for EVERY song → the fallback for songs outside
+        //    the top 20 or snapshots from before song_daily existed.
         $song_hist = function_exists('lmeg_s4a_history') ? lmeg_si_song_history(lmeg_s4a_history($sel, $snap->window)) : [];
         ?>
         <div id="lmeg-song-ov" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(8,9,14,.74);align-items:center;justify-content:center;padding:20px;">
             <div role="dialog" aria-modal="true" aria-labelledby="lmeg-song-ov-title" style="<?php echo $card; ?>width:min(760px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6);">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;">
                     <div style="min-width:0;">
-                        <div style="<?php echo $lbl; ?>margin-bottom:4px;">Song history</div>
+                        <div id="lmeg-song-ov-kicker" style="<?php echo $lbl; ?>margin-bottom:4px;">Song history</div>
                         <div id="lmeg-song-ov-title" style="font:800 22px/1.15 var(--lmegA-font,inherit);color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;"></div>
                     </div>
                     <button type="button" id="lmeg-song-ov-close" aria-label="Close" style="flex:0 0 auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#F4F5F7;border-radius:10px;width:34px;height:34px;font-size:18px;line-height:1;cursor:pointer;">&times;</button>
@@ -1083,68 +1088,112 @@ function lmeg_admin_spotify_insights() {
         </div>
         <script>
         (function(){
-            var H = <?php echo wp_json_encode($song_hist); ?>;
-            var METRICS = [['s28','Streams · 28d window'],['s7','Streams · 7d window'],['li','Listeners'],['sv','Saves']];
-            var RANGES  = [['7','Last 7 days'],['28','Last 28 days'],['all','All'],['custom','Custom']];
-            var state = {key:null, metric:'s28', range:'28'};
+            var H  = <?php echo wp_json_encode($song_hist); ?>;
+            var DL = <?php echo wp_json_encode(array_values(array_filter((array) ($meta_songs['song_daily'] ?? []), 'is_array'))); ?>;
+            // Metric sets per mode — daily (true day-by-day) vs history (one
+            // point per capture, window totals).
+            var DM = [['s','Streams / day'],['li','Listeners / day'],['sv','Saves / day']];
+            var HM = [['s28','Streams · 28d window'],['s7','Streams · 7d window'],['li','Listeners'],['sv','Saves']];
+            var RANGES = [['7','Last 7 days'],['28','Last 28 days'],['90','Last 90 days'],['all','All'],['custom','Custom']];
+            var state = {key:null, daily:null, metric:'s', range:'28'};
             var $ = function(id){ return document.getElementById(id); };
-            var ov=$('lmeg-song-ov'), ttl=$('lmeg-song-ov-title'), stats=$('lmeg-song-ov-stats'), mWrap=$('lmeg-song-ov-metric'), rWrap=$('lmeg-song-ov-range'), cust=$('lmeg-song-ov-custom'), fromI=$('lmeg-song-ov-from'), toI=$('lmeg-song-ov-to'), chart=$('lmeg-song-ov-chart'), note=$('lmeg-song-ov-note');
+            var ov=$('lmeg-song-ov'), kick=$('lmeg-song-ov-kicker'), ttl=$('lmeg-song-ov-title'), stats=$('lmeg-song-ov-stats'), mWrap=$('lmeg-song-ov-metric'), rWrap=$('lmeg-song-ov-range'), cust=$('lmeg-song-ov-custom'), fromI=$('lmeg-song-ov-from'), toI=$('lmeg-song-ov-to'), chart=$('lmeg-song-ov-chart'), note=$('lmeg-song-ov-note');
             if(!ov) return;
             var n = function(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); };
             var fmt = function(v){ return (v===null||v===undefined) ? '—' : Number(v).toLocaleString(); };
+            var pct = function(a,b){ return (b>0) ? ((a-b)/b*100) : null; };
             var find = function(t){ var k=n(t); if(H[k]) return H[k]; for(var key in H){ if(n(H[key].title)===k) return H[key]; } return null; };
+            var D = {}; DL.forEach(function(e){ if(e && e.t && e.s && e.s.length) D[n(e.t)] = e; });
             var btn = function(label, on, cb){ var b=document.createElement('button'); b.type='button'; b.textContent=label; b.style.cssText='border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '+(on?'#D05FA2':'rgba(255,255,255,.14)')+';background:'+(on?'#D05FA2':'rgba(255,255,255,.04)')+';color:#fff;'; b.addEventListener('click',cb); return b; };
             var dayMs = 86400000;
             var parse = function(d){ return new Date(d+'T00:00:00'); };
+            var pad = function(x){ return (x<10?'0':'')+x; };
+            var iso = function(x){ return x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate()); };
+            var addDays = function(d,i){ var x=parse(d); x.setDate(x.getDate()+i); return x; };
             var lab = function(dd){ return parse(dd).toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
-            function filtered(entry){
-                var pts = entry.pts.filter(function(p){ return p[state.metric]!==null && p[state.metric]!==undefined; });
-                if(!pts.length) return pts;
+            var sum = function(pts){ return pts.reduce(function(a,p){ return a+(p.v||0); },0); };
+            // One series shape for both modes: [{d:'YYYY-MM-DD', v:number}].
+            function series(){
+                if(state.daily){ var arr=state.daily[state.metric]; if(!arr) return []; return arr.map(function(v,i){ return {d: iso(addDays(state.daily.d0,i)), v: v}; }); }
+                var e = state.key ? H[state.key] : null; if(!e) return [];
+                return e.pts.filter(function(p){ return p[state.metric]!==null && p[state.metric]!==undefined; }).map(function(p){ return {d:p.d, v:p[state.metric]}; });
+            }
+            function filtered(all){
+                var pts = all.slice(); if(!pts.length) return pts;
                 var last = parse(pts[pts.length-1].d);
-                if(state.range==='7'||state.range==='28'){ var cut=new Date(last.getTime()-(parseInt(state.range,10)-1)*dayMs); pts=pts.filter(function(p){ return parse(p.d)>=cut; }); }
+                if(state.range==='7'||state.range==='28'||state.range==='90'){ var cut=new Date(last.getTime()-(parseInt(state.range,10)-1)*dayMs); pts=pts.filter(function(p){ return parse(p.d)>=cut; }); }
                 else if(state.range==='custom'){ var f=fromI.value?parse(fromI.value):null, t=toI.value?parse(toI.value):null; pts=pts.filter(function(p){ var x=parse(p.d); return (!f||x>=f)&&(!t||x<=t); }); }
                 return pts;
             }
             function svg(pts){
                 var W=680,Hh=190,P={l:52,r:14,t:14,b:28};
-                var vals=pts.map(function(p){return p[state.metric];});
-                var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
-                if(mn===mx){ mn=mn*0.95; mx=(mx*1.05)||1; }
+                var vals=pts.map(function(p){return p.v;});
+                // Daily mode reads from a zero baseline (a per-day count); history
+                // mode autoscales so a slow-moving window total still shows shape.
+                var mn=state.daily?0:Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+                if(mn===mx){ mn=state.daily?0:mn*0.95; mx=(mx*1.05)||1; }
                 var iw=W-P.l-P.r, ih=Hh-P.t-P.b;
                 var x=function(i){ return P.l+(pts.length===1?iw/2:i*iw/(pts.length-1)); };
                 var y=function(v){ return P.t+(1-(v-mn)/(mx-mn))*ih; };
-                var d=pts.map(function(p,i){ return (i?'L':'M')+x(i).toFixed(1)+' '+y(p[state.metric]).toFixed(1); }).join(' ');
+                var d=pts.map(function(p,i){ return (i?'L':'M')+x(i).toFixed(1)+' '+y(p.v).toFixed(1); }).join(' ');
                 var area=d+' L'+x(pts.length-1).toFixed(1)+' '+(Hh-P.b)+' L'+x(0).toFixed(1)+' '+(Hh-P.b)+' Z';
                 var s='<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" height="'+Hh+'" role="img" aria-label="History chart" style="display:block;overflow:visible;">';
                 for(var g=0; g<=3; g++){ var gy=P.t+g*ih/3; s+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+gy.toFixed(1)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'; }
                 s+='<text x="'+(P.l-8)+'" y="'+(P.t+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mx))+'</text>';
                 s+='<text x="'+(P.l-8)+'" y="'+(Hh-P.b+4)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+fmt(Math.round(mn))+'</text>';
                 if(pts.length>1){ s+='<path d="'+area+'" fill="#34D399" fill-opacity=".10"/><path d="'+d+'" fill="none" stroke="#34D399" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'; }
-                pts.forEach(function(p,i){ var last=i===pts.length-1; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p[state.metric]).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p[state.metric])+'</title></circle>'; });
+                var dots = pts.length<=60;
+                pts.forEach(function(p,i){ var last=i===pts.length-1; if(!dots&&!last) return; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p.v)+'</title></circle>'; });
+                if(!dots){ var pi=0; vals.forEach(function(v,i){ if(v>vals[pi]) pi=i; }); s+='<circle cx="'+x(pi).toFixed(1)+'" cy="'+y(vals[pi]).toFixed(1)+'" r="3.5" fill="#D05FA2" stroke="#0E0F16" stroke-width="1"><title>Best day — '+lab(pts[pi].d)+': '+fmt(vals[pi])+'</title></circle>'; }
                 s+='<text x="'+P.l+'" y="'+(Hh-6)+'" font-size="11" fill="#8B90A0">'+lab(pts[0].d)+'</text>';
+                if(pts.length>14){ var mi=Math.floor((pts.length-1)/2); s+='<text x="'+x(mi).toFixed(1)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="11" fill="#8B90A0">'+lab(pts[mi].d)+'</text>'; }
                 if(pts.length>1) s+='<text x="'+(W-P.r)+'" y="'+(Hh-6)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+lab(pts[pts.length-1].d)+'</text>';
                 return s+'</svg>';
             }
+            function chips(all, pts){
+                var items;
+                if(state.daily){
+                    var name = ({s:'streams',li:'listeners',sv:'saves'})[state.metric]||'streams';
+                    var peak=null; pts.forEach(function(p){ if(!peak||p.v>peak.v) peak=p; });
+                    items=[['Last 7 days · '+name, sum(all.slice(-7))],['Last 28 days · '+name, sum(all.slice(-28))],['Avg / day in range', pts.length?Math.round(sum(pts)/pts.length):null],['Best day in range', peak?(fmt(peak.v)+' <span style="font-size:11px;color:#8B90A0;font-weight:600;">'+lab(peak.d)+'</span>'):null]];
+                } else {
+                    var e = state.key ? H[state.key] : null, lastPt = (e && e.pts.length) ? e.pts[e.pts.length-1] : {};
+                    items=[['Streams · 28d', lastPt.s28],['Streams · 7d', lastPt.s7],['Listeners', lastPt.li],['Saves', lastPt.sv]];
+                }
+                stats.innerHTML = items.map(function(c){ var v=(typeof c[1]==='string')?c[1]:fmt(c[1]); return '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;"><div style="font:800 18px/1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;">'+v+'</div><div style="font:600 10px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin-top:6px;">'+c[0]+'</div></div>'; }).join('');
+            }
             function render(){
-                var e = state.key ? H[state.key] : null; if(!e) return;
-                mWrap.innerHTML=''; METRICS.forEach(function(m){ mWrap.appendChild(btn(m[1], state.metric===m[0], function(){ state.metric=m[0]; render(); })); });
-                rWrap.innerHTML=''; RANGES.forEach(function(r){ rWrap.appendChild(btn(r[1], state.range===r[0], function(){ state.range=r[0]; render(); })); });
+                if(!state.daily && !state.key) return;
+                var mlist = state.daily ? DM : HM;
+                mWrap.innerHTML=''; mlist.forEach(function(m){ mWrap.appendChild(btn(m[1], state.metric===m[0], function(){ state.metric=m[0]; render(); })); });
+                rWrap.innerHTML=''; RANGES.forEach(function(r){ if(r[0]==='90' && !state.daily) return; rWrap.appendChild(btn(r[1], state.range===r[0], function(){ state.range=r[0]; render(); })); });
                 cust.style.display = (state.range==='custom') ? 'inline-flex' : 'none';
-                var pts = filtered(e), total = e.pts.length;
-                if(!pts.length){ chart.innerHTML='<div style="color:#8B90A0;font-size:13px;padding:30px 0;text-align:center;">No captures in this range for this metric.</div>'; }
-                else if(pts.length===1){ chart.innerHTML='<div style="padding:26px 0;text-align:center;"><div style="font:800 34px/1 var(--lmegA-font,inherit);color:#F4F5F7;">'+fmt(pts[0][state.metric])+'</div><div style="color:#8B90A0;font-size:12px;margin-top:6px;">captured '+parse(pts[0].d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — one point so far; the line draws itself as daily captures land</div></div>'; }
+                var all = series(), pts = filtered(all);
+                chips(all, pts);
+                if(!pts.length){ chart.innerHTML='<div style="color:#8B90A0;font-size:13px;padding:30px 0;text-align:center;">No data in this range for this metric.</div>'; }
+                else if(pts.length===1){ chart.innerHTML='<div style="padding:26px 0;text-align:center;"><div style="font:800 34px/1 var(--lmegA-font,inherit);color:#F4F5F7;">'+fmt(pts[0].v)+'</div><div style="color:#8B90A0;font-size:12px;margin-top:6px;">'+(state.daily?lab(pts[0].d)+' — one day in this range':'captured '+parse(pts[0].d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — one point so far; the line draws itself as daily captures land')+'</div></div>'; }
                 else { chart.innerHTML = svg(pts); }
-                var delta = (pts.length>1) ? (pts[pts.length-1][state.metric]-pts[0][state.metric]) : null;
-                note.textContent = 'History builds one point per daily capture — '+total+' capture'+(total===1?'':'s')+' so far'+(delta!==null?(' · '+(delta>=0?'+':'')+fmt(delta)+' over this range'):'')+'.';
+                if(state.daily){
+                    var total=sum(pts), len=pts.length, start=len?all.map(function(p){return p.d;}).indexOf(pts[0].d):-1;
+                    var prev=(start>=len)?all.slice(start-len,start):[], ch=(prev.length===len&&len)?pct(total,sum(prev)):null;
+                    note.textContent = 'Day by day from Spotify for Artists · '+len+' day'+(len===1?'':'s')+' · '+fmt(total)+' total'+(ch!==null?(' · '+(ch>=0?'+':'')+ch.toFixed(1)+'% vs the previous '+len+' days'):'')+(all.length?(' · through '+lab(all[all.length-1].d)):'')+'.';
+                } else {
+                    var delta=(pts.length>1)?(pts[pts.length-1].v-pts[0].v):null, caps=all.length;
+                    note.textContent = 'History builds one point per daily capture — '+caps+' capture'+(caps===1?'':'s')+' so far'+(delta!==null?(' · '+(delta>=0?'+':'')+fmt(delta)+' over this range'):'')+'.'+(DL.length?' Day-by-day detail covers the top 20 songs by streams.':' Day-by-day detail for the top 20 songs arrives with the next pull.');
+                }
             }
             function open(title){
-                var e = find(title); if(!e) return;
-                for(var key in H){ if(H[key]===e){ state.key=key; break; } }
-                ttl.textContent = e.title;
-                var lastPt = e.pts[e.pts.length-1] || {};
-                var chips = [['Streams · 28d', lastPt.s28],['Streams · 7d', lastPt.s7],['Listeners', lastPt.li],['Saves', lastPt.sv]];
-                stats.innerHTML = chips.map(function(c){ return '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;"><div style="font:800 18px/1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;">'+fmt(c[1])+'</div><div style="font:600 10px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin-top:6px;">'+c[0]+'</div></div>'; }).join('');
-                if(e.pts.length){ fromI.value=e.pts[0].d; toI.value=e.pts[e.pts.length-1].d; }
+                var e = find(title), dd = D[n(title)] || null;
+                if(!e && !dd) return;
+                state.daily = dd; state.key = null;
+                if(e){ for(var key in H){ if(H[key]===e){ state.key=key; break; } } }
+                var mlist = dd ? DM : HM;
+                if(!mlist.some(function(m){ return m[0]===state.metric; })) state.metric = mlist[0][0];
+                if(state.range==='90' && !dd) state.range='28';
+                ttl.textContent = dd ? dd.t : e.title;
+                if(kick) kick.textContent = dd ? 'Song · day by day' : 'Song history';
+                var all = series();
+                if(all.length){ fromI.value=all[0].d; toI.value=all[all.length-1].d; }
                 ov.style.display='flex'; document.body.style.overflow='hidden';
                 render();
                 $('lmeg-song-ov-close').focus();
