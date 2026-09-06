@@ -391,14 +391,15 @@ function lmeg_s4a_demo_payload($artist, $offset_days = 0) {
         'top_cities' => array_map(function ($c) { return ['name' => $c[0], 'num' => (string) $c[1], 'region' => $c[2], 'country' => $c[3]]; }, $cities),
         'gender' => ['female' => '34100', 'male' => '24600', 'nonbinary' => '900', 'unknown' => '1800'],
         'gender_by_age' => ['age_0_17_gender' => $ageRow(410, 260), 'age_18_24_gender' => $ageRow(9800, 6100), 'age_25_34_gender' => $ageRow(15200, 11900), 'age_35_44_gender' => $ageRow(5900, 4300), 'age_45_59_gender' => $ageRow(2100, 1600), 'age_60_150_gender' => $ageRow(690, 440)],
-        'top_playlists' => [
+        // "Fresh Finds" only lands TODAY so the demo shows an editorial pickup.
+        'top_playlists' => array_values(array_filter([
             ['title' => 'Radio', 'author' => 'Spotify', 'streams' => 9800, 'listeners' => 5100, 'followers' => null, 'numTracks' => 10, 'uri' => 'spotify:user:spotify:playlist:radio', 'type' => 'personalized'],
             ['title' => 'Discover Weekly', 'author' => 'Spotify', 'streams' => 6200, 'listeners' => 4900, 'followers' => null, 'numTracks' => 30, 'uri' => 'spotify:playlist:demo-dw', 'type' => 'personalized'],
             ['title' => 'Indie Pop Chill', 'author' => 'Spotify', 'streams' => 4100, 'listeners' => 3300, 'followers' => 812000, 'numTracks' => 120, 'uri' => 'spotify:playlist:demo-ipc', 'type' => 'curated'],
-            ['title' => 'Fresh Finds', 'author' => 'Spotify', 'streams' => 2900, 'listeners' => 2500, 'followers' => 1400000, 'numTracks' => 100, 'uri' => 'spotify:playlist:demo-ff', 'type' => 'curated'],
+            $offset_days ? null : ['title' => 'Fresh Finds', 'author' => 'Spotify', 'streams' => 2900, 'listeners' => 2500, 'followers' => 1400000, 'numTracks' => 100, 'uri' => 'spotify:playlist:demo-ff', 'type' => 'curated'],
             ['title' => 'late night drive', 'author' => 'maya.k', 'streams' => 1700, 'listeners' => 900, 'followers' => 4300, 'numTracks' => 64, 'uri' => 'spotify:playlist:demo-lnd', 'type' => 'listener'],
             ['title' => 'Release Radar', 'author' => 'Spotify', 'streams' => 1400, 'listeners' => 1300, 'followers' => null, 'numTracks' => 30, 'uri' => 'spotify:playlist:demo-rr', 'type' => 'personalized'],
-        ],
+        ])),
         'song_daily' => $songDaily,
         'raw' => [
             'stats' => ['streams' => $stat($streamsTs), 'listeners' => $stat($listenersTs), 'followers' => $stat($followersTs), 'saves' => $stat($savesTs)],

@@ -377,6 +377,8 @@ function lmeg_si_finding_actions($f) {
     if ($t === 'Streams up, social flat')                             return [$go('lmeg-instagram', 'Post about it')];
     if ($t === 'Social up, streams flat')                             return [$compose('listen', 'Send your list to Spotify')];
     if ($t === 'Loyal core')                                          return [$go('lmeg-fanbase', 'See your superfans')];
+    if (strpos($t, 'New editorial playlist') === 0)                   return [$compose('lift', 'Tell your fans'), $go('lmeg-instagram', 'Post about it')];
+    if (strpos($t, 'Dropped from') === 0)                             return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
     if ($t === 'Heavily algorithm-driven')                            return [$go('lmeg-presaves', 'Set up a pre-save')];
     return [];
 }
@@ -624,6 +626,29 @@ function lmeg_si_catalogue_monthly($entries, $months = 12) {
     $vals = array_values($day); $n = count($vals); $q = null;
     if ($n >= 180) { $l90 = array_sum(array_slice($vals, -90)); $p90 = array_sum(array_slice($vals, -180, 90)); if ($p90 > 0) $q = ['last' => $l90, 'prior' => $p90, 'pct' => round(($l90 - $p90) / $p90 * 100, 1)]; }
     return ['months' => $by, 'best' => $best, 'q90' => $q, 'days' => $n, 'through' => $lastDate];
+}
+
+/**
+ * Playlist movement between two captures: playlists in today's top list that
+ * weren't in the previous one ('new') and editorial ones that fell out
+ * ('gone', conservative — only curated with a meaningful share, since a small
+ * playlist can drop below the list cutoff without anything happening). Keyed
+ * by uri, title as fallback. Each entry: title, author, type, followers,
+ * streams. Pure.
+ */
+function lmeg_si_playlist_diff($cur, $prev) {
+    $key = function ($p) { $u = (string) ($p['uri'] ?? ''); return $u !== '' ? $u : strtolower(trim((string) ($p['title'] ?? $p['name'] ?? ''))); };
+    $norm = function ($p) { return ['title' => (string) ($p['title'] ?? $p['name'] ?? ''), 'author' => (string) ($p['author'] ?? ''), 'type' => (string) ($p['type'] ?? ''),
+                                     'followers' => (isset($p['followers']) && $p['followers'] !== null && $p['followers'] !== '') ? (int) $p['followers'] : null, 'streams' => (int) ($p['streams'] ?? 0)]; };
+    $cur  = array_values(array_filter((array) $cur, 'is_array')); $prev = array_values(array_filter((array) $prev, 'is_array'));
+    if (!$cur || !$prev) return ['new' => [], 'gone' => []];
+    $pk = []; foreach ($prev as $p) $pk[$key($p)] = $p;
+    $ck = []; foreach ($cur as $p) $ck[$key($p)] = $p;
+    $new = []; foreach ($cur as $p) { $k = $key($p); if ($k !== '' && !isset($pk[$k]) && $norm($p)['title'] !== '') $new[] = $norm($p); }
+    $ptotal = 0; foreach ($prev as $p) $ptotal += (int) ($p['streams'] ?? 0);
+    $gone = []; foreach ($prev as $p) { $k = $key($p); $n = $norm($p); if ($k !== '' && !isset($ck[$k]) && $n['type'] === 'curated' && $ptotal > 0 && $n['streams'] / $ptotal >= 0.05) $gone[] = $n; }
+    usort($new, function ($a, $b) { return ($b['followers'] ?? 0) <=> ($a['followers'] ?? 0); });
+    return ['new' => $new, 'gone' => $gone];
 }
 
 /** Monday…Sunday names for the profile (1..7). */
@@ -1061,6 +1086,29 @@ function lmeg_si_analyze($c) {
                 'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
         }
     }
+    // Playlist pickups since the previous capture — an editorial add is the
+    // most time-sensitive thing on the page; algorithmic/listener adds get a
+    // lighter mention. A lost editorial playlist is a watch.
+    if (!empty($c['playlist_diff']) && is_array($c['playlist_diff'])) {
+        $pd = $c['playlist_diff']; $since = !empty($c['prev_date']) ? ' since ' . date_i18n('M j', strtotime($c['prev_date'])) : ' since your last capture';
+        $ed = array_values(array_filter($pd['new'], function ($x) { return $x['type'] === 'curated'; }));
+        $oth = array_values(array_filter($pd['new'], function ($x) { return $x['type'] !== 'curated' && (int) ($x['followers'] ?? 0) >= 1000; }));
+        $fl = function ($x) use ($n) { return $x['followers'] ? ' (' . $n($x['followers']) . ' followers)' : ''; };
+        if ($ed) {
+            $x = $ed[0]; $more = count($ed) > 1 ? ' and ' . (count($ed) - 1) . ' more editorial playlist' . (count($ed) > 2 ? 's' : '') : '';
+            $F[] = ['type' => 'opportunity', 'title' => 'New editorial playlist: “' . $x['title'] . '”', 'playlist' => $x['title'],
+                'detail' => 'Spotify added you to “' . $x['title'] . '”' . $fl($x) . $more . $since . '. Editorial adds are earned, not bought — tell your fans while it’s fresh and it tends to stick.'];
+        } elseif ($oth) {
+            $x = $oth[0];
+            $F[] = ['type' => 'insight', 'title' => count($oth) . ' new playlist' . (count($oth) > 1 ? 's' : '') . ' picked you up',
+                'detail' => '“' . $x['title'] . '”' . ($x['author'] ? ' by ' . $x['author'] : '') . $fl($x) . (count($oth) > 1 ? ' and ' . (count($oth) - 1) . ' other' . (count($oth) > 2 ? 's' : '') : '') . ' started sending streams' . $since . '.'];
+        }
+        if (!empty($pd['gone'])) {
+            $x = $pd['gone'][0];
+            $F[] = ['type' => 'watch', 'title' => 'Dropped from “' . $x['title'] . '”',
+                'detail' => 'The editorial playlist “' . $x['title'] . '”' . $fl($x) . ' no longer shows in your top playlists' . $since . ' — it was ' . $n($x['streams']) . ' streams in the window. Expect a dip; a fresh pitch or a new single is the way back in.'];
+        }
+    }
     // Long-range momentum — the last 90 days vs the 90 before (top songs).
     // Sits above the weekly noise: a quarter is long enough to be a trend.
     if (!empty($c['quarter']) && is_array($c['quarter']) && isset($c['quarter']['pct'])) {
@@ -1351,6 +1399,9 @@ function lmeg_admin_spotify_insights() {
         'weekday'           => lmeg_si_weekday_profile((array) ($az_meta['song_daily'] ?? [])),
         // Long-range: last 90 days vs the 90 before (top songs).
         'quarter'           => (($cm_ = lmeg_si_catalogue_monthly((array) ($az_meta['song_daily'] ?? []))) ? $cm_['q90'] : null),
+        // Playlists that picked you up (or dropped you) since the previous capture.
+        'playlist_diff'     => ($has_s4a && $prev) ? lmeg_si_playlist_diff(json_decode((string) $snap->top_playlists, true), json_decode((string) $prev->top_playlists, true)) : null,
+        'prev_date'         => $prev ? (string) $prev->captured_date : null,
         'pl_mix'            => $az_mix,
         'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
         'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
@@ -2252,10 +2303,14 @@ function lmeg_admin_spotify_insights() {
                 <?php endif; ?>
                 <?php
                 $pl_type = ['curated' => 'Editorial', 'listener' => 'Listener', 'personalized' => 'Algorithmic'];
+                // NEW chip for playlists that weren't in the previous capture.
+                $pl_new = [];
+                if ($has_s4a && !empty($prev)) { foreach (lmeg_si_playlist_diff($playlists, json_decode((string) $prev->top_playlists, true))['new'] as $np) $pl_new[strtolower(trim($np['title']))] = true; }
                 foreach (array_slice($playlists, 0, 10) as $p) :
                     if (!is_array($p)) continue;
                     $name = (string) ($p['title'] ?? $p['name'] ?? '');
                     if ($name === '') continue;
+                    $isNew = isset($pl_new[strtolower(trim($name))]);
                     $val = isset($p['streams']) ? number_format_i18n((int) $p['streams']) : '';
                     $tl  = $pl_type[(string) ($p['type'] ?? '')] ?? '';
                     $fol = (isset($p['followers']) && $p['followers'] !== null && $p['followers'] !== '') ? (int) $p['followers'] : null;
@@ -2263,7 +2318,7 @@ function lmeg_admin_spotify_insights() {
                 ?>
                     <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
                         <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;">
-                            <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($name); ?></span>
+                            <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($name); ?><?php if ($isNew) : ?> <span style="font-size:9px;font-weight:800;letter-spacing:.06em;color:#0E0F16;background:#34D399;border-radius:20px;padding:2px 6px;vertical-align:middle;" title="Not in your previous capture">NEW</span><?php endif; ?></span>
                             <span style="color:#F4F5F7;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo esc_html($val); ?></span>
                         </div>
                         <?php if ($sub) : ?><div style="font-size:11px;color:#8B90A0;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($sub); ?></div><?php endif; ?>
