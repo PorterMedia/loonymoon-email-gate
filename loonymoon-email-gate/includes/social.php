@@ -1425,7 +1425,7 @@ function lmeg_admin_social($embed = false, $only = null) {
         <h2 style="margin-top:24px;">Listening digest</h2>
         <p style="max-width:820px;">One AI brief across everything above — how you're doing and what to do next.</p>
         <?php if ($demo && $demo_digest) : ?>
-        <div style="<?php echo $card; ?>border-left:3px solid #D05FA2;margin-top:6px;line-height:1.7;max-width:820px;"><?php echo wp_kses_post(nl2br(preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', esc_html($demo_digest)))); ?></div>
+        <div style="<?php echo $card; ?>background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);margin-top:6px;line-height:1.7;max-width:820px;"><?php echo wp_kses_post(nl2br(preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', esc_html($demo_digest)))); ?></div>
         <?php else : ?>
         <p><button type="button" class="button button-primary" id="lmeg-digest-btn">Generate digest</button> <span id="lmeg-digest-status" style="font-size:12px;margin-left:8px;"></span></p>
         <div id="lmeg-digest-out" style="max-width:820px;"></div>
@@ -1479,7 +1479,7 @@ function lmeg_admin_social($embed = false, $only = null) {
                     dBtn.disabled = true; dSt.textContent = 'Thinking…';
                     var fd = new FormData(); fd.append('action','lmeg_social_digest'); fd.append('nonce',nonce);
                     fetch(ajax,{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
-                        if (d && d.success) { dOut.innerHTML = '<div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-left:3px solid #D05FA2;border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;line-height:1.7;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
+                        if (d && d.success) { dOut.innerHTML = '<div style="background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:18px 20px;margin-top:10px;color:#F4F5F7;line-height:1.7;">'+md(d.data.digest)+'</div>'; dSt.textContent=''; }
                         else { dSt.textContent = '⚠ ' + ((d && d.data && d.data.msg) || 'error'); }
                     }).catch(function(){ dSt.textContent = '⚠ network error'; }).finally(function(){ dBtn.disabled = false; });
                 });

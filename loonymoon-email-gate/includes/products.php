@@ -2945,7 +2945,7 @@ function lmeg_admin_products() {
             $wl = lmeg_waitlist_count($p->id);
             if (isset($_GET['notified_wl'])) echo '<div class="notice notice-success is-dismissible"><p>Notified ' . (int) $_GET['notified_wl'] . ' waiting fan' . ((int) $_GET['notified_wl'] === 1 ? '' : 's') . '.</p></div>';
             if ($wl > 0) : ?>
-            <div style="max-width:720px;margin-top:18px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #E15FA8;border-radius:8px;padding:14px 18px">
+            <div style="max-width:720px;margin-top:18px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#F4F5F7;padding:14px 18px">
                 <strong style="display:inline-flex;align-items:center;gap:5px"><?php echo lmeg_store_icon('bell', 13); ?><?php echo (int) $wl; ?> <?php echo $wl === 1 ? 'fan is' : 'fans are'; ?> waiting</strong> for this to come back in stock.
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;margin-left:8px" onsubmit="return confirm('Email all <?php echo (int) $wl; ?> waiting fans that this is back in stock?');">
                     <?php wp_nonce_field('lmeg_notify_waitlist', 'lmeg_waitlist_nonce'); ?>
@@ -2962,7 +2962,7 @@ function lmeg_admin_products() {
             $bn = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT email) FROM $ptbl WHERE product_id = %d AND status='paid' AND email IS NOT NULL AND email <> ''", $p->id));
             if (isset($_GET['released'])) echo '<div class="notice notice-success is-dismissible"><p>Sent the download to ' . (int) $_GET['released'] . ' buyer' . ((int) $_GET['released'] === 1 ? '' : 's') . '.</p></div>';
             if ($bn > 0) : ?>
-            <div style="max-width:720px;margin-top:14px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #8A6CF6;border-radius:8px;padding:14px 18px">
+            <div style="max-width:720px;margin-top:14px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#F4F5F7;padding:14px 18px">
                 <strong>🎟️ <?php echo (int) $bn; ?> buyer<?php echo $bn === 1 ? '' : 's'; ?></strong> — email everyone their download link (use on a pre-order's release day, after you've uploaded the file).
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;margin-left:8px" onsubmit="return confirm('Email all <?php echo (int) $bn; ?> buyers their download link now?');">
                     <?php wp_nonce_field('lmeg_release_downloads', 'lmeg_release_nonce'); ?>
@@ -3063,7 +3063,7 @@ function lmeg_admin_products() {
     </div>
     <?php echo lmeg_admin_top_products_html($topn, $fmtc); ?>
     <?php echo lmeg_admin_lowstock_html($rows); ?>
-    <form id="lmeg-pbulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-left:4px solid #E15FA8;border-radius:4px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
+    <form id="lmeg-pbulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-radius:10px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
         <?php wp_nonce_field('lmeg_bulk_products', 'lmeg_pbulk_nonce'); ?>
         <input type="hidden" name="action" value="lmeg_bulk_products">
         <input type="hidden" name="do" id="lmeg-pbulk-do" value="">

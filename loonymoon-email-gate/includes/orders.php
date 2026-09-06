@@ -671,7 +671,7 @@ function lmeg_admin_orders() {
     </p>
     <?php endif; ?>
 
-    <form id="lmeg-obulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-left:4px solid #E15FA8;border-radius:4px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
+    <form id="lmeg-obulk-form" method="post" action="<?php echo esc_url($save); ?>" style="display:none;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-radius:10px;align-items:center;gap:8px;flex-wrap:wrap" onsubmit="">
         <?php wp_nonce_field('lmeg_bulk_orders', 'lmeg_bulk_nonce'); ?>
         <input type="hidden" name="action" value="lmeg_bulk_orders">
         <input type="hidden" name="do" id="lmeg-obulk-do" value="">

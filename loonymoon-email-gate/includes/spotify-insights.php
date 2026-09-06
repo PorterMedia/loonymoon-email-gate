@@ -755,7 +755,7 @@ function lmeg_si_render_fan_rings($rings, $card, $lbl) {
             <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
                 <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
                 <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
-                <div style="flex:1 1 0;min-width:150px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-top:3px solid <?php echo $r['tone']; ?>;border-radius:12px;padding:12px 12px 10px;">
+                <div style="flex:1 1 0;min-width:150px;background:linear-gradient(160deg,<?php echo $r['tone']; ?>2E,rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 12px 10px;">
                     <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;font-variant-numeric:tabular-nums;<?php echo $val === null ? 'color:#8B90A0;' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
                     <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:7px 0 4px;">
                         <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
@@ -1723,7 +1723,7 @@ function lmeg_admin_spotify_insights_render() {
         if ($callouts) : ?>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;max-width:1040px;margin-bottom:14px;">
             <?php foreach ($callouts as $co) : ?>
-            <div style="background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-left:3px solid #7C6CF6;border-radius:12px;padding:12px 14px;color:#F4F5F7;">
+            <div style="background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px;color:#F4F5F7;">
                 <div style="font:800 20px/1.15 var(--lmegA-font,inherit);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($co['value']); ?></div>
                 <div style="font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;margin:6px 0 4px;"><?php echo esc_html($co['label']); ?></div>
                 <div style="font-size:12px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($co['detail']); ?></div>

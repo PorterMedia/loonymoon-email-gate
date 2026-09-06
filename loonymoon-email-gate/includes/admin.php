@@ -239,8 +239,8 @@ function lmeg_admin_fatal_guard() {
         $e = error_get_last();
         if (!$e || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
         if (strpos((string) ($e['file'] ?? ''), 'loonymoon-email-gate') === false) return;
-        echo '<div style="margin:16px;padding:14px 18px;background:#161826;border:1px solid #F87171;'
-           . 'border-left:4px solid #F87171;border-radius:12px;color:#F4F5F7;font:13px/1.5 ui-monospace,Menlo,monospace;">'
+        echo '<div style="margin:16px;padding:14px 18px;background:linear-gradient(120deg,rgba(248,113,113,.22),rgba(248,113,113,.06)),#161826;border:1px solid rgba(248,113,113,.45);'
+           . 'border-radius:12px;color:#F4F5F7;font:13px/1.5 ui-monospace,Menlo,monospace;">'
            . '<strong style="color:#F87171;">Fanloop error</strong><br>'
            . esc_html((string) $e['message']) . '<br><span style="color:#8B90A0;">'
            . esc_html((string) $e['file']) . ' : line ' . (int) $e['line'] . '</span></div>';
@@ -259,15 +259,15 @@ function lmeg_admin_contrast_css() {
         . "body.lmeg-admin .wrap > [style*=\"max-width\"]{max-width:100%!important;}\n"
         . "body.lmeg-admin .wrap div[style*=\"grid-template-columns\"]{max-width:100%!important;}\n"
         // WP notices / alerts → dark card with a coloured left accent (never white), full width.
-        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.10)!important;border-left:4px solid #7C6CF6!important;border-radius:14px!important;box-shadow:none!important;max-width:100%!important;}\n"
+        . "body.lmeg-admin .notice,body.lmeg-admin div.updated,body.lmeg-admin div.error,body.lmeg-admin .notice-alt{background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),#161826!important;color:#F4F5F7!important;border:1px solid rgba(255,255,255,.14)!important;border-radius:14px!important;box-shadow:none!important;max-width:100%!important;}\n"
         . "body.lmeg-admin .notice p,body.lmeg-admin .notice li,body.lmeg-admin .notice h1,body.lmeg-admin .notice h2,body.lmeg-admin .notice h3,body.lmeg-admin .notice label,body.lmeg-admin .notice strong,body.lmeg-admin .notice span:not([style*=\"color\"]),body.lmeg-admin div.updated p,body.lmeg-admin div.error p{color:#F4F5F7!important;}\n"
         . "body.lmeg-admin .notice em{color:#C7CAD6!important;}\n"
         . "body.lmeg-admin .notice a{color:#E58BBD!important;}\n"
         . "body.lmeg-admin .notice code{background:rgba(255,255,255,.09)!important;color:#F4F5F7!important;}\n"
-        . "body.lmeg-admin .notice-success,body.lmeg-admin div.updated{border-left-color:#34D399!important;}\n"
-        . "body.lmeg-admin .notice-error,body.lmeg-admin div.error{border-left-color:#F87171!important;}\n"
-        . "body.lmeg-admin .notice-warning{border-left-color:#FBBF24!important;}\n"
-        . "body.lmeg-admin .notice-info{border-left-color:#7C6CF6!important;}\n"
+        . "body.lmeg-admin .notice-success,body.lmeg-admin div.updated{background:linear-gradient(120deg,rgba(52,211,153,.20),rgba(52,211,153,.05)),#161826!important;border-color:rgba(52,211,153,.35)!important;}\n"
+        . "body.lmeg-admin .notice-error,body.lmeg-admin div.error{background:linear-gradient(120deg,rgba(248,113,113,.22),rgba(248,113,113,.06)),#161826!important;border-color:rgba(248,113,113,.4)!important;}\n"
+        . "body.lmeg-admin .notice-warning{background:linear-gradient(120deg,rgba(251,191,36,.20),rgba(251,191,36,.05)),#161826!important;border-color:rgba(251,191,36,.35)!important;}\n"
+        . "body.lmeg-admin .notice-info{background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),#161826!important;border-color:rgba(255,255,255,.14)!important;}\n"
         . "body.lmeg-admin .notice .notice-dismiss:before{color:#8B90A0!important;}\n"
         // Form fields — style EVERY text-like input the same (dark, 38px tall), not just
         // a hand-picked type list. Catches inputs with no type attribute (implicit text)
@@ -5954,7 +5954,7 @@ function lmeg_render_demo_overview() {
                 echo $pt('🎧', 'Spotify · 7d',         '+1,594', 'followers');
                 ?>
             </div>
-            <div style="margin-top:16px;padding:14px 16px;background:rgba(208,95,162,.10);border-left:3px solid #d05fa2;border-radius:0 10px 10px 0;color:#ecdfe8;font-size:14px;line-height:1.6;font-style:italic;">
+            <div style="margin-top:16px;padding:14px 16px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#ecdfe8;font-size:14px;line-height:1.6;font-style:italic;">
                 <span style="font-style:normal;font-weight:800;color:#f4b9dc;display:inline-flex;align-items:center;gap:6px;margin-right:6px;"><?php echo lmeg_icon_badge('sparkle', '#d05fa2', 18); ?>Monday read</span>
                 Strong week — <strong style="color:#fff;">Ragdoll</strong> pulled your best open rate since the spring (61%) and added 214 fans, with Toronto and Hamilton overperforming again. Most of the <strong style="color:#fff;">$2,480</strong> in sales came from your Inner Circle. One move this week: send the <strong style="color:#fff;">Toronto + LA</strong> segment a presale nudge before the shows go public — that list opens at nearly double your average.
             </div>
