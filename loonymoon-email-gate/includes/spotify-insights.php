@@ -2244,10 +2244,10 @@ function lmeg_admin_spotify_insights_render() {
         <!-- LAUNCH COMPARISON — first 7 / 28 days of each single, like-for-like -->
         <?php
         $launches = lmeg_si_launch_compare(($has_api && !empty($ov['releases'])) ? $ov['releases'] : [], isset($sd_map) ? $sd_map : lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? [])));
-        if (count($launches) >= 2) : $lmax = 1; foreach ($launches as $L) { $lmax = max($lmax, (int) ($L['first28'] ?? $L['first7'])); } ?>
+        if (count($launches) >= 1) : $lmax = 1; foreach ($launches as $L) { $lmax = max($lmax, (int) ($L['first28'] ?? $L['first7'])); } ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
-            <div style="<?php echo $lbl; ?>margin-bottom:4px;">Launch comparison <span style="color:#8B90A0;font-weight:400;">· first 7 and 28 days, like-for-like</span></div>
-            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;">Releases matched to a song with day-by-day data (singles, mostly). Same clock for every launch, so a bigger catalogue doesn’t flatter the older ones.</p>
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;"><?php echo count($launches) > 1 ? 'Launch comparison' : 'Launch'; ?> <span style="color:#8B90A0;font-weight:400;">· first 7 and 28 days<?php echo count($launches) > 1 ? ', like-for-like' : ''; ?></span></div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;"><?php echo count($launches) > 1 ? 'Releases matched to a song with day-by-day data (singles, mostly). Same clock for every launch, so a bigger catalogue doesn’t flatter the older ones.' : 'Your one release inside the day-by-day window. The next single will line up beneath it on the same clock.'; ?></p>
             <div style="display:flex;flex-direction:column;gap:9px;">
                 <?php foreach (array_slice($launches, 0, 8) as $L) : $v = (int) ($L['first28'] ?? $L['first7']); $w = max(2, round($v / $lmax * 100)); ?>
                 <div>
@@ -2549,6 +2549,10 @@ function lmeg_admin_spotify_insights_render() {
     </div>
     <?php
     if ($prof_on) {
+        // Launch-matcher diagnostics: API releases seen, how many have dates, how many matched a daily song.
+        $lr = ($has_api && !empty($ov['releases'])) ? (array) $ov['releases'] : [];
+        $ld = count(array_filter($lr, function ($r) { return is_array($r) && !empty($r['date']) && strlen((string) $r['date']) >= 10; }));
+        echo "\n<!-- lmeg_prof_launch api_releases=" . count($lr) . " dated=" . $ld . " matched=" . count($launches ?? []) . " daily_songs=" . count((array) ($az_meta['song_daily'] ?? [])) . " sample=" . esc_html(implode(' | ', array_slice(array_map(function ($r) { return (string) ($r['name'] ?? '') . '@' . substr((string) ($r['date'] ?? ''), 0, 10); }, $lr), 0, 6))) . " -->\n";
         $mark('end'); $out = []; $last = $prof['start'];
         foreach ($prof as $k => $ts) { if ($k === 'start') continue; $out[] = $k . '=' . number_format(($ts - $last) * 1000) . 'ms'; $last = $ts; }
         echo "\n<!-- lmeg_prof total=" . number_format(($prof['end'] - $prof['start']) * 1000) . "ms " . implode(' ', $out) . " -->\n";
