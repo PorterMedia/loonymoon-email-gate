@@ -1138,7 +1138,7 @@ function lmeg_release_render_clicks_panel($rel, $demo = false) {
     <div class="lmeg-la" style="max-width:900px;margin-bottom:18px;color:#F4F5F7;font-family:var(--lmegA-font,-apple-system,'Segoe UI',Roboto,sans-serif);">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;">
             <strong style="font-size:15px;color:#F4F5F7;">Release analytics</strong>
-            <span style="<?php echo $lbl; ?>">Streaming-link clicks · with IP</span>
+            <span style="<?php echo $lbl; ?>">Streaming-link clicks · with IP<?php if (!$demo && !empty($rel->id)): ?> · <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases&edit=' . (int) $rel->id . '&demo=1')); ?>" style="color:#E58BBD;text-transform:none;letter-spacing:0;">preview with demo data</a><?php endif; ?></span>
         </div>
         <?php if (!$total): ?>
             <div style="<?php echo $card; ?>padding:22px;color:#8B90A0;">No clicks yet — this fills in as fans tap the links on the release page.<?php if (!$demo && !empty($rel->id)): ?> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases&edit=' . (int) $rel->id . '&demo=1')); ?>" style="color:#E58BBD;">Preview with demo data →</a><?php endif; ?></div>

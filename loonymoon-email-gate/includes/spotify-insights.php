@@ -563,6 +563,41 @@ function lmeg_si_release_clicks_map($drop_ids) {
     return $out;
 }
 
+/**
+ * Day-of-week profile from the per-song daily series (top songs, last $weeks
+ * weeks, summed across songs): average streams per weekday, the peak and the
+ * trough as % vs the all-days mean. 1 = Monday … 7 = Sunday. null when the
+ * data covers fewer than 4 full weeks. Pure.
+ */
+function lmeg_si_weekday_profile($entries, $weeks = 12) {
+    $sum = array_fill(1, 7, 0); $days = 0;
+    foreach ((array) $entries as $e) {
+        if (!is_array($e) || empty($e['s']) || empty($e['d0'])) continue;
+        $s = array_values(array_map('intval', (array) $e['s'])); $n = count($s);
+        $take = min($n - ($n % 7), $weeks * 7);
+        if ($take < 28) continue;
+        $t0 = strtotime($e['d0'] . ' +' . ($n - $take) . ' days');
+        for ($i = 0; $i < $take; $i++) $sum[(int) date('N', $t0 + $i * 86400)] += $s[$n - $take + $i];
+        $days = max($days, $take);
+    }
+    if ($days < 28 || array_sum($sum) <= 0) return null;
+    $wk = intdiv($days, 7);
+    $avg = []; foreach ($sum as $d => $v) $avg[$d] = $v / $wk;
+    $mean = array_sum($avg) / 7;
+    $peak = 1; $trough = 1;
+    foreach ($avg as $d => $v) { if ($v > $avg[$peak]) $peak = $d; if ($v < $avg[$trough]) $trough = $d; }
+    return ['avg' => $avg, 'mean' => $mean, 'weeks' => $wk, 'peak' => $peak, 'trough' => $trough,
+            'peak_pct' => $mean > 0 ? round(($avg[$peak] - $mean) / $mean * 100, 1) : 0,
+            'trough_pct' => $mean > 0 ? round(($avg[$trough] - $mean) / $mean * 100, 1) : 0];
+}
+
+/** Monday…Sunday names for the profile (1..7). */
+function lmeg_si_weekday_name($n, $plural = false) {
+    $names = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
+    $s = $names[(int) $n] ?? '';
+    return $plural && $s ? $s . 's' : $s;
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -991,6 +1026,14 @@ function lmeg_si_analyze($c) {
                 'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
         }
     }
+    // Weekly rhythm — which day your listeners show up (top songs, 12 weeks).
+    // Only worth saying when the peak is clearly above an average day.
+    if (!empty($c['weekday']) && is_array($c['weekday']) && ($c['weekday']['peak_pct'] ?? 0) >= 12) {
+        $w = $c['weekday'];
+        $before = lmeg_si_weekday_name($w['peak'] - 1 ?: 7, true);
+        $F[] = ['type' => 'insight', 'title' => lmeg_si_weekday_name($w['peak'], true) . ' are your biggest day',
+            'detail' => 'Across your top songs, ' . lmeg_si_weekday_name($w['peak'], true) . ' run ' . $p($w['peak_pct']) . '% above an average day and ' . lmeg_si_weekday_name($w['trough'], true) . ' ' . $p(abs($w['trough_pct'])) . '% below (last ' . (int) $w['weeks'] . ' weeks). Post and send on ' . $before . ' so it lands when they’re already listening.'];
+    }
     // Streams velocity — catalog-wide week-over-week momentum from the daily
     // series (distinct from per-song movers and month-over-month deltas).
     if (!empty($c['velocity']) && ($c['velocity']['prior7'] ?? 0) > 0) {
@@ -1260,6 +1303,8 @@ function lmeg_admin_spotify_insights() {
         // Real per-song week-over-week (top 20, day-by-day) — supersedes the
         // pace-based movers above inside the engine when present.
         'song_wow'          => lmeg_si_song_wow_summary(lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? []))),
+        // Day-of-week rhythm from the same per-song daily data (last 12 weeks).
+        'weekday'           => lmeg_si_weekday_profile((array) ($az_meta['song_daily'] ?? [])),
         'pl_mix'            => $az_mix,
         'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
         'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
@@ -1470,6 +1515,25 @@ function lmeg_admin_spotify_insights() {
                     <?php echo lmeg_chart_line($dstreams, [
                         'color' => '#1DB954', 'uid' => 'si-streams-d', 'h' => 70, 'suffix' => ' streams', 'labels' => $dlab($dstreams),
                     ]); ?>
+                    <?php
+                    // Weekly rhythm — 7 mini bars (Mon…Sun) from the per-song daily data.
+                    $wkp = lmeg_si_weekday_profile((array) ($az_meta['song_daily'] ?? []));
+                    if ($wkp) : $wmax = max(1, max($wkp['avg'])); ?>
+                    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;">
+                        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:6px;flex-wrap:wrap;">
+                            <div style="<?php echo $lbl; ?>">By weekday <span style="color:#8B90A0;font-weight:400;">· top songs, <?php echo (int) $wkp['weeks']; ?> weeks</span></div>
+                            <div style="font-size:11px;color:#C9CCD6;"><strong style="color:#34D399;"><?php echo esc_html(lmeg_si_weekday_name($wkp['peak'], true)); ?></strong> <?php echo ($wkp['peak_pct'] >= 0 ? '+' : '') . esc_html(rtrim(rtrim(number_format($wkp['peak_pct'], 1), '0'), '.')); ?>% · <span style="color:#8B90A0;"><?php echo esc_html(lmeg_si_weekday_name($wkp['trough'], true)); ?> <?php echo esc_html(rtrim(rtrim(number_format($wkp['trough_pct'], 1), '0'), '.')); ?>%</span></div>
+                        </div>
+                        <div style="display:flex;gap:6px;align-items:flex-end;height:44px;">
+                            <?php foreach ($wkp['avg'] as $d => $v) : $h = max(3, round($v / $wmax * 36)); $isPeak = $d === $wkp['peak']; ?>
+                            <div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;" title="<?php echo esc_attr(lmeg_si_weekday_name($d) . ' · ' . number_format_i18n((int) round($v)) . ' streams/day avg'); ?>">
+                                <div style="width:100%;height:<?php echo $h; ?>px;border-radius:4px 4px 2px 2px;background:<?php echo $isPeak ? '#34D399' : 'rgba(124,108,246,.55)'; ?>;"></div>
+                                <div style="font-size:10px;color:<?php echo $isPeak ? '#F4F5F7' : '#8B90A0'; ?>;font-weight:<?php echo $isPeak ? '700' : '500'; ?>;"><?php echo esc_html(substr(lmeg_si_weekday_name($d), 0, 1)); ?></div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                     <?php
                     // Did a send move the needle? Campaign marks that fall inside
                     // this 28-day window, with streams in the 3 days after vs before.
