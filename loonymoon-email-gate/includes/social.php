@@ -973,7 +973,7 @@ add_action('admin_menu', function () {
     add_submenu_page('lmeg', 'Social Listening', 'Social Listening', 'manage_options', 'lmeg-social', 'lmeg_admin_social');
 }, 21);
 
-function lmeg_admin_social() {
+function lmeg_admin_social($embed = false) {
     if (!current_user_can('manage_options')) return;
     global $wpdb;
     $artist = function_exists('lmeg_artist') ? lmeg_artist() : get_bloginfo('name');
@@ -1028,6 +1028,7 @@ function lmeg_admin_social() {
         return lmeg_chart_delta_chip($d, $per_day, $days);
     };
     ?>
+    <?php if (!$embed) : ?>
     <div class="wrap">
         <h1>Fanloop — Social Listening</h1>
         <p style="max-width:820px;">A read on <?php echo esc_html($artist); ?>'s social presence, straight from your connected accounts — audience, growth, content, and how fans feel.</p>
@@ -1048,6 +1049,7 @@ function lmeg_admin_social() {
         <?php elseif (!empty($_GET['tt_disc'])) : ?>
             <div class="notice notice-success" style="max-width:900px;"><p>TikTok disconnected.</p></div>
         <?php endif; ?>
+        <?php endif; /* !$embed — page chrome (wrap + heading + notices) */ ?>
 
         <h2>Audience</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:1000px;margin-bottom:8px;">
@@ -1319,7 +1321,7 @@ function lmeg_admin_social() {
             </div>
         <?php endif; ?>
 
-        <?php if ($sp_ok && $ov && !is_wp_error($ov)) : ?>
+        <?php if (!$embed && $sp_ok && $ov && !is_wp_error($ov)) : ?>
         <h2 style="margin-top:24px;">Spotify</h2>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;max-width:760px;margin-bottom:6px;">
             <div style="<?php echo $card; ?>">
@@ -1468,6 +1470,8 @@ function lmeg_admin_social() {
 
         <h2 style="margin-top:24px;">Sound usage</h2>
         <p class="description" style="max-width:820px;">Tracking where your song is used across other people's Reels/TikToks needs a third-party sound-recognition data provider (that's Cobrand's edge — a 100M-sound database). It can't be pulled from your own accounts, so it isn't part of Fanloop. If you subscribe to a provider with an API, tell me and I can wire it in.</p>
+    <?php if (!$embed) : ?>
     </div>
+    <?php endif; ?>
     <?php
 }

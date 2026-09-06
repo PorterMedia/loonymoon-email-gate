@@ -538,7 +538,7 @@ function lmeg_admin_spotify_insights() {
     ]);
     ?>
     <div class="wrap lmeg-admin">
-        <h1>Fanloop — Spotify Insights</h1>
+        <h1>Fanloop — Insights</h1>
 
         <?php if (!$has_s4a && !$has_api) : ?>
             <div style="<?php echo $card; ?>max-width:820px;margin-top:12px;">
@@ -1002,6 +1002,14 @@ function lmeg_admin_spotify_insights() {
             </table>
             </div>
         </div>
+        <?php endif; ?>
+
+        <!-- SOCIAL (merged from Social Listening — one page) ----------------->
+        <?php if (function_exists('lmeg_admin_social')) : ?>
+        <div style="height:1px;background:rgba(255,255,255,.12);max-width:1040px;margin:26px 0 16px;"></div>
+        <h2 style="font:800 20px/1 var(--lmegA-font,inherit);margin:0 0 4px;">Social</h2>
+        <p style="color:#8B90A0;font-size:12px;margin:0 0 14px;max-width:1040px;">Your social presence — audience, growth, content, and how fans feel — from your connected accounts.</p>
+        <?php lmeg_admin_social(true); ?>
         <?php endif; ?>
 
         <!-- STALE-SNAPSHOT HINT (enriched sections need a fresh import) -------->
