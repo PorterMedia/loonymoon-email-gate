@@ -432,6 +432,35 @@ function lmeg_si_campaign_lift($dates, $vals, $marks, $win = 3) {
     return $out;
 }
 
+/**
+ * Demo companions for ?demo=1 (see lmeg_s4a_demo_payload): the public-API
+ * overview the hero/releases logic reads (release DATES come from here since
+ * S4A's are empty), and campaign marks so the lift readouts have sends to
+ * point at. Pure; dates relative to today.
+ */
+function lmeg_si_demo_overview($artist) {
+    $ago = function ($days) { return date('Y-m-d', strtotime(current_time('Y-m-d')) - $days * 86400); };
+    return [
+        'name' => $artist, 'followers' => 8240, 'popularity' => 46, 'genres' => ['indie pop', 'bedroom pop', 'alt'], 'image' => '', 'url' => '',
+        'releases' => [
+            ['name' => 'Blue Hour',        'date' => $ago(19),  'type' => 'single'],
+            ['name' => 'Glasshouse EP',    'date' => $ago(140), 'type' => 'ep'],
+            ['name' => 'Midnight Traffic', 'date' => $ago(300), 'type' => 'single'],
+            ['name' => 'Paper Planets',    'date' => $ago(420), 'type' => 'single'],
+        ],
+        'top_tracks' => [],
+    ];
+}
+function lmeg_si_demo_marks() {
+    $ago = function ($days) { return date('Y-m-d', strtotime(current_time('Y-m-d')) - $days * 86400); };
+    return [
+        ['d' => $ago(130), 'n' => 1, 'subject' => 'Summer tour dates 🌙',          'sent' => 1980, 'clicks' => 240],
+        ['d' => $ago(61),  'n' => 1, 'subject' => 'Glasshouse EP turns one',      'sent' => 2040, 'clicks' => 96],
+        ['d' => $ago(23),  'n' => 1, 'subject' => 'Toronto show — presale is live', 'sent' => 2090, 'clicks' => 188],
+        ['d' => $ago(9),   'n' => 1, 'subject' => 'Blue Hour is out now',          'sent' => 2140, 'clicks' => 412],
+    ];
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -1008,13 +1037,19 @@ function lmeg_admin_spotify_insights() {
     // cross-artist switcher, even if the DB holds other artists' snapshots.
     $sel = lmeg_artist();
     $artists = [$sel];
-    $snap    = function_exists('lmeg_s4a_latest') ? lmeg_s4a_latest($sel) : null;
+    // ?demo=1 — preview the whole page with a synthetic Spotify-for-Artists
+    // snapshot (same convention as the Fans/Audience demo previews): nothing
+    // is written, every section renders, the banner links back to live.
+    $demo      = !empty($_GET['demo']) && function_exists('lmeg_s4a_demo_rows');
+    $demo_rows = $demo ? lmeg_s4a_demo_rows($sel) : [];
+    if ($demo && !$demo_rows) $demo = false;
+    $snap    = $demo ? (object) end($demo_rows) : (function_exists('lmeg_s4a_latest') ? lmeg_s4a_latest($sel) : null);
     $changes = ($snap && $snap->changes) ? (array) json_decode($snap->changes, true) : [];
 
     // Period-over-period: when the S4A export didn't carry its own change_pct
     // (e.g. the URL-pull pipeline doesn't), compute each KPI's change vs the
     // previous snapshot so the chips + "since last capture" note come alive.
-    $prev = ($snap && function_exists('lmeg_s4a_prev')) ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
+    $prev = $demo ? (object) $demo_rows[0] : (($snap && function_exists('lmeg_s4a_prev')) ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null);
     if ($prev) {
         foreach (['monthly_listeners', 'streams', 'mal', 'saves', 'playlist_adds', 'followers', 'super_listeners', 'new_active'] as $mk) {
             if (($changes[$mk] ?? null) === null || $changes[$mk] === '') {
@@ -1024,7 +1059,7 @@ function lmeg_admin_spotify_insights() {
         }
     }
 
-    $ov = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null;
+    $ov = $demo ? lmeg_si_demo_overview($sel) : (function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null);
     if (is_wp_error($ov)) $ov = null;
 
     // Social side — for the cross-platform profile. Each is null when unconfigured.
@@ -1133,6 +1168,7 @@ function lmeg_admin_spotify_insights() {
     ?>
     <div class="wrap lmeg-admin">
         <h1>Fanloop — Insights</h1>
+        <?php if ($demo && function_exists('lmeg_demo_banner')) echo lmeg_demo_banner('lmeg-spotify-insights'); ?>
 
         <?php if (!$has_s4a && !$has_api) : ?>
             <div style="<?php echo $card; ?>max-width:820px;margin-top:12px;">
@@ -1140,10 +1176,12 @@ function lmeg_admin_spotify_insights() {
                 <p style="margin:0;">
                     <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify')); ?>">Connect Spotify (followers, popularity)</a>
                     <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-s4a')); ?>" style="margin-left:6px;">Import Spotify for Artists (streams, songs)</a>
+                    <?php if (function_exists('lmeg_s4a_demo_rows')) : ?><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify-insights&demo=1')); ?>" style="margin-left:6px;">Preview with demo data</a><?php endif; ?>
                 </p>
             </div>
         </div>
         <?php return; endif; ?>
+        <?php if (!$demo && function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo lmeg_demo_preview_button('lmeg-spotify-insights'); ?>
 
         <?php if (count($artists) > 1) : ?>
         <p style="margin:10px 0;">
@@ -1177,7 +1215,8 @@ function lmeg_admin_spotify_insights() {
         </div>
 
         <!-- FAN RINGS — listeners → followers → list → customers → members ---->
-        <?php $rings = lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); if ($rings) : ?>
+        <?php $rings = $demo ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
+                     : lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); if ($rings) : ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
                 <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
@@ -1310,7 +1349,7 @@ function lmeg_admin_spotify_insights() {
                     <?php
                     // Did a send move the needle? Campaign marks that fall inside
                     // this 28-day window, with streams in the 3 days after vs before.
-                    $cm_marks = lmeg_si_campaign_marks(60);
+                    $cm_marks = $demo ? lmeg_si_demo_marks() : lmeg_si_campaign_marks(60);
                     $cm_lift  = $cm_marks ? lmeg_si_campaign_lift(array_slice($daily_dates, max(0, count($daily_dates) - count($dstreams))), $dstreams, $cm_marks) : [];
                     if ($cm_lift) : ?>
                     <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;">
@@ -1456,7 +1495,7 @@ function lmeg_admin_spotify_insights() {
         //  · capture history — one point per daily capture (28d/7d window totals,
         //    listeners, saves) for EVERY song → the fallback for songs outside
         //    the top 20 or snapshots from before song_daily existed.
-        $song_hist = function_exists('lmeg_s4a_history') ? lmeg_si_song_history(lmeg_s4a_history($sel, $snap->window)) : [];
+        $song_hist = $demo ? lmeg_si_song_history($demo_rows) : (function_exists('lmeg_s4a_history') ? lmeg_si_song_history(lmeg_s4a_history($sel, $snap->window)) : []);
         ?>
         <div id="lmeg-song-ov" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(8,9,14,.74);align-items:center;justify-content:center;padding:20px;">
             <div role="dialog" aria-modal="true" aria-labelledby="lmeg-song-ov-title" style="<?php echo $card; ?>width:min(760px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6);">
@@ -1491,7 +1530,7 @@ function lmeg_admin_spotify_insights() {
             var DL = <?php echo wp_json_encode(array_values(array_filter((array) ($meta_songs['song_daily'] ?? []), 'is_array'))); ?>;
             // Campaign marks (completed broadcasts by send day) — drawn as ✉ lines
             // on the day-by-day chart, with a 3-days-after vs 3-before lift note.
-            var B = <?php echo wp_json_encode(function_exists('lmeg_si_campaign_marks') ? lmeg_si_campaign_marks(365) : []); ?>;
+            var B = <?php echo wp_json_encode($demo ? lmeg_si_demo_marks() : (function_exists('lmeg_si_campaign_marks') ? lmeg_si_campaign_marks(365) : [])); ?>;
             // Metric sets per mode — daily (true day-by-day) vs history (one
             // point per capture, window totals).
             var DM = [['s','Streams / day'],['li','Listeners / day'],['sv','Saves / day']];

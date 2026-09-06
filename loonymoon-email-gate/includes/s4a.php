@@ -319,6 +319,113 @@ function lmeg_s4a_store($rows, $source = 'paste') {
     return $n;
 }
 
+/* ---------------------------------------------------------------------------
+ * Demo data — a synthetic pull in EXACTLY the shape the daily pipeline sends
+ * (songs, 7d songs, daily stats, per-song daily, gender, age, cities,
+ * countries, playlists, releases, headlines), so Spotify Insights can render
+ * every section on a fresh site via ?demo=1. Never written to the DB.
+ * Deterministic (tiny LCG) so the demo looks the same on every load.
+ * ------------------------------------------------------------------------- */
+function lmeg_s4a_demo_payload($artist, $offset_days = 0) {
+    $seed = 20260906;
+    $rnd = function ($lo, $hi) use (&$seed) { $seed = ($seed * 1103515245 + 12345) % 2147483648; return $lo + ($seed / 2147483648) * ($hi - $lo); };
+    $today = strtotime(current_time('Y-m-d')) - $offset_days * 86400;
+    $d = function ($ago) use ($today) { return date('Y-m-d', $today - $ago * 86400); };
+    $scale = $offset_days ? 0.985 : 1.0;   // yesterday ran a touch lower → real deltas
+    // Songs: 28d streams (desc), listeners, saves; one high-save fan favourite
+    // (Glasshouse) and one breakout in the last 7 days (Neon Rain).
+    $titles = ['Midnight Traffic', 'Paper Planets', 'Glasshouse', 'Slow Motion Sunday', 'Neon Rain', 'Tidewater', 'Static Bloom', 'Northbound',
+               'Honey & Gasoline', 'Afterglow (Live)', 'Cold Coffee', 'Satellite Heart', 'Wildfire Season', 'Blue Hour'];
+    $pace7 = ['Neon Rain' => 1.62, 'Tidewater' => 1.18, 'Blue Hour' => 1.35, 'Midnight Traffic' => 0.97, 'Paper Planets' => 0.74, 'Afterglow (Live)' => 0.62];
+    $songs = []; $songs7 = []; $s28 = 48200;
+    foreach ($titles as $i => $t) {
+        $st = (int) round($s28 * $scale);
+        $saveRate = $t === 'Glasshouse' ? 0.061 : ($t === 'Afterglow (Live)' ? 0.012 : $rnd(0.022, 0.036));
+        $songs[]  = ['title' => $t, 'streams' => $st, 'listeners' => (int) round($st / $rnd(1.5, 1.9)), 'saves' => (int) round($st * $saveRate), 'uri' => ''];
+        $songs7[] = ['title' => $t, 'streams' => (int) round($st / 4 * ($pace7[$t] ?? $rnd(0.9, 1.06)))];
+        $s28 = (int) round($s28 * $rnd(0.72, 0.9));
+    }
+    // Daily 28-day artist series (weekly wave + noise) with the capture day as
+    // the trailing incomplete 0, exactly like S4A.
+    $ts = function ($base, $amp, $growth = 0, $level = false) use ($rnd, $d, $scale) {
+        $out = [];
+        for ($i = 27; $i >= 0; $i--) {
+            $wave = 1 + $amp * sin(($i % 7) / 7 * 2 * M_PI);
+            $v = $level ? $base + $growth * (27 - $i) : $base * $wave * $rnd(0.9, 1.1) * (1 + $growth * (27 - $i));
+            $out[] = ['x' => $d($i + 1), 'y' => (string) (int) round($level ? $v : $v * $scale)];   // levels aren't scaled
+        }
+        $out[] = ['x' => $d(0), 'y' => '0'];
+        return $out;
+    };
+    $streamsTs = $ts(5280, 0.14, 0.004); $listenersTs = $ts(3300, 0.12, 0.003); $savesTs = $ts(108, 0.1, 0.006);
+    $followersTs = $ts(8240 - 27 * 6 - ($offset_days ? 6 : 0), 0, 6, true);
+    $sum = function ($t) { $s = 0; foreach ($t as $p) $s += (int) $p['y']; return $s; };
+    $stat = function ($t) use ($sum) { return ['current_period_timeseries' => $t, 'current_period_agg' => (string) $sum($t), 'previous_period_agg' => (string) (int) round($sum($t) / 1.04), 'period_change' => '', 'period_change_pct' => 4.1]; };
+    $streams28 = $sum($streamsTs);
+    // Per-song daily (top 8, 120 days): Neon Rain ramps over the last 10 days.
+    $songDaily = [];
+    foreach (array_slice($songs, 0, 8) as $s) {
+        $perDay = $s['streams'] / 28; $arr = []; $li = []; $sv = [];
+        for ($i = 119; $i >= 0; $i--) {
+            $v = $perDay * (1 + 0.12 * sin(($i % 7) / 7 * 2 * M_PI)) * $rnd(0.88, 1.12);
+            if ($s['title'] === 'Neon Rain' && $i < 10) $v *= 1 + (10 - $i) * 0.09;
+            if ($s['title'] === 'Paper Planets') $v *= 1 + ($i - 60) * 0.002;
+            $arr[] = (int) round($v); $li[] = (int) round($v / 1.7); $sv[] = (int) round($v * 0.03);
+        }
+        $songDaily[] = ['title' => $s['title'], 'uri' => '', 'from' => $d(119), 'to' => $d(0), 'streams' => $arr, 'listeners' => $li, 'saves' => $sv];
+    }
+    $ml = (int) round(61400 * $scale); $mal = (int) round(24600 * $scale);
+    $geo = [['US', 27100, .44], ['CA', 12900, .21], ['GB', 6100, .10], ['DE', 3300, .054], ['AU', 2800, .046], ['FR', 1900, .031], ['NL', 1300, .021], ['SE', 1100, .018], ['BR', 900, .015], ['MX', 800, .013]];
+    $geography = array_map(function ($g) use ($ml) { return ['name' => $g[0], 'num' => (string) $g[1], 'activeListeners' => (string) (int) round($g[1] * 0.4), 'pctActiveListeners' => 0.4, 'pctMonthlyListeners' => $g[1] / max(1, $ml)]; }, $geo);
+    $cities = [['Toronto', 4120, 'ON', 'CA'], ['Los Angeles', 3880, 'CA', 'US'], ['New York', 3410, 'NY', 'US'], ['London', 2950, '', 'GB'], ['Montreal', 2300, 'QC', 'CA'], ['Chicago', 1900, 'IL', 'US'], ['Sydney', 1450, 'NSW', 'AU'], ['Berlin', 1210, '', 'DE']];
+    $ageRow = function ($f, $m) { return ['female' => (string) $f, 'male' => (string) $m, 'nonbinary' => (string) (int) round(($f + $m) * 0.014), 'unknown' => (string) (int) round(($f + $m) * 0.03)]; };
+    return [
+        'name' => $artist, 'spotify_artist_id' => 'demo',
+        'streaming_stats_28d' => ['monthly_listeners' => $ml, 'streams' => $streams28, 'streams_per_listener' => 2.41, 'saves' => $sum($savesTs), 'playlist_adds' => (int) round(5900 * $scale), 'followers' => 8240],
+        'audience_development_28d' => ['monthly_active_listeners' => $mal, 'pct_streams_from_mal' => 58, 'top_active_listener_countries' => ['United States', 'Canada', 'United Kingdom']],
+        'top_songs_last_7d' => array_slice($songs7, 0, 10),
+        'songs' => $songs,
+        'top_cities' => array_map(function ($c) { return ['name' => $c[0], 'num' => (string) $c[1], 'region' => $c[2], 'country' => $c[3]]; }, $cities),
+        'gender' => ['female' => '34100', 'male' => '24600', 'nonbinary' => '900', 'unknown' => '1800'],
+        'gender_by_age' => ['age_0_17_gender' => $ageRow(410, 260), 'age_18_24_gender' => $ageRow(9800, 6100), 'age_25_34_gender' => $ageRow(15200, 11900), 'age_35_44_gender' => $ageRow(5900, 4300), 'age_45_59_gender' => $ageRow(2100, 1600), 'age_60_150_gender' => $ageRow(690, 440)],
+        'top_playlists' => [
+            ['title' => 'Radio', 'author' => 'Spotify', 'streams' => 9800, 'listeners' => 5100, 'followers' => null, 'numTracks' => 10, 'uri' => 'spotify:user:spotify:playlist:radio', 'type' => 'personalized'],
+            ['title' => 'Discover Weekly', 'author' => 'Spotify', 'streams' => 6200, 'listeners' => 4900, 'followers' => null, 'numTracks' => 30, 'uri' => 'spotify:playlist:demo-dw', 'type' => 'personalized'],
+            ['title' => 'Indie Pop Chill', 'author' => 'Spotify', 'streams' => 4100, 'listeners' => 3300, 'followers' => 812000, 'numTracks' => 120, 'uri' => 'spotify:playlist:demo-ipc', 'type' => 'curated'],
+            ['title' => 'Fresh Finds', 'author' => 'Spotify', 'streams' => 2900, 'listeners' => 2500, 'followers' => 1400000, 'numTracks' => 100, 'uri' => 'spotify:playlist:demo-ff', 'type' => 'curated'],
+            ['title' => 'late night drive', 'author' => 'maya.k', 'streams' => 1700, 'listeners' => 900, 'followers' => 4300, 'numTracks' => 64, 'uri' => 'spotify:playlist:demo-lnd', 'type' => 'listener'],
+            ['title' => 'Release Radar', 'author' => 'Spotify', 'streams' => 1400, 'listeners' => 1300, 'followers' => null, 'numTracks' => 30, 'uri' => 'spotify:playlist:demo-rr', 'type' => 'personalized'],
+        ],
+        'song_daily' => $songDaily,
+        'raw' => [
+            'stats' => ['streams' => $stat($streamsTs), 'listeners' => $stat($listenersTs), 'followers' => $stat($followersTs), 'saves' => $stat($savesTs)],
+            'headlines' => ['headlines' => ['activeStreamsPct' => 0.58, 'streamsPerListener' => 2.41, 'locations' => ['countries' => [['name' => 'United States', 'rank' => '1'], ['name' => 'Canada', 'rank' => '2'], ['name' => 'United Kingdom', 'rank' => '3']]], 'monthlyActiveListeners' => (string) $mal, 'monthlyListeners' => (string) $ml]],
+            'locations' => ['geography' => $geography],
+            'releases'  => ['releases' => [
+                ['albumName' => 'Glasshouse EP', 'albumUri' => 'spotify:album:demo-glasshouse', 'releaseType' => '', 'releaseDate' => '', 'numStreams' => (string) (int) round(88400 * $scale)],
+                ['albumName' => 'Blue Hour', 'albumUri' => 'spotify:album:demo-bluehour', 'releaseType' => '', 'releaseDate' => '', 'numStreams' => (string) (int) round(61200 * $scale)],
+                ['albumName' => 'Midnight Traffic', 'albumUri' => 'spotify:album:demo-midnight', 'releaseType' => '', 'releaseDate' => '', 'numStreams' => (string) (int) round(52300 * $scale)],
+                ['albumName' => 'Paper Planets', 'albumUri' => 'spotify:album:demo-paper', 'releaseType' => '', 'releaseDate' => '', 'numStreams' => (string) (int) round(31000 * $scale)],
+            ]],
+            'songs365' => null,
+        ],
+    ];
+}
+
+/** Two parsed demo snapshot rows (yesterday, today) — arrays, never stored. */
+function lmeg_s4a_demo_rows($artist = null) {
+    $artist = $artist ?: lmeg_artist();
+    $rows = [];
+    foreach ([1, 0] as $off) {
+        $date = date('Y-m-d', strtotime(current_time('Y-m-d')) - $off * 86400);
+        $parsed = lmeg_s4a_parse(['captured_at' => $date . 'T09:00:00Z', 'period' => 'Last 28 days', 'artists' => [lmeg_s4a_demo_payload($artist, $off)]]);
+        if (!$parsed) continue;
+        $r = $parsed[0]; $r['id'] = 0; $r['source'] = 'demo'; $r['created_at'] = $date . ' 09:00:00';
+        $rows[] = $r;
+    }
+    return $rows;
+}
+
 /** The most recent snapshot for an artist (defaults to this site's artist). */
 function lmeg_s4a_latest($artist = null, $window = '28d') {
     global $wpdb;
