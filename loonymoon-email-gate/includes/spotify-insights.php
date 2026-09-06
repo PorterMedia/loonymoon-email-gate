@@ -359,6 +359,57 @@ function lmeg_si_finding_actions($f) {
     return [];
 }
 
+/**
+ * Campaign marks — completed broadcasts (email/SMS sends) in the last $days,
+ * folded to one mark per send day: {d, n sends, subject (first), sent (total
+ * recipients), clicks (distinct clickers)}. Two plain queries (no correlated
+ * GROUP BY, so ONLY_FULL_GROUP_BY can't bite). Read-only; [] on any error.
+ */
+function lmeg_si_campaign_marks($days = 365) {
+    global $wpdb;
+    if (empty($wpdb)) return [];
+    $b = $wpdb->prefix . 'lmeg_broadcasts'; $e = $wpdb->prefix . 'lmeg_broadcast_events';
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, subject, sent, DATE(created_at) d FROM $b
+          WHERE status = 'completed' AND created_at >= DATE_SUB(CURDATE(), INTERVAL %d DAY) ORDER BY created_at ASC", (int) $days), ARRAY_A);
+    if ($wpdb->last_error || !$rows) { $wpdb->last_error = ''; return []; }
+    $ids = array_map('intval', array_column($rows, 'id'));
+    $clicks = [];
+    $cr = $wpdb->get_results("SELECT broadcast_id, COUNT(DISTINCT subscriber_id) c FROM $e
+                               WHERE event_type = 'click' AND broadcast_id IN (" . implode(',', $ids) . ") GROUP BY broadcast_id", ARRAY_A);
+    if ($wpdb->last_error) { $wpdb->last_error = ''; $cr = []; }
+    foreach ((array) $cr as $c) $clicks[(int) $c['broadcast_id']] = (int) $c['c'];
+    $out = [];
+    foreach ($rows as $r) {
+        $d = (string) $r['d'];
+        if (!isset($out[$d])) $out[$d] = ['d' => $d, 'n' => 0, 'subject' => (string) $r['subject'], 'sent' => 0, 'clicks' => 0];
+        $out[$d]['n']++; $out[$d]['sent'] += (int) $r['sent']; $out[$d]['clicks'] += $clicks[(int) $r['id']] ?? 0;
+    }
+    return array_values($out);
+}
+
+/**
+ * Streams lift around each campaign mark that falls inside a daily series:
+ * average of the $win days from the send day forward vs the $win days before.
+ * Needs full windows on both sides and a non-zero "before". Pure. Returns
+ * [{d, subject, n, sent, clicks, before, after, pct}] in series order.
+ */
+function lmeg_si_campaign_lift($dates, $vals, $marks, $win = 3) {
+    $dates = array_values((array) $dates); $vals = array_values(array_map('intval', (array) $vals));
+    $idx = array_flip($dates); $out = [];
+    foreach ((array) $marks as $m) {
+        $d = (string) ($m['d'] ?? ''); if (!isset($idx[$d])) continue;
+        $i = (int) $idx[$d];
+        if ($i - $win < 0 || $i + $win - 1 >= count($vals)) continue;
+        $before = array_sum(array_slice($vals, $i - $win, $win)) / $win;
+        $after  = array_sum(array_slice($vals, $i, $win)) / $win;
+        if ($before <= 0) continue;
+        $out[] = ['d' => $d, 'subject' => (string) ($m['subject'] ?? ''), 'n' => (int) ($m['n'] ?? 1), 'sent' => (int) ($m['sent'] ?? 0), 'clicks' => (int) ($m['clicks'] ?? 0),
+                  'before' => (int) round($before), 'after' => (int) round($after), 'pct' => round(($after - $before) / $before * 100, 1)];
+    }
+    return $out;
+}
+
 /** Normalized title key shared by the song-daily map and the row lookup. */
 function lmeg_si_song_key($s) {
     $s = trim((string) $s);
@@ -1231,6 +1282,23 @@ function lmeg_admin_spotify_insights() {
                     <?php echo lmeg_chart_line($dstreams, [
                         'color' => '#1DB954', 'uid' => 'si-streams-d', 'h' => 70, 'suffix' => ' streams', 'labels' => $dlab($dstreams),
                     ]); ?>
+                    <?php
+                    // Did a send move the needle? Campaign marks that fall inside
+                    // this 28-day window, with streams in the 3 days after vs before.
+                    $cm_marks = lmeg_si_campaign_marks(60);
+                    $cm_lift  = $cm_marks ? lmeg_si_campaign_lift(array_slice($daily_dates, max(0, count($daily_dates) - count($dstreams))), $dstreams, $cm_marks) : [];
+                    if ($cm_lift) : ?>
+                    <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;">
+                        <div style="<?php echo $lbl; ?>margin-bottom:6px;">Campaign lift <span style="color:#8B90A0;font-weight:400;">· 3 days after a send vs 3 before</span></div>
+                        <?php foreach (array_slice(array_reverse($cm_lift), 0, 4) as $L) : $up = $L['pct'] >= 0; ?>
+                        <div style="display:flex;gap:8px;align-items:baseline;font-size:12px;color:#C9CCD6;line-height:1.5;">
+                            <span style="flex:0 0 auto;color:#D05FA2;" aria-hidden="true">✉</span>
+                            <span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html(date_i18n('M j', strtotime($L['d']))); ?> · “<?php echo esc_html($L['subject']); ?>”<?php if ($L['clicks']) : ?> · <?php echo number_format_i18n($L['clicks']); ?> clicks<?php endif; ?></span>
+                            <span style="flex:0 0 auto;font-weight:700;color:<?php echo $up ? '#34D399' : '#F87171'; ?>;font-variant-numeric:tabular-nums;" title="avg <?php echo number_format_i18n($L['after']); ?>/day after vs <?php echo number_format_i18n($L['before']); ?>/day before"><?php echo ($up ? '+' : '') . esc_html(rtrim(rtrim(number_format($L['pct'], 1), '0'), '.')); ?>%</span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
             <?php elseif ($has_stream_chart) : ?>
                 <div style="<?php echo $card; ?>">
@@ -1396,6 +1464,9 @@ function lmeg_admin_spotify_insights() {
         (function(){
             var H  = <?php echo wp_json_encode($song_hist); ?>;
             var DL = <?php echo wp_json_encode(array_values(array_filter((array) ($meta_songs['song_daily'] ?? []), 'is_array'))); ?>;
+            // Campaign marks (completed broadcasts by send day) — drawn as ✉ lines
+            // on the day-by-day chart, with a 3-days-after vs 3-before lift note.
+            var B = <?php echo wp_json_encode(function_exists('lmeg_si_campaign_marks') ? lmeg_si_campaign_marks(365) : []); ?>;
             // Metric sets per mode — daily (true day-by-day) vs history (one
             // point per capture, window totals).
             var DM = [['s','Streams / day'],['li','Listeners / day'],['sv','Saves / day']];
@@ -1451,6 +1522,7 @@ function lmeg_admin_spotify_insights() {
                 var dots = pts.length<=60;
                 pts.forEach(function(p,i){ var last=i===pts.length-1; if(!dots&&!last) return; s+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(last?4.5:2.5)+'" fill="'+(last?'#34D399':'#0E0F16')+'" stroke="#34D399" stroke-width="1.5"><title>'+lab(p.d)+': '+fmt(p.v)+'</title></circle>'; });
                 if(!dots){ var pi=0; vals.forEach(function(v,i){ if(v>vals[pi]) pi=i; }); s+='<circle cx="'+x(pi).toFixed(1)+'" cy="'+y(vals[pi]).toFixed(1)+'" r="3.5" fill="#D05FA2" stroke="#0E0F16" stroke-width="1"><title>Best day — '+lab(pts[pi].d)+': '+fmt(vals[pi])+'</title></circle>'; }
+                if(state.daily && B.length){ var di={}; pts.forEach(function(p,i){ di[p.d]=i; }); B.forEach(function(m){ if(!(m.d in di)) return; var mx_=x(di[m.d]).toFixed(1); s+='<line x1="'+mx_+'" x2="'+mx_+'" y1="'+P.t+'" y2="'+(Hh-P.b)+'" stroke="#D05FA2" stroke-width="1" stroke-dasharray="3 3" opacity=".75"><title>Sent '+lab(m.d)+': '+(m.subject||'broadcast')+(m.clicks?' · '+fmt(m.clicks)+' clicks':'')+'</title></line><text x="'+mx_+'" y="'+(P.t-2)+'" text-anchor="middle" font-size="10" fill="#D05FA2">✉<title>Sent '+lab(m.d)+': '+(m.subject||'broadcast')+'</title></text>'; }); }
                 s+='<text x="'+P.l+'" y="'+(Hh-6)+'" font-size="11" fill="#8B90A0">'+lab(pts[0].d)+'</text>';
                 if(pts.length>14){ var mi=Math.floor((pts.length-1)/2); s+='<text x="'+x(mi).toFixed(1)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="11" fill="#8B90A0">'+lab(pts[mi].d)+'</text>'; }
                 if(pts.length>1) s+='<text x="'+(W-P.r)+'" y="'+(Hh-6)+'" text-anchor="end" font-size="11" fill="#8B90A0">'+lab(pts[pts.length-1].d)+'</text>';
@@ -1482,7 +1554,12 @@ function lmeg_admin_spotify_insights() {
                 if(state.daily){
                     var total=sum(pts), len=pts.length, start=len?all.map(function(p){return p.d;}).indexOf(pts[0].d):-1;
                     var prev=(start>=len)?all.slice(start-len,start):[], ch=(prev.length===len&&len)?pct(total,sum(prev)):null;
-                    note.textContent = 'Day by day from Spotify for Artists · '+len+' day'+(len===1?'':'s')+' · '+fmt(total)+' total'+(ch!==null?(' · '+(ch>=0?'+':'')+ch.toFixed(1)+'% vs the previous '+len+' days'):'')+(all.length?(' · through '+lab(all[all.length-1].d)):'')+'.';
+                    // Campaign lift for sends inside this range: avg of the 3 days from the
+                    // send day vs the 3 before (full windows only, computed on ALL days).
+                    var lifts=[]; if(B.length){ var ai={}; all.forEach(function(p,i){ ai[p.d]=i; }); var inR={}; pts.forEach(function(p){ inR[p.d]=1; });
+                        B.forEach(function(m){ if(!(m.d in ai)||!inR[m.d]) return; var i=ai[m.d]; if(i-3<0||i+2>=all.length) return; var bf=(all[i-3].v+all[i-2].v+all[i-1].v)/3, af=(all[i].v+all[i+1].v+all[i+2].v)/3; if(bf<=0) return; lifts.push({d:m.d,s:m.subject||'broadcast',pct:(af-bf)/bf*100}); }); }
+                    var liftTxt = lifts.slice(-2).map(function(l){ return ' ✉ '+lab(l.d)+' “'+l.s+'”: '+(l.pct>=0?'+':'')+l.pct.toFixed(1)+'% over the 3 days after'; }).join(' ·');
+                    note.textContent = 'Day by day from Spotify for Artists · '+len+' day'+(len===1?'':'s')+' · '+fmt(total)+' total'+(ch!==null?(' · '+(ch>=0?'+':'')+ch.toFixed(1)+'% vs the previous '+len+' days'):'')+(all.length?(' · through '+lab(all[all.length-1].d)):'')+'.'+(liftTxt?(' Campaign lift —'+liftTxt+'.'):'');
                 } else {
                     var delta=(pts.length>1)?(pts[pts.length-1].v-pts[0].v):null, caps=all.length;
                     note.textContent = 'History builds one point per daily capture — '+caps+' capture'+(caps===1?'':'s')+' so far'+(delta!==null?(' · '+(delta>=0?'+':'')+fmt(delta)+' over this range'):'')+'.'+(DL.length?' Day-by-day detail covers the top 20 songs by streams.':' Day-by-day detail for the top 20 songs arrives with the next pull.');
