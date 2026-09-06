@@ -279,6 +279,37 @@ function lmeg_si_week_over_week($vals) {
 }
 
 /**
+ * Catalog momentum from REAL per-song day-by-day data (top 20). Input: the map
+ * from lmeg_si_song_daily_map. Returns null when nothing qualifies, else
+ * ['up'=>[…],'down'=>[…],'lead'=>entry|null,'n'=>int] where each entry is
+ * ['title','wow','last7','prior7'] — up/down sorted by |wow| desc, both gated
+ * (bigger week ≥ $min_week streams AND smaller week ≥ a third of it) so tiny
+ * catalogue tails can't post a "+700%" from 35 → 280; lead is the song with the
+ * most streams in the last 7 days (ungated). Pure.
+ */
+function lmeg_si_song_wow_summary($map, $min_week = 150) {
+    $rows = [];
+    foreach ((array) $map as $e) {
+        if (!is_array($e) || empty($e['s'])) continue;
+        $vals = array_values(array_map('intval', (array) $e['s']));
+        if (count($vals) < 14) continue;
+        $last7 = array_sum(array_slice($vals, -7)); $prior7 = array_sum(array_slice($vals, -14, 7));
+        $wow = ($prior7 > 0) ? round(($last7 - $prior7) / $prior7 * 100, 1) : null;
+        $rows[] = ['title' => (string) ($e['t'] ?? ''), 'wow' => $wow, 'last7' => $last7, 'prior7' => $prior7];
+    }
+    if (!$rows) return null;
+    $lead = null; foreach ($rows as $r) { if ($lead === null || $r['last7'] > $lead['last7']) $lead = $r; }
+    $q = array_values(array_filter($rows, function ($r) use ($min_week) {
+        return $r['wow'] !== null && max($r['last7'], $r['prior7']) >= $min_week && min($r['last7'], $r['prior7']) >= $min_week / 3;
+    }));
+    $up = array_values(array_filter($q, function ($r) { return $r['wow'] >= 10; }));
+    $down = array_values(array_filter($q, function ($r) { return $r['wow'] <= -10; }));
+    usort($up, function ($a, $b) { return $b['wow'] <=> $a['wow']; });
+    usort($down, function ($a, $b) { return $a['wow'] <=> $b['wow']; });
+    return ['up' => $up, 'down' => $down, 'lead' => $lead, 'n' => count($rows)];
+}
+
+/**
  * Tiny inline SVG sparkline (soft area + line + endpoint dot) for a series of
  * ints, zero baseline, fixed box. '' with fewer than 2 points. Coordinates are
  * formatted with number_format (sprintf %f is locale-sensitive). Pure.
@@ -599,17 +630,43 @@ function lmeg_si_analyze($c) {
     $p = function ($v) { return rtrim(rtrim(number_format((float) $v, 1), '0'), '.'); };
     $n = function ($v) { return function_exists('number_format_i18n') ? number_format_i18n((int) $v) : number_format((int) $v); };
 
-    // Rising track — promote while hot.
-    if (!empty($c['mover_up']) && ($c['mover_up']['pace'] ?? 0) >= 10) {
-        $m = $c['mover_up'];
-        $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is gaining',
-            'detail' => 'It ran ' . $p($m['pace']) . '% above its 28-day pace (' . $n($m['s7']) . ' streams in the last 7 days). Put promo behind it while it’s moving.'];
-    }
-    // Falling flagship — watch.
-    if (!empty($c['mover_down']) && ($c['mover_down']['pace'] ?? 0) <= -20) {
-        $m = $c['mover_down'];
-        $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
-            'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
+    // Per-song momentum. When REAL day-by-day data exists (song_wow, top 20
+    // songs) it replaces the pace-vs-28d estimate below: true last-7 vs prior-7.
+    $others = function ($list, $skip) use ($p) {
+        $o = []; foreach ($list as $r) { if ($r['title'] !== $skip && count($o) < 2) $o[] = '“' . $r['title'] . '” ' . ($r['wow'] >= 0 ? '+' : '−') . $p(abs($r['wow'])) . '%'; }
+        return $o;
+    };
+    if (!empty($c['song_wow']) && is_array($c['song_wow'])) {
+        $sw = $c['song_wow'];
+        if (!empty($sw['up']) && $sw['up'][0]['wow'] >= 25) {
+            $m = $sw['up'][0]; $o = $others($sw['up'], $m['title']);
+            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is breaking out this week',
+                'detail' => 'Up ' . $p($m['wow']) . '% on the week before — ' . $n($m['last7']) . ' streams in the last 7 days vs ' . $n($m['prior7']) . '.' . ($o ? ' Also up: ' . implode(', ', $o) . '.' : '') . ' Put promo behind it while it’s moving.'];
+        }
+        if (!empty($sw['lead']) && $sw['lead']['wow'] !== null && $sw['lead']['wow'] <= -20) {
+            $m = $sw['lead'];
+            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
+                'detail' => 'Your biggest song this week is down ' . $p(abs($m['wow'])) . '% on the week before (' . $n($m['last7']) . ' vs ' . $n($m['prior7']) . ' streams). If it was a recent focus, the momentum is fading.'];
+        } elseif (count($sw['up']) >= 3 && !$sw['down']) {
+            $F[] = ['type' => 'strength', 'title' => 'Lift across the catalogue',
+                'detail' => count($sw['up']) . ' of your top songs grew week-over-week and none fell — ' . implode(', ', $others($sw['up'], null)) . '. Whatever is driving this is reaching more than one track.'];
+        } elseif (count($sw['down']) >= 3 && !$sw['up']) {
+            $F[] = ['type' => 'watch', 'title' => 'Soft week across the catalogue',
+                'detail' => count($sw['down']) . ' of your top songs fell week-over-week and none grew — ' . implode(', ', $others($sw['down'], null)) . '. A fresh post, playlist pitch or drop would help more than pushing one track.'];
+        }
+    } else {
+        // Rising track — promote while hot (pace-vs-28d estimate).
+        if (!empty($c['mover_up']) && ($c['mover_up']['pace'] ?? 0) >= 10) {
+            $m = $c['mover_up'];
+            $F[] = ['type' => 'opportunity', 'title' => '“' . $m['title'] . '” is gaining',
+                'detail' => 'It ran ' . $p($m['pace']) . '% above its 28-day pace (' . $n($m['s7']) . ' streams in the last 7 days). Put promo behind it while it’s moving.'];
+        }
+        // Falling flagship — watch.
+        if (!empty($c['mover_down']) && ($c['mover_down']['pace'] ?? 0) <= -20) {
+            $m = $c['mover_down'];
+            $F[] = ['type' => 'watch', 'title' => '“' . $m['title'] . '” is cooling',
+                'detail' => 'Down ' . $p(abs($m['pace'])) . '% vs its 28-day pace. If it was a recent focus, the momentum is fading.'];
+        }
     }
     // Streams velocity — catalog-wide week-over-week momentum from the daily
     // series (distinct from per-song movers and month-over-month deltas).
@@ -861,6 +918,9 @@ function lmeg_admin_spotify_insights() {
         'streams_pop'       => (isset($changes['streams']) && $changes['streams'] !== '' && $changes['streams'] !== null) ? (float) $changes['streams'] : null,
         'mover_up'          => $az_mv['biggest'] ?? null,
         'mover_down'        => $az_down,
+        // Real per-song week-over-week (top 20, day-by-day) — supersedes the
+        // pace-based movers above inside the engine when present.
+        'song_wow'          => lmeg_si_song_wow_summary(lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? []))),
         'pl_mix'            => $az_mix,
         'sp_women'          => $wpct(lmeg_si_norm_gender($az_meta['gender'] ?? null)),
         'ig_women'          => $wpct(lmeg_si_norm_gender(($ig_demo['gender'] ?? null))),
