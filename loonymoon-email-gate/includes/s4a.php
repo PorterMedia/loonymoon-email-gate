@@ -367,12 +367,17 @@ function lmeg_s4a_demo_payload($artist, $offset_days = 0) {
     $streams28 = $sum($streamsTs);
     // Per-song daily (top 8, 120 days): Neon Rain ramps over the last 10 days.
     $songDaily = [];
-    foreach (array_slice($songs, 0, 8) as $s) {
+    // Top 8 by streams + "Blue Hour" (the single released 19 days ago in the
+    // demo overview) so the launch comparison has two matched singles.
+    $dailySongs = array_slice($songs, 0, 8);
+    foreach ($songs as $s) { if ($s['title'] === 'Blue Hour') $dailySongs[] = $s; }
+    foreach ($dailySongs as $s) {
         $perDay = $s['streams'] / 28; $arr = []; $li = []; $sv = [];
         for ($i = 119; $i >= 0; $i--) {
             $v = $perDay * (1 + 0.12 * sin(($i % 7) / 7 * 2 * M_PI)) * $rnd(0.88, 1.12);
             if ($s['title'] === 'Neon Rain' && $i < 10) $v *= 1 + (10 - $i) * 0.09;
             if ($s['title'] === 'Paper Planets') $v *= 1 + ($i - 60) * 0.002;
+            if ($s['title'] === 'Blue Hour') $v = ($i > 19) ? 0 : $perDay * (1.6 + 4.2 * exp(-(19 - $i) / 5));   // didn't exist before release day; launch spike then decay
             $arr[] = (int) round($v); $li[] = (int) round($v / 1.7); $sv[] = (int) round($v * 0.03);
         }
         $songDaily[] = ['title' => $s['title'], 'uri' => '', 'from' => $d(119), 'to' => $d(0), 'streams' => $arr, 'listeners' => $li, 'saves' => $sv];

@@ -379,6 +379,8 @@ function lmeg_si_finding_actions($f) {
     if ($t === 'Loyal core')                                          return [$go('lmeg-fanbase', 'See your superfans')];
     if (strpos($t, 'New editorial playlist') === 0)                   return [$compose('lift', 'Tell your fans'), $go('lmeg-instagram', 'Post about it')];
     if ($ends('is your fastest-growing market') || $ends('is slipping')) return [$go('lmeg-store-shows', 'Announce a show'), $go('lmeg-segments', 'Target fans there')];
+    if (strpos($t, 'opened bigger than') !== false)                   return array_merge([$compose('mover', 'Send it to your list')], $spotify);
+    if (strpos($t, 'opened smaller than') !== false)                  return [$go('lmeg-presaves', 'Set up a pre-save'), $compose('repush', 'Re-push it to your list')];
     if (strpos($t, 'Dropped from') === 0)                             return [$go('lmeg-releases', 'Plan a release'), $go('lmeg-presaves', 'Set up a pre-save')];
     if ($t === 'Heavily algorithm-driven')                            return [$go('lmeg-presaves', 'Set up a pre-save')];
     return [];
@@ -447,6 +449,7 @@ function lmeg_si_demo_overview($artist) {
         'name' => $artist, 'followers' => 8240, 'popularity' => 46, 'genres' => ['indie pop', 'bedroom pop', 'alt'], 'image' => '', 'url' => '',
         'releases' => [
             ['name' => 'Blue Hour',        'date' => $ago(19),  'type' => 'single'],
+            ['name' => 'Neon Rain',        'date' => $ago(64),  'type' => 'single'],
             ['name' => 'Glasshouse EP',    'date' => $ago(140), 'type' => 'ep'],
             ['name' => 'Midnight Traffic', 'date' => $ago(300), 'type' => 'single'],
             ['name' => 'Paper Planets',    'date' => $ago(420), 'type' => 'single'],
@@ -650,6 +653,30 @@ function lmeg_si_playlist_diff($cur, $prev) {
     $gone = []; foreach ($prev as $p) { $k = $key($p); $n = $norm($p); if ($k !== '' && !isset($ck[$k]) && $n['type'] === 'curated' && $ptotal > 0 && $n['streams'] / $ptotal >= 0.05) $gone[] = $n; }
     usort($new, function ($a, $b) { return ($b['followers'] ?? 0) <=> ($a['followers'] ?? 0); });
     return ['new' => $new, 'gone' => $gone];
+}
+
+/**
+ * Launch comparison — for releases whose title matches a song with day-by-day
+ * data (singles, mostly): streams in the first 7 and first 28 days after the
+ * release date, so launches can be compared like-for-like. Needs the daily
+ * series to cover the release date + 7 days. Returns [{name,date,first7,
+ * first28 (null when <28 days have passed),days}] newest first. Pure.
+ */
+function lmeg_si_launch_compare($api_releases, $sd_map) {
+    $out = [];
+    foreach ((array) $api_releases as $r) {
+        if (!is_array($r) || empty($r['name']) || empty($r['date']) || strlen((string) $r['date']) < 10) continue;
+        $e = $sd_map[lmeg_si_song_key((string) $r['name'])] ?? null;
+        if (!$e || empty($e['s']) || empty($e['d0'])) continue;
+        $s = array_values(array_map('intval', (array) $e['s']));
+        $i = (int) round((strtotime((string) $r['date']) - strtotime((string) $e['d0'])) / 86400);
+        if ($i < 0 || $i + 6 >= count($s)) continue;   // series must cover release day + 7
+        $avail = count($s) - $i;
+        $out[] = ['name' => (string) $r['name'], 'date' => substr((string) $r['date'], 0, 10), 'type' => (string) ($r['type'] ?? ''),
+                  'first7' => array_sum(array_slice($s, $i, 7)), 'first28' => $avail >= 28 ? array_sum(array_slice($s, $i, 28)) : null, 'days' => $avail];
+    }
+    usort($out, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+    return $out;
 }
 
 /** Monday…Sunday names for the profile (1..7). */
@@ -1136,6 +1163,17 @@ function lmeg_si_analyze($c) {
                 'detail' => 'The editorial playlist “' . $x['title'] . '”' . $fl($x) . ' no longer shows in your top playlists' . $since . ' — it was ' . $n($x['streams']) . ' streams in the window. Expect a dip; a fresh pitch or a new single is the way back in.'];
         }
     }
+    // Launch comparison — did the newest single open bigger than the one before?
+    if (!empty($c['launch']) && is_array($c['launch']) && count($c['launch']) >= 2) {
+        $L0 = $c['launch'][0]; $L1 = $c['launch'][1];
+        if ($L1['first7'] > 0) {
+            $d7 = round(($L0['first7'] - $L1['first7']) / $L1['first7'] * 100, 1);
+            if ($d7 >= 15) $F[] = ['type' => 'strength', 'title' => '“' . $L0['name'] . '” opened bigger than “' . $L1['name'] . '”', 'song' => $L0['name'],
+                'detail' => $n($L0['first7']) . ' streams in its first 7 days vs ' . $n($L1['first7']) . ' for “' . $L1['name'] . '” — ' . $p($d7) . '% stronger on the same clock. Your launches are getting bigger; keep the pre-release build.'];
+            elseif ($d7 <= -15) $F[] = ['type' => 'watch', 'title' => '“' . $L0['name'] . '” opened smaller than “' . $L1['name'] . '”', 'song' => $L0['name'],
+                'detail' => $n($L0['first7']) . ' streams in its first 7 days vs ' . $n($L1['first7']) . ' for “' . $L1['name'] . '” (' . $p($d7) . '%). A softer first week usually means less pre-release runway — a pre-save and a list send before the next one changes this.'];
+        }
+    }
     // Market movement — the fastest-growing country (and a top market slipping).
     if (!empty($c['country_moves']) && is_array($c['country_moves'])) {
         $mv = $c['country_moves']; $md = max(1, (int) ($c['moves_days'] ?? 1)); $span = $md . ' day' . ($md === 1 ? '' : 's');
@@ -1480,6 +1518,8 @@ function lmeg_admin_spotify_insights_render() {
         // Playlists that picked you up (or dropped you) since the previous capture.
         'playlist_diff'     => ($has_s4a && $prev) ? lmeg_si_playlist_diff(json_decode((string) $snap->top_playlists, true), json_decode((string) $prev->top_playlists, true)) : null,
         'prev_date'         => $prev ? (string) $prev->captured_date : null,
+        // Launches compared on the same clock (first 7 days of each matched single).
+        'launch'            => lmeg_si_launch_compare(($has_api && !empty($ov['releases'])) ? $ov['releases'] : [], lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? []))),
         // Market movement vs the capture ~7 days back (slim row; falls back to the previous capture).
         'country_moves'     => $az_moves['moves'],
         'moves_days'        => $az_moves['days'],
@@ -2198,6 +2238,27 @@ function lmeg_admin_spotify_insights_render() {
             <?php if ($clicks_pages) : ?>
             <p style="margin:10px 0 0;font-size:12px;color:#C9CCD6;"><span style="color:#E58BBD;">↗</span> Your Fanloop release pages sent <strong style="color:#F4F5F7;"><?php echo number_format_i18n($clicks_total); ?></strong> clicks to streaming services across <?php echo (int) $clicks_pages; ?> release<?php echo $clicks_pages === 1 ? '' : 's'; ?> — listeners you sent there yourself.</p>
             <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- LAUNCH COMPARISON — first 7 / 28 days of each single, like-for-like -->
+        <?php
+        $launches = lmeg_si_launch_compare(($has_api && !empty($ov['releases'])) ? $ov['releases'] : [], isset($sd_map) ? $sd_map : lmeg_si_song_daily_map((array) ($az_meta['song_daily'] ?? [])));
+        if (count($launches) >= 2) : $lmax = 1; foreach ($launches as $L) { $lmax = max($lmax, (int) ($L['first28'] ?? $L['first7'])); } ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="<?php echo $lbl; ?>margin-bottom:4px;">Launch comparison <span style="color:#8B90A0;font-weight:400;">· first 7 and 28 days, like-for-like</span></div>
+            <p style="color:#8B90A0;font-size:12px;margin:0 0 12px;">Releases matched to a song with day-by-day data (singles, mostly). Same clock for every launch, so a bigger catalogue doesn’t flatter the older ones.</p>
+            <div style="display:flex;flex-direction:column;gap:9px;">
+                <?php foreach (array_slice($launches, 0, 8) as $L) : $v = (int) ($L['first28'] ?? $L['first7']); $w = max(2, round($v / $lmax * 100)); ?>
+                <div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;font-size:13px;">
+                        <span style="color:#F4F5F7;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($L['name']); ?> <span style="color:#8B90A0;font-size:11px;font-weight:400;"><?php echo esc_html(date_i18n('M j, Y', strtotime($L['date']))); ?></span></span>
+                        <span style="color:#F4F5F7;font-variant-numeric:tabular-nums;flex:0 0 auto;"><span style="color:#8B90A0;font-size:11px;">first 7d</span> <?php echo number_format_i18n($L['first7']); ?> <span style="color:#8B90A0;font-size:11px;margin-left:8px;">first 28d</span> <?php echo $L['first28'] !== null ? number_format_i18n($L['first28']) : '<span style="color:#8B90A0;">' . (int) $L['days'] . ' days so far</span>'; ?></span>
+                    </div>
+                    <div style="height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden;"><div style="height:100%;width:<?php echo $w; ?>%;background:linear-gradient(90deg,#34D399,#7C6CF6);border-radius:6px;"></div></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
         <?php endif; ?>
 
