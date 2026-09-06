@@ -266,6 +266,20 @@ function lmeg_si_fan_rings_shape($n) {
         ['key' => 'customers', 'label' => 'Customers',         'value' => $v('customers'), 'sub' => 'bought at least once', 'tone' => '#D05FA2'],
         ['key' => 'members',   'label' => 'Members',           'value' => $v('members'),   'sub' => 'paying monthly', 'tone' => '#34D399'],
     ];
+    // Recent movement per ring (optional inputs): listeners_pct (S4A period-
+    // over-period %), sp_followers_delta / ig_followers_delta (abs, 28d),
+    // list_new (fans added, 30d), customers_new (first-time buyers, 28d).
+    $sgn = function ($v, $suffix = '') { return ($v > 0 ? '+' : ($v < 0 ? '−' : '')) . number_format_i18n(abs((int) $v)) . $suffix; };
+    $lp = isset($n['listeners_pct']) && $n['listeners_pct'] !== null && $n['listeners_pct'] !== '' ? (float) $n['listeners_pct'] : null;
+    $rings[0]['change'] = $lp !== null ? [($lp > 0 ? '+' : ($lp < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs($lp), 1), '0'), '.') . '% vs the 28 days before', $lp <=> 0] : null;
+    $fd = [];
+    if (isset($n['sp_followers_delta']) && $n['sp_followers_delta'] !== null) $fd[] = 'Spotify ' . $sgn($n['sp_followers_delta']);
+    if (isset($n['ig_followers_delta']) && $n['ig_followers_delta'] !== null) $fd[] = 'Instagram ' . $sgn($n['ig_followers_delta']);
+    $fsum = (int) ($n['sp_followers_delta'] ?? 0) + (int) ($n['ig_followers_delta'] ?? 0);
+    $rings[1]['change'] = $fd ? [implode(' · ', $fd) . ' in 28 days', $fsum <=> 0] : null;
+    $rings[2]['change'] = isset($n['list_new']) && $n['list_new'] !== null ? [$sgn($n['list_new']) . ' new in 30 days', ((int) $n['list_new']) <=> 0] : null;
+    $rings[3]['change'] = isset($n['customers_new']) && $n['customers_new'] !== null ? [$sgn($n['customers_new']) . ' first-time buyers in 28 days', ((int) $n['customers_new']) <=> 0] : null;
+    $rings[4]['change'] = null;
     $prev = null; $prevLabel = null;
     foreach ($rings as &$r) {
         $r['pct'] = ($prev !== null && $prev > 0 && $r['value'] !== null) ? round($r['value'] / $prev * 100, $r['value'] / $prev * 100 < 1 ? 2 : 1) : null;
@@ -283,26 +297,28 @@ function lmeg_si_fan_rings_shape($n) {
  * across Shopify-attributed orders + the native store. Every source is
  * optional — a missing one yields null (rendered as "—"), never a fatal.
  */
-function lmeg_si_fan_rings_data($snap, $ov, $has_api) {
+function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = []) {
     global $wpdb;
     $n = ['listeners' => null, 'sp_followers' => null, 'ig_followers' => null, 'list' => null, 'superfans' => null, 'customers' => null, 'members' => null];
     if ($snap) {
         $n['listeners'] = $snap->monthly_listeners !== null ? (int) $snap->monthly_listeners : null;
+        $n['listeners_pct'] = (isset($changes['monthly_listeners']) && $changes['monthly_listeners'] !== null && $changes['monthly_listeners'] !== '') ? (float) $changes['monthly_listeners'] : null;
         // Spotify followers is a LEVEL: take the last day of the daily series
         // (snapshots ingested before v3.198.1 stored a 28-day SUM in the
         // followers column — never read that here), else the public API.
         $dm = $snap->meta ? (array) json_decode((string) $snap->meta, true) : [];
         $fs = array_values(array_filter(array_map('intval', (array) ($dm['daily']['followers'] ?? []))));
-        if ($fs) $n['sp_followers'] = (int) end($fs);
+        if ($fs) { $n['sp_followers'] = (int) end($fs); if (count($fs) >= 7) $n['sp_followers_delta'] = (int) end($fs) - (int) $fs[0]; }
     }
     if ($n['sp_followers'] === null && $has_api && !empty($ov['followers'])) $n['sp_followers'] = (int) $ov['followers'];
     if (function_exists('lmeg_social_snapshots')) {
-        $rows = (array) lmeg_social_snapshots('instagram', 14);
-        if ($rows) { $last = end($rows); $n['ig_followers'] = (int) $last->followers; }
+        $rows = (array) lmeg_social_snapshots('instagram', 28);
+        if ($rows) { $last = end($rows); $first = reset($rows); $n['ig_followers'] = (int) $last->followers; if (count($rows) >= 7) $n['ig_followers_delta'] = (int) $last->followers - (int) $first->followers; }
     }
     if (function_exists('lmeg_fanbase_counts')) {
         $c = lmeg_fanbase_counts();
         $n['list'] = (int) ($c['total'] ?? 0); $n['superfans'] = (int) ($c['superfans'] ?? 0); $n['members'] = (int) ($c['members'] ?? 0);
+        $n['list_new'] = isset($c['new']) ? (int) $c['new'] : null;
     }
     if (defined('LMEG_TABLE')) {
         $subs = $wpdb->prefix . LMEG_TABLE; $orders = $wpdb->prefix . 'lmeg_shop_orders'; $store = $wpdb->prefix . 'lmeg_product_purchases';
@@ -318,6 +334,12 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api) {
             $buyers = $wpdb->get_var("SELECT COUNT(DISTINCT subscriber_id) FROM $orders WHERE subscriber_id > 0");
         }
         $n['customers'] = $buyers !== null ? (int) $buyers : null;
+        // First-time buyers in the last 28 days (Shopify-attributed): people
+        // whose EARLIEST order falls inside the window.
+        $nb = $wpdb->get_var("SELECT COUNT(*) FROM (SELECT subscriber_id, MIN(ordered_at) first_order FROM $orders WHERE subscriber_id > 0 GROUP BY subscriber_id) f
+                               WHERE f.first_order >= DATE_SUB(NOW(), INTERVAL 28 DAY)");
+        if ($wpdb->last_error) { $wpdb->last_error = ''; $nb = null; }
+        $n['customers_new'] = $nb !== null ? (int) $nb : null;
     }
     return lmeg_si_fan_rings_shape($n);
 }
@@ -382,7 +404,7 @@ function lmeg_si_campaign_marks($days = 365) {
     $out = [];
     foreach ($rows as $r) {
         $d = (string) $r['d'];
-        if (!isset($out[$d])) $out[$d] = ['d' => $d, 'n' => 0, 'subject' => (string) $r['subject'], 'sent' => 0, 'clicks' => 0];
+        if (!isset($out[$d])) $out[$d] = ['d' => $d, 'n' => 0, 'subject' => trim((string) $r['subject']) !== '' ? (string) $r['subject'] : 'untitled send', 'sent' => 0, 'clicks' => 0];
         $out[$d]['n']++; $out[$d]['sent'] += (int) $r['sent']; $out[$d]['clicks'] += $clicks[(int) $r['id']] ?? 0;
     }
     return array_values($out);
@@ -1155,7 +1177,7 @@ function lmeg_admin_spotify_insights() {
         </div>
 
         <!-- FAN RINGS — listeners → followers → list → customers → members ---->
-        <?php $rings = lmeg_si_fan_rings_data($snap, $ov, $has_api); if ($rings) : ?>
+        <?php $rings = lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); if ($rings) : ?>
         <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
                 <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
@@ -1170,6 +1192,9 @@ function lmeg_admin_spotify_insights() {
                         <?php if (!empty($r['href'])) : ?><a href="<?php echo esc_url(admin_url($r['href'])); ?>" style="color:#F4F5F7;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.35);"><?php echo esc_html($r['label']); ?></a><?php else : echo esc_html($r['label']); endif; ?>
                     </div>
                     <div style="font-size:11px;color:#C9CCD6;line-height:1.4;"><?php echo esc_html($r['sub']); ?></div>
+                    <?php if (!empty($r['change'])) : $cdir = (int) $r['change'][1]; ?>
+                    <div style="margin-top:4px;font-size:11px;font-weight:600;color:<?php echo $cdir > 0 ? '#34D399' : ($cdir < 0 ? '#F87171' : '#8B90A0'); ?>;font-variant-numeric:tabular-nums;"><?php echo $cdir > 0 ? '▲ ' : ($cdir < 0 ? '▼ ' : '· '); ?><?php echo esc_html($r['change'][0]); ?></div>
+                    <?php endif; ?>
                     <?php if ($r['pct'] !== null) : ?>
                     <div style="margin-top:6px;font-size:11px;font-weight:700;color:<?php echo $r['tone']; ?>;"><?php echo esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')); ?>% <span style="color:#8B90A0;font-weight:500;">of <?php echo esc_html($r['pct_of']); ?></span></div>
                     <?php endif; ?>
