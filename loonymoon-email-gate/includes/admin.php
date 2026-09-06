@@ -1837,6 +1837,7 @@ function lmeg_admin_compose() {
             'release' => ['In case you missed it — the new one', '<p>The new release is out and it deserves your ears. Listen, save it, tell a friend.</p>' . $link('Listen on Spotify'), 'New one is out — listen, save it, tell a friend 🖤 ' . $url],
             'listen'  => ['Take it to Spotify with me', '<p>You’re here, which means the world. The best way to help right now: press play on Spotify and save what you love.</p>' . $link('Open Spotify'), 'Best way to help right now: press play on Spotify + save what you love 🖤 ' . $url],
             'follow'  => ['One tap: follow me on Spotify', '<p>Following on Spotify means every new release lands in your Release Radar on day one — and it tells Spotify to show me to more people.</p>' . $link('Follow on Spotify'), 'One tap: follow me on Spotify — every release lands in your Release Radar 🖤 ' . $url],
+            'feature' => ['Have you heard ' . $q . '?', '<p>If you only listen to one thing from me this week, make it ' . esc_html($q) . '.</p>' . $link('Listen on Spotify') . '<p>Tell me what it does to you. 🖤</p>', 'If you only hear one thing from me this week, make it ' . $q . ' 🖤 ' . $url],
         ];
         $c = $copy[$angle] ?? $copy['listen'];
         $vals['subject']         = $c[0];

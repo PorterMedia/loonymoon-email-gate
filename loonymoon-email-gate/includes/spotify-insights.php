@@ -1620,6 +1620,9 @@ function lmeg_admin_spotify_insights() {
         //    listeners, saves) for EVERY song → the fallback for songs outside
         //    the top 20 or snapshots from before song_daily existed.
         $song_hist = $demo ? lmeg_si_song_history($demo_rows) : (function_exists('lmeg_s4a_history') ? lmeg_si_song_history(lmeg_s4a_history($sel, $snap->window)) : []);
+        // Title → Spotify track uri (for the overlay's "Open on Spotify" + Compose prefill).
+        $uri_map = [];
+        foreach ($songs as $s_) { $u_ = (string) ($s_['uri'] ?? ''); if (preg_match('/^spotify:track:[A-Za-z0-9]{22}$/', $u_)) $uri_map[lmeg_si_song_key((string) ($s_['title'] ?? ''))] = $u_; }
         ?>
         <div id="lmeg-song-ov" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(8,9,14,.74);align-items:center;justify-content:center;padding:20px;">
             <div role="dialog" aria-modal="true" aria-labelledby="lmeg-song-ov-title" style="<?php echo $card; ?>width:min(760px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6);">
@@ -1646,6 +1649,7 @@ function lmeg_admin_spotify_insights() {
                 </div>
                 <div id="lmeg-song-ov-chart" style="min-height:190px;"></div>
                 <p id="lmeg-song-ov-note" style="color:#8B90A0;font-size:12px;margin:10px 0 0;"></p>
+                <div id="lmeg-song-ov-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;"></div>
             </div>
         </div>
         <script>
@@ -1655,6 +1659,9 @@ function lmeg_admin_spotify_insights() {
             // Campaign marks (completed broadcasts by send day) — drawn as ✉ lines
             // on the day-by-day chart, with a 3-days-after vs 3-before lift note.
             var B = <?php echo wp_json_encode($demo ? lmeg_si_demo_marks() : (function_exists('lmeg_si_campaign_marks') ? lmeg_si_campaign_marks(365) : [])); ?>;
+            // Per-song actions: Compose prefill (angle picked from the real week-over-week) + Open on Spotify.
+            var COMPOSE = <?php echo wp_json_encode(admin_url('admin.php?page=lmeg-compose&prefill=insight')); ?>;
+            var U = <?php echo wp_json_encode((object) $uri_map); ?>;
             // Metric sets per mode — daily (true day-by-day) vs history (one
             // point per capture, window totals).
             var DM = [['s','Streams / day'],['li','Listeners / day'],['sv','Saves / day']];
@@ -1767,7 +1774,23 @@ function lmeg_admin_spotify_insights() {
                 if(all.length){ fromI.value=all[0].d; toI.value=all[all.length-1].d; }
                 ov.style.display='flex'; document.body.style.overflow='hidden';
                 render();
+                actions(dd ? dd.t : e.title, dd);
                 $('lmeg-song-ov-close').focus();
+            }
+            // "What to do with it" for THIS song: the Compose angle follows the real
+            // week-over-week (up ≥10% → mover, down ≥10% → re-push, else feature),
+            // plus "Ask fans to save it" and Open on Spotify when the uri is known.
+            function actions(title, dd){
+                var wrap = $('lmeg-song-ov-actions'); if(!wrap) return; wrap.innerHTML='';
+                var wow = null;
+                if(dd && dd.s && dd.s.length >= 14){ var l7=0,p7=0,n_=dd.s.length; for(var i=n_-7;i<n_;i++) l7+=dd.s[i]; for(var j=n_-14;j<n_-7;j++) p7+=dd.s[j]; if(p7>0) wow=(l7-p7)/p7*100; }
+                var angle = (wow!==null && wow>=10) ? 'mover' : ((wow!==null && wow<=-10) ? 'repush' : 'feature');
+                var uri = U[n(title)] || '';
+                var mk = function(label, href, ext, primary){ var a=document.createElement('a'); a.href=href; a.textContent=label; if(ext){ a.target='_blank'; a.rel='noopener'; } a.style.cssText='font-size:12px;font-weight:700;color:#fff;text-decoration:none;border-radius:999px;padding:6px 12px;border:1px solid '+(primary?'#D05FA2':'rgba(255,255,255,.16)')+';background:'+(primary?'#D05FA2':'rgba(255,255,255,.06)')+';'; return a; };
+                var q = function(a){ return COMPOSE+'&angle='+encodeURIComponent(a)+'&song='+encodeURIComponent(title)+(uri?'&uri='+encodeURIComponent(uri):''); };
+                wrap.appendChild(mk(angle==='mover' ? 'Send it to your list' : (angle==='repush' ? 'Re-push it to your list' : 'Feature it to your list'), q(angle), false, true));
+                wrap.appendChild(mk('Ask fans to save it', q('save'), false, false));
+                if(/^spotify:track:[A-Za-z0-9]{22}$/.test(uri)) wrap.appendChild(mk('Open on Spotify ↗', 'https://open.spotify.com/track/'+uri.split(':')[2], true, false));
             }
             function close(){ ov.style.display='none'; document.body.style.overflow=''; }
             document.querySelectorAll('.lmeg-song-row').forEach(function(row){
