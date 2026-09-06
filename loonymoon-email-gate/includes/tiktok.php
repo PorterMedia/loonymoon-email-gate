@@ -217,14 +217,16 @@ add_action('admin_post_lmeg_tiktok_save_app', function () {
 function lmeg_tiktok_user_info($force = false) {
     if (!lmeg_tiktok_configured()) return null;
     $cache = 'lmeg_tiktok_user';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return null; }
     $tok = lmeg_tiktok_access_token();
-    if (!$tok) return null;
+    if (!$tok) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return null; }
     $resp = wp_remote_get(
         LMEG_TIKTOK_API . '/user/info/?fields=open_id,display_name,avatar_url,follower_count,likes_count,video_count',
-        ['timeout' => 12, 'headers' => ['Authorization' => 'Bearer ' . $tok]]
+        ['timeout' => 8, 'headers' => ['Authorization' => 'Bearer ' . $tok]]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return null;
+    // Negative cache: a failing/slow TikTok call must not be retried on every
+    // admin page view (it was costing seconds per load on Spotify Insights).
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return null; }
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     $u = $d['data']['user'] ?? null;
     if (!is_array($u)) return null;
@@ -247,18 +249,18 @@ function lmeg_tiktok_user_info($force = false) {
 function lmeg_tiktok_videos($limit = 12, $force = false) {
     if (!lmeg_tiktok_configured()) return [];
     $cache = 'lmeg_tiktok_videos';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
     $tok = lmeg_tiktok_access_token();
-    if (!$tok) return [];
+    if (!$tok) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return []; }
     $resp = wp_remote_post(
         LMEG_TIKTOK_API . '/video/list/?fields=id,title,video_description,cover_image_url,share_url,view_count,like_count,comment_count,share_count,create_time',
         [
-            'timeout' => 15,
+            'timeout' => 8,
             'headers' => ['Authorization' => 'Bearer ' . $tok, 'Content-Type' => 'application/json'],
             'body'    => wp_json_encode(['max_count' => min(20, max(1, (int) $limit))]),
         ]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return []; }
     $d   = json_decode(wp_remote_retrieve_body($resp), true);
     $out = [];
     foreach ((array) ($d['data']['videos'] ?? []) as $v) {

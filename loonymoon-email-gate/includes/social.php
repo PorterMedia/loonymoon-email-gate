@@ -28,14 +28,14 @@ if (!defined('ABSPATH')) {
 function lmeg_ig_account_stats($force = false) {
     if (!function_exists('lmeg_ig_configured') || !lmeg_ig_configured()) return null;
     $cache = 'lmeg_ig_acct_stats';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return null; }
     $s = lmeg_get_settings();
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id'])
             . '?fields=username,followers_count,media_count,follows_count&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 12]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return null;
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return null; } // negative cache: don't re-hit a failing API on every page view
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     if (!is_array($d) || !isset($d['followers_count'])) return null;
     $out = [
@@ -121,7 +121,7 @@ function lmeg_social_series_stats($rows, $field = 'followers') {
 function lmeg_social_ig_media($limit = 25, $force = false) {
     if (!lmeg_ig_configured()) return [];
     $cache = 'lmeg_social_ig_media';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
     $s = lmeg_get_settings();
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id'])
@@ -129,7 +129,7 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
             . '&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 15]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return []; } // negative cache: don't re-hit a failing API on every page view
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     $out = [];
     foreach ((array) ($d['data'] ?? []) as $m) {
@@ -417,7 +417,7 @@ function lmeg_fb_configured() {
 function lmeg_fb_page_stats($force = false) {
     if (!lmeg_fb_configured()) return null;
     $cache = 'lmeg_fb_page_stats';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return null; }
     $s   = lmeg_get_settings();
     $pid = get_option('lmeg_ig_page_id');
     $resp = wp_remote_get(
@@ -425,7 +425,7 @@ function lmeg_fb_page_stats($force = false) {
             . '?fields=name,followers_count,fan_count&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 12]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return null;
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return null; } // negative cache: don't re-hit a failing API on every page view
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     if (!is_array($d) || isset($d['error'])) return null;
     $out = [
@@ -441,7 +441,7 @@ function lmeg_fb_page_stats($force = false) {
 function lmeg_fb_posts($limit = 25, $force = false) {
     if (!lmeg_fb_configured()) return [];
     $cache = 'lmeg_fb_posts';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
     $s   = lmeg_get_settings();
     $pid = get_option('lmeg_ig_page_id');
     $resp = wp_remote_get(
@@ -451,7 +451,7 @@ function lmeg_fb_posts($limit = 25, $force = false) {
             . '&access_token=' . rawurlencode($s['ig_page_token']),
         ['timeout' => 15]
     );
-    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) return [];
+    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) { set_transient($cache . '_fail', 1, 10 * MINUTE_IN_SECONDS); return []; } // negative cache: don't re-hit a failing API on every page view
     $d = json_decode(wp_remote_retrieve_body($resp), true);
     $out = [];
     foreach ((array) ($d['data'] ?? []) as $p) {
@@ -1003,6 +1003,11 @@ function lmeg_admin_social($embed = false, $only = null) {
         $story_fans = $dd['story_fans'];
         $demo_sent = $dd['sentiment']; $demo_digest = $dd['digest'];
     } else {
+        // Gather only what this call renders: the Insights page calls this twice
+        // ('audience_growth' at the top, 'rest' at the bottom) — the content /
+        // TikTok-video / hashtag pieces are only needed for 'rest'.
+        $need_rest = ($only !== 'audience_growth');
+        $__t0 = microtime(true); $__tt = 0.0;
         $ig       = $ig_ok ? lmeg_ig_account_stats() : null;
         $ig_stats = lmeg_social_series_stats(lmeg_social_snapshots('instagram', 30));
         $fb        = $fb_ok ? lmeg_fb_page_stats() : null;
@@ -1013,15 +1018,18 @@ function lmeg_admin_social($embed = false, $only = null) {
         $sp_stats = lmeg_social_series_stats($sp_snaps);
         $fan_ct   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE unsubscribed_at IS NULL");
         $stories  = $ig_ok ? lmeg_social_story_mentions(30) : 0;
-        $content  = $ig_ok ? lmeg_social_ig_content_stats() : null;
-        $best_day = $ig_ok ? lmeg_social_ig_best_time() : null;
-        $types    = $ig_ok ? lmeg_social_ig_type_breakdown() : null;
-        $hashtags = $ig_ok ? lmeg_social_ig_hashtags() : null;
+        $content  = ($ig_ok && $need_rest) ? lmeg_social_ig_content_stats() : null;
+        $best_day = ($ig_ok && $need_rest) ? lmeg_social_ig_best_time() : null;
+        $types    = ($ig_ok && $need_rest) ? lmeg_social_ig_type_breakdown() : null;
+        $hashtags = ($ig_ok && $need_rest) ? lmeg_social_ig_hashtags() : null;
         $demographics = $ig_ok ? lmeg_social_ig_demographics(!empty($_GET['ig_demo_refresh'])) : null;
         $tt_ok    = function_exists('lmeg_tiktok_configured') && lmeg_tiktok_configured();
+        $__t1 = microtime(true);
         $tt       = $tt_ok ? lmeg_tiktok_user_info() : null;
-        $tt_videos = $tt_ok ? lmeg_tiktok_videos(12) : [];
-        $story_fans = $ig_ok ? lmeg_social_story_fans() : [];
+        $tt_videos = ($tt_ok && $need_rest) ? lmeg_tiktok_videos(12) : [];
+        $__tt = microtime(true) - $__t1;
+        $story_fans = ($ig_ok && $need_rest) ? lmeg_social_story_fans() : [];
+        if (!empty($_GET['lmeg_prof'])) echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms tiktok=" . number_format($__tt * 1000) . "ms -->\n";
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
