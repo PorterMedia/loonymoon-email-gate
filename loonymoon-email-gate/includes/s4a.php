@@ -67,6 +67,35 @@ function lmeg_s4a_token() {
  * ------------------------------------------------------------------------- */
 
 /**
+ * Rich per-country listener breakdown from a pull's locations endpoint. Reads
+ * raw.locations.geography (bare 2-letter codes + monthly listeners + active +
+ * shares), returns the top 20 sorted by monthly listeners:
+ *   [['cc'=>'US','num'=>1234,'act'=>456,'pct'=>0.07], …]
+ * Pure so the Insights page can rank + quantify markets, not just name them.
+ */
+function lmeg_s4a_countries_detail($a) {
+    $a   = (array) $a;
+    // Accept a pre-digested list, the raw locations endpoint, or its geography.
+    $geo = $a['top_countries_detail'] ?? ($a['raw']['locations']['geography'] ?? ($a['raw']['locations'] ?? ($a['locations']['geography'] ?? [])));
+    $out = [];
+    foreach ((array) $geo as $c) {
+        if (!is_array($c)) continue;
+        $cc  = strtoupper(trim((string) ($c['cc'] ?? $c['name'] ?? '')));
+        $num = (int) ($c['num'] ?? $c['numMonthlyListeners'] ?? 0);
+        if ($cc === '' || strlen($cc) !== 2 || $num <= 0) continue;
+        $out[] = [
+            'cc'  => $cc,
+            'num' => $num,
+            'act' => (int) ($c['activeListeners'] ?? $c['act'] ?? 0),
+            'pct' => isset($c['pctMonthlyListeners']) ? (float) $c['pctMonthlyListeners']
+                    : (isset($c['pct']) ? (float) $c['pct'] : null),
+        ];
+    }
+    usort($out, function ($x, $y) { return $y['num'] <=> $x['num']; });
+    return array_slice($out, 0, 20);
+}
+
+/**
  * Normalize an S4A payload (single-artist object, OR the {artists:[…]} wrapper
  * my export produces) into one or more snapshot rows. Tolerant of missing keys.
  *
@@ -125,6 +154,11 @@ function lmeg_s4a_parse($data) {
                 'gender'              => $a['gender'] ?? null,
                 'gender_by_age'       => $a['gender_by_age'] ?? null,
                 'top_cities'          => array_values((array) ($a['top_cities'] ?? [])),
+                // Rich per-country listener breakdown from the locations endpoint
+                // (code + monthly listeners + active + share) — the flat
+                // top_countries column keeps only names, so the Insights page can
+                // rank and quantify markets from meta without a schema change.
+                'countries'           => lmeg_s4a_countries_detail($a),
                 // 7-day per-song streams — lets the Insights page compute momentum
                 // (recent 7d pace vs the 28d run-rate) from a single snapshot.
                 'songs_7d'            => array_values((array) ($a['top_songs_last_7d'] ?? [])),

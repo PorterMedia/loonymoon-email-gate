@@ -351,6 +351,70 @@ function lmeg_si_city_list($src, $limit = 8) {
     return array_slice($out, 0, $limit);
 }
 
+/** ISO 3166-1 alpha-2 → English country name (for the S4A locations endpoint,
+ *  which returns bare 2-letter codes). Unknown codes fall back to the code. */
+function lmeg_si_country_name($cc) {
+    $cc = strtoupper(trim((string) $cc));
+    static $m = [
+        'AD'=>'Andorra','AE'=>'United Arab Emirates','AF'=>'Afghanistan','AG'=>'Antigua & Barbuda','AI'=>'Anguilla','AL'=>'Albania','AM'=>'Armenia','AO'=>'Angola','AQ'=>'Antarctica','AR'=>'Argentina','AS'=>'American Samoa','AT'=>'Austria','AU'=>'Australia','AW'=>'Aruba','AX'=>'Åland Islands','AZ'=>'Azerbaijan',
+        'BA'=>'Bosnia & Herzegovina','BB'=>'Barbados','BD'=>'Bangladesh','BE'=>'Belgium','BF'=>'Burkina Faso','BG'=>'Bulgaria','BH'=>'Bahrain','BI'=>'Burundi','BJ'=>'Benin','BL'=>'St. Barthélemy','BM'=>'Bermuda','BN'=>'Brunei','BO'=>'Bolivia','BQ'=>'Caribbean Netherlands','BR'=>'Brazil','BS'=>'Bahamas','BT'=>'Bhutan','BW'=>'Botswana','BY'=>'Belarus','BZ'=>'Belize',
+        'CA'=>'Canada','CC'=>'Cocos Islands','CD'=>'DR Congo','CF'=>'Central African Republic','CG'=>'Congo','CH'=>'Switzerland','CI'=>'Côte d’Ivoire','CK'=>'Cook Islands','CL'=>'Chile','CM'=>'Cameroon','CN'=>'China','CO'=>'Colombia','CR'=>'Costa Rica','CU'=>'Cuba','CV'=>'Cape Verde','CW'=>'Curaçao','CX'=>'Christmas Island','CY'=>'Cyprus','CZ'=>'Czechia',
+        'DE'=>'Germany','DJ'=>'Djibouti','DK'=>'Denmark','DM'=>'Dominica','DO'=>'Dominican Republic','DZ'=>'Algeria',
+        'EC'=>'Ecuador','EE'=>'Estonia','EG'=>'Egypt','EH'=>'Western Sahara','ER'=>'Eritrea','ES'=>'Spain','ET'=>'Ethiopia',
+        'FI'=>'Finland','FJ'=>'Fiji','FK'=>'Falkland Islands','FM'=>'Micronesia','FO'=>'Faroe Islands','FR'=>'France',
+        'GA'=>'Gabon','GB'=>'United Kingdom','GD'=>'Grenada','GE'=>'Georgia','GF'=>'French Guiana','GG'=>'Guernsey','GH'=>'Ghana','GI'=>'Gibraltar','GL'=>'Greenland','GM'=>'Gambia','GN'=>'Guinea','GP'=>'Guadeloupe','GQ'=>'Equatorial Guinea','GR'=>'Greece','GT'=>'Guatemala','GU'=>'Guam','GW'=>'Guinea-Bissau','GY'=>'Guyana',
+        'HK'=>'Hong Kong','HN'=>'Honduras','HR'=>'Croatia','HT'=>'Haiti','HU'=>'Hungary',
+        'ID'=>'Indonesia','IE'=>'Ireland','IL'=>'Israel','IM'=>'Isle of Man','IN'=>'India','IO'=>'British Indian Ocean Territory','IQ'=>'Iraq','IR'=>'Iran','IS'=>'Iceland','IT'=>'Italy',
+        'JE'=>'Jersey','JM'=>'Jamaica','JO'=>'Jordan','JP'=>'Japan',
+        'KE'=>'Kenya','KG'=>'Kyrgyzstan','KH'=>'Cambodia','KI'=>'Kiribati','KM'=>'Comoros','KN'=>'St. Kitts & Nevis','KP'=>'North Korea','KR'=>'South Korea','KW'=>'Kuwait','KY'=>'Cayman Islands','KZ'=>'Kazakhstan',
+        'LA'=>'Laos','LB'=>'Lebanon','LC'=>'St. Lucia','LI'=>'Liechtenstein','LK'=>'Sri Lanka','LR'=>'Liberia','LS'=>'Lesotho','LT'=>'Lithuania','LU'=>'Luxembourg','LV'=>'Latvia','LY'=>'Libya',
+        'MA'=>'Morocco','MC'=>'Monaco','MD'=>'Moldova','ME'=>'Montenegro','MF'=>'St. Martin','MG'=>'Madagascar','MH'=>'Marshall Islands','MK'=>'North Macedonia','ML'=>'Mali','MM'=>'Myanmar','MN'=>'Mongolia','MO'=>'Macau','MP'=>'Northern Mariana Islands','MQ'=>'Martinique','MR'=>'Mauritania','MS'=>'Montserrat','MT'=>'Malta','MU'=>'Mauritius','MV'=>'Maldives','MW'=>'Malawi','MX'=>'Mexico','MY'=>'Malaysia','MZ'=>'Mozambique',
+        'NA'=>'Namibia','NC'=>'New Caledonia','NE'=>'Niger','NF'=>'Norfolk Island','NG'=>'Nigeria','NI'=>'Nicaragua','NL'=>'Netherlands','NO'=>'Norway','NP'=>'Nepal','NR'=>'Nauru','NU'=>'Niue','NZ'=>'New Zealand',
+        'OM'=>'Oman',
+        'PA'=>'Panama','PE'=>'Peru','PF'=>'French Polynesia','PG'=>'Papua New Guinea','PH'=>'Philippines','PK'=>'Pakistan','PL'=>'Poland','PM'=>'St. Pierre & Miquelon','PN'=>'Pitcairn Islands','PR'=>'Puerto Rico','PS'=>'Palestine','PT'=>'Portugal','PW'=>'Palau','PY'=>'Paraguay',
+        'QA'=>'Qatar',
+        'RE'=>'Réunion','RO'=>'Romania','RS'=>'Serbia','RU'=>'Russia','RW'=>'Rwanda',
+        'SA'=>'Saudi Arabia','SB'=>'Solomon Islands','SC'=>'Seychelles','SD'=>'Sudan','SE'=>'Sweden','SG'=>'Singapore','SH'=>'St. Helena','SI'=>'Slovenia','SJ'=>'Svalbard & Jan Mayen','SK'=>'Slovakia','SL'=>'Sierra Leone','SM'=>'San Marino','SN'=>'Senegal','SO'=>'Somalia','SR'=>'Suriname','SS'=>'South Sudan','ST'=>'São Tomé & Príncipe','SV'=>'El Salvador','SX'=>'Sint Maarten','SY'=>'Syria','SZ'=>'Eswatini',
+        'TC'=>'Turks & Caicos','TD'=>'Chad','TF'=>'French Southern Territories','TG'=>'Togo','TH'=>'Thailand','TJ'=>'Tajikistan','TK'=>'Tokelau','TL'=>'Timor-Leste','TM'=>'Turkmenistan','TN'=>'Tunisia','TO'=>'Tonga','TR'=>'Türkiye','TT'=>'Trinidad & Tobago','TV'=>'Tuvalu','TW'=>'Taiwan','TZ'=>'Tanzania',
+        'UA'=>'Ukraine','UG'=>'Uganda','US'=>'United States','UY'=>'Uruguay','UZ'=>'Uzbekistan',
+        'VA'=>'Vatican City','VC'=>'St. Vincent & Grenadines','VE'=>'Venezuela','VG'=>'British Virgin Islands','VI'=>'U.S. Virgin Islands','VN'=>'Vietnam','VU'=>'Vanuatu',
+        'WF'=>'Wallis & Futuna','WS'=>'Samoa','XK'=>'Kosovo','YE'=>'Yemen','YT'=>'Mayotte','ZA'=>'South Africa','ZM'=>'Zambia','ZW'=>'Zimbabwe',
+    ];
+    return $m[$cc] ?? ($cc !== '' ? $cc : 'Unknown');
+}
+
+/** Flag emoji for a 2-letter country code (regional-indicator pair), or '' if
+ *  the code isn't two letters. Built as raw UTF-8, no mb_* (PHP 8.2-safe). */
+function lmeg_si_country_flag($cc) {
+    $cc = strtoupper(trim((string) $cc));
+    if (strlen($cc) !== 2 || !ctype_alpha($cc)) return '';
+    $enc = function ($cp) { // 4-byte UTF-8 (regional indicators live above U+FFFF)
+        return chr(0xF0 | ($cp >> 18)) . chr(0x80 | (($cp >> 12) & 0x3F))
+             . chr(0x80 | (($cp >> 6) & 0x3F)) . chr(0x80 | ($cp & 0x3F));
+    };
+    return $enc(127397 + ord($cc[0])) . $enc(127397 + ord($cc[1]));
+}
+
+/** Rank the rich per-country breakdown (from meta.countries: [{cc,num,act,pct}])
+ *  into render rows with resolved name/flag and a bar share relative to the top
+ *  country. Sorted by monthly listeners desc, trimmed to $limit. Pure. */
+function lmeg_si_country_rows($countries, $limit = 8) {
+    $rows = [];
+    foreach ((array) $countries as $c) {
+        if (!is_array($c)) continue;
+        $cc  = strtoupper((string) ($c['cc'] ?? $c['name'] ?? ''));
+        $num = (int) ($c['num'] ?? 0);
+        if ($cc === '' || strlen($cc) !== 2 || $num <= 0) continue;
+        $rows[] = ['cc' => $cc, 'name' => lmeg_si_country_name($cc), 'flag' => lmeg_si_country_flag($cc),
+                   'num' => $num, 'pct' => isset($c['pct']) && $c['pct'] !== null ? (float) $c['pct'] : null];
+    }
+    usort($rows, function ($a, $b) { return $b['num'] <=> $a['num']; });
+    $rows = array_slice($rows, 0, max(1, (int) $limit));
+    $max  = 0; foreach ($rows as $r) $max = max($max, $r['num']);
+    foreach ($rows as &$r) { $r['share'] = $max > 0 ? round($r['num'] / $max * 100, 1) : 0.0; } unset($r);
+    return $rows;
+}
+
 /** Percent change cur-vs-prev, or null when not computable (missing / prev 0). */
 function lmeg_si_pct_change($cur, $prev) {
     if ($cur === null || $prev === null || $cur === '' || $prev === '') return null;
@@ -975,7 +1039,24 @@ function lmeg_admin_spotify_insights() {
         $toptracks = $has_api ? (array) ($ov['top_tracks'] ?? []) : [];
         if ($markets || $playlists || $toptracks) : ?>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;max-width:1040px;margin-bottom:14px;">
-            <?php if ($markets) : ?>
+            <?php
+            $country_rows = $has_s4a ? lmeg_si_country_rows((array) ($meta['countries'] ?? []), 8) : [];
+            if ($country_rows) : ?>
+            <div style="<?php echo $card; ?>">
+                <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where they listen <span style="color:#8B90A0;font-weight:400;">· monthly listeners</span></div>
+                <?php foreach ($country_rows as $i => $c) : ?>
+                    <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <div style="display:flex;align-items:center;gap:9px;font-size:13px;">
+                            <span style="color:#8B90A0;width:14px;flex:0 0 auto;font-variant-numeric:tabular-nums;"><?php echo $i + 1; ?></span>
+                            <span style="flex:0 0 auto;font-size:15px;line-height:1;"><?php echo esc_html($c['flag']); ?></span>
+                            <span style="color:#F4F5F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo esc_html($c['name']); ?></span>
+                            <span style="color:#F4F5F7;margin-left:auto;font-variant-numeric:tabular-nums;flex:0 0 auto;"><?php echo esc_html(number_format_i18n($c['num'])); ?></span>
+                        </div>
+                        <div style="height:5px;border-radius:3px;background:rgba(255,255,255,.06);margin-top:5px;overflow:hidden;"><div style="height:100%;width:<?php echo (float) $c['share']; ?>%;background:#1DB954;border-radius:3px;"></div></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php elseif ($markets) : ?>
             <div style="<?php echo $card; ?>">
                 <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where they listen</div>
                 <?php foreach (array_slice($markets, 0, 8) as $i => $m) :
