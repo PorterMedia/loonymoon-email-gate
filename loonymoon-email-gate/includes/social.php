@@ -120,8 +120,12 @@ function lmeg_social_series_stats($rows, $field = 'followers') {
 
 function lmeg_social_ig_media($limit = 25, $force = false) {
     if (!lmeg_ig_configured()) return [];
+    // Per-request memo: content stats, best time, type breakdown and hashtags
+    // all call this in one page view — never more than one fetch per request.
+    static $memo = null;
+    if ($memo !== null && !$force) return $memo;
     $cache = 'lmeg_social_ig_media';
-    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $c; if (get_transient($cache . '_fail')) return []; }
+    if (!$force) { $c = get_transient($cache); if (is_array($c)) return $memo = $c; if (get_transient($cache . '_fail')) return $memo = []; }
     $s = lmeg_get_settings();
     $resp = wp_remote_get(
         LMEG_IG_GRAPH . '/' . rawurlencode($s['ig_account_id'])
@@ -147,7 +151,7 @@ function lmeg_social_ig_media($limit = 25, $force = false) {
         ];
     }
     set_transient($cache, $out, HOUR_IN_SECONDS);
-    return $out;
+    return $memo = $out;
 }
 
 function lmeg_social_ig_content_stats() {
@@ -1028,7 +1032,11 @@ function lmeg_admin_social($embed = false, $only = null) {
         $tt       = $tt_ok ? $__tm('tt_user', function () { return lmeg_tiktok_user_info(); }) : null;
         $tt_videos = ($tt_ok && $need_rest) ? $__tm('tt_videos', function () { return lmeg_tiktok_videos(12); }) : [];
         $story_fans = ($ig_ok && $need_rest) ? $__tm('story_fans', function () { return lmeg_social_story_fans(); }) : [];
-        if (!empty($_GET['lmeg_prof'])) { $__s = []; foreach ($__pc as $k => $v) $__s[] = $k . '=' . number_format($v) . 'ms'; echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms " . implode(' ', $__s) . " -->\n"; }
+        if (!empty($_GET['lmeg_prof'])) {
+            $__s = []; foreach ($__pc as $k => $v) $__s[] = $k . '=' . number_format($v) . 'ms';
+            $__mc = get_transient('lmeg_social_ig_media'); $__diag = 'ig_media_cache=' . gettype($__mc) . (is_array($__mc) ? '(' . count($__mc) . ')' : '') . ' objcache=' . (wp_using_ext_object_cache() ? 'ext' : 'db');
+            echo "\n<!-- lmeg_prof_social only=" . esc_html((string) $only) . " gather=" . number_format((microtime(true) - $__t0) * 1000) . "ms " . implode(' ', $__s) . ' ' . $__diag . " -->\n";
+        }
     }
 
     $delta_html = function ($d, $per_day = null, $days = null) {
