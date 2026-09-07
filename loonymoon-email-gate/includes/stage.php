@@ -1175,7 +1175,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers', 'm'],
                     ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify', null],
                     ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list' . (!empty($st['rhythm']['label']) ? ' · ' . $st['rhythm']['label'] : '') . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . ($st['rhythm']['days_since'] === 0 ? 'today' : ($st['rhythm']['days_since'] === 1 ? 'yesterday' : (int) $st['rhythm']['days_since'] . ' days ago')) : ''), 's'],
-                    ['28-day streams vs ' . ($in['streams_base'] ?? 'the last capture'), $sf($in['streams_pct'] ?? null), 'Spotify for Artists rolling 28-day total, compared with the capture ' . ($in['streams_base'] ?? 'before'), null],
+                    ['28-day streams vs ' . ($in['streams_base'] ?? 'the last capture'), $sf($in['streams_pct'] ?? null), 'Spotify for Artists rolling 28-day total, compared with ' . ((($in['streams_base'] ?? 'the last capture') === 'the last capture') ? 'the previous capture (a 7-day baseline appears once the history is a week old)' : 'the capture ' . $in['streams_base']), null],
                 ]; ?>
                 <div style="display:flex;flex-direction:column;">
                     <?php foreach ($rows as $i => $r) : $sk = $r[3]; $spark = ($sk && !empty($tr[$sk])) ? lmeg_si_stage_spark($tr[$sk]) : ''; ?>
