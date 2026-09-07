@@ -154,10 +154,15 @@ function lmeg_si_stage($n, $x = []) {
     }
     foreach ($S as $i => $gates) {
         foreach ($gates as $j => $g) {
-            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => ''];
+            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => '', 'ranked' => false];
             if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && $evidence !== '') {
                 $S[$i][$j]['evidence'] = $evidence;
-                if ($rank) { $acts = $S[$i][$j]['actions']; usort($acts, function ($a, $b) use ($rank) { return ($rank[$b['page'] ?? ''] ?? 0) <=> ($rank[$a['page'] ?? ''] ?? 0); }); $S[$i][$j]['actions'] = $acts; }
+                if ($rank) {
+                    $acts = $S[$i][$j]['actions'];
+                    usort($acts, function ($a, $b) use ($rank) { return ($rank[$b['page'] ?? ''] ?? 0) <=> ($rank[$a['page'] ?? ''] ?? 0); });
+                    $S[$i][$j]['actions'] = $acts;
+                    foreach ($acts as $a) if (($rank[$a['page'] ?? ''] ?? 0) > 0) { $S[$i][$j]['ranked'] = true; break; }   // one of THIS gate's tools has brought fans
+                }
             }
             if ($g['pass']) continue;
             list($need, $unit, $rate, $alt) = $dist($g['key']);
@@ -191,7 +196,7 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
-        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence,
+        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank),
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
@@ -990,7 +995,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                         </div>
                         <?php endif; ?>
                         <?php if (!empty($b['evidence'])) : ?>
-                        <div style="font-size:11px;color:#8B90A0;margin-top:10px;">Where your last 28 days of signups came from: <span style="color:#F4F5F7;font-weight:600;"><?php echo esc_html($b['evidence']); ?></span> — the tool that brought the most is first below.</div>
+                        <div style="font-size:11px;color:#8B90A0;margin-top:10px;">Where your last 28 days of signups came from: <span style="color:#F4F5F7;font-weight:600;"><?php echo esc_html($b['evidence']); ?></span><?php echo !empty($b['ranked']) ? ' — the tool that brought the most is first below.' : ' — none of the tools below has brought fans yet; any of them starts the count.'; ?></div>
                         <?php endif; ?>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:<?php echo !empty($b['evidence']) ? '8' : '12'; ?>px;">
                             <?php $k = 0; foreach ($b['actions'] as $a) echo $pill($a, $k++ === 0); ?>
