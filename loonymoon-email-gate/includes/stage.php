@@ -164,9 +164,14 @@ function lmeg_si_stage($n, $x = []) {
     $tier_hint = ($tiers && (int) $tiers['active'] === 0)
         ? ((int) $tiers['total'] > 0 ? number_format((int) $tiers['total']) . ' tier' . ((int) $tiers['total'] === 1 ? ' is' : 's are') . ' set up but none is live — nothing for a fan to join until one is switched on' : 'No paid tier yet — there is nothing for a fan to join until one exists')
         : '';
+    // Store: a buyers gate with nothing to buy anywhere (no live product, no buyer ever) has no path.
+    $store = (isset($n['store']) && is_array($n['store'])) ? $n['store'] : null;
+    $store_hint = ($store && (int) $store['active'] === 0 && (int) ($customers ?? 0) === 0)
+        ? 'Nothing to buy yet — add a product (digital, pay-what-you-want or physical) and the first ask can go to your superfans' : '';
     foreach ($S as $i => $gates) {
         foreach ($gates as $j => $g) {
             $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => '', 'ranked' => false, 'hint' => '', 'hint_page' => ''];
+            if (in_array($g['key'], ['customers', 'cust_share'], true) && !$g['pass'] && $store_hint !== '') { $S[$i][$j]['hint'] = $store_hint; $S[$i][$j]['hint_page'] = 'lmeg-products'; }
             if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && !$g['pass'] && $gap_hint !== '') { $S[$i][$j]['hint'] = $gap_hint; $S[$i][$j]['hint_page'] = 'lmeg-releases'; }
             if (in_array($g['key'], ['members', 'members_100'], true) && !$g['pass'] && $tier_hint !== '') { $S[$i][$j]['hint'] = $tier_hint; $S[$i][$j]['hint_page'] = 'lmeg-tiers'; }
             if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && $evidence !== '') {
@@ -210,7 +215,7 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
-        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps, 'tiers' => $tiers,
+        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps, 'tiers' => $tiers, 'store' => $store,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct, 'streams_base' => $sbase,
@@ -335,7 +340,7 @@ function lmeg_si_stage_demo_raw($snap, $mlp = null) {
     return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
             'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41,
             'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184],
-            'release_gaps' => ['total' => 5, 'no_drop' => 2], 'list_bounced' => 14, 'tiers' => ['active' => 2, 'total' => 2]];
+            'release_gaps' => ['total' => 5, 'no_drop' => 2], 'list_bounced' => 14, 'tiers' => ['active' => 2, 'total' => 2], 'store' => ['active' => 6]];
 }
 
 /**
@@ -451,6 +456,15 @@ function lmeg_si_stage_tier_state() {
     return ['active' => $live, 'total' => count($all)];
 }
 
+/** Live products in the Fanloop store: ['active' => n]. null when the store table can't be read. */
+function lmeg_si_stage_store_state() {
+    global $wpdb;
+    if (empty($wpdb)) return null;
+    $v = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}lmeg_products WHERE status = 'active'");
+    if ($wpdb->last_error) { $wpdb->last_error = ''; return null; }
+    return $v === null ? null : ['active' => (int) $v];
+}
+
 /** Subscribed fans whose email is bouncing — on the list, but not reachable. null when unreadable. */
 function lmeg_si_stage_list_bounced() {
     global $wpdb;
@@ -516,6 +530,8 @@ function lmeg_si_stage_compute($demo = false) {
         if ($bounced !== null) $raw['list_bounced'] = $bounced;
         $tiers = lmeg_si_stage_tier_state();
         if ($tiers !== null) $raw['tiers'] = $tiers;
+        $store = lmeg_si_stage_store_state();
+        if ($store !== null) $raw['store'] = $store;
     }
     // Paces the rings can't give (members, listeners) — and any missing one —
     // come from the history log's own readings once they span a week.
@@ -1095,7 +1111,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                         </div>
                         <?php endif; ?>
                         <?php if (!empty($b['hint'])) : ?>
-                        <?php $hp = !empty($b['hint_page']) ? $b['hint_page'] : 'lmeg-releases'; $hl = ['lmeg-releases' => 'Open Releases', 'lmeg-tiers' => 'Open Tiers'][$hp] ?? 'Open'; ?>
+                        <?php $hp = !empty($b['hint_page']) ? $b['hint_page'] : 'lmeg-releases'; $hl = ['lmeg-releases' => 'Open Releases', 'lmeg-tiers' => 'Open Tiers', 'lmeg-products' => 'Open the Store'][$hp] ?? 'Open'; ?>
                         <div style="font-size:12px;color:#F4F5F7;margin-top:10px;padding:8px 11px;background:rgba(208,95,162,.12);border:1px solid rgba(208,95,162,.35);border-radius:9px;line-height:1.45;"><?php echo esc_html($b['hint']); ?> <a href="<?php echo esc_url(admin_url('admin.php?page=' . $hp)); ?>" style="color:#E58BBD !important;font-weight:700;text-decoration:none;white-space:nowrap;"><?php echo esc_html($hl); ?> →</a></div>
                         <?php endif; ?>
                         <?php if (!empty($b['evidence'])) : ?>
