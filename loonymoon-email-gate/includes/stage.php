@@ -111,11 +111,15 @@ function lmeg_si_stage($n, $x = []) {
     // days added, and the ETA at that pace — honest, never a promise.
     $sd = function ($k) use ($n) { return (isset($n[$k]) && $n[$k] !== null && $n[$k] !== '') ? (int) $n[$k] : null; }; // signed delta
     $list_new = $v('list_new'); $cust_new = $v('customers_new');
+    // The list pace uses organic signups when the import split is known.
+    $list_org = $v('list_new_organic'); $imported = $v('list_imported_28d');
+    $list_rate = $list_org !== null ? $list_org : $list_new;
     $spd = $sd('sp_followers_delta'); $mem_d = $sd('members_delta'); $lis_d = $sd('listeners_delta');
     $approx = function ($k) use ($n) { return !empty($n[$k . '_src']) && $n[$k . '_src'] === 'log'; };   // rate derived from the history log
     $pool = ($superfans !== null && $superfans > 0) ? number_format($superfans) . ' superfan' . ($superfans === 1 ? '' : 's') . ' to ask first' : null;
-    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd, $mem_d, $lis_d, $pool, $rhythm) {
+    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_rate, $cust_new, $spd, $mem_d, $lis_d, $pool, $rhythm) {
         $c = function ($x) { return $x === null ? null : (int) ceil($x); };
+        $list_new = $list_rate;
         switch ($key) {
             case 'releases':     return [$releases === null ? null : max(0, 1 - $releases), 'release', null, null];
             case 'listeners':    return [$listeners === null ? null : max(0, 1000 - $listeners), 'listener', $lis_d, null];
@@ -148,7 +152,8 @@ function lmeg_si_stage($n, $x = []) {
                 $src = ['listeners' => 'listeners_delta', 'followers' => 'sp_followers_delta', 'list' => 'list_new', 'list_share' => 'list_new', 'list_share_5' => 'list_new',
                         'customers' => 'customers_new', 'cust_share' => 'customers_new', 'members' => 'members_delta', 'members_100' => 'members_delta'][$g['key']] ?? '';
                 $S[$i][$j]['rate_n'] = $rate;
-                $S[$i][$j]['rate_label'] = ($rate > 0 ? '+' : ($rate < 0 ? '−' : '')) . number_format(abs($rate)) . (($src && $approx($src)) ? ' per 28 days at the recent pace' : ' in the last 28 days');
+                $S[$i][$j]['rate_label'] = ($rate > 0 ? '+' : ($rate < 0 ? '−' : '')) . number_format(abs($rate)) . (($src && $approx($src)) ? ' per 28 days at the recent pace' : ' in the last 28 days')
+                                         . (($src === 'list_new' && $list_org !== null && $imported > 0) ? ' (' . number_format($imported) . ' imported, not counted)' : '');
                 if ($rate > 0) { $days = (int) ceil($need / ($rate / 28)); $S[$i][$j]['eta_days'] = $days; $S[$i][$j]['eta_label'] = lmeg_si_stage_eta_label($days) . ' at that pace'; }
                 else $S[$i][$j]['eta_label'] = 'no growth at the current pace';
             }
@@ -174,7 +179,8 @@ function lmeg_si_stage($n, $x = []) {
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
-                     'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new],
+                     'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new,
+                     'list_new_organic' => $list_org, 'list_imported_28d' => $imported],
     ];
 }
 
@@ -199,9 +205,11 @@ function lmeg_si_stage_hops($st) {
                'delta_label' => $dl($g('sp_followers_delta'), 'follower'), 'bar' => $p === null ? null : (int) round(min(100, $p / 40 * 100)), 'note' => 'No gate on this hop; one in three is a strong catalogue.'];
     // 2. listeners → your list (stage 4 wants 1%, stage 7 wants 5%)
     $p = $pct($list, $listeners); $target = $stage >= 4 ? 5 : 1; $need_stage = $stage >= 4 ? 7 : 4;
+    $org = $g('list_new_organic'); $imp = $g('list_imported_28d');
     $rows[] = ['key' => 'list', 'from' => 'Monthly listeners', 'to' => 'Your list', 'pct' => $p, 'pct_label' => $pf($p),
                'gate' => ['target' => $target, 'stage' => $need_stage, 'pass' => $p !== null && $p >= $target, 'label' => $target . '% for stage ' . $need_stage],
-               'delta_label' => $dl($g('list_new'), 'fan'), 'bar' => $p === null ? null : (int) round(min(100, $p / $target * 100)), 'note' => ''];
+               'delta_label' => $dl($org !== null ? $org : $g('list_new'), 'fan'), 'bar' => $p === null ? null : (int) round(min(100, $p / $target * 100)),
+               'note' => ($org !== null && $imp > 0) ? number_format($imp) . ' imported, not counted' : ''];
     // 3. your list → buyers (stage 5 wants 2%)
     $p = $pct($cust, $list);
     $rows[] = ['key' => 'buyers', 'from' => 'Your list', 'to' => 'Fans who have bought', 'pct' => $p, 'pct_label' => $pf($p),
@@ -293,6 +301,26 @@ function lmeg_si_stage_demo_raw($snap, $mlp = null) {
 }
 
 /**
+ * Imported fans in the last $days, detected by their signature: a CSV import
+ * without a date column lands every row on one timestamp, so any minute with
+ * ≥$min signups is treated as an import batch (organic signups never cluster
+ * like that for a list this size). Returns the count, or null when the table
+ * can't be read. Used to keep bulk imports out of the list pace.
+ */
+function lmeg_si_stage_list_bursts($days = 28, $min = 25) {
+    global $wpdb;
+    if (empty($wpdb) || !defined('LMEG_TABLE')) return null;
+    $t = $wpdb->prefix . LMEG_TABLE;
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT DATE_FORMAT(created_at, '%%Y-%%m-%%d %%H:%%i') m, COUNT(*) c FROM $t
+          WHERE created_at >= DATE_SUB(NOW(), INTERVAL %d DAY) AND unsubscribed_at IS NULL
+          GROUP BY m HAVING c >= %d", (int) $days, (int) $min), ARRAY_A);
+    if ($wpdb->last_error) { $wpdb->last_error = ''; return null; }
+    $n = 0; foreach ((array) $rows as $r) $n += (int) ($r['c'] ?? 0);
+    return $n;
+}
+
+/**
  * The ladder for this site right now — the light data path shared by the Stage
  * page and the daily log (no findings engine, no song maps): latest snapshot +
  * previous for the 28-day streams direction, the public overview for releases,
@@ -319,7 +347,14 @@ function lmeg_si_stage_compute($demo = false) {
     $mlp = ($snap && $prev) ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
     $raw = null;
     if ($demo) { $raw = lmeg_si_stage_demo_raw($snap, $mlp); $rings = lmeg_si_fan_rings_shape($raw); }
-    else { $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $raw); if (!is_array($raw)) $raw = []; }
+    else {
+        $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $raw); if (!is_array($raw)) $raw = [];
+        // Keep bulk imports out of the list pace: organic = new − import bursts.
+        if (isset($raw['list_new']) && $raw['list_new'] !== null) {
+            $imp = lmeg_si_stage_list_bursts(28);
+            if ($imp !== null) { $raw['list_imported_28d'] = $imp; $raw['list_new_organic'] = max(0, (int) $raw['list_new'] - $imp); }
+        }
+    }
     // Paces the rings can't give (members, listeners) — and any missing one —
     // come from the history log's own readings once they span a week.
     $hl = $demo ? (function_exists('lmeg_si_stage_demo_log') ? lmeg_si_stage_demo_log() : []) : lmeg_si_stage_log_get();
