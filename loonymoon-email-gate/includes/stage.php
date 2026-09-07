@@ -406,6 +406,37 @@ function lmeg_si_stage_release_gaps() {
     return ['total' => (int) $row['total'], 'no_drop' => (int) $row['no_drop']];
 }
 
+/**
+ * The best honest baseline for the rolling 28-day metrics. The URL-pull
+ * pipeline stores no period-over-period change, so "vs the previous capture"
+ * is day-over-day movement of a 28-day total. This picks the capture 28 days
+ * back (else 7 days back) from the daily series and only falls back to the
+ * previous capture when the history is younger than a week.
+ * Returns ['base' => label, 'days' => int|null, 'streams' => pct|null, 'listeners' => pct|null].
+ */
+function lmeg_si_streams_baseline($sel, $snap, $prev = null) {
+    $pct = function ($a, $b) { return ($a !== null && $b !== null && (int) $b > 0) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
+    $out = ['base' => 'the last capture', 'days' => null,
+            'streams'   => ($snap && $prev) ? $pct($snap->streams, $prev->streams) : null,
+            'listeners' => ($snap && $prev) ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null];
+    if ($snap && $prev && !empty($snap->captured_date) && !empty($prev->captured_date)) $out['days'] = max(1, (int) round((strtotime($snap->captured_date) - strtotime($prev->captured_date)) / 86400));
+    if (!$snap || empty($snap->captured_date) || !function_exists('lmeg_s4a_series')) return $out;
+    $ss = (array) lmeg_s4a_series('streams', $sel, $snap->window, 400);
+    if (!$ss) return $out;
+    $ls = (array) lmeg_s4a_series('monthly_listeners', $sel, $snap->window, 400);
+    foreach ([28 => '28 days ago', 7 => '7 days ago'] as $days => $label) {
+        $target = date('Y-m-d', strtotime($snap->captured_date) - $days * 86400);
+        $bs = null; foreach ($ss as $r) { if ((string) $r->captured_date <= $target) $bs = $r; }
+        if ($bs && (int) $bs->v > 0 && (string) $bs->captured_date < (string) $snap->captured_date) {
+            $out['base'] = $label; $out['days'] = $days; $out['streams'] = $pct($snap->streams, $bs->v);
+            $bl = null; foreach ($ls as $r) { if ((string) $r->captured_date <= $target) $bl = $r; }
+            $out['listeners'] = ($bl && (int) $bl->v > 0) ? $pct($snap->monthly_listeners, $bl->v) : $out['listeners'];
+            break;
+        }
+    }
+    return $out;
+}
+
 /** Subscribed fans whose email is bouncing — on the list, but not reachable. null when unreadable. */
 function lmeg_si_stage_list_bounced() {
     global $wpdb;
@@ -446,21 +477,18 @@ function lmeg_si_stage_compute($demo = false) {
     $pct = function ($a, $b) { return ($a !== null && $b !== null && (int) $b > 0) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
     $sp  = ($snap && $prev) ? $pct($snap->streams, $prev->streams) : null;
     $sp_base = 'the last capture';
-    // A real baseline for the streams direction: the capture 28 days back
-    // (else 7) from the daily series; the previous capture only as a fallback.
-    if (!$demo && $snap && function_exists('lmeg_s4a_series')) {
-        $ser = (array) lmeg_s4a_series('streams', $sel, $snap->window, 400);
-        foreach ([28 => '28 days ago', 7 => '7 days ago'] as $days => $label) {
-            $target = date('Y-m-d', strtotime($snap->captured_date) - $days * 86400);
-            $best = null; foreach ($ser as $r) { if ((string) $r->captured_date <= $target) $best = $r; }
-            if ($best && (int) $best->v > 0 && (string) $best->captured_date < (string) $snap->captured_date) { $sp = $pct($snap->streams, $best->v); $sp_base = $label; break; }
-        }
-    }
     $mlp = ($snap && $prev) ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
+    // A real baseline for the 28-day metrics (28 days back → 7 → last capture).
+    if (!$demo && $snap) {
+        $bl = lmeg_si_streams_baseline($sel, $snap, $prev);
+        if ($bl['streams'] !== null) $sp = $bl['streams'];
+        if ($bl['listeners'] !== null) $mlp = $bl['listeners'];
+        $sp_base = $bl['base'];
+    }
     $raw = null;
     if ($demo) { $raw = lmeg_si_stage_demo_raw($snap, $mlp); $rings = lmeg_si_fan_rings_shape($raw); }
     else {
-        $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $raw); if (!is_array($raw)) $raw = [];
+        $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp, 'listeners_base' => $sp_base], $raw); if (!is_array($raw)) $raw = [];
         // Keep bulk imports out of the list pace: organic = new − import bursts.
         if (isset($raw['list_new']) && $raw['list_new'] !== null) {
             $imp = lmeg_si_stage_list_bursts(28);

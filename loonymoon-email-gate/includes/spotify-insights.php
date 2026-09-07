@@ -49,7 +49,8 @@ function lmeg_si_headline($snap, $changes, $ov) {
     if ($snap && $snap->streams !== null) {
         $s = $fmt($snap->streams);
         $pct = $changes['streams'] ?? null;
-        $mom = ($pct !== null && $pct !== '') ? (((float) $pct > 0 ? 'up ' : (((float) $pct < 0) ? 'down ' : '')) . rtrim(rtrim(number_format(abs((float) $pct), 1), '0'), '.') . '% on the prior period') : '';
+        $base = !empty($changes['streams_base']) ? (string) $changes['streams_base'] : 'the 28 days before';
+        $mom = ($pct !== null && $pct !== '') ? (((float) $pct > 0 ? 'up ' : (((float) $pct < 0) ? 'down ' : 'flat, ')) . rtrim(rtrim(number_format(abs((float) $pct), 1), '0'), '.') . '% vs ' . $base) : '';
         $bits[] = 'Your music pulled <strong>' . $s . ' streams</strong> in the last 28 days' . ($mom ? ' — ' . $mom : '') . '.';
     } elseif ($snap && $snap->monthly_listeners !== null) {
         $bits[] = '<strong>' . $fmt($snap->monthly_listeners) . '</strong> people listened this month.';
@@ -271,7 +272,7 @@ function lmeg_si_fan_rings_shape($n) {
     // list_new (fans added, 30d), customers_new (first-time buyers, 28d).
     $sgn = function ($v, $suffix = '') { return ($v > 0 ? '+' : ($v < 0 ? '−' : '')) . number_format_i18n(abs((int) $v)) . $suffix; };
     $lp = isset($n['listeners_pct']) && $n['listeners_pct'] !== null && $n['listeners_pct'] !== '' ? (float) $n['listeners_pct'] : null;
-    $rings[0]['change'] = $lp !== null ? [($lp > 0 ? '+' : ($lp < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs($lp), 1), '0'), '.') . '% vs the 28 days before', $lp <=> 0] : null;
+    $rings[0]['change'] = $lp !== null ? [($lp > 0 ? '+' : ($lp < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs($lp), 1), '0'), '.') . '% vs ' . (!empty($n['listeners_base']) ? $n['listeners_base'] : 'the 28 days before'), $lp <=> 0] : null;
     $fd = [];
     if (isset($n['sp_followers_delta']) && $n['sp_followers_delta'] !== null) $fd[] = 'Spotify ' . $sgn($n['sp_followers_delta']);
     if (isset($n['ig_followers_delta']) && $n['ig_followers_delta'] !== null) $fd[] = 'Instagram ' . $sgn($n['ig_followers_delta']);
@@ -303,6 +304,7 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = [], &$raw = nul
     if ($snap) {
         $n['listeners'] = $snap->monthly_listeners !== null ? (int) $snap->monthly_listeners : null;
         $n['listeners_pct'] = (isset($changes['monthly_listeners']) && $changes['monthly_listeners'] !== null && $changes['monthly_listeners'] !== '') ? (float) $changes['monthly_listeners'] : null;
+        $n['listeners_base'] = !empty($changes['listeners_base']) ? (string) $changes['listeners_base'] : null;
         // Spotify followers is a LEVEL: take the last day of the daily series
         // (snapshots ingested before v3.198.1 stored a 28-day SUM in the
         // followers column — never read that here), else the public API.
@@ -508,6 +510,14 @@ function lmeg_si_quick_context($demo = false) {
     $chg  = function ($v) { return $v === null ? '' : ' <span style="color:' . ($v >= 0 ? '#1f9d63' : '#d9534f') . ';font-weight:600;">' . ($v >= 0 ? '+' : '') . $v . '%</span>'; };
     $sp   = $prev ? $pct($snap->streams, $prev->streams) : null;
     $mlp  = $prev ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
+    // Honest baseline for the 28-day metrics (28 days back → 7 → last capture).
+    $sbase = 'the last capture';
+    if (!$demo && function_exists('lmeg_si_streams_baseline')) {
+        $bl = lmeg_si_streams_baseline($sel, $snap, $prev);
+        if ($bl['streams'] !== null) $sp = $bl['streams'];
+        if ($bl['listeners'] !== null) $mlp = $bl['listeners'];
+        $sbase = $bl['base'];
+    }
     $rows = [];
     $rows[] = ['🎧', 'Streams (28 days)', number_format_i18n((int) $snap->streams) . $chg($sp)];
     $rows[] = ['👂', 'Monthly listeners', number_format_i18n((int) $snap->monthly_listeners) . $chg($mlp)];
@@ -564,7 +574,7 @@ function lmeg_si_quick_context($demo = false) {
         'followers'         => $fs ? (int) end($fs) : null,
         'save_rate'         => ($snap->monthly_listeners > 0 && $snap->saves !== null) ? (int) $snap->saves / (int) $snap->monthly_listeners * 100 : null,
     ] + $extra_ctx;
-    return compact('sel', 'snap', 'prev', 'meta', 'map', 'sw', 'daily', 'rows', 'launch', 'ctx', 'sp', 'mlp');
+    return compact('sel', 'snap', 'prev', 'meta', 'map', 'sw', 'daily', 'rows', 'launch', 'ctx', 'sp', 'mlp', 'sbase');
 }
 
 /** Top findings from the same engine + context the page uses. */
@@ -1517,13 +1527,25 @@ function lmeg_admin_spotify_insights_render() {
     // (e.g. the URL-pull pipeline doesn't), compute each KPI's change vs the
     // previous snapshot so the chips + "since last capture" note come alive.
     $prev = $demo ? (object) $demo_rows[0] : (($snap && function_exists('lmeg_s4a_prev')) ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null);
+    $computed_streams = false;
     if ($prev) {
         foreach (['monthly_listeners', 'streams', 'mal', 'saves', 'playlist_adds', 'followers', 'super_listeners', 'new_active'] as $mk) {
             if (($changes[$mk] ?? null) === null || $changes[$mk] === '') {
                 $pc = lmeg_si_pct_change($snap->$mk ?? null, $prev->$mk ?? null);
-                if ($pc !== null) $changes[$mk] = round($pc, 1);
+                if ($pc !== null) { $changes[$mk] = round($pc, 1); if ($mk === 'streams') $computed_streams = true; }
             }
         }
+    }
+    // Honest baseline: an export-provided change is period-over-period ("the 28
+    // days before"); a computed one is day-over-day of a rolling total, so use
+    // the capture 28 (else 7) days back when the history has it, and say so.
+    $changes['streams_base'] = $computed_streams ? 'the last capture' : 'the 28 days before';
+    $changes['listeners_base'] = $changes['streams_base'];
+    if ($computed_streams && !$demo && $snap && function_exists('lmeg_si_streams_baseline')) {
+        $bl_ = lmeg_si_streams_baseline($sel, $snap, $prev);
+        if ($bl_['streams'] !== null)   $changes['streams'] = $bl_['streams'];
+        if ($bl_['listeners'] !== null) $changes['monthly_listeners'] = $bl_['listeners'];
+        $changes['streams_base'] = $bl_['base']; $changes['listeners_base'] = $bl_['base'];
     }
 
     $mark('snapshot');

@@ -6188,7 +6188,9 @@ function lmeg_admin_overview() {
             // Period-over-period for the listeners ring, same as the Insights page.
             $ovch = (!empty($ovq['snap']->changes)) ? (array) json_decode((string) $ovq['snap']->changes, true) : [];
             if (!empty($ovq['prev']) && (($ovch['monthly_listeners'] ?? null) === null || $ovch['monthly_listeners'] === '') && function_exists('lmeg_si_pct_change')) {
-                $pc = lmeg_si_pct_change($ovq['snap']->monthly_listeners ?? null, $ovq['prev']->monthly_listeners ?? null); if ($pc !== null) $ovch['monthly_listeners'] = round($pc, 1);
+                // Computed change → use quick_context's honest baseline (28 days back → 7 → last capture) and label it.
+                $ovch['monthly_listeners'] = $ovq['mlp'] ?? round((float) lmeg_si_pct_change($ovq['snap']->monthly_listeners ?? null, $ovq['prev']->monthly_listeners ?? null), 1);
+                $ovch['listeners_base']   = $ovq['sbase'] ?? 'the last capture';
             }
             $ov_raw = null;
             $ovr = lmeg_si_fan_rings_data($ovq['snap'], is_array($sp) ? $sp : null, is_array($sp), $ovch, $ov_raw);

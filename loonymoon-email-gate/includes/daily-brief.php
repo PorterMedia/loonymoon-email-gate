@@ -69,6 +69,7 @@ function lmeg_si_brief_data($demo = false) {
         'followers' => $fs ? (int) end($fs) : null, 'followers_delta' => count($fs) >= 7 ? (int) end($fs) - (int) $fs[0] : null,
         'saves' => $snap->saves !== null ? (int) $snap->saves : null,
         'prev_date' => $prev ? (string) $prev->captured_date : null,
+        'streams_base' => $q['sbase'] ?? 'the last capture',
     ];
 
     // Five rings — same numbers as the Insights strip (demo uses the page's sample).
@@ -77,7 +78,7 @@ function lmeg_si_brief_data($demo = false) {
     if (function_exists('is_wp_error') && is_wp_error($ov)) $ov = null;
     $rings_raw = null;
     $demo_raw  = ['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41];
-    $d['rings'] = $demo ? lmeg_si_fan_rings_shape($demo_raw) : lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $rings_raw);
+    $d['rings'] = $demo ? lmeg_si_fan_rings_shape($demo_raw) : lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp, 'listeners_base' => $q['sbase'] ?? 'the last capture'], $rings_raw);
     // Stage ladder — same inputs as the Insights card.
     $d['stage'] = function_exists('lmeg_si_stage')
         ? lmeg_si_stage($demo ? $demo_raw : (is_array($rings_raw) ? $rings_raw : []), lmeg_si_stage_extra($snap, $ov, ['streams' => $sp], $demo))
@@ -268,7 +269,7 @@ function lmeg_si_brief_html($d) {
       <?php else : ?>
       <div style="font-family:<?php echo $F; ?>;font-size:44px;line-height:1.05;font-weight:800;color:<?php echo $TEXT; ?>;margin:8px 0 2px;"><?php echo $n($k['streams']); ?></div>
       <div style="font-family:<?php echo $F; ?>;font-size:14px;color:#C9CCD6;margin-bottom:10px;">streams in the last 28 days</div>
-      <div><?php echo $chip($k['streams_pct'], 'vs the 28 days before'); ?></div>
+      <div><?php echo $chip($k['streams_pct'], 'vs ' . ($k['streams_base'] ?? 'the last capture')); ?></div>
       <?php endif; ?>
 
       <?php $sv = $d['series']['streams']; $sd = $d['series']['dates']; $cnt = count($sv); if ($cnt >= 5) : $smx = max(1, max($sv)); $BH = 60; ?>
