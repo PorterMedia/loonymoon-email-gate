@@ -366,6 +366,7 @@ function lmeg_release_public_url($rel) {
  *   link     — true/false: the "Release page →" link in full mode (default true)
  *   arrows   — "sides" (centred left/right, default) or "top" (beside the heading)
  *   heading  — set to "none" to hide the heading row entirely
+ *   loop     — true/false: infinite wrap-around in both directions (default true)
  * ------------------------------------------------------------------------- */
 add_shortcode('fanloop_releases', 'lmeg_shortcode_releases');
 add_shortcode('fanloop_carousel', 'lmeg_shortcode_releases');
@@ -412,7 +413,7 @@ function lmeg_release_link_buttons($r) {
 function lmeg_shortcode_releases($atts = []) {
     $atts = shortcode_atts([
         'limit' => 12, 'heading' => '', 'info' => 'basic', 'desktop' => 5, 'mobile' => 2,
-        'date' => 'true', 'icons' => 'colour', 'card' => 'true', 'link' => 'true', 'arrows' => 'sides',
+        'date' => 'true', 'icons' => 'colour', 'card' => 'true', 'link' => 'true', 'arrows' => 'sides', 'loop' => 'true',
     ], $atts, 'fanloop_releases');
     $on   = function ($v) { return !in_array(strtolower(trim((string) $v)), ['0', 'false', 'no', 'off', 'none', 'hide'], true); };
     $full = strtolower(trim((string) $atts['info'])) === 'full';
@@ -433,6 +434,7 @@ function lmeg_shortcode_releases($atts = []) {
          ORDER BY COALESCE(release_at, created_at) DESC LIMIT %d", max(1, (int) $atts['limit'])
     ));
     if (!$rows) return '';
+    $loop = $on($atts['loop']) && count($rows) > 1;
 
     static $n = 0; $n++; $id = 'lmeg-rc-' . $n;
     static $css_done = false;
@@ -476,7 +478,7 @@ function lmeg_shortcode_releases($atts = []) {
       @media(max-width:640px){.lmeg-rc{--rc-gap:12px;}.lmeg-rc__item{width:calc((100% - (var(--rc-m) - 1) * var(--rc-gap)) / var(--rc-m));}.lmeg-rc--sides .lmeg-rc__body{padding:0 16px;}.lmeg-rc--sides .lmeg-rc__btn{width:34px;height:34px;}}
     </style>
     <?php endif; ?>
-    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'; ?>" id="<?php echo esc_attr($id); ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;">
+    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'; ?>" id="<?php echo esc_attr($id); ?>" data-loop="<?php echo $loop ? '1' : '0'; ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;">
         <?php if ($show_head || !$sides) : ?>
         <div class="lmeg-rc__head">
             <h3><?php echo $show_head ? esc_html($heading !== '' ? $heading : 'Releases') : ''; ?></h3>
@@ -523,9 +525,31 @@ function lmeg_shortcode_releases($atts = []) {
         var root=document.getElementById('<?php echo esc_js($id); ?>'); if(!root)return;
         var track=root.querySelector('.lmeg-rc__track');
         var btns=root.querySelectorAll('.lmeg-rc__btn');
-        function step(){ var it=track.querySelector('.lmeg-rc__item'); return it ? it.getBoundingClientRect().width + 16 : Math.max(track.clientWidth*0.8, 206); }
-        btns.forEach(function(b){ b.addEventListener('click',function(){ track.scrollBy({left:step()*parseInt(b.getAttribute('data-dir'),10),behavior:'smooth'}); }); });
-        function sync(){ var s=track.scrollLeft, max=track.scrollWidth-track.clientWidth-2;
+        var loop=root.getAttribute('data-loop')==='1';
+        var items=Array.prototype.slice.call(track.children);
+        var realStart=0, setW=0, normalize=null;
+        function gap(){ return parseFloat(getComputedStyle(track).columnGap||getComputedStyle(track).gap)||16; }
+        function step(){ var it=track.querySelector('.lmeg-rc__item'); return it ? it.getBoundingClientRect().width + gap() : Math.max(track.clientWidth*0.8, 206); }
+        function jump(x){ var sb=track.style.scrollBehavior; track.style.scrollBehavior='auto'; track.scrollLeft=x; track.style.scrollBehavior=sb; }
+        if(loop && items.length>1){
+            // Infinite: a full copy of the row on each side; when the user scrolls
+            // into a copy we jump (instantly, no animation) to the same spot in the real row.
+            var before=document.createDocumentFragment(), after=document.createDocumentFragment();
+            items.forEach(function(it){ var c=it.cloneNode(true); c.setAttribute('aria-hidden','true'); c.setAttribute('data-clone','1'); after.appendChild(c); });
+            items.forEach(function(it){ var c=it.cloneNode(true); c.setAttribute('aria-hidden','true'); c.setAttribute('data-clone','1'); before.appendChild(c); });
+            track.insertBefore(before, track.firstChild); track.appendChild(after);
+            var measure=function(){ var tr=track.getBoundingClientRect(); var r0=items[0].getBoundingClientRect(); realStart=r0.left - tr.left + track.scrollLeft; setW=track.children[items.length*2].getBoundingClientRect().left - r0.left; };
+            normalize=function(){ var s=track.scrollLeft; if(s < realStart - 1){ jump(s+setW); } else if(s >= realStart + setW - 1){ jump(s-setW); } };
+            measure(); jump(realStart);
+            if('onscrollend' in window){ track.addEventListener('scrollend', normalize); }
+            else { var t=null; track.addEventListener('scroll', function(){ clearTimeout(t); t=setTimeout(normalize,90); }, {passive:true}); }
+            window.addEventListener('resize', function(){ var idx=Math.round((track.scrollLeft-realStart)/step()); measure(); jump(realStart+idx*step()); });
+        }
+        // Arrows move by logical position (not relative scrollBy) so rapid clicks queue up instead of being swallowed mid-animation.
+        var pos=0, settle=null;
+        function posFromScroll(){ pos=Math.round((track.scrollLeft-realStart)/step()); }
+        btns.forEach(function(b){ b.addEventListener('click',function(){ if(normalize){ normalize(); } if(settle===null) posFromScroll(); pos+=parseInt(b.getAttribute('data-dir'),10); if(!loop) pos=Math.max(0,pos); clearTimeout(settle); settle=setTimeout(function(){ settle=null; },600); track.scrollTo({left:realStart+pos*step(),behavior:'smooth'}); }); });
+        function sync(){ if(settle===null) posFromScroll(); if(loop) return; var s=track.scrollLeft, max=track.scrollWidth-track.clientWidth-2;
             btns.forEach(function(b){ var d=parseInt(b.getAttribute('data-dir'),10); b.disabled = d<0 ? s<=2 : s>=max; }); }
         track.addEventListener('scroll',sync,{passive:true}); window.addEventListener('resize',sync); sync();
     })();
