@@ -102,6 +102,14 @@ function lmeg_ai_context() {
         }
     }
 
+    // Fanloop ladder (stage.php): stage, gates with distance + pace, conversion,
+    // send rhythm and the one move — so the coach answers from the same ladder
+    // the artist sees. Works with or without Spotify for Artists.
+    if (function_exists('lmeg_si_stage_compute') && function_exists('lmeg_si_stage_ai_summary')) {
+        $lc = lmeg_si_stage_compute(false);
+        if ($lc && !empty($lc['stage'])) { $ls = lmeg_si_stage_ai_summary($lc['stage']); if ($ls) $ctx[] = $ls; }
+    }
+
     return implode("\n", $ctx);
 }
 
@@ -270,6 +278,7 @@ function lmeg_admin_ai() {
     $ready = lmeg_ai_configured();
     $nonce = wp_create_nonce('lmeg_ai');
     $suggestions = [
+        'What stage am I at on the ladder, and what is the one thing to do this week?',
         'How is my list growing and where are most of my fans?',
         'Which broadcast performed best and why?',
         'How do my drops and broadcasts impact Spotify?',

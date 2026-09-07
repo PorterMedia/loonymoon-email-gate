@@ -631,6 +631,43 @@ function lmeg_si_stage_digest_html($st) {
     return $h;
 }
 
+/**
+ * The ladder as a compact paragraph for the Ask AI context: stage + score,
+ * what has passed, every gate of the next stage with value/target/distance/
+ * pace, the conversion between rings, send rhythm, and the one move. Pure.
+ */
+function lmeg_si_stage_ai_summary($st) {
+    if (!$st || empty($st['stages'])) return '';
+    $stage = (int) $st['stage']; $next = $st['next']; $b = $st['bottleneck'];
+    $out = 'Fanloop ladder (7 stages, sequential): stage ' . $stage . ' of 7 "' . $st['name'] . '" (' . (int) $st['score'] . '/100).';
+    $passed = [];
+    foreach ($st['stages'] as $s) { if ($s['n'] > $stage) break; foreach ($s['gates'] as $g) $passed[] = strtolower($g['label']) . ' ' . $g['value']; }
+    if ($passed) $out .= ' Passed: ' . implode('; ', $passed) . '.';
+    if ($next) {
+        $needs = [];
+        foreach ($next['gates'] as $g) {
+            $line = strtolower($g['label']) . ' ' . $g['value'] . ' (needs ' . $g['target'] . ($g['pass'] ? ', passed' : '') . ')';
+            if (!$g['pass']) {
+                $extra = array_filter([$g['need_label'] ?? '', $g['rate_label'] ?? '', $g['eta_label'] ?? '']);
+                if ($extra) $line .= ' — ' . implode(', ', $extra);
+            }
+            $needs[] = $line;
+        }
+        $out .= ' Next: stage ' . (int) $next['n'] . ' "' . $next['name'] . '" needs ' . implode('; ', $needs) . '.';
+    } else {
+        $out .= ' Top of the ladder: every gate passes.';
+    }
+    $r = $st['ratios'] ?? [];
+    $pf = function ($k) { return $k === null ? 'unknown' : rtrim(rtrim(number_format((float) $k, $k < 1 ? 2 : 1), '0'), '.') . '%'; };
+    $out .= ' Conversion: ' . $pf($r['fol_pct'] ?? null) . ' of monthly listeners follow on Spotify, ' . $pf($r['list_pct'] ?? null) . ' are on the list, ' . $pf($r['cust_pct'] ?? null) . ' of the list have bought.';
+    if (!empty($st['rhythm']['label'])) $out .= ' Send rhythm: ' . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ', last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '') . '.';
+    if ($next && $b) {
+        $acts = array_map(function ($a) { return $a['label']; }, array_slice((array) $b['actions'], 0, 3));
+        $out .= ' The single best move this week: ' . strtolower($b['label']) . (!empty($b['alt']) ? ' (' . $b['alt'] . ')' : '') . ($acts ? ' — Fanloop tools: ' . implode(', ', $acts) : '') . '.';
+    }
+    return $out;
+}
+
 /** Plain-text line for the brief's text alternative. */
 function lmeg_si_stage_text($st) {
     if (!$st) return '';
