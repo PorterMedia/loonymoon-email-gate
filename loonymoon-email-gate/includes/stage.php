@@ -335,17 +335,25 @@ function lmeg_si_stage_log_get() {
 }
 
 function lmeg_si_stage_log_entry($st, $captured = '') {
-    $lp = $st['ratios']['list_pct'] ?? null;
+    $lp = $st['ratios']['list_pct'] ?? null; $in = $st['inputs'] ?? [];
+    $iv = function ($k) use ($in) { return (isset($in[$k]) && $in[$k] !== null) ? (int) $in[$k] : null; };
     return ['stage' => (int) $st['stage'], 'score' => (int) $st['score'], 'gate' => (string) ($st['bottleneck']['key'] ?? ''),
-            'list_pct' => $lp !== null ? round((float) $lp, 2) : null, 'captured' => (string) $captured];
+            'list_pct' => $lp !== null ? round((float) $lp, 2) : null, 'captured' => (string) $captured,
+            // the six gate inputs, so each one gets a trend line as the log grows
+            'in' => ['l' => $iv('listeners'), 'f' => $iv('sp_followers'), 'ls' => $iv('list'), 'c' => $iv('customers'), 'm' => $iv('members'), 's' => $iv('sends_30d')]];
 }
 
-/** Write today's reading unless one exists. Returns true when written. */
+/** Write today's reading unless one exists (a pre-v3.237 reading without inputs is enriched in place). Returns true when written. */
 function lmeg_si_stage_log_record($st, $date = null, $captured = '') {
     if (!$st) return false;
     $date = $date ?: current_time('Y-m-d');
     $log = lmeg_si_stage_log_get();
-    if (isset($log[$date])) return false;
+    if (isset($log[$date])) {
+        if (isset($log[$date]['in'])) return false;
+        $log[$date]['in'] = lmeg_si_stage_log_entry($st, $captured)['in'];
+        update_option('lmeg_stage_log', $log, false);
+        return true;
+    }
     $log[$date] = lmeg_si_stage_log_entry($st, $captured);
     ksort($log);
     if (count($log) > 400) $log = array_slice($log, -400, null, true);
@@ -357,8 +365,39 @@ function lmeg_si_stage_log_record($st, $date = null, $captured = '') {
 function lmeg_si_stage_log_due() {
     $now = current_time('timestamp');
     if ((int) date('G', $now) < (int) apply_filters('lmeg_brief_earliest_hour', 9)) return false;
-    $log = get_option('lmeg_stage_log', []);
-    return !(is_array($log) && isset($log[date('Y-m-d', $now)]));
+    $log = get_option('lmeg_stage_log', []); $today = date('Y-m-d', $now);
+    return !(is_array($log) && isset($log[$today]) && isset($log[$today]['in']));
+}
+
+/**
+ * Per-input series from the log (oldest → newest, last $days readings that
+ * carry inputs): key => [ints]. Only keys with ≥3 points. Keys: l listeners,
+ * f Spotify followers, ls list, c customers, m members, s sends in 30 days.
+ */
+function lmeg_si_stage_trends($log, $days = 30) {
+    $out = [];
+    foreach (array_slice((array) $log, -$days, null, true) as $e) {
+        if (empty($e['in']) || !is_array($e['in'])) continue;
+        foreach ($e['in'] as $k => $v) { if ($v === null) continue; $out[$k][] = (int) $v; }
+    }
+    foreach ($out as $k => $vals) if (count($vals) < 3) unset($out[$k]);
+    return $out;
+}
+
+/** Min–max scaled sparkline (a flat series sits mid-height); green up, red down, muted flat. '' with <3 points. Pure. */
+function lmeg_si_stage_spark($vals, $w = 84, $h = 22) {
+    $vals = array_values(array_map('intval', (array) $vals)); $n = count($vals);
+    if ($n < 3) return '';
+    $mn = min($vals); $mx = max($vals); $range = max(1, $mx - $mn);
+    $p = 3; $iw = $w - 2 * $p; $ih = $h - 2 * $p;
+    $f = function ($v) { return number_format((float) $v, 1, '.', ''); };
+    $pts = [];
+    foreach ($vals as $i => $v) $pts[] = $f($p + $i * $iw / ($n - 1)) . ',' . $f($mx === $mn ? $p + $ih / 2 : $p + (1 - ($v - $mn) / $range) * $ih);
+    $d = end($vals) - $vals[0]; $color = $d > 0 ? '#34D399' : ($d < 0 ? '#F87171' : '#8B90A0');
+    list($lx, $ly) = explode(',', end($pts));
+    return '<svg class="lmeg-spark" viewBox="0 0 ' . (int) $w . ' ' . (int) $h . '" width="' . (int) $w . '" height="' . (int) $h . '" style="display:block;overflow:visible;" aria-hidden="true">'
+         . '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="' . $color . '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>'
+         . '<circle cx="' . $lx . '" cy="' . $ly . '" r="2.2" fill="' . $color . '"/></svg>';
 }
 
 /**
@@ -404,7 +443,8 @@ function lmeg_si_stage_demo_log() {
         if ($k < 22)      { $stage = 5; $score = 71; $gate = 'members'; }
         elseif ($k < 46)  { $stage = 6; $score = 86; $gate = 'members_100'; }
         else              { $stage = 6; $score = 90; $gate = 'members_100'; }
-        $log[$d] = ['stage' => $stage, 'score' => $score, 'gate' => $gate, 'list_pct' => round(2.1 + $k * 0.024, 2), 'captured' => $d];
+        $log[$d] = ['stage' => $stage, 'score' => $score, 'gate' => $gate, 'list_pct' => round(2.1 + $k * 0.024, 2), 'captured' => $d,
+                    'in' => ['l' => 58000 + $k * 57 + (($k * 37) % 11) * 40, 'f' => 7900 + (int) round($k * 5.8), 'ls' => 1800 + (int) round($k * 5.8), 'c' => 260 + (int) round($k * 0.9), 'm' => 30 + (int) round($k * 0.19), 's' => $k < 22 ? 1 : 2]];
     }
     return $log;
 }
@@ -910,24 +950,27 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     <div style="<?php echo $lbl; ?>">The numbers behind the gates</div>
                     <div style="font-size:11px;color:#8B90A0;"><?php echo $captured ? ($demo ? 'Sample data' : 'Spotify captured ' . esc_html($captured)) : 'No Spotify for Artists snapshot yet'; ?></div>
                 </div>
-                <?php $rows = [
-                    ['Monthly listeners', $nf($in['listeners'] ?? null), 'Spotify for Artists, last 28 days'],
-                    ['Spotify followers', $nf($in['sp_followers'] ?? null), 'Spotify for Artists daily series, else the public Spotify API'],
-                    ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . ')'],
-                    ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store'],
-                    ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers'],
-                    ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify'],
-                    ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list' . (!empty($st['rhythm']['label']) ? ' · ' . $st['rhythm']['label'] : '') . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . ($st['rhythm']['days_since'] === 0 ? 'today' : ($st['rhythm']['days_since'] === 1 ? 'yesterday' : (int) $st['rhythm']['days_since'] . ' days ago')) : '')],
-                    ['28-day streams vs the 28 before', $sf($in['streams_pct'] ?? null), 'Spotify for Artists, this capture vs the previous one'],
+                <?php $tr = lmeg_si_stage_trends($log); $n_read = 0; foreach ((array) $log as $e_) if (!empty($e_['in'])) $n_read++;
+                $rows = [
+                    ['Monthly listeners', $nf($in['listeners'] ?? null), 'Spotify for Artists, last 28 days', 'l'],
+                    ['Spotify followers', $nf($in['sp_followers'] ?? null), 'Spotify for Artists daily series, else the public Spotify API', 'f'],
+                    ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . ')', 'ls'],
+                    ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store', 'c'],
+                    ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers', 'm'],
+                    ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify', null],
+                    ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list' . (!empty($st['rhythm']['label']) ? ' · ' . $st['rhythm']['label'] : '') . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . ($st['rhythm']['days_since'] === 0 ? 'today' : ($st['rhythm']['days_since'] === 1 ? 'yesterday' : (int) $st['rhythm']['days_since'] . ' days ago')) : ''), 's'],
+                    ['28-day streams vs the 28 before', $sf($in['streams_pct'] ?? null), 'Spotify for Artists, this capture vs the previous one', null],
                 ]; ?>
                 <div style="display:flex;flex-direction:column;">
-                    <?php foreach ($rows as $i => $r) : ?>
-                    <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:7px 0;<?php echo $i ? 'border-top:1px solid rgba(255,255,255,.06);' : ''; ?>">
-                        <div><div style="font-size:13px;color:#F4F5F7;font-weight:600;"><?php echo esc_html($r[0]); ?></div><div style="font-size:11px;color:#8B90A0;"><?php echo esc_html($r[2]); ?></div></div>
-                        <div style="font:700 15px/1 var(--lmegA-font,inherit);color:<?php echo $r[1] === '—' ? '#8B90A0' : '#F4F5F7'; ?>;white-space:nowrap;"><?php echo esc_html($r[1]); ?></div>
+                    <?php foreach ($rows as $i => $r) : $sk = $r[3]; $spark = ($sk && !empty($tr[$sk])) ? lmeg_si_stage_spark($tr[$sk]) : ''; ?>
+                    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 0;<?php echo $i ? 'border-top:1px solid rgba(255,255,255,.06);' : ''; ?>">
+                        <div style="flex:1 1 auto;min-width:0;"><div style="font-size:13px;color:#F4F5F7;font-weight:600;"><?php echo esc_html($r[0]); ?></div><div style="font-size:11px;color:#8B90A0;"><?php echo esc_html($r[2]); ?></div></div>
+                        <?php if ($spark) : ?><div style="flex:0 0 auto;" title="Last <?php echo count($tr[$sk]); ?> readings"><?php echo $spark; ?></div><?php endif; ?>
+                        <div style="flex:0 0 auto;font:700 15px/1 var(--lmegA-font,inherit);color:<?php echo $r[1] === '—' ? '#8B90A0' : '#F4F5F7'; ?>;white-space:nowrap;"><?php echo esc_html($r[1]); ?></div>
                     </div>
                     <?php endforeach; ?>
                 </div>
+                <?php if (!$tr) : ?><div style="font-size:11px;color:#8B90A0;margin-top:6px;">Trend lines appear after three daily readings<?php echo $n_read ? ' (' . $n_read . ' so far)' : ''; ?>.</div><?php endif; ?>
                 <div style="font-size:11px;color:#8B90A0;margin-top:8px;line-height:1.5;">A ring that isn’t connected shows “—” and fails its gate rather than pretending to pass. Ladder progress = stages passed plus the share of the next stage’s gates you’ve cleared, out of 7.</div>
             </div>
         </div>
