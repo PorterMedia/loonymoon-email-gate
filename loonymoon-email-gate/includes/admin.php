@@ -6181,12 +6181,17 @@ function lmeg_admin_overview() {
             if (!empty($ovq['prev']) && (($ovch['monthly_listeners'] ?? null) === null || $ovch['monthly_listeners'] === '') && function_exists('lmeg_si_pct_change')) {
                 $pc = lmeg_si_pct_change($ovq['snap']->monthly_listeners ?? null, $ovq['prev']->monthly_listeners ?? null); if ($pc !== null) $ovch['monthly_listeners'] = round($pc, 1);
             }
-            $ovr = lmeg_si_fan_rings_data($ovq['snap'], is_array($sp) ? $sp : null, is_array($sp), $ovch);
+            $ov_raw = null;
+            $ovr = lmeg_si_fan_rings_data($ovq['snap'], is_array($sp) ? $sp : null, is_array($sp), $ovch, $ov_raw);
+            // The ladder strip — same raw counts as the rings, no second query.
+            $ov_stage = (function_exists('lmeg_si_stage') && function_exists('lmeg_si_render_stage_strip') && is_array($ov_raw))
+                ? lmeg_si_stage($ov_raw, lmeg_si_stage_extra($ovq['snap'], is_array($sp) ? $sp : null, ['streams' => $ovq['sp'] ?? null])) : null;
             $ovf = array_slice(lmeg_si_analyze($ovq['ctx']), 0, 2);
             $ftok = ['opportunity' => ['#7C6CF6', 'Opportunity'], 'watch' => ['#F59E0B', 'Watch'], 'insight' => ['#E58BBD', 'Insight'], 'strength' => ['#34D399', 'Strength']];
         ?>
         <div style="max-width:1040px;margin:0 0 16px;">
             <?php echo lmeg_si_render_fan_rings($ovr, $sit['card'], $sit['lbl']); ?>
+            <?php if ($ov_stage) echo lmeg_si_render_stage_strip($ov_stage, $sit['card'], $sit['lbl']); ?>
             <?php if ($ovf) : ?>
             <div style="<?php echo $sit['card']; ?>margin-bottom:14px;">
                 <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">

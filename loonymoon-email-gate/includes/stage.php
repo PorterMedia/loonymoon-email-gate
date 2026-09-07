@@ -536,6 +536,44 @@ function lmeg_si_render_stage($st, $card, $lbl) {
     <?php return ob_get_clean();
 }
 
+/**
+ * One-row strip for the Overview: stage pill + progress bar + this week's one
+ * thing (with distance) + a link to the Ladder page. Pure apart from admin_url.
+ */
+function lmeg_si_render_stage_strip($st, $card, $lbl) {
+    if (!$st) return '';
+    $stage = (int) $st['stage']; $b = $st['bottleneck']; $next = $st['next'];
+    ob_start(); ?>
+        <div style="<?php echo $card; ?>margin-bottom:14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+            <div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#D05FA2,#7C6CF6);color:#fff;font:800 15px/1 var(--lmegA-font,inherit);box-shadow:0 6px 18px rgba(124,108,246,.35);"><?php echo $stage; ?></span>
+                <div>
+                    <div style="<?php echo $lbl; ?>">Your stage · of 7</div>
+                    <div style="font:800 16px/1.2 var(--lmegA-font,inherit);color:#F4F5F7;margin-top:3px;"><?php echo esc_html($st['name']); ?></div>
+                </div>
+            </div>
+            <div style="flex:1 1 220px;min-width:180px;">
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:#C9CCD6;"><span>Ladder progress</span><span style="color:#F4F5F7;font-weight:700;"><?php echo (int) $st['score']; ?>/100</span></div>
+                <div style="position:relative;height:6px;border-radius:4px;background:rgba(255,255,255,.08);margin-top:4px;overflow:hidden;">
+                    <div style="height:100%;width:<?php echo (int) $st['score']; ?>%;background:linear-gradient(90deg,#D05FA2,#7C6CF6);border-radius:4px;"></div>
+                    <?php for ($i = 1; $i <= 6; $i++) : ?><div style="position:absolute;top:0;bottom:0;left:<?php echo round($i / 7 * 100, 2); ?>%;width:2px;background:rgba(14,15,22,.85);"></div><?php endfor; ?>
+                </div>
+            </div>
+            <div style="flex:2 1 300px;min-width:240px;font-size:13px;color:#C9CCD6;line-height:1.45;">
+                <?php if ($next && $b) : ?>
+                    <span style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;">This week</span>
+                    <span style="color:#F4F5F7;font-weight:700;"><?php echo esc_html($b['label']); ?></span>
+                    <?php if (!empty($b['need_label'])) : ?><span style="color:#F4F5F7;">· <?php echo esc_html($b['need_label']); ?></span><?php endif; ?>
+                    <?php if (!empty($b['eta_label'])) : ?><span style="color:#8B90A0;">· <?php echo esc_html($b['eta_label']); ?></span><?php endif; ?>
+                <?php else : ?>
+                    <span style="color:#34D399;font-weight:700;">Top of the ladder</span> — keep the rhythm: a release, a send and a drop every cycle.
+                <?php endif; ?>
+            </div>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-ladder')); ?>" style="flex:0 0 auto;font-size:12px;font-weight:700;color:#E58BBD !important;text-decoration:none;white-space:nowrap;">Open the Ladder →</a>
+        </div>
+    <?php return ob_get_clean();
+}
+
 /** Plain-text line for the brief's text alternative. */
 function lmeg_si_stage_text($st) {
     if (!$st) return '';
