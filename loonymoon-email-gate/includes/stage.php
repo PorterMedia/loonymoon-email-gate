@@ -537,6 +537,38 @@ function lmeg_si_render_stage($st, $card, $lbl) {
 }
 
 /**
+ * Ladder-driven "Needs attention" items for the Overview (≤2). Pure.
+ *  - warn: the list has gone quiet — sends gate failing with the last send 30+
+ *    days ago (or never), only once there is a list worth talking to (stage ≥ 3).
+ *  - info: almost there — the bottleneck gate is ≥85% of the way, with the
+ *    distance and pace, linking to its first action.
+ * Item shape matches lmeg_overview_attention(): tone, label, detail, href.
+ */
+function lmeg_si_stage_attention($st) {
+    if (!$st || empty($st['stages'])) return [];
+    $items = [];
+    $stage = (int) $st['stage']; $r = $st['rhythm'] ?? []; $b = $st['bottleneck'] ?? null; $next = $st['next'] ?? null;
+    $sends = null;
+    foreach ($st['stages'][4]['gates'] ?? [] as $g) if ($g['key'] === 'sends') $sends = $g;
+    if ($stage >= 3 && $sends && !$sends['pass']) {
+        $since = $r['days_since'] ?? null;
+        if ($since === null || $since >= 30) {
+            $items[] = ['tone' => 'warn',
+                'label'  => $since === null ? 'Your list has never heard from you' : 'Your list hasn’t heard from you in ' . (int) $since . ' days',
+                'detail' => 'One send clears a stage-4 gate · ' . number_format((int) ($st['inputs']['list'] ?? 0)) . ' fans waiting',
+                'href'   => lmeg_si_stage_action_href($sends['actions'][0] ?? ['page' => 'lmeg-compose'])];
+        }
+    }
+    if ($next && $b && $b['progress'] !== null && $b['progress'] >= 85 && !empty($b['need_label']) && $b['key'] !== 'sends') {
+        $detail = 'Stage ' . (int) $next['n'] . ' · ' . $next['name'];
+        if (!empty($b['eta_label']) && $b['eta_days'] !== null && $b['eta_days'] <= 90) $detail .= ' · ' . $b['eta_label'];
+        $items[] = ['tone' => 'info', 'label' => 'Almost there: ' . $b['need_label'] . ' (' . $b['label'] . ')', 'detail' => $detail,
+                    'href' => lmeg_si_stage_action_href($b['actions'][0] ?? ['page' => 'lmeg-ladder'])];
+    }
+    return $items;
+}
+
+/**
  * One-row strip for the Overview: stage pill + progress bar + this week's one
  * thing (with distance) + a link to the Ladder page. Pure apart from admin_url.
  */

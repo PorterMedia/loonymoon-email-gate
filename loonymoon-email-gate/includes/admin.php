@@ -6067,6 +6067,13 @@ function lmeg_overview_attention() {
         }
     }
 
+    // Ladder nudges: a list that has gone quiet (30+ days without a send) and
+    // "almost there" when the next gate is within reach (light data path).
+    if (function_exists('lmeg_si_stage_compute') && function_exists('lmeg_si_stage_attention')) {
+        $lc = lmeg_si_stage_compute(false);
+        if ($lc && !empty($lc['stage'])) foreach (lmeg_si_stage_attention($lc['stage']) as $it) $items[] = $it;
+    }
+
     return $items;
 }
 
