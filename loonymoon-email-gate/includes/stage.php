@@ -747,7 +747,14 @@ function lmeg_si_stage_ai_summary($st) {
 function lmeg_si_stage_text($st) {
     if (!$st) return '';
     $t = 'STAGE ' . (int) $st['stage'] . ' OF 7 · ' . $st['name'] . ' (' . (int) $st['score'] . '/100)';
-    if ($st['bottleneck']) $t .= "\nHolding you back: " . $st['bottleneck']['label'] . ' — ' . $st['bottleneck']['value'] . ', needs ' . $st['bottleneck']['target'];
+    $b = $st['bottleneck'];
+    if ($b) {
+        $t .= "\nHolding you back: " . $b['label'] . ' — ' . $b['value'] . ', needs ' . $b['target'];
+        $bits = array_filter([$b['need_label'] ?? '', $b['rate_label'] ?? '', $b['eta_label'] ?? '']);
+        if ($bits) $t .= "\n" . implode(' · ', $bits);
+        if (!empty($b['alt'])) $t .= "\n" . $b['alt'];
+    }
+    if (!empty($st['rhythm']['label'])) $t .= "\nSends: " . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '');
     return $t;
 }
 
