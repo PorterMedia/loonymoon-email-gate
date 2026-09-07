@@ -487,9 +487,14 @@ function lmeg_si_stage_text($st) {
  * ------------------------------------------------------------------------- */
 
 // The page shipped as lmeg-stage for one release; keep those links working.
-add_action('admin_init', 'lmeg_ladder_legacy_redirect');
+// WP checks page access in wp-admin/includes/menu.php BEFORE admin_init, so an
+// unregistered slug dies with "not allowed" first — this hook fires right
+// before that die, with no output sent yet.
+add_action('admin_page_access_denied', 'lmeg_ladder_legacy_redirect');
+add_action('admin_menu', 'lmeg_ladder_legacy_redirect', 999);
 function lmeg_ladder_legacy_redirect() {
     if (!is_admin() || (isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '') !== 'lmeg-stage') return;
+    if (!current_user_can('manage_options')) return;
     wp_safe_redirect(admin_url('admin.php?page=lmeg-ladder' . (!empty($_GET['demo']) ? '&demo=1' : '')));
     exit;
 }
