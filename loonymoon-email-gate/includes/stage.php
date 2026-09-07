@@ -61,6 +61,7 @@ function lmeg_si_stage($n, $x = []) {
                         : ($current ? 'About one send every ' . $send_gap . ' days over the last 90 days'
                         : ($sends90 === 1 ? 'One send in the last 90 days' : number_format($sends90) . ' sends in the last 90 days')))];
     $superfans = (isset($n['superfans']) && $n['superfans'] !== null && $n['superfans'] !== '') ? max(0, (int) $n['superfans']) : null;
+    $bounced_n = $v('list_bounced');   // read early: $v is a closure and must not be shadowed later
     $pct = function ($a, $b) { return ($a !== null && $b !== null && $b > 0) ? $a / $b * 100 : null; };
     $list_pct = $pct($list, $listeners); $cust_pct = $pct($customers, $list); $fol_pct = $pct($sp, $listeners);
     $nf = function ($k) { return $k === null ? '—' : (function_exists('number_format_i18n') ? number_format_i18n((int) $k) : number_format((int) $k)); };
@@ -149,7 +150,7 @@ function lmeg_si_stage($n, $x = []) {
         $meta = lmeg_si_stage_source_meta(); $bits = [];
         $fams = array_filter($sources, function ($v, $k) { return $k !== 'total' && (int) $v > 0; }, ARRAY_FILTER_USE_BOTH);
         arsort($fams);
-        foreach ($fams as $k => $v) { if (isset($meta[$k])) { $bits[] = $meta[$k][0] . ' ' . number_format((int) $v); if ($meta[$k][1] && $k !== 'imports') $rank[$meta[$k][1]] = (int) $v; } }
+        foreach ($fams as $k => $cnt) { if (isset($meta[$k])) { $bits[] = $meta[$k][0] . ' ' . number_format((int) $cnt); if ($meta[$k][1] && $k !== 'imports') $rank[$meta[$k][1]] = (int) $cnt; } }   // never reuse $v: it is the input-reader closure
         $evidence = $bits ? implode(' · ', $bits) : '';
     }
     // Release pages with no signup on them — the most concrete list move there is.
@@ -207,7 +208,8 @@ function lmeg_si_stage($n, $x = []) {
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
                      'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new,
-                     'list_new_organic' => $list_org, 'list_imported_28d' => $imported],
+                     'list_new_organic' => $list_org, 'list_imported_28d' => $imported,
+                     'list_bounced' => $bounced_n, 'list_reachable' => ($list !== null && $bounced_n !== null) ? max(0, $list - $bounced_n) : null],
     ];
 }
 
@@ -326,7 +328,7 @@ function lmeg_si_stage_demo_raw($snap, $mlp = null) {
     return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
             'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41,
             'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184],
-            'release_gaps' => ['total' => 5, 'no_drop' => 2]];
+            'release_gaps' => ['total' => 5, 'no_drop' => 2], 'list_bounced' => 14];
 }
 
 /**
@@ -403,6 +405,15 @@ function lmeg_si_stage_release_gaps() {
     return ['total' => (int) $row['total'], 'no_drop' => (int) $row['no_drop']];
 }
 
+/** Subscribed fans whose email is bouncing — on the list, but not reachable. null when unreadable. */
+function lmeg_si_stage_list_bounced() {
+    global $wpdb;
+    if (empty($wpdb) || !defined('LMEG_TABLE')) return null;
+    $v = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}" . LMEG_TABLE . " WHERE email_status = 'bounced' AND unsubscribed_at IS NULL");
+    if ($wpdb->last_error) { $wpdb->last_error = ''; return null; }
+    return $v === null ? null : (int) $v;
+}
+
 /** Family key → label + the admin page whose action pill it ranks. */
 function lmeg_si_stage_source_meta() {
     return ['drops' => ['Drops', 'lmeg-drops'], 'contests' => ['Contests', 'lmeg-contests'], 'presaves' => ['Pre-saves', 'lmeg-presaves'],
@@ -447,6 +458,8 @@ function lmeg_si_stage_compute($demo = false) {
         }
         $gaps = lmeg_si_stage_release_gaps();
         if ($gaps !== null) $raw['release_gaps'] = $gaps;
+        $bounced = lmeg_si_stage_list_bounced();
+        if ($bounced !== null) $raw['list_bounced'] = $bounced;
     }
     // Paces the rings can't give (members, listeners) — and any missing one —
     // come from the history log's own readings once they span a week.
@@ -758,7 +771,7 @@ function lmeg_si_stage_attention($st) {
         if ($since === null || $since >= 30) {
             $items[] = ['tone' => 'warn',
                 'label'  => $since === null ? 'Your list has never heard from you' : 'Your list hasn’t heard from you in ' . (int) $since . ' days',
-                'detail' => 'One send clears a stage-4 gate · ' . number_format((int) ($st['inputs']['list'] ?? 0)) . ' fans waiting',
+                'detail' => 'One send clears a stage-4 gate · ' . number_format((int) (($st['inputs']['list_reachable'] ?? null) !== null ? $st['inputs']['list_reachable'] : ($st['inputs']['list'] ?? 0))) . ' fans waiting',
                 'href'   => lmeg_si_stage_action_href($sends['actions'][0] ?? ['page' => 'lmeg-compose'])];
         }
     }
@@ -1141,7 +1154,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                 $rows = [
                     ['Monthly listeners', $nf($in['listeners'] ?? null), 'Spotify for Artists, last 28 days', 'l'],
                     ['Spotify followers', $nf($in['sp_followers'] ?? null), 'Spotify for Artists daily series, else the public Spotify API', 'f'],
-                    ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . ')', 'ls'],
+                    ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . (($in['list_bounced'] ?? null) !== null && (int) $in['list_bounced'] > 0 ? ' · ' . $nf($in['list_bounced']) . ' bouncing, ' . $nf($in['list_reachable']) . ' reachable' : '') . ')', 'ls'],
                     ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store', 'c'],
                     ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers', 'm'],
                     ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify', null],
