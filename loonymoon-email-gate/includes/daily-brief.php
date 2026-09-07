@@ -353,7 +353,8 @@ function lmeg_si_brief_html($d) {
     if ($nx && $b) {
         $inner .= '<div style="margin-top:8px;background-color:#0E0F16;border:1px solid ' . $BORDER . ';border-radius:10px;padding:10px 12px;font-family:' . $F . ';">'
             . '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;margin-bottom:4px;">What’s holding you at stage ' . $stage . '</div>'
-            . '<div style="font-size:13px;font-weight:700;color:' . $TEXT . ';">' . esc_html($b['label']) . ': <span style="color:' . $RED . ';">' . esc_html($b['value']) . '</span> <span style="color:' . $MUTED . ';font-weight:500;">· needs ' . esc_html($b['target']) . '</span></div>';
+            . '<div style="font-size:13px;font-weight:700;color:' . $TEXT . ';">' . esc_html($b['label']) . ': <span style="color:' . $RED . ';">' . esc_html($b['value']) . '</span> <span style="color:' . $MUTED . ';font-weight:500;">· needs ' . esc_html($b['target']) . '</span></div>'
+            . (!empty($b['need_label']) ? '<div style="font-size:12px;color:' . $TEXT . ';margin-top:3px;"><strong>' . esc_html($b['need_label']) . '</strong>' . (!empty($b['rate_label']) ? ' <span style="color:' . $MUTED . ';">· ' . esc_html($b['rate_label']) . (!empty($b['eta_label']) ? ' · ' . esc_html($b['eta_label']) : '') . '</span>' : '') . '</div>' : '');
         foreach ($nx['gates'] as $g) $inner .= '<div style="font-size:12px;color:' . ($g['pass'] ? $SOFT : $TEXT) . ';margin-top:3px;"><span style="color:' . ($g['pass'] ? $GREEN : $RED) . ';font-weight:800;">' . ($g['pass'] ? '✓' : '○') . '</span> ' . esc_html($g['label']) . ' <span style="color:' . $MUTED . ';">— ' . esc_html($g['value']) . ', needs ' . esc_html($g['target']) . '</span></div>';
         foreach (array_slice($b['actions'], 0, 3) as $a) $inner .= $pill($a['label'], $a['href']);
         $inner .= '</div>';

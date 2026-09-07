@@ -89,6 +89,49 @@ function lmeg_si_stage($n, $x = []) {
             $gate('streams_hold', '28-day streams holding or growing', $spct !== null && $spct >= 0, $sf($spct) . ' vs the 28 days before', '0% or better', 'listeners', [$go('lmeg-releases', 'Plan a release')]),
         ],
     ];
+    // Distance + pace: for every gate that isn't passing, how many are still
+    // needed (using whichever alternative target is closer), what the last 28
+    // days added, and the ETA at that pace — honest, never a promise.
+    $list_new = $v('list_new'); $cust_new = $v('customers_new');
+    $spd = (isset($n['sp_followers_delta']) && $n['sp_followers_delta'] !== null && $n['sp_followers_delta'] !== '') ? (int) $n['sp_followers_delta'] : null;
+    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd) {
+        $c = function ($x) { return $x === null ? null : (int) ceil($x); };
+        switch ($key) {
+            case 'releases':     return [$releases === null ? null : max(0, 1 - $releases), 'release', null, null];
+            case 'listeners':    return [$listeners === null ? null : max(0, 1000 - $listeners), 'listener', null, null];
+            case 'followers':    return [$sp === null ? null : max(0, 100 - $sp), 'follower', $spd, null];
+            case 'list':         return [$list === null ? null : max(0, 100 - $list), 'fan', $list_new, null];
+            case 'list_share':
+                if ($list === null) return [null, 'fan', $list_new, null];
+                $a = max(0, 1000 - $list); $b = $listeners === null ? null : max(0, $c($listeners * 0.01) - $list);
+                $need = ($b === null || $a <= $b) ? $a : $b;
+                $alt = ($b === null) ? null : (($a <= $b) ? '1,000 fans is closer than 1% of your listeners (' . number_format($c($listeners * 0.01)) . ')' : '1% of your listeners (' . number_format($c($listeners * 0.01)) . ') is closer than 1,000');
+                return [$need, 'fan', $list_new, $alt];
+            case 'sends':        return [$sends30 === null ? null : max(0, 1 - $sends30), 'send', null, null];
+            case 'customers':    return [$customers === null ? null : max(0, 10 - $customers), 'buyer', $cust_new, null];
+            case 'cust_share':   return [($customers === null || $list === null) ? null : max(0, $c($list * 0.02) - $customers), 'buyer', $cust_new, null];
+            case 'members':      return [$members === null ? null : max(0, 10 - $members), 'member', null, null];
+            case 'members_100':  return [$members === null ? null : max(0, 100 - $members), 'member', null, null];
+            case 'list_share_5': return [($list === null || $listeners === null) ? null : max(0, $c($listeners * 0.05) - $list), 'fan', $list_new, null];
+        }
+        return [null, '', null, null];
+    };
+    foreach ($S as $i => $gates) {
+        foreach ($gates as $j => $g) {
+            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null];
+            if ($g['pass']) continue;
+            list($need, $unit, $rate, $alt) = $dist($g['key']);
+            if ($need === null || $need <= 0) continue;
+            $plural = function ($k, $u) { return number_format($k) . ' ' . $u . ($k === 1 ? '' : 's'); };
+            $S[$i][$j]['need_n'] = $need; $S[$i][$j]['need_label'] = '+' . $plural($need, $unit) . ' to go'; $S[$i][$j]['alt'] = $alt;
+            if ($rate !== null) {
+                $S[$i][$j]['rate_n'] = $rate;
+                $S[$i][$j]['rate_label'] = ($rate > 0 ? '+' : ($rate < 0 ? '−' : '')) . number_format(abs($rate)) . ' in the last 28 days';
+                if ($rate > 0) { $days = (int) ceil($need / ($rate / 28)); $S[$i][$j]['eta_days'] = $days; $S[$i][$j]['eta_label'] = lmeg_si_stage_eta_label($days) . ' at that pace'; }
+                else $S[$i][$j]['eta_label'] = 'no growth at the current pace';
+            }
+        }
+    }
     $stages = [];
     foreach ($S as $i => $gates) {
         $ok = true; foreach ($gates as $g) { if (!$g['pass']) { $ok = false; break; } }
@@ -109,6 +152,27 @@ function lmeg_si_stage($n, $x = []) {
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $v('superfans'), 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct],
     ];
+}
+
+/** "about 3 weeks" / "about 5 months" / "about 17 years" — a rounded, human ETA. Pure. */
+function lmeg_si_stage_eta_label($days) {
+    $days = (int) $days;
+    if ($days <= 1)   return 'about a day';
+    if ($days < 14)   return 'about ' . $days . ' days';
+    if ($days < 60)   return 'about ' . max(2, (int) round($days / 7)) . ' weeks';
+    if ($days < 730)  return 'about ' . max(2, (int) round($days / 30.4)) . ' months';
+    return 'about ' . max(2, (int) round($days / 365)) . ' years';
+}
+
+/** Latest reading vs the one before it: score/list-share/stage deltas + the two dates. null with <2 readings. */
+function lmeg_si_stage_log_delta($log) {
+    if (!is_array($log) || count($log) < 2) return null;
+    $dates = array_keys($log); $n = count($dates);
+    $a = $log[$dates[$n - 2]]; $b = $log[$dates[$n - 1]];
+    $lp = (isset($a['list_pct'], $b['list_pct']) && $a['list_pct'] !== null && $b['list_pct'] !== null) ? round((float) $b['list_pct'] - (float) $a['list_pct'], 2) : null;
+    return ['from' => $dates[$n - 2], 'to' => $dates[$n - 1], 'score' => (int) $b['score'] - (int) $a['score'], 'stage' => (int) $b['stage'] - (int) $a['stage'],
+            'list_pct' => $lp, 'list_pct_from' => $a['list_pct'] ?? null, 'list_pct_to' => $b['list_pct'] ?? null,
+            'gap_days' => max(1, (int) round((strtotime($dates[$n - 1]) - strtotime($dates[$n - 2])) / 86400))];
 }
 
 /** Per-stage playbook: why the stage matters + the Fanloop moves that get you through it. */
@@ -420,10 +484,18 @@ function lmeg_si_stage_gate_row($g, $compact = false) {
     }
     $right = $pass ? '<span style="font-size:11px;font-weight:700;color:#34D399;white-space:nowrap;">Passed</span>'
            : ($p !== null ? '<span style="font-size:11px;font-weight:700;color:#F4F5F7;white-space:nowrap;">' . (int) $p . '%</span>' : '<span style="font-size:11px;font-weight:700;color:#F87171;white-space:nowrap;">Not yet</span>');
+    // distance + pace line (only for gates with a countable target)
+    $pace = '';
+    if (!$compact && !$pass && !empty($g['need_label'])) {
+        $bits = ['<span style="color:#F4F5F7;font-weight:700;">' . esc_html($g['need_label']) . '</span>'];
+        if (!empty($g['rate_label'])) $bits[] = esc_html($g['rate_label']);
+        if (!empty($g['eta_label']))  $bits[] = '<span style="color:' . (($g['eta_days'] !== null && $g['eta_days'] <= 90) ? '#34D399' : '#E58BBD') . ';">' . esc_html($g['eta_label']) . '</span>';
+        $pace = '<div style="font-size:11px;color:#8B90A0;margin-top:5px;">' . implode(' · ', $bits) . (!empty($g['alt']) ? ' <span title="' . esc_attr($g['alt']) . '" style="cursor:help;">ⓘ</span>' : '') . '</div>';
+    }
     return '<div style="display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;' . ($compact ? '' : 'padding:8px 0;border-top:1px solid rgba(255,255,255,.06);') . '">'
          . '<span style="color:' . ($pass ? '#34D399' : '#F87171') . ';font-weight:800;font-size:13px;">' . ($pass ? '✓' : '○') . '</span>'
          . '<div><div style="font-size:' . ($compact ? '12' : '13') . 'px;color:' . ($pass && !$compact ? '#C9CCD6' : '#F4F5F7') . ';font-weight:' . ($compact ? '500' : '600') . ';">' . esc_html($g['label'])
-         . ' <span style="color:#8B90A0;font-weight:500;">— ' . esc_html($g['value']) . ($pass ? '' : ', needs ' . esc_html($g['target'])) . '</span></div>' . $bar . '</div>'
+         . ' <span style="color:#8B90A0;font-weight:500;">— ' . esc_html($g['value']) . ($pass ? '' : ', needs ' . esc_html($g['target'])) . '</span></div>' . $bar . $pace . '</div>'
          . $right . '</div>';
 }
 
@@ -479,6 +551,13 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                         <?php if ($b['progress'] !== null) : ?>
                         <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:10px;overflow:hidden;"><div style="height:100%;width:<?php echo max(2, (int) $b['progress']); ?>%;border-radius:3px;background:linear-gradient(90deg,#D05FA2,#7C6CF6);"></div></div>
                         <div style="font-size:11px;color:#8B90A0;margin-top:4px;"><?php echo (int) $b['progress']; ?>% of the way there</div>
+                        <?php endif; ?>
+                        <?php if (!empty($b['need_label'])) : ?>
+                        <div style="margin-top:10px;padding:9px 11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:9px;font-size:12px;color:#C9CCD6;line-height:1.5;">
+                            <span style="color:#F4F5F7;font-weight:800;font-size:14px;"><?php echo esc_html($b['need_label']); ?></span>
+                            <?php if (!empty($b['alt'])) : ?><span style="color:#8B90A0;"> · <?php echo esc_html($b['alt']); ?></span><?php endif; ?>
+                            <?php if (!empty($b['rate_label'])) : ?><br><?php echo esc_html($b['rate_label']); ?><?php if (!empty($b['eta_label'])) : ?> · <span style="color:<?php echo ($b['eta_days'] !== null && $b['eta_days'] <= 90) ? '#34D399' : '#E58BBD'; ?>;font-weight:700;"><?php echo esc_html($b['eta_label']); ?></span><?php endif; ?><?php if ($b['eta_days'] === null || $b['eta_days'] > 90) : ?> <span style="color:#8B90A0;">— the moves below change the pace.</span><?php endif; ?><?php endif; ?>
+                        </div>
                         <?php endif; ?>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;">
                             <?php $k = 0; foreach ($b['actions'] as $a) echo $pill($a, $k++ === 0); ?>
@@ -561,6 +640,13 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     <?php elseif ($run) : ?>Today is the first reading at stage <?php echo $stage; ?>.
                     <?php else : ?>Tracking started <?php echo esc_html(date_i18n('M j', strtotime(array_key_first($log)))); ?>.<?php endif; ?>
                 </div>
+                <?php $dl = lmeg_si_stage_log_delta($log); if ($dl) : ?>
+                <div style="font-size:12px;color:#C9CCD6;margin-top:6px;">Since <?php echo esc_html(date_i18n('M j', strtotime($dl['from']))); ?>:
+                    <span style="color:<?php echo $dl['score'] > 0 ? '#34D399' : ($dl['score'] < 0 ? '#F87171' : '#F4F5F7'); ?>;font-weight:700;"><?php echo $dl['score'] > 0 ? '+' : ''; ?><?php echo (int) $dl['score']; ?> progress</span>
+                    <?php if ($dl['list_pct'] !== null) : ?> · list share <?php echo esc_html(rtrim(rtrim(number_format((float) $dl['list_pct_from'], 2), '0'), '.')); ?>% → <span style="color:<?php echo $dl['list_pct'] > 0 ? '#34D399' : ($dl['list_pct'] < 0 ? '#F87171' : '#F4F5F7'); ?>;font-weight:700;"><?php echo esc_html(rtrim(rtrim(number_format((float) $dl['list_pct_to'], 2), '0'), '.')); ?>%</span><?php endif; ?>
+                    <?php if ($dl['stage'] !== 0) : ?> · <span style="color:<?php echo $dl['stage'] > 0 ? '#34D399' : '#F87171'; ?>;font-weight:700;">stage <?php echo $dl['stage'] > 0 ? 'up' : 'down'; ?></span><?php endif; ?>
+                </div>
+                <?php endif; ?>
                 <?php if ($changes) : ?>
                 <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
                     <?php foreach ($changes as $ch) : $up = $ch['to'] > $ch['from']; ?>
