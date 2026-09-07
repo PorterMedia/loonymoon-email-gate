@@ -1490,7 +1490,7 @@ function lmeg_admin_spotify_insights_render() {
         $r_ = lmeg_send_daily_brief($to_);
         $si_notice = is_wp_error($r_)
             ? '<div class="notice notice-error is-dismissible"><p>Couldn’t send the brief: ' . esc_html($r_->get_error_message()) . '</p></div>'
-            : '<div class="notice notice-success is-dismissible"><p>Today’s brief sent to <strong>' . esc_html($to_) . '</strong>. It goes out every morning once the Spotify for Artists pull lands — address + on/off in Settings → Daily brief.</p></div>';
+            : '<div class="notice notice-success is-dismissible"><p>Today’s brief sent to <strong>' . esc_html($to_) . '</strong>. It goes out automatically each morning right after the 9am Spotify for Artists pull lands — address + on/off in Settings → Daily brief.</p></div>';
     }
 
     // ---- gather from both sources (each optional) ----------------------------

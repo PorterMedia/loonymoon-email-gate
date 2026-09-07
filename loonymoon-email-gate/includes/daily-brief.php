@@ -8,8 +8,8 @@
  * lift, a fresh launch and where they listen. Dark Fanloop branding, email-safe
  * (tables + inline styles, hex fallbacks under every gradient).
  *
- * Sends once per site-day, only after that day's capture has landed (the 9am
- * Spotify for Artists pull) — never a stale brief. Settings → "Daily brief"
+ * Sends once per site-day, not before 9am and only after that day's capture
+ * has landed (the 9am Spotify for Artists pull) — never a stale brief. Settings → "Daily brief"
  * toggles it and sets the address; blank falls back to the digest address,
  * then the site admin email. Insights page: "Email me today's brief" +
  * "Preview in browser" (?lmeg_brief_preview=1, &demo=1 for sample data).
@@ -471,10 +471,11 @@ function lmeg_send_daily_brief($to = null, $demo = false) {
 }
 
 /**
- * Daily tick: once per site-day, from 7am, only after that day's capture
- * landed (or by noon if yesterday's is the freshest we have — the brief then
- * carries an "Updated yesterday" chip). Silent when the snapshot is older:
- * the Insights page's red freshness banner covers that case.
+ * Daily tick: once per site-day, never before 9am site time, and ONLY once
+ * TODAY's capture has landed (the Spotify for Artists pull runs at 9am and
+ * POSTs each artist's snapshot in; the brief follows within the minute). No
+ * capture today = no brief — the Insights page's red freshness banner covers
+ * a failed pull, and a stale brief would be worse than none.
  */
 add_action('lmeg_broadcast_tick', 'lmeg_daily_brief_tick', 71);
 function lmeg_daily_brief_tick() {
@@ -482,13 +483,11 @@ function lmeg_daily_brief_tick() {
     if (isset($s['brief_enabled']) && empty($s['brief_enabled'])) return;
     if (!function_exists('lmeg_s4a_latest')) return;
     $now = current_time('timestamp'); $today = date('Y-m-d', $now); $hour = (int) date('G', $now);
-    if ($hour < 7) return;
+    $earliest = (int) apply_filters('lmeg_brief_earliest_hour', 9);
+    if ($hour < $earliest) return;
     if (get_option('lmeg_brief_last') === $today) return;
     $snap = lmeg_s4a_latest();
-    if (!$snap) return;
-    $cap = (string) $snap->captured_date;
-    $ok  = $cap === $today || ($hour >= 12 && $cap === date('Y-m-d', $now - 86400));
-    if (!$ok) return;
+    if (!$snap || (string) $snap->captured_date !== $today) return; // wait for today's pull
     update_option('lmeg_brief_last', $today, false);
     lmeg_send_daily_brief();
 }
