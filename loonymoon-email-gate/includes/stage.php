@@ -805,6 +805,7 @@ function lmeg_si_stage_digest_html($st) {
         foreach (array_slice((array) $b['actions'], 0, 2) as $a) $links[] = '<a href="' . esc_url(lmeg_si_stage_action_href($a)) . '">' . esc_html($a['label']) . '</a>';
         $links[] = '<a href="' . esc_url(admin_url('admin.php?page=lmeg-ladder')) . '">See the full ladder →</a>';
         $h .= '<p style="margin:0;">This week, to reach stage ' . (int) $next['n'] . ': <strong>' . esc_html($b['label']) . '</strong> — ' . implode(' · ', $bits) . '. <span style="white-space:nowrap;">' . implode(' · ', $links) . '</span></p>';
+        if (!empty($b['evidence'])) $h .= '<p style="margin:6px 0 0;font-size:13px;">Where the last 28 days of signups came from: ' . esc_html($b['evidence']) . (!empty($b['ranked']) ? ' — the tool that brought the most is listed first above.' : '') . '</p>';
     } else {
         $h .= '<p style="margin:0;">Top of the ladder — members, list and streams are all growing together. Keep the rhythm: a release, a send and a drop every cycle. <a href="' . esc_url(admin_url('admin.php?page=lmeg-ladder')) . '">See the full ladder →</a></p>';
     }
@@ -841,6 +842,7 @@ function lmeg_si_stage_ai_summary($st) {
     $pf = function ($k) { return $k === null ? 'unknown' : rtrim(rtrim(number_format((float) $k, $k < 1 ? 2 : 1), '0'), '.') . '%'; };
     $out .= ' Conversion: ' . $pf($r['fol_pct'] ?? null) . ' of monthly listeners follow on Spotify, ' . $pf($r['list_pct'] ?? null) . ' are on the list, ' . $pf($r['cust_pct'] ?? null) . ' of the list have bought.';
     if (!empty($st['rhythm']['label'])) $out .= ' Send rhythm: ' . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ', last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '') . '.';
+    if (!empty($st['signup_evidence'])) $out .= ' New fans in the last 28 days by source: ' . $st['signup_evidence'] . ' (imports are migrated lists, not growth).';
     if ($next && $b) {
         $acts = array_map(function ($a) { return $a['label']; }, array_slice((array) $b['actions'], 0, 3));
         $out .= ' The single best move this week: ' . strtolower($b['label']) . (!empty($b['alt']) ? ' (' . $b['alt'] . ')' : '') . ($acts ? ' — Fanloop tools: ' . implode(', ', $acts) : '') . '.';
