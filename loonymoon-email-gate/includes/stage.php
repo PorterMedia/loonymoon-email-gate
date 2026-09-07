@@ -46,6 +46,18 @@ function lmeg_si_stage($n, $x = []) {
     $releases = (isset($x['releases']) && $x['releases'] !== null) ? (int) $x['releases'] : null;
     $sends30  = (isset($x['sends_30d']) && $x['sends_30d'] !== null) ? (int) $x['sends_30d'] : null;
     $spct     = (isset($x['streams_pct']) && $x['streams_pct'] !== null && $x['streams_pct'] !== '') ? (float) $x['streams_pct'] : null;
+    // Send rhythm (optional inputs): when was the last send, how many in 90
+    // days, the average gap between send days. $x['today'] pins the clock for tests.
+    $sends90   = (isset($x['sends_90d']) && $x['sends_90d'] !== null) ? (int) $x['sends_90d'] : null;
+    $last_send = !empty($x['last_send']) ? (string) $x['last_send'] : null;
+    $send_gap  = (isset($x['send_gap']) && $x['send_gap'] !== null) ? (int) $x['send_gap'] : null;
+    $today_s   = !empty($x['today']) ? (string) $x['today'] : (function_exists('current_time') ? current_time('Y-m-d') : date('Y-m-d'));
+    $since     = $last_send ? max(0, (int) floor((strtotime($today_s) - strtotime($last_send)) / 86400)) : null;
+    $rhythm = ['last_send' => $last_send, 'days_since' => $since, 'sends_90d' => $sends90, 'gap' => $send_gap,
+               'label' => $sends90 === null ? '' : ($sends90 === 0 ? 'No sends in the last 90 days'
+                        : ($send_gap ? 'About one send every ' . $send_gap . ' days over the last 90 days'
+                        : ($sends90 === 1 ? 'One send in the last 90 days' : $sends90 . ' sends on one day in the last 90 days')))];
+    $superfans = (isset($n['superfans']) && $n['superfans'] !== null && $n['superfans'] !== '') ? max(0, (int) $n['superfans']) : null;
     $pct = function ($a, $b) { return ($a !== null && $b !== null && $b > 0) ? $a / $b * 100 : null; };
     $list_pct = $pct($list, $listeners); $cust_pct = $pct($customers, $list); $fol_pct = $pct($sp, $listeners);
     $nf = function ($k) { return $k === null ? '—' : (function_exists('number_format_i18n') ? number_format_i18n((int) $k) : number_format((int) $k)); };
@@ -74,7 +86,9 @@ function lmeg_si_stage($n, $x = []) {
         ],
         4 => [
             $gate('list_share', 'Listeners who join your list', $list_pct !== null && ($list_pct >= 1 || $list >= 1000), $pf($list_pct) . ' of monthly listeners', '1% (or 1,000 fans)', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest')], max((float) $pr($list_pct, 1), (float) $pr($list, 1000))),
-            $gate('sends', 'Sent to your list in the last 30 days', $sends30 !== null && $sends30 >= 1, $nf($sends30) . ' send' . ($sends30 === 1 ? '' : 's'), '1 or more', 'list', [$go('lmeg-compose', 'Send to your list')], $pr($sends30, 1)),
+            $gate('sends', 'Sent to your list in the last 30 days', $sends30 !== null && $sends30 >= 1,
+                  $nf($sends30) . ' send' . ($sends30 === 1 ? '' : 's') . (($sends30 === 0 && $since !== null) ? ' · last one ' . ($since === 0 ? 'today' : ($since === 1 ? 'yesterday' : $since . ' days ago')) : ''),
+                  '1 or more', 'list', [$go('lmeg-compose', 'Send to your list')], $pr($sends30, 1)),
         ],
         5 => [
             $gate('customers', 'Fans who have bought', $customers !== null && $customers >= 10, $nf($customers), '10+', 'customers', [$go('lmeg-products', 'Add something to sell'), $compose('lift', 'Tell your superfans', 'superfans')], $pr($customers, 10)),
@@ -94,7 +108,8 @@ function lmeg_si_stage($n, $x = []) {
     // days added, and the ETA at that pace — honest, never a promise.
     $list_new = $v('list_new'); $cust_new = $v('customers_new');
     $spd = (isset($n['sp_followers_delta']) && $n['sp_followers_delta'] !== null && $n['sp_followers_delta'] !== '') ? (int) $n['sp_followers_delta'] : null;
-    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd) {
+    $pool = ($superfans !== null && $superfans > 0) ? number_format($superfans) . ' superfan' . ($superfans === 1 ? '' : 's') . ' to ask first' : null;
+    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd, $pool, $rhythm) {
         $c = function ($x) { return $x === null ? null : (int) ceil($x); };
         switch ($key) {
             case 'releases':     return [$releases === null ? null : max(0, 1 - $releases), 'release', null, null];
@@ -107,11 +122,11 @@ function lmeg_si_stage($n, $x = []) {
                 $need = ($b === null || $a <= $b) ? $a : $b;
                 $alt = ($b === null) ? null : (($a <= $b) ? '1,000 fans is closer than 1% of your listeners (' . number_format($c($listeners * 0.01)) . ')' : '1% of your listeners (' . number_format($c($listeners * 0.01)) . ') is closer than 1,000');
                 return [$need, 'fan', $list_new, $alt];
-            case 'sends':        return [$sends30 === null ? null : max(0, 1 - $sends30), 'send', null, null];
-            case 'customers':    return [$customers === null ? null : max(0, 10 - $customers), 'buyer', $cust_new, null];
-            case 'cust_share':   return [($customers === null || $list === null) ? null : max(0, $c($list * 0.02) - $customers), 'buyer', $cust_new, null];
-            case 'members':      return [$members === null ? null : max(0, 10 - $members), 'member', null, null];
-            case 'members_100':  return [$members === null ? null : max(0, 100 - $members), 'member', null, null];
+            case 'sends':        return [$sends30 === null ? null : max(0, 1 - $sends30), 'send', null, $rhythm['label'] !== '' ? $rhythm['label'] : null];
+            case 'customers':    return [$customers === null ? null : max(0, 10 - $customers), 'buyer', $cust_new, $pool];
+            case 'cust_share':   return [($customers === null || $list === null) ? null : max(0, $c($list * 0.02) - $customers), 'buyer', $cust_new, $pool];
+            case 'members':      return [$members === null ? null : max(0, 10 - $members), 'member', null, $pool];
+            case 'members_100':  return [$members === null ? null : max(0, 100 - $members), 'member', null, $pool];
             case 'list_share_5': return [($list === null || $listeners === null) ? null : max(0, $c($listeners * 0.05) - $list), 'fan', $list_new, null];
         }
         return [null, '', null, null];
@@ -148,6 +163,7 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
+        'rhythm' => $rhythm,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $v('superfans'), 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct],
@@ -370,15 +386,25 @@ function lmeg_si_stage_extra($snap, $ov, $changes = [], $demo = false) {
     $releases = null;
     if (is_array($ov) && !empty($ov['releases'])) $releases = count((array) $ov['releases']);
     elseif ($snap && !empty($snap->top_songs)) { $songs = json_decode((string) $snap->top_songs, true); if (is_array($songs) && $songs) $releases = 1; }
-    $sends = null;
-    if ($demo) {
-        $sends = 0; $cut = strtotime(current_time('Y-m-d')) - 30 * 86400;
-        if (function_exists('lmeg_si_demo_marks')) foreach (lmeg_si_demo_marks() as $m) { if (strtotime($m['d']) >= $cut) $sends += (int) $m['n']; }
-    } elseif (function_exists('lmeg_si_campaign_marks')) {
-        $sends = 0; foreach ((array) lmeg_si_campaign_marks(30) as $m) $sends += (int) ($m['n'] ?? 0);
+    // Send rhythm from one year of completed broadcasts: counts in the last 30
+    // and 90 days, the most recent send day, and the average gap between send
+    // days over the last 90 (null with fewer than two send days).
+    $sends = null; $sends90 = null; $last = null; $gap = null; $marks = null;
+    if ($demo) { $marks = function_exists('lmeg_si_demo_marks') ? lmeg_si_demo_marks() : []; }
+    elseif (function_exists('lmeg_si_campaign_marks')) { $marks = (array) lmeg_si_campaign_marks(365); }
+    if ($marks !== null) {
+        $today = strtotime(current_time('Y-m-d')); $sends = 0; $sends90 = 0; $days90 = [];
+        foreach ($marks as $m) {
+            $t = strtotime((string) $m['d']); if (!$t) continue;
+            $age = (int) floor(($today - $t) / 86400); $k = max(1, (int) ($m['n'] ?? 1));
+            if ($age <= 30) $sends += $k;
+            if ($age <= 90) { $sends90 += $k; $days90[] = $t; }
+            if ($last === null || $t > $last) $last = $t;
+        }
+        if (count($days90) >= 2) { sort($days90); $gap = (int) round((end($days90) - $days90[0]) / 86400 / (count($days90) - 1)); }
     }
     $sp = (isset($changes['streams']) && $changes['streams'] !== null && $changes['streams'] !== '') ? (float) $changes['streams'] : null;
-    return ['releases' => $releases, 'sends_30d' => $sends, 'streams_pct' => $sp];
+    return ['releases' => $releases, 'sends_30d' => $sends, 'streams_pct' => $sp, 'sends_90d' => $sends90, 'last_send' => $last ? date('Y-m-d', $last) : null, 'send_gap' => $gap];
 }
 
 /** Resolve a gate action to an href (admin page or external). */
@@ -396,7 +422,7 @@ function lmeg_si_render_stage($st, $card, $lbl) {
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px;">
                 <div style="<?php echo $lbl; ?>">Your stage · Fanloop ladder</div>
                 <div style="font-size:11px;color:#8B90A0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">Seven steps from first release to a fan base that pays every month — each one gated on your real numbers.
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-stage' . (!empty($_GET['demo']) ? '&demo=1' : ''))); ?>" style="font-size:11px;font-weight:700;color:#E58BBD !important;text-decoration:none;white-space:nowrap;">Open the full ladder →</a>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-ladder' . (!empty($_GET['demo']) ? '&demo=1' : ''))); ?>" style="font-size:11px;font-weight:700;color:#E58BBD !important;text-decoration:none;white-space:nowrap;">Open the full ladder →</a>
                 </div>
             </div>
             <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;">
@@ -450,11 +476,20 @@ function lmeg_si_stage_text($st) {
 }
 
 /* ---------------------------------------------------------------------------
- * The Stage page (Fanloop → Social → Stage): the whole ladder, one row per
+ * The Ladder page (Fanloop → Social → Ladder; slug lmeg-ladder, the original
+ * lmeg-stage redirects): the whole ladder, one row per
  * stage with every gate's value, target and progress; the playbook for the
  * stage you're working on; how each number is measured; and the day-by-day
  * history. ?demo=1 previews with sample data. Registered in lmeg_admin_menu.
  * ------------------------------------------------------------------------- */
+
+// The page shipped as lmeg-stage for one release; keep those links working.
+add_action('admin_init', 'lmeg_ladder_legacy_redirect');
+function lmeg_ladder_legacy_redirect() {
+    if (!is_admin() || (isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '') !== 'lmeg-stage') return;
+    wp_safe_redirect(admin_url('admin.php?page=lmeg-ladder' . (!empty($_GET['demo']) ? '&demo=1' : '')));
+    exit;
+}
 
 function lmeg_admin_stage() {
     if (!current_user_can('manage_options')) return;
@@ -469,7 +504,7 @@ function lmeg_admin_stage() {
         $log = $demo ? lmeg_si_stage_demo_log() : lmeg_si_stage_log_get();
         echo lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo);
     } catch (\Throwable $e) {
-        echo '<div class="notice notice-error" style="max-width:1040px;margin:14px 0;"><p><strong>The Stage page hit an error while rendering.</strong><br>'
+        echo '<div class="notice notice-error" style="max-width:1040px;margin:14px 0;"><p><strong>The Ladder page hit an error while rendering.</strong><br>'
            . '<code>' . esc_html(get_class($e) . ': ' . $e->getMessage()) . '</code><br><span style="opacity:.75;">' . esc_html(basename($e->getFile()) . ':' . $e->getLine()) . '</span></p></div>';
     }
 }
@@ -518,11 +553,11 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
     $done_gates = $next ? count($next['gates']) - count($st['failing']) : 0;
     ob_start(); ?>
     <div class="wrap lmeg-admin">
-        <h1>Fanloop — Stage</h1>
-        <?php if ($demo && function_exists('lmeg_demo_banner')) echo lmeg_demo_banner('lmeg-stage'); ?>
+        <h1>Fanloop — Ladder</h1>
+        <?php if ($demo && function_exists('lmeg_demo_banner')) echo lmeg_demo_banner('lmeg-ladder'); ?>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 4px;">
             <a class="button" href="<?php echo esc_url($ins_url); ?>">← Spotify Insights</a>
-            <?php if (!$demo && function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo str_replace(['<p>', '</p>'], '', lmeg_demo_preview_button('lmeg-stage')); ?>
+            <?php if (!$demo && function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo str_replace(['<p>', '</p>'], '', lmeg_demo_preview_button('lmeg-ladder')); ?>
         </div>
 
         <!-- HERO: where you are + the one thing to work on ------------------->
@@ -673,7 +708,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store'],
                     ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers'],
                     ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify'],
-                    ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list'],
+                    ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list' . (!empty($st['rhythm']['label']) ? ' · ' . $st['rhythm']['label'] : '') . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . ($st['rhythm']['days_since'] === 0 ? 'today' : ($st['rhythm']['days_since'] === 1 ? 'yesterday' : (int) $st['rhythm']['days_since'] . ' days ago')) : '')],
                     ['28-day streams vs the 28 before', $sf($in['streams_pct'] ?? null), 'Spotify for Artists, this capture vs the previous one'],
                 ]; ?>
                 <div style="display:flex;flex-direction:column;">

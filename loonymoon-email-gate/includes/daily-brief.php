@@ -142,7 +142,7 @@ function lmeg_si_brief_data($demo = false) {
     $d['countries'] = $cty;
 
     $d['url_insights'] = admin_url('admin.php?page=lmeg-spotify-insights');
-    $d['url_stage']    = admin_url('admin.php?page=lmeg-stage');
+    $d['url_stage']    = admin_url('admin.php?page=lmeg-ladder');
     $d['url_settings'] = admin_url('admin.php?page=lmeg-settings');
     return $d;
 }
