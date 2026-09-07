@@ -297,7 +297,7 @@ function lmeg_si_fan_rings_shape($n) {
  * across Shopify-attributed orders + the native store. Every source is
  * optional — a missing one yields null (rendered as "—"), never a fatal.
  */
-function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = []) {
+function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = [], &$raw = null) {
     global $wpdb;
     $n = ['listeners' => null, 'sp_followers' => null, 'ig_followers' => null, 'list' => null, 'superfans' => null, 'customers' => null, 'members' => null];
     if ($snap) {
@@ -341,6 +341,7 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = []) {
         if ($wpdb->last_error) { $wpdb->last_error = ''; $nb = null; }
         $n['customers_new'] = $nb !== null ? (int) $nb : null;
     }
+    $raw = $n; // the unshaped counts, for the stage ladder
     return lmeg_si_fan_rings_shape($n);
 }
 
@@ -1751,8 +1752,16 @@ function lmeg_admin_spotify_insights_render() {
         <?php endif; ?>
 
         <!-- FAN RINGS — listeners → followers → list → customers → members ---->
-<?php $rings = $demo ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
-                     : lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : []); echo lmeg_si_render_fan_rings($rings, $card, $lbl); ?>
+<?php $rings_raw = null;
+      $demo_raw = ['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $changes['monthly_listeners'] ?? null, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41];
+      $rings = $demo ? lmeg_si_fan_rings_shape($demo_raw)
+                     : lmeg_si_fan_rings_data($snap, $ov, $has_api, isset($changes) ? (array) $changes : [], $rings_raw); echo lmeg_si_render_fan_rings($rings, $card, $lbl);
+      // The stage ladder sits right under the rings it is computed from.
+      if (function_exists('lmeg_si_stage') && function_exists('lmeg_si_render_stage')) {
+          $stage_raw = $demo ? $demo_raw : (is_array($rings_raw) ? $rings_raw : []);
+          $stage = lmeg_si_stage($stage_raw, lmeg_si_stage_extra($snap, $ov, isset($changes) ? (array) $changes : [], $demo));
+          echo lmeg_si_render_stage($stage, $card, $lbl);
+      } ?>
 
         <!-- INSIGHT CALLOUTS ------------------------------------------------->
         <?php

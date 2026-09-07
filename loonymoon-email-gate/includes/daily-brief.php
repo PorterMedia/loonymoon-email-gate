@@ -75,9 +75,17 @@ function lmeg_si_brief_data($demo = false) {
     $ov = $demo ? (function_exists('lmeg_si_demo_overview') ? lmeg_si_demo_overview($sel) : null)
                 : (function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null);
     if (function_exists('is_wp_error') && is_wp_error($ov)) $ov = null;
-    $d['rings'] = $demo
-        ? lmeg_si_fan_rings_shape(['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41])
-        : lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp]);
+    $rings_raw = null;
+    $demo_raw  = ['listeners' => (int) $snap->monthly_listeners, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310, 'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41];
+    $d['rings'] = $demo ? lmeg_si_fan_rings_shape($demo_raw) : lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $rings_raw);
+    // Stage ladder — same inputs as the Insights card.
+    $d['stage'] = function_exists('lmeg_si_stage')
+        ? lmeg_si_stage($demo ? $demo_raw : (is_array($rings_raw) ? $rings_raw : []), lmeg_si_stage_extra($snap, $ov, ['streams' => $sp], $demo))
+        : null;
+    if ($d['stage'] && !empty($d['stage']['bottleneck'])) {
+        foreach ($d['stage']['bottleneck']['actions'] as &$a) $a['href'] = lmeg_si_stage_action_href($a);
+        unset($a);
+    }
 
     // Songs — top 5 by last-7-day streams from the real day-by-day data, else
     // the 28-day list. Each carries its own 14-day mini series.
@@ -320,6 +328,39 @@ function lmeg_si_brief_html($d) {
     echo $sec('Your fan base · five rings', $inner, 'Anonymous listeners on the left, people you can actually reach on the right — the % is each ring\'s share of the one before.');
   endif; ?>
 
+  <!-- stage ladder -->
+  <?php if (!empty($d['stage'])) : $st = $d['stage']; $stage = (int) $st['stage']; $b = $st['bottleneck']; $nx = $st['next'];
+    $inner = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        . '<td class="lmeg-col" width="42%" style="vertical-align:top;padding:0 12px 0 0;">'
+        .   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#221F3A;background-image:linear-gradient(120deg,rgba(208,95,162,.22),rgba(124,108,246,.22)),linear-gradient(160deg,' . $CARD . ',' . $CARD2 . ');border:1px solid #3A3556;border-radius:12px;"><tr><td style="padding:12px 14px;font-family:' . $F . ';">'
+        .     '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#C9CCD6;">Stage ' . $stage . ' of 7</div>'
+        .     '<div style="font-size:20px;line-height:1.15;font-weight:800;color:' . $TEXT . ';margin:5px 0 3px;">' . esc_html($st['name']) . '</div>'
+        .     '<div style="font-size:12px;line-height:1.45;color:#C9CCD6;">' . esc_html($st['blurb']) . '</div>'
+        .     '<div style="margin-top:10px;font-size:11px;color:#C9CCD6;">Ladder progress <span style="color:' . $TEXT . ';font-weight:700;">' . (int) $st['score'] . '/100</span></div>'
+        .     lmeg_si_brief_bar((int) $st['score'], $PINK, '#0E0F16', 6, 5)
+        .   '</td></tr></table>'
+        . '</td>'
+        . '<td class="lmeg-col" style="vertical-align:top;padding:0;">';
+    // the seven steps, two rows of pills
+    $inner .= '<div style="font-family:' . $F . ';line-height:2.1;">';
+    foreach ($st['stages'] as $s) {
+        $done = $s['n'] <= $stage; $cur = $s['n'] === $stage + 1;
+        $ps = $done ? 'background-color:#173A31;border:1px solid ' . $GREEN . ';color:' . $TEXT . ';' : ($cur ? 'background-color:' . $PINK . ';background-image:linear-gradient(135deg,' . $PINK . ',' . $VIOLET . ');border:1px solid #ffffff44;color:#ffffff;' : 'background-color:#0E0F16;border:1px solid ' . $BORDER . ';color:' . $MUTED . ';');
+        $inner .= '<span style="display:inline-block;' . $ps . 'border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;white-space:nowrap;">' . ($done ? '✓ ' : ($cur ? '→ ' : '')) . (int) $s['n'] . ' · ' . esc_html($s['name']) . '</span>';
+    }
+    $inner .= '</div>';
+    if ($nx && $b) {
+        $inner .= '<div style="margin-top:8px;background-color:#0E0F16;border:1px solid ' . $BORDER . ';border-radius:10px;padding:10px 12px;font-family:' . $F . ';">'
+            . '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;margin-bottom:4px;">What’s holding you at stage ' . $stage . '</div>'
+            . '<div style="font-size:13px;font-weight:700;color:' . $TEXT . ';">' . esc_html($b['label']) . ': <span style="color:' . $RED . ';">' . esc_html($b['value']) . '</span> <span style="color:' . $MUTED . ';font-weight:500;">· needs ' . esc_html($b['target']) . '</span></div>';
+        foreach ($nx['gates'] as $g) $inner .= '<div style="font-size:12px;color:' . ($g['pass'] ? $SOFT : $TEXT) . ';margin-top:3px;"><span style="color:' . ($g['pass'] ? $GREEN : $RED) . ';font-weight:800;">' . ($g['pass'] ? '✓' : '○') . '</span> ' . esc_html($g['label']) . ' <span style="color:' . $MUTED . ';">— ' . esc_html($g['value']) . ', needs ' . esc_html($g['target']) . '</span></div>';
+        foreach (array_slice($b['actions'], 0, 3) as $a) $inner .= $pill($a['label'], $a['href']);
+        $inner .= '</div>';
+    }
+    $inner .= '</td></tr></table>';
+    echo $sec('Your stage · Fanloop ladder', $inner, 'Seven steps from first release to fans who pay every month — each gated on your real numbers.');
+  endif; ?>
+
   <!-- songs -->
   <?php if (!empty($d['songs'])) :
     $inner = '';
@@ -426,6 +467,7 @@ function lmeg_si_brief_text($d) {
         $r = []; foreach ($d['rings'] as $x) $r[] = $x['label'] . ' ' . ($x['value'] === null ? '—' : $n($x['value']));
         $L[] = ''; $L[] = 'FIVE RINGS: ' . implode(' › ', $r);
     }
+    if (!empty($d['stage']) && function_exists('lmeg_si_stage_text')) { $L[] = ''; $L[] = lmeg_si_stage_text($d['stage']); }
     if (!empty($d['songs'])) {
         $L[] = ''; $L[] = 'YOUR SONGS (' . $d['songs_basis'] . ')';
         foreach ($d['songs'] as $i => $s) $L[] = ($i + 1) . '. ' . $s['title'] . ' — ' . $n($s['streams']) . ($s['wow'] !== null ? ' (' . lmeg_si_brief_pct($s['wow']) . ' wk)' : '');
