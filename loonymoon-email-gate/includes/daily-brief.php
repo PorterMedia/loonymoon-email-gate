@@ -138,6 +138,19 @@ function lmeg_si_brief_data($demo = false) {
     return $d;
 }
 
+/**
+ * Email-safe horizontal bar: a two-cell table whose first cell is $pct% wide
+ * with a bgcolor + height ATTRIBUTE (divs with widths/heights get flattened by
+ * Gmail and Outlook; table cells don't). Pure.
+ */
+function lmeg_si_brief_bar($pct, $fill, $track, $h = 6, $mt = 0) {
+    $pct = max(2, min(100, (int) $pct)); $rest = 100 - $pct;
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="' . ($mt ? 'margin-top:' . (int) $mt . 'px;' : '') . 'border-collapse:collapse;"><tr>'
+         . '<td width="' . $pct . '%" height="' . (int) $h . '" bgcolor="' . $fill . '" style="width:' . $pct . '%;height:' . (int) $h . 'px;background-color:' . $fill . ';font-size:0;line-height:0;mso-line-height-rule:exactly;border-radius:4px;">&nbsp;</td>'
+         . ($rest > 0 ? '<td width="' . $rest . '%" height="' . (int) $h . '" bgcolor="' . $track . '" style="width:' . $rest . '%;height:' . (int) $h . 'px;background-color:' . $track . ';font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>' : '')
+         . '</tr></table>';
+}
+
 /** Signed percent string: "+3.1%" / "−2%" / "0%". */
 function lmeg_si_brief_pct($v, $dp = 1) {
     if ($v === null || $v === '') return '';
@@ -215,12 +228,18 @@ function lmeg_si_brief_html($d) {
       <div><?php echo $chip($k['streams_pct'], 'vs the 28 days before'); ?></div>
       <?php endif; ?>
 
-      <?php $sv = $d['series']['streams']; $sd = $d['series']['dates']; $cnt = count($sv); if ($cnt >= 5) : $smx = max(1, max($sv)); ?>
-      <!-- 14-day bars -->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;border-collapse:separate;border-spacing:3px 0;">
+      <?php $sv = $d['series']['streams']; $sd = $d['series']['dates']; $cnt = count($sv); if ($cnt >= 5) : $smx = max(1, max($sv)); $BH = 60; ?>
+      <!-- 14-day bars: each bar is a spacer cell + a coloured cell with HTML height
+           attributes (Gmail/Outlook drop div heights and paint one solid block). -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
         <tr>
-        <?php foreach ($sv as $i => $v) : $hh = max(3, (int) round($v / $smx * 56)); $isLast = $i === $cnt - 1; ?>
-          <td valign="bottom" style="height:60px;vertical-align:bottom;" title="<?php echo $h(($sd[$i] ?? '') . ' · ' . $n($v)); ?>"><div style="height:<?php echo $hh; ?>px;line-height:<?php echo $hh; ?>px;font-size:0;border-radius:4px 4px 0 0;background-color:<?php echo $isLast ? $PINK : $GREEN; ?>;<?php echo $isLast ? '' : 'opacity:.85;'; ?>">&nbsp;</div></td>
+        <?php foreach ($sv as $i => $v) : $hh = max(3, (int) round($v / $smx * ($BH - 4))); $sp = $BH - $hh; $isLast = $i === $cnt - 1; $col = $isLast ? $PINK : '#2FBF8A'; ?>
+          <td valign="bottom" width="<?php echo (int) floor(100 / $cnt); ?>%" style="padding:0 2px;vertical-align:bottom;" title="<?php echo $h(($sd[$i] ?? '') . ' · ' . $n($v)); ?>">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" data-bar="<?php echo (int) $hh; ?>">
+              <tr><td height="<?php echo (int) $sp; ?>" style="height:<?php echo (int) $sp; ?>px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>
+              <tr><td height="<?php echo (int) $hh; ?>" bgcolor="<?php echo $col; ?>" style="height:<?php echo (int) $hh; ?>px;background-color:<?php echo $col; ?>;font-size:0;line-height:0;mso-line-height-rule:exactly;border-radius:4px 4px 0 0;">&nbsp;</td></tr>
+            </table>
+          </td>
         <?php endforeach; ?>
         </tr>
         <tr>
@@ -288,7 +307,7 @@ function lmeg_si_brief_html($d) {
             . '<td width="22" style="padding:7px 0;font-family:' . $F . ';font-size:12px;font-weight:700;color:' . $MUTED . ';vertical-align:top;">' . ($i + 1) . '</td>'
             . '<td style="padding:7px 8px 7px 0;vertical-align:top;">'
             .   '<div style="font-family:' . $F . ';font-size:14px;font-weight:600;color:' . $TEXT . ';">' . esc_html($s['title']) . '</div>'
-            .   '<div style="margin-top:5px;height:6px;background-color:#0E0F16;border-radius:4px;font-size:0;line-height:0;"><div style="height:6px;width:' . max(2, (int) $s['share']) . '%;background-color:' . $GREEN . ';background-image:linear-gradient(90deg,' . $VIOLET . ',' . $GREEN . ');border-radius:4px;font-size:0;line-height:0;">&nbsp;</div></div>'
+            .   lmeg_si_brief_bar((int) $s['share'], $GREEN, '#0E0F16', 6, 5)
             . '</td>'
             . '<td align="right" width="120" style="padding:7px 0;font-family:' . $F . ';vertical-align:top;white-space:nowrap;">'
             .   '<div style="font-size:14px;font-weight:800;color:' . $TEXT . ';">' . $n($s['streams']) . '</div>'
@@ -336,7 +355,7 @@ function lmeg_si_brief_html($d) {
         $inner .= '<tr>'
             . '<td width="26" style="padding:5px 0;font-size:15px;vertical-align:middle;">' . $c['flag'] . '</td>'
             . '<td width="150" style="padding:5px 8px 5px 0;font-family:' . $F . ';font-size:13px;font-weight:600;color:' . $TEXT . ';vertical-align:middle;white-space:nowrap;">' . esc_html($c['name']) . '</td>'
-            . '<td style="padding:5px 8px 5px 0;vertical-align:middle;"><div style="height:6px;background-color:#0E0F16;border-radius:4px;font-size:0;line-height:0;"><div style="height:6px;width:' . max(2, (int) $c['share']) . '%;background-color:' . $GREEN . ';border-radius:4px;font-size:0;line-height:0;">&nbsp;</div></div></td>'
+            . '<td style="padding:5px 8px 5px 0;vertical-align:middle;">' . lmeg_si_brief_bar((int) $c['share'], $GREEN, '#0E0F16', 6, 0) . '</td>'
             . '<td align="right" width="110" style="padding:5px 0;font-family:' . $F . ';font-size:13px;font-weight:700;color:' . $TEXT . ';vertical-align:middle;white-space:nowrap;">' . $n($c['num']) . ($c['pct'] !== null ? ' <span style="font-size:11px;font-weight:500;color:' . $MUTED . ';">' . esc_html(rtrim(rtrim(number_format($c['pct'], 1), '0'), '.')) . '%</span>' : '') . '</td>'
             . '</tr>';
     }
