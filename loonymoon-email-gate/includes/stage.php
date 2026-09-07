@@ -168,9 +168,75 @@ function lmeg_si_stage($n, $x = []) {
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
         'rhythm' => $rhythm,
         // the raw inputs, for the Stage page's "how it's measured" table
-        'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $v('superfans'), 'customers' => $customers, 'members' => $members,
-                     'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct],
+        'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
+                     'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
+                     'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new],
     ];
+}
+
+/**
+ * The hops between rings — each one's conversion right now, the ladder gate
+ * that sits on it (if any) and what the destination ring added in the last 28
+ * days. Pure; built from lmeg_si_stage()'s inputs. Rows: from, to, pct,
+ * pct_label, gate (target %, stage, pass) or null, delta_label, bar (0–100).
+ */
+function lmeg_si_stage_hops($st) {
+    $in = $st['inputs'] ?? [];
+    $g = function ($k) use ($in) { return (isset($in[$k]) && $in[$k] !== null) ? (int) $in[$k] : null; };
+    $pct = function ($a, $b) { return ($a !== null && $b !== null && $b > 0) ? $a / $b * 100 : null; };
+    $pf  = function ($k) { return $k === null ? '—' : rtrim(rtrim(number_format((float) $k, $k < 1 ? 2 : 1), '0'), '.') . '%'; };
+    $dl  = function ($d, $unit) { return $d === null ? '' : (($d > 0 ? '+' : ($d < 0 ? '−' : '')) . number_format(abs((int) $d)) . ' ' . $unit . (abs((int) $d) === 1 ? '' : 's') . ' in 28 days'); };
+    $listeners = $g('listeners'); $sp = $g('sp_followers'); $list = $g('list'); $cust = $g('customers'); $mem = $g('members');
+    $stage = (int) ($st['stage'] ?? 0);
+    $rows = [];
+    // 1. listeners → Spotify followers (no gate — a health read)
+    $p = $pct($sp, $listeners);
+    $rows[] = ['key' => 'followers', 'from' => 'Monthly listeners', 'to' => 'Spotify followers', 'pct' => $p, 'pct_label' => $pf($p), 'gate' => null,
+               'delta_label' => $dl($g('sp_followers_delta'), 'follower'), 'bar' => $p === null ? null : (int) round(min(100, $p / 40 * 100)), 'note' => 'No gate on this hop; one in three is a strong catalogue.'];
+    // 2. listeners → your list (stage 4 wants 1%, stage 7 wants 5%)
+    $p = $pct($list, $listeners); $target = $stage >= 4 ? 5 : 1; $need_stage = $stage >= 4 ? 7 : 4;
+    $rows[] = ['key' => 'list', 'from' => 'Monthly listeners', 'to' => 'Your list', 'pct' => $p, 'pct_label' => $pf($p),
+               'gate' => ['target' => $target, 'stage' => $need_stage, 'pass' => $p !== null && $p >= $target, 'label' => $target . '% for stage ' . $need_stage],
+               'delta_label' => $dl($g('list_new'), 'fan'), 'bar' => $p === null ? null : (int) round(min(100, $p / $target * 100)), 'note' => ''];
+    // 3. your list → buyers (stage 5 wants 2%)
+    $p = $pct($cust, $list);
+    $rows[] = ['key' => 'buyers', 'from' => 'Your list', 'to' => 'Fans who have bought', 'pct' => $p, 'pct_label' => $pf($p),
+               'gate' => ['target' => 2, 'stage' => 5, 'pass' => $p !== null && $p >= 2, 'label' => '2% for stage 5'],
+               'delta_label' => $dl($g('customers_new'), 'buyer'), 'bar' => $p === null ? null : (int) round(min(100, $p / 2 * 100)), 'note' => ''];
+    // 4. buyers → members (stage 6 wants 10 members; the hop itself has no % gate)
+    $p = $pct($mem, $cust);
+    $rows[] = ['key' => 'members', 'from' => 'Fans who have bought', 'to' => 'Paying members', 'pct' => $p, 'pct_label' => $pf($p), 'gate' => null,
+               'delta_label' => '', 'bar' => $p === null ? null : (int) round(min(100, $p / 10 * 100)), 'note' => 'No % gate; stage 6 wants 10 members, stage 7 wants 100. One in ten buyers is a healthy read.'];
+    return $rows;
+}
+
+/** The "Between the rings" card: one row per hop with ratio, gate line and 28-day movement. */
+function lmeg_si_render_stage_hops($st, $card, $lbl) {
+    $rows = lmeg_si_stage_hops($st);
+    ob_start(); ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;">
+                <div style="<?php echo $lbl; ?>">Between the rings · conversion</div>
+                <div style="font-size:11px;color:#8B90A0;">How many people make each hop, the gate that sits on it, and what the next ring gained in the last 28 days.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+                <?php foreach ($rows as $r) : $gt = $r['gate']; $ok = $gt ? $gt['pass'] : null;
+                    $fill = $ok === true ? '#34D399' : ($ok === false ? 'linear-gradient(90deg,#D05FA2,#7C6CF6)' : '#7C6CF6'); ?>
+                <div style="background:#0E0F16;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 14px;">
+                    <div style="font-size:11px;color:#8B90A0;line-height:1.4;"><?php echo esc_html($r['from']); ?> <span style="color:#C9CCD6;">→</span> <span style="color:#F4F5F7;font-weight:600;"><?php echo esc_html($r['to']); ?></span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:6px;">
+                        <div style="font:800 22px/1 var(--lmegA-font,inherit);color:<?php echo $r['pct'] === null ? '#8B90A0' : '#F4F5F7'; ?>;"><?php echo esc_html($r['pct_label']); ?></div>
+                        <?php if ($gt) : ?><div style="font-size:11px;font-weight:700;color:<?php echo $ok ? '#34D399' : '#E58BBD'; ?>;white-space:nowrap;"><?php echo $ok ? '✓ ' : '○ '; ?><?php echo esc_html($gt['label']); ?></div><?php endif; ?>
+                    </div>
+                    <?php if ($r['bar'] !== null) : ?>
+                    <div style="height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:8px;overflow:hidden;"><div style="height:100%;width:<?php echo max(2, (int) $r['bar']); ?>%;border-radius:3px;background:<?php echo $fill; ?>;"></div></div>
+                    <?php endif; ?>
+                    <div style="font-size:11px;color:#C9CCD6;margin-top:7px;line-height:1.45;"><?php echo $r['delta_label'] !== '' ? esc_html($r['delta_label']) : ($r['pct'] === null ? 'Not connected yet' : 'No 28-day movement data'); ?><?php if ($r['note']) : ?><span style="color:#8B90A0;"> · <?php echo esc_html($r['note']); ?></span><?php endif; ?></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    <?php return ob_get_clean();
 }
 
 /** "about 3 weeks" / "about 5 months" / "about 17 years" — a rounded, human ETA. Pure. */
@@ -667,6 +733,9 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
             </div>
             <?php endforeach; ?>
         </div>
+
+        <!-- BETWEEN THE RINGS: conversion per hop + 28-day movement --------->
+        <?php echo lmeg_si_render_stage_hops($st, $card, $lbl); ?>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;max-width:1040px;margin-bottom:14px;">
             <!-- HISTORY ----------------------------------------------------->
