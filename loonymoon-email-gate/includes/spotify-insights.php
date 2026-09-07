@@ -761,9 +761,9 @@ function lmeg_si_render_fan_rings($rings, $card, $lbl) {
                 <div style="<?php echo $lbl; ?>">Your fan base · five rings</div>
                 <div style="font-size:11px;color:#8B90A0;">Anonymous listeners on the left, people you can actually reach on the right — the % is each ring's share of the one before.</div>
             </div>
-            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;">
+            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:2px 0 6px;">
                 <?php foreach ($rings as $i => $r) : $val = $r['value']; ?>
-                <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;color:#8B90A0;font-size:16px;padding:0 6px;" aria-hidden="true">›</div><?php endif; ?>
+                <?php if ($i > 0) : ?><div style="flex:0 0 auto;align-self:center;position:relative;z-index:2;width:36px;height:36px;margin:0 -15px;border-radius:50%;background:#0E0F16;border:1px solid rgba(255,255,255,.24);box-shadow:0 4px 14px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F4F5F7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-left:2px;"><path d="M9 5l7 7-7 7"/></svg></div><?php endif; ?>
                 <?php $tone = (string) $r['tone']; $deep = lmeg_si_shade($tone, 0.62); ?>
                 <div style="flex:1 1 0;min-width:150px;background:radial-gradient(120% 90% at 0% 0%,rgba(255,255,255,.22),transparent 55%),linear-gradient(135deg,<?php echo $tone; ?> 0%,<?php echo $deep; ?> 100%);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:12px 12px 10px;color:#fff;box-shadow:0 10px 26px <?php echo $tone; ?>44;">
                     <div style="font:800 24px/1.1 var(--lmegA-font,inherit);color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.25);<?php echo $val === null ? 'color:rgba(255,255,255,.6);' : ''; ?>"><?php echo $val === null ? '—' : number_format_i18n($val); ?></div>
