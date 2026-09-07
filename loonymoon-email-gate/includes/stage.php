@@ -864,6 +864,9 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
     $PB = lmeg_si_stage_playbook();
     $run = lmeg_si_stage_run($log, $stage);
     $changes = array_slice(array_reverse(lmeg_si_stage_changes($log)), 0, 5);
+    // The stage-up (or slip) moment: the most recent change landed on the latest reading.
+    $moment = null;
+    if ($changes && $log) { $last_date = array_key_last($log); if ($changes[0]['date'] === $last_date) $moment = $changes[0]; }
     $L = lmeg_si_stage_ladder();
     $captured = ($c && !empty($c['snap']) && !empty($c['snap']->captured_date)) ? (string) $c['snap']->captured_date : '';
     $in = $st['inputs'] ?? [];
@@ -889,6 +892,9 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                 <div style="flex:1 1 300px;min-width:260px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:16px 18px;">
                     <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#C9CCD6;">Stage <?php echo $stage; ?> of 7</div>
                     <div style="font:800 30px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;margin:6px 0 4px;"><?php echo esc_html($st['name']); ?></div>
+                    <?php if ($moment) : $up = $moment['to'] > $moment['from']; ?>
+                    <div style="display:inline-block;font-size:12px;font-weight:700;color:<?php echo $up ? '#34D399' : '#F87171'; ?>;background:<?php echo $up ? 'rgba(52,211,153,.12)' : 'rgba(248,113,113,.12)'; ?>;border:1px solid <?php echo $up ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'; ?>;border-radius:999px;padding:3px 10px;margin:0 0 8px;"><?php echo $up ? '⬆ You reached stage ' . (int) $moment['to'] . ' ' . ($moment['date'] === (function_exists('current_time') ? current_time('Y-m-d') : date('Y-m-d')) ? 'today' : 'on ' . esc_html(date_i18n('M j', strtotime($moment['date'])))) : 'Slipped from stage ' . (int) $moment['from'] . ' — a gate below stopped passing'; ?></div>
+                    <?php endif; ?>
                     <div style="font-size:13px;color:#C9CCD6;line-height:1.45;max-width:520px;"><?php echo esc_html($st['blurb']); ?></div>
                     <div style="margin-top:14px;display:flex;justify-content:space-between;font-size:11px;color:#C9CCD6;"><span>Ladder progress</span><span style="color:#F4F5F7;font-weight:700;"><?php echo (int) $st['score']; ?>/100</span></div>
                     <div style="position:relative;height:8px;border-radius:4px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;">

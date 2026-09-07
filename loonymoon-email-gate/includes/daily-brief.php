@@ -343,6 +343,8 @@ function lmeg_si_brief_html($d) {
         .   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#221F3A;background-image:linear-gradient(120deg,rgba(208,95,162,.22),rgba(124,108,246,.22)),linear-gradient(160deg,' . $CARD . ',' . $CARD2 . ');border:1px solid #3A3556;border-radius:12px;"><tr><td style="padding:12px 14px;font-family:' . $F . ';">'
         .     '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#C9CCD6;">Stage ' . $stage . ' of 7</div>'
         .     '<div style="font-size:20px;line-height:1.15;font-weight:800;color:' . $TEXT . ';margin:5px 0 3px;">' . esc_html($st['name']) . '</div>'
+        .     ((!empty($d['stage_delta']) && ($d['stage_delta']['stage'] ?? 0) > 0) ? '<div style="font-size:12px;font-weight:700;color:' . $GREEN . ';margin:0 0 4px;">⬆ You reached stage ' . $stage . ' today</div>'
+             : ((!empty($d['stage_delta']) && ($d['stage_delta']['stage'] ?? 0) < 0) ? '<div style="font-size:12px;font-weight:700;color:' . $RED . ';margin:0 0 4px;">Slipped to stage ' . $stage . ' — a gate below stopped passing</div>' : ''))
         .     '<div style="font-size:12px;line-height:1.45;color:#C9CCD6;">' . esc_html($st['blurb']) . '</div>'
         .     '<div style="margin-top:10px;font-size:11px;color:#C9CCD6;">Ladder progress <span style="color:' . $TEXT . ';font-weight:700;">' . (int) $st['score'] . '/100</span></div>'
         .     lmeg_si_brief_bar((int) $st['score'], $PINK, '#0E0F16', 6, 5)
@@ -506,6 +508,7 @@ function lmeg_si_brief_subject($d) {
     $s = $d['artist'] . ' daily · ' . $d['today_label'] . ': ';
     if ($y) $s .= $n($y['streams']) . ' streams yesterday' . ($y['vs_prev'] !== null ? ' (' . lmeg_si_brief_pct($y['vs_prev']) . ')' : '');
     else $s .= $n($d['k28']['streams']) . ' streams in 28 days';
+    if (!empty($d['stage_delta']) && ($d['stage_delta']['stage'] ?? 0) > 0 && !empty($d['stage'])) $s .= ' · ⬆ Stage ' . (int) $d['stage']['stage'] . ' reached';
     if ($d['demo']) $s .= ' · sample';
     return $s;
 }
