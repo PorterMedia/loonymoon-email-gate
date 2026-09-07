@@ -360,12 +360,23 @@ function lmeg_release_public_url($rel) {
  *   info     — "basic" (artwork · title · date) or "full" (adds streaming-platform
  *              icon buttons — click-tracked through /lc/ when the release has a
  *              drop — and a "Release page" link)
+ *   date     — true/false: show the release date (default true)
+ *   icons    — "colour" (brand colours, default), "black" or "white" buttons
+ *   card     — true/false: full-mode card background + border (false = transparent, no border)
+ *   link     — true/false: the "Release page →" link in full mode (default true)
+ *   arrows   — "sides" (centred left/right, default) or "top" (beside the heading)
+ *   heading  — set to "none" to hide the heading row entirely
  * ------------------------------------------------------------------------- */
 add_shortcode('fanloop_releases', 'lmeg_shortcode_releases');
 add_shortcode('fanloop_carousel', 'lmeg_shortcode_releases');
 
 /** [name, brand colour, SVG glyph (24-viewBox, white)] for a streaming-link label. */
-function lmeg_release_service_icon($label) {
+function lmeg_release_service_icon($label, $fg = '#fff') {
+    $r = lmeg_release_service_icon_raw($label);
+    if ($fg !== '#fff') $r[2] = str_replace('#fff', $fg, $r[2]);
+    return $r;
+}
+function lmeg_release_service_icon_raw($label) {
     $k = strtolower(trim((string) $label));
     $stroke = 'stroke="#fff" fill="none" stroke-linecap="round" stroke-linejoin="round"';
     if (strpos($k, 'spotify') !== false)    return ['Spotify', '#1DB954', '<path d="M6.2 9.6c3.9-1.3 8.6-1 12 1.2" ' . $stroke . ' stroke-width="2.2"/><path d="M7 13c3.3-1 7-.7 10 1" ' . $stroke . ' stroke-width="2"/><path d="M8 16.3c2.5-.7 5.3-.5 7.5.8" ' . $stroke . ' stroke-width="1.8"/>'];
@@ -399,10 +410,22 @@ function lmeg_release_link_buttons($r) {
 }
 
 function lmeg_shortcode_releases($atts = []) {
-    $atts = shortcode_atts(['limit' => 12, 'heading' => '', 'info' => 'basic', 'desktop' => 5, 'mobile' => 2], $atts, 'fanloop_releases');
+    $atts = shortcode_atts([
+        'limit' => 12, 'heading' => '', 'info' => 'basic', 'desktop' => 5, 'mobile' => 2,
+        'date' => 'true', 'icons' => 'colour', 'card' => 'true', 'link' => 'true', 'arrows' => 'sides',
+    ], $atts, 'fanloop_releases');
+    $on   = function ($v) { return !in_array(strtolower(trim((string) $v)), ['0', 'false', 'no', 'off', 'none', 'hide'], true); };
     $full = strtolower(trim((string) $atts['info'])) === 'full';
     $dn = max(1, min(8, (int) $atts['desktop']));
     $mn = max(1, min(4, (int) $atts['mobile']));
+    $show_date = $on($atts['date']);
+    $show_link = $on($atts['link']);
+    $card_on   = $on($atts['card']);
+    $icons     = strtolower(trim((string) $atts['icons']));
+    if (!in_array($icons, ['colour', 'color', 'black', 'white'], true)) $icons = 'colour';
+    $sides     = strtolower(trim((string) $atts['arrows'])) !== 'top';
+    $heading   = (string) $atts['heading'];
+    $show_head = strtolower(trim($heading)) !== 'none';
     global $wpdb;
     $t = lmeg_releases_table();
     $rows = $wpdb->get_results($wpdb->prepare(
@@ -413,6 +436,7 @@ function lmeg_shortcode_releases($atts = []) {
 
     static $n = 0; $n++; $id = 'lmeg-rc-' . $n;
     static $css_done = false;
+    $nav = '<button type="button" class="lmeg-rc__btn" data-dir="-1" aria-label="Previous">&#8249;</button><button type="button" class="lmeg-rc__btn" data-dir="1" aria-label="Next">&#8250;</button>';
 
     ob_start();
     if (!$css_done) : $css_done = true; ?>
@@ -421,9 +445,15 @@ function lmeg_shortcode_releases($atts = []) {
       .lmeg-rc__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;}
       .lmeg-rc__head h3{margin:0;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .lmeg-rc__nav{display:flex;gap:8px;}
-      .lmeg-rc__btn{width:36px;height:36px;border-radius:999px;border:1px solid currentColor;background:transparent;color:inherit;opacity:.7;cursor:pointer;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:opacity .2s,transform .2s;}
+      .lmeg-rc__btn{width:36px;height:36px;border-radius:999px;border:1px solid currentColor;background:transparent;color:inherit;opacity:.7;cursor:pointer;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:opacity .2s,transform .2s;padding:0;}
       .lmeg-rc__btn:hover{opacity:1;transform:scale(1.06);}
       .lmeg-rc__btn[disabled]{opacity:.2;cursor:default;transform:none;}
+      .lmeg-rc__body{position:relative;}
+      .lmeg-rc--sides .lmeg-rc__body{padding:0 22px;}
+      .lmeg-rc--sides .lmeg-rc__btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:40px;height:40px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);opacity:.9;font-size:20px;box-shadow:0 6px 18px rgba(0,0,0,.25);}
+      .lmeg-rc--sides .lmeg-rc__btn:hover{opacity:1;transform:translateY(-50%) scale(1.06);}
+      .lmeg-rc--sides .lmeg-rc__btn[disabled]{opacity:.25;transform:translateY(-50%);}
+      .lmeg-rc--sides .lmeg-rc__btn[data-dir="-1"]{left:0;} .lmeg-rc--sides .lmeg-rc__btn[data-dir="1"]{right:0;}
       .lmeg-rc__track{display:flex;gap:var(--rc-gap);overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x mandatory;padding:4px 2px 14px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
       .lmeg-rc__track::-webkit-scrollbar{display:none;}
       .lmeg-rc__item{flex:0 0 auto;width:calc((100% - (var(--rc-n) - 1) * var(--rc-gap)) / var(--rc-n));scroll-snap-align:start;text-decoration:none;color:inherit;text-align:center;box-sizing:border-box;}
@@ -436,28 +466,29 @@ function lmeg_shortcode_releases($atts = []) {
       .lmeg-rc__play span{width:46px;height:46px;border-radius:999px;background:rgba(255,255,255,.92);color:#111;display:flex;align-items:center;justify-content:center;font-size:18px;padding-left:3px;}
       .lmeg-rc__t{margin:10px 4px 1px;font-weight:600;font-size:15px;line-height:1.25;}
       .lmeg-rc__d{margin:0 4px;font-size:12.5px;opacity:.6;}
-      .lmeg-rc--full .lmeg-rc__item{background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.22);border-radius:16px;padding:10px 10px 12px;}
+      .lmeg-rc--full.lmeg-rc--card .lmeg-rc__item{background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.22);border-radius:16px;padding:10px 10px 12px;}
       .lmeg-rc__svc{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:10px 0 0;}
       .lmeg-rc__svc a{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 1px rgba(127,127,127,.25);transition:transform .15s;}
       .lmeg-rc__svc a:hover{transform:scale(1.1);}
       .lmeg-rc__svc svg{width:20px;height:20px;display:block;}
       .lmeg-rc__more{display:inline-block;margin:10px 0 0;font-size:12.5px;font-weight:600;opacity:.75;text-decoration:none;color:inherit;}
       .lmeg-rc__more:hover{opacity:1;}
-      @media(max-width:640px){.lmeg-rc{--rc-gap:12px;}.lmeg-rc__item{width:calc((100% - (var(--rc-m) - 1) * var(--rc-gap)) / var(--rc-m));}}
+      @media(max-width:640px){.lmeg-rc{--rc-gap:12px;}.lmeg-rc__item{width:calc((100% - (var(--rc-m) - 1) * var(--rc-gap)) / var(--rc-m));}.lmeg-rc--sides .lmeg-rc__body{padding:0 16px;}.lmeg-rc--sides .lmeg-rc__btn{width:34px;height:34px;}}
     </style>
     <?php endif; ?>
-    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; ?>" id="<?php echo esc_attr($id); ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;">
+    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'; ?>" id="<?php echo esc_attr($id); ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;">
+        <?php if ($show_head || !$sides) : ?>
         <div class="lmeg-rc__head">
-            <h3><?php echo esc_html($atts['heading'] ?: 'Releases'); ?></h3>
-            <div class="lmeg-rc__nav">
-                <button type="button" class="lmeg-rc__btn" data-dir="-1" aria-label="Previous">&#8249;</button>
-                <button type="button" class="lmeg-rc__btn" data-dir="1" aria-label="Next">&#8250;</button>
-            </div>
+            <h3><?php echo $show_head ? esc_html($heading !== '' ? $heading : 'Releases') : ''; ?></h3>
+            <?php if (!$sides) : ?><div class="lmeg-rc__nav"><?php echo $nav; ?></div><?php endif; ?>
         </div>
+        <?php endif; ?>
+        <div class="lmeg-rc__body">
+        <?php if ($sides) echo $nav; ?>
         <div class="lmeg-rc__track">
             <?php foreach ($rows as $r) :
                 $url  = lmeg_release_public_url($r);
-                $date = !empty($r->release_at) ? date_i18n('M j, Y', strtotime($r->release_at)) : '';
+                $date = ($show_date && !empty($r->release_at)) ? date_i18n('M j, Y', strtotime($r->release_at)) : '';
                 $inner = '<div class="lmeg-rc__art"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
                        . ($url ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . '</div>'
                        . '<div class="lmeg-rc__t">' . esc_html($r->title) . '</div>'
@@ -468,12 +499,15 @@ function lmeg_shortcode_releases($atts = []) {
                     <?php echo $url ? '<a href="' . esc_url($url) . '" class="lmeg-rc__link">' . $inner . '</a>' : '<div class="lmeg-rc__link">' . $inner . '</div>'; ?>
                     <?php if ($btns) : ?>
                     <div class="lmeg-rc__svc">
-                        <?php foreach ($btns as $b) : list($name, $bg, $glyph) = lmeg_release_service_icon($b['label']); ?>
+                        <?php foreach ($btns as $b) :
+                            $fg = ($icons === 'white') ? '#111111' : '#ffffff';
+                            list($name, $bg, $glyph) = lmeg_release_service_icon($b['label'], $fg);
+                            if ($icons === 'black') $bg = '#111111'; elseif ($icons === 'white') $bg = '#ffffff'; ?>
                         <a href="<?php echo esc_url($b['href']); ?>" target="_blank" rel="noopener" title="<?php echo esc_attr('Listen on ' . $name); ?>" aria-label="<?php echo esc_attr('Listen on ' . $name); ?>" style="background:<?php echo esc_attr($bg); ?>;"><svg viewBox="0 0 24 24" aria-hidden="true"><?php echo $glyph; ?></svg></a>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
-                    <?php if ($url) : ?><a class="lmeg-rc__more" href="<?php echo esc_url($url); ?>">Release page &rarr;</a><?php endif; ?>
+                    <?php if ($url && $show_link) : ?><a class="lmeg-rc__more" href="<?php echo esc_url($url); ?>">Release page &rarr;</a><?php endif; ?>
                 </div>
                 <?php else :
                     $tag  = $url ? 'a' : 'div';
@@ -481,6 +515,7 @@ function lmeg_shortcode_releases($atts = []) {
                     echo '<' . $tag . $href . ' class="lmeg-rc__item">' . $inner . '</' . $tag . '>';
                 endif;
             endforeach; ?>
+        </div>
         </div>
     </div>
     <script>
@@ -491,7 +526,7 @@ function lmeg_shortcode_releases($atts = []) {
         function step(){ var it=track.querySelector('.lmeg-rc__item'); return it ? it.getBoundingClientRect().width + 16 : Math.max(track.clientWidth*0.8, 206); }
         btns.forEach(function(b){ b.addEventListener('click',function(){ track.scrollBy({left:step()*parseInt(b.getAttribute('data-dir'),10),behavior:'smooth'}); }); });
         function sync(){ var s=track.scrollLeft, max=track.scrollWidth-track.clientWidth-2;
-            btns[0].disabled = s<=2; btns[1].disabled = s>=max; }
+            btns.forEach(function(b){ var d=parseInt(b.getAttribute('data-dir'),10); b.disabled = d<0 ? s<=2 : s>=max; }); }
         track.addEventListener('scroll',sync,{passive:true}); window.addEventListener('resize',sync); sync();
     })();
     </script>
