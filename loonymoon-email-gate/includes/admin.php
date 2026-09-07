@@ -25,6 +25,11 @@ function lmeg_admin_menu() {
     if (function_exists('lmeg_admin_journey')) {
         add_submenu_page('lmeg', 'Journey', 'Journey', $cap, 'lmeg-journey', 'lmeg_admin_journey');
     }
+    // Stage (the full Fanloop ladder) — callback in stage.php; registered here
+    // like Journey so the page lands in the live menu.
+    if (function_exists('lmeg_admin_stage')) {
+        add_submenu_page('lmeg', 'Stage', 'Stage', $cap, 'lmeg-stage', 'lmeg_admin_stage');
+    }
     add_submenu_page('lmeg', 'Smartlinks',        'Smartlinks',        $cap, 'lmeg-smartlinks',      'lmeg_admin_smartlinks');
     add_submenu_page('lmeg', 'Release Drops',     'Release Drops',     $cap, 'lmeg-drops',           'lmeg_admin_drops');
     add_submenu_page('lmeg', 'Store (Beta)',      'Store (Beta)',      $cap, 'lmeg-products',        'lmeg_admin_products');

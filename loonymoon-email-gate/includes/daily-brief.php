@@ -142,6 +142,7 @@ function lmeg_si_brief_data($demo = false) {
     $d['countries'] = $cty;
 
     $d['url_insights'] = admin_url('admin.php?page=lmeg-spotify-insights');
+    $d['url_stage']    = admin_url('admin.php?page=lmeg-stage');
     $d['url_settings'] = admin_url('admin.php?page=lmeg-settings');
     return $d;
 }
@@ -357,6 +358,7 @@ function lmeg_si_brief_html($d) {
         foreach (array_slice($b['actions'], 0, 3) as $a) $inner .= $pill($a['label'], $a['href']);
         $inner .= '</div>';
     }
+    if (!empty($d['url_stage'])) $inner .= '<div style="margin-top:8px;font-family:' . $F . ';font-size:12px;"><a href="' . esc_url($d['url_stage']) . '" style="color:#E58BBD;font-weight:700;text-decoration:none;">See the full ladder →</a></div>';
     $inner .= '</td></tr></table>';
     echo $sec('Your stage · Fanloop ladder', $inner, 'Seven steps from first release to fans who pay every month — each gated on your real numbers.');
   endif; ?>

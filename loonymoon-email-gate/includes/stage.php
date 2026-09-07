@@ -53,34 +53,39 @@ function lmeg_si_stage($n, $x = []) {
     $sf = function ($k) { return $k === null ? '—' : (($k > 0 ? '+' : ($k < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs((float) $k), 1), '0'), '.') . '%'); };
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
     $compose = function ($angle, $label, $group = null) { $a = ['prefill' => 'insight', 'angle' => $angle]; if ($group) $a['group'] = $group; return ['label' => $label, 'page' => 'lmeg-compose', 'args' => $a]; };
-    $gate = function ($key, $label, $pass, $value, $target, $ring, $actions) {
-        return ['key' => $key, 'label' => $label, 'pass' => (bool) $pass, 'value' => $value, 'target' => $target, 'ring' => $ring, 'actions' => $actions];
+    // progress: how far along a numeric gate is (0–100), null when the gate is
+    // pass/fail only (streams direction) or the input is unknown.
+    $pr = function ($a, $goal) { return ($a === null || $goal <= 0) ? null : max(0, min(100, (float) $a / $goal * 100)); };
+    $gate = function ($key, $label, $pass, $value, $target, $ring, $actions, $progress = null) {
+        $pass = (bool) $pass;
+        return ['key' => $key, 'label' => $label, 'pass' => $pass, 'value' => $value, 'target' => $target, 'ring' => $ring, 'actions' => $actions,
+                'progress' => $pass ? 100 : ($progress === null ? null : (int) round($progress))];
     };
     $S = [
         1 => [
-            $gate('releases', 'Music on Spotify', $releases !== null && $releases >= 1, $nf($releases) . ' release' . ($releases === 1 ? '' : 's'), 'at least 1', 'listeners', [$go('lmeg-releases', 'Add a release')]),
+            $gate('releases', 'Music on Spotify', $releases !== null && $releases >= 1, $nf($releases) . ' release' . ($releases === 1 ? '' : 's'), 'at least 1', 'listeners', [$go('lmeg-releases', 'Add a release')], $pr($releases, 1)),
         ],
         2 => [
-            $gate('listeners', 'Monthly listeners', $listeners !== null && $listeners >= 1000, $nf($listeners), '1,000+', 'listeners', [$go('lmeg-presaves', 'Set up a pre-save'), $compose('listen', 'Send your list to Spotify')]),
-            $gate('followers', 'Spotify followers', $sp !== null && $sp >= 100, $nf($sp), '100+', 'followers', [$compose('follow', 'Ask your list to follow')]),
+            $gate('listeners', 'Monthly listeners', $listeners !== null && $listeners >= 1000, $nf($listeners), '1,000+', 'listeners', [$go('lmeg-presaves', 'Set up a pre-save'), $compose('listen', 'Send your list to Spotify')], $pr($listeners, 1000)),
+            $gate('followers', 'Spotify followers', $sp !== null && $sp >= 100, $nf($sp), '100+', 'followers', [$compose('follow', 'Ask your list to follow')], $pr($sp, 100)),
         ],
         3 => [
-            $gate('list', 'Fans on your list', $list !== null && $list >= 100, $nf($list), '100+', 'list', [$go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest'), $go('lmeg-releases', 'Put a signup on a release page')]),
+            $gate('list', 'Fans on your list', $list !== null && $list >= 100, $nf($list), '100+', 'list', [$go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest'), $go('lmeg-releases', 'Put a signup on a release page')], $pr($list, 100)),
         ],
         4 => [
-            $gate('list_share', 'Listeners who join your list', $list_pct !== null && ($list_pct >= 1 || $list >= 1000), $pf($list_pct) . ' of monthly listeners', '1% (or 1,000 fans)', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest')]),
-            $gate('sends', 'Sent to your list in the last 30 days', $sends30 !== null && $sends30 >= 1, $nf($sends30) . ' send' . ($sends30 === 1 ? '' : 's'), '1 or more', 'list', [$go('lmeg-compose', 'Send to your list')]),
+            $gate('list_share', 'Listeners who join your list', $list_pct !== null && ($list_pct >= 1 || $list >= 1000), $pf($list_pct) . ' of monthly listeners', '1% (or 1,000 fans)', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest')], max((float) $pr($list_pct, 1), (float) $pr($list, 1000))),
+            $gate('sends', 'Sent to your list in the last 30 days', $sends30 !== null && $sends30 >= 1, $nf($sends30) . ' send' . ($sends30 === 1 ? '' : 's'), '1 or more', 'list', [$go('lmeg-compose', 'Send to your list')], $pr($sends30, 1)),
         ],
         5 => [
-            $gate('customers', 'Fans who have bought', $customers !== null && $customers >= 10, $nf($customers), '10+', 'customers', [$go('lmeg-products', 'Add something to sell'), $compose('lift', 'Tell your superfans', 'superfans')]),
-            $gate('cust_share', 'Your list who buy', $cust_pct !== null && $cust_pct >= 2, $pf($cust_pct) . ' of your list', '2%', 'customers', [$go('lmeg-store-promos', 'Run a promotion'), $compose('lift', 'Tell your superfans', 'superfans')]),
+            $gate('customers', 'Fans who have bought', $customers !== null && $customers >= 10, $nf($customers), '10+', 'customers', [$go('lmeg-products', 'Add something to sell'), $compose('lift', 'Tell your superfans', 'superfans')], $pr($customers, 10)),
+            $gate('cust_share', 'Your list who buy', $cust_pct !== null && $cust_pct >= 2, $pf($cust_pct) . ' of your list', '2%', 'customers', [$go('lmeg-store-promos', 'Run a promotion'), $compose('lift', 'Tell your superfans', 'superfans')], $pr($cust_pct, 2)),
         ],
         6 => [
-            $gate('members', 'Paying members', $members !== null && $members >= 10, $nf($members), '10+', 'members', [$go('lmeg-tiers', 'Set up a tier'), $compose('lift', 'Invite your superfans', 'superfans')]),
+            $gate('members', 'Paying members', $members !== null && $members >= 10, $nf($members), '10+', 'members', [$go('lmeg-tiers', 'Set up a tier'), $compose('lift', 'Invite your superfans', 'superfans')], $pr($members, 10)),
         ],
         7 => [
-            $gate('members_100', 'Paying members', $members !== null && $members >= 100, $nf($members), '100+', 'members', [$go('lmeg-tiers', 'Grow your tiers'), $compose('lift', 'Invite your superfans', 'superfans')]),
-            $gate('list_share_5', 'Listeners who join your list', $list_pct !== null && $list_pct >= 5, $pf($list_pct), '5%', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop')]),
+            $gate('members_100', 'Paying members', $members !== null && $members >= 100, $nf($members), '100+', 'members', [$go('lmeg-tiers', 'Grow your tiers'), $compose('lift', 'Invite your superfans', 'superfans')], $pr($members, 100)),
+            $gate('list_share_5', 'Listeners who join your list', $list_pct !== null && $list_pct >= 5, $pf($list_pct), '5%', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop')], $pr($list_pct, 5)),
             $gate('streams_hold', '28-day streams holding or growing', $spct !== null && $spct >= 0, $sf($spct) . ' vs the 28 days before', '0% or better', 'listeners', [$go('lmeg-releases', 'Plan a release')]),
         ],
     ];
@@ -100,7 +105,196 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
+        // the raw inputs, for the Stage page's "how it's measured" table
+        'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $v('superfans'), 'customers' => $customers, 'members' => $members,
+                     'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct],
     ];
+}
+
+/** Per-stage playbook: why the stage matters + the Fanloop moves that get you through it. */
+function lmeg_si_stage_playbook() {
+    $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
+    $compose = function ($angle, $label, $group = null) { $a = ['prefill' => 'insight', 'angle' => $angle]; if ($group) $a['group'] = $group; return ['label' => $label, 'page' => 'lmeg-compose', 'args' => $a]; };
+    return [
+        1 => ['why'   => 'Nothing else on the ladder works until there is music to point at. Fanloop reads your catalogue from Spotify, so connecting it is the first move.',
+              'moves' => [$go('lmeg-releases', 'Add your releases'), $go('lmeg-spotify', 'Connect Spotify'), $go('lmeg-s4a', 'Import Spotify for Artists')]],
+        2 => ['why'   => 'A thousand monthly listeners and a hundred followers is where Spotify starts recommending you on its own. Every release is a reason to ask.',
+              'moves' => [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-smartlinks', 'Share one smartlink everywhere'), $compose('follow', 'Ask your list to follow')]],
+        3 => ['why'   => 'Listeners live on Spotify; a list is people you can reach directly. The first hundred names usually come from one signup placed where the music already is.',
+              'moves' => [$go('lmeg-releases', 'Put a signup on every release page'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest'), $go('lmeg-bio', 'Set up your Smart Bio')]],
+        4 => ['why'   => 'One in a hundred listeners on your list, and a send every month, is where a message starts to move streams. Rhythm beats volume.',
+              'moves' => [$go('lmeg-compose', 'Send to your list'), $go('lmeg-sequences', 'Set up a welcome sequence'), $go('lmeg-deliverability', 'Check deliverability')]],
+        5 => ['why'   => 'Ten buyers proves people will pay; two in a hundred of your list buying is a solid rate for a fan store. Superfans go first.',
+              'moves' => [$go('lmeg-products', 'Add something to sell'), $go('lmeg-store-promos', 'Run a promotion'), $compose('lift', 'Tell your superfans', 'superfans')]],
+        6 => ['why'   => 'Monthly members are the steadiest income an independent artist has. Ten is the first cohort; invite the people who already buy.',
+              'moves' => [$go('lmeg-tiers', 'Set up a tier'), $compose('lift', 'Invite your superfans', 'superfans'), $go('lmeg-collect', 'Collect content for members')]],
+        7 => ['why'   => 'At the top, members, list and streams feed each other. The job is keeping the cycle turning: a release, a send and a drop every cycle.',
+              'moves' => [$go('lmeg-releases', 'Plan a release'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-tiers', 'Grow your tiers')]],
+    ];
+}
+
+/** Sample ring counts used by every demo preview of the ladder (matches the Insights demo strip). */
+function lmeg_si_stage_demo_raw($snap, $mlp = null) {
+    return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
+            'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41];
+}
+
+/**
+ * The ladder for this site right now — the light data path shared by the Stage
+ * page and the daily log (no findings engine, no song maps): latest snapshot +
+ * previous for the 28-day streams direction, the public overview for releases,
+ * the five rings' raw counts. Works with no Spotify for Artists snapshot at all
+ * (listeners show "—"; list, customers and members still evaluate). null only
+ * when the S4A layer isn't loaded.
+ */
+function lmeg_si_stage_compute($demo = false) {
+    if (!function_exists('lmeg_s4a_latest') || !function_exists('lmeg_si_fan_rings_data')) return null;
+    $sel = lmeg_artist();
+    if ($demo) {
+        $dr = function_exists('lmeg_s4a_demo_rows') ? lmeg_s4a_demo_rows($sel) : [];
+        if (!$dr) return null;
+        $snap = (object) end($dr); $prev = (object) $dr[0];
+        $ov = function_exists('lmeg_si_demo_overview') ? lmeg_si_demo_overview($sel) : null;
+    } else {
+        $snap = lmeg_s4a_latest($sel);
+        $prev = ($snap && function_exists('lmeg_s4a_prev')) ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
+        $ov = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null;
+        if (function_exists('is_wp_error') && is_wp_error($ov)) $ov = null;
+    }
+    $pct = function ($a, $b) { return ($a !== null && $b !== null && (int) $b > 0) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
+    $sp  = ($snap && $prev) ? $pct($snap->streams, $prev->streams) : null;
+    $mlp = ($snap && $prev) ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
+    $raw = null;
+    if ($demo) { $raw = lmeg_si_stage_demo_raw($snap, $mlp); $rings = lmeg_si_fan_rings_shape($raw); }
+    else { $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $raw); if (!is_array($raw)) $raw = []; }
+    $extra = lmeg_si_stage_extra($snap, $ov, ['streams' => $sp], $demo);
+    $stage = lmeg_si_stage($raw, $extra);
+    return compact('sel', 'snap', 'prev', 'ov', 'sp', 'mlp', 'raw', 'rings', 'extra', 'stage', 'demo');
+}
+
+/* ---------------------------------------------------------------------------
+ * Stage history — one reading a day (stage, score, bottleneck, list share),
+ * written after the morning pull by the minute tick or by the first live view
+ * of the Stage page that day. Option lmeg_stage_log: date => entry, ≤400 days.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_si_stage_log_get() {
+    $l = get_option('lmeg_stage_log', []);
+    if (!is_array($l)) $l = [];
+    ksort($l);
+    return $l;
+}
+
+function lmeg_si_stage_log_entry($st, $captured = '') {
+    $lp = $st['ratios']['list_pct'] ?? null;
+    return ['stage' => (int) $st['stage'], 'score' => (int) $st['score'], 'gate' => (string) ($st['bottleneck']['key'] ?? ''),
+            'list_pct' => $lp !== null ? round((float) $lp, 2) : null, 'captured' => (string) $captured];
+}
+
+/** Write today's reading unless one exists. Returns true when written. */
+function lmeg_si_stage_log_record($st, $date = null, $captured = '') {
+    if (!$st) return false;
+    $date = $date ?: current_time('Y-m-d');
+    $log = lmeg_si_stage_log_get();
+    if (isset($log[$date])) return false;
+    $log[$date] = lmeg_si_stage_log_entry($st, $captured);
+    ksort($log);
+    if (count($log) > 400) $log = array_slice($log, -400, null, true);
+    update_option('lmeg_stage_log', $log, false);
+    return true;
+}
+
+/** Is today's reading still to be written (and are we past the morning floor)? */
+function lmeg_si_stage_log_due() {
+    $now = current_time('timestamp');
+    if ((int) date('G', $now) < (int) apply_filters('lmeg_brief_earliest_hour', 9)) return false;
+    $log = get_option('lmeg_stage_log', []);
+    return !(is_array($log) && isset($log[date('Y-m-d', $now)]));
+}
+
+/**
+ * Log today's reading if due. Waits for today's Spotify for Artists capture
+ * until noon, then records with whatever is latest (sites without S4A log
+ * after noon every day). $c = a computed context to reuse, else computed here.
+ */
+function lmeg_si_stage_log_maybe($c = null) {
+    if (!lmeg_si_stage_log_due()) return false;
+    if ($c === null) $c = lmeg_si_stage_compute(false);
+    if (!$c || !empty($c['demo'])) return false;
+    $now = current_time('timestamp'); $today = date('Y-m-d', $now);
+    $cap = ($c['snap'] && !empty($c['snap']->captured_date)) ? (string) $c['snap']->captured_date : '';
+    if ($cap !== $today && (int) date('G', $now) < 12) return false;
+    return lmeg_si_stage_log_record($c['stage'], $today, $cap);
+}
+
+add_action('lmeg_broadcast_tick', 'lmeg_si_stage_log_tick', 72);
+function lmeg_si_stage_log_tick() { lmeg_si_stage_log_maybe(); }
+
+/** The continuous run of days at $stage ending at the latest entry: since, days, whether it spans the whole log. */
+function lmeg_si_stage_run($log, $stage) {
+    if (!$log) return null;
+    $dates = array_keys($log); $since = null;
+    for ($i = count($dates) - 1; $i >= 0; $i--) { if ((int) $log[$dates[$i]]['stage'] !== (int) $stage) break; $since = $dates[$i]; }
+    if ($since === null) return null;
+    $last = end($dates);
+    return ['since' => $since, 'last' => $last, 'days' => (int) floor((strtotime($last) - strtotime($since)) / 86400) + 1, 'first' => $dates[0], 'from_start' => $since === $dates[0]];
+}
+
+/** Stage changes in the log, oldest first: [date, from, to]. */
+function lmeg_si_stage_changes($log) {
+    $out = []; $prev = null;
+    foreach ($log as $d => $e) { $s = (int) $e['stage']; if ($prev !== null && $s !== $prev) $out[] = ['date' => $d, 'from' => $prev, 'to' => $s]; $prev = $s; }
+    return $out;
+}
+
+/** Sixty days of sample history for ?demo=1 — real step values the formula produces (stage 5 → 6, one more gate passing). */
+function lmeg_si_stage_demo_log() {
+    $log = []; $t = strtotime(current_time('Y-m-d'));
+    for ($i = 59; $i >= 0; $i--) {
+        $d = date('Y-m-d', $t - $i * 86400); $k = 59 - $i;
+        if ($k < 22)      { $stage = 5; $score = 71; $gate = 'members'; }
+        elseif ($k < 46)  { $stage = 6; $score = 86; $gate = 'members_100'; }
+        else              { $stage = 6; $score = 90; $gate = 'members_100'; }
+        $log[$d] = ['stage' => $stage, 'score' => $score, 'gate' => $gate, 'list_pct' => round(2.1 + $k * 0.024, 2), 'captured' => $d];
+    }
+    return $log;
+}
+
+/** Score-over-time chart (SVG) with a guide line per stage boundary and a dot at each stage change. */
+function lmeg_si_stage_history_svg($log, $days = 90) {
+    $log = array_slice($log, -$days, null, true);
+    if (!$log) return '';
+    $W = 640; $H = 130; $pl = 8; $pr = 30; $pt = 14; $pb = 20;
+    $dates = array_keys($log); $n = count($dates);
+    $t0 = strtotime($dates[0]); $t1 = strtotime($dates[$n - 1]); $span = max(1, $t1 - $t0);
+    $x = function ($d) use ($n, $W, $pl, $pr, $t0, $span) { return $n === 1 ? ($W - $pr + $pl) / 2 : $pl + (strtotime($d) - $t0) / $span * ($W - $pl - $pr); };
+    $y = function ($s) use ($H, $pt, $pb) { return $pt + (100 - max(0, min(100, (float) $s))) / 100 * ($H - $pt - $pb); };
+    $r = function ($v) { return round($v, 1); };
+    $g = '';
+    for ($i = 1; $i <= 6; $i++) {
+        $yy = $r($y($i / 7 * 100));
+        $g .= '<line x1="' . $pl . '" x2="' . ($W - $pr) . '" y1="' . $yy . '" y2="' . $yy . '" stroke="rgba(255,255,255,.08)" stroke-width="1"/>'
+            . '<text x="' . ($W - $pr + 5) . '" y="' . $r($yy + 3) . '" font-size="9" fill="#8B90A0">S' . $i . '</text>';
+    }
+    $pts = []; foreach ($log as $d => $e) $pts[] = $r($x($d)) . ',' . $r($y((int) $e['score']));
+    $path = 'M' . implode(' L', $pts);
+    $area = $path . ' L' . $r($x($dates[$n - 1])) . ',' . $r($y(0)) . ' L' . $r($x($dates[0])) . ',' . $r($y(0)) . ' Z';
+    $last = end($log); $lx = $r($x($dates[$n - 1])); $ly = $r($y((int) $last['score']));
+    $dots = '';
+    foreach (lmeg_si_stage_changes($log) as $c) {
+        $dots .= '<circle cx="' . $r($x($c['date'])) . '" cy="' . $r($y((int) $log[$c['date']]['score'])) . '" r="4" fill="' . ($c['to'] > $c['from'] ? '#34D399' : '#F87171') . '" stroke="#0E0F16" stroke-width="1.5"/>';
+    }
+    $fmt = function ($ts) { return function_exists('date_i18n') ? date_i18n('M j', $ts) : date('M j', $ts); };
+    return '<svg viewBox="0 0 ' . $W . ' ' . $H . '" style="width:100%;height:auto;display:block;" role="img" aria-label="Ladder progress over time">'
+         . '<defs><linearGradient id="lmegStageArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7C6CF6" stop-opacity=".42"/><stop offset="1" stop-color="#7C6CF6" stop-opacity="0"/></linearGradient></defs>'
+         . $g
+         . ($n > 1 ? '<path d="' . $area . '" fill="url(#lmegStageArea)"/><path d="' . $path . '" fill="none" stroke="#D05FA2" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' : '')
+         . $dots
+         . '<circle cx="' . $lx . '" cy="' . $ly . '" r="4.5" fill="#F4F5F7"/>'
+         . '<text x="' . $r($lx - 7) . '" y="' . $r($ly - 8) . '" font-size="11" font-weight="700" fill="#F4F5F7" text-anchor="end">' . (int) $last['score'] . '</text>'
+         . '<text x="' . $pl . '" y="' . ($H - 6) . '" font-size="9" fill="#8B90A0">' . esc_html($fmt($t0)) . '</text>'
+         . ($n > 1 ? '<text x="' . ($W - $pr) . '" y="' . ($H - 6) . '" font-size="9" fill="#8B90A0" text-anchor="end">' . esc_html($fmt($t1)) . '</text>' : '')
+         . '</svg>';
 }
 
 /**
@@ -137,7 +331,9 @@ function lmeg_si_render_stage($st, $card, $lbl) {
         <div style="<?php echo $card; ?>margin-bottom:14px;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px;">
                 <div style="<?php echo $lbl; ?>">Your stage · Fanloop ladder</div>
-                <div style="font-size:11px;color:#8B90A0;">Seven steps from first release to a fan base that pays every month — each one gated on your real numbers.</div>
+                <div style="font-size:11px;color:#8B90A0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">Seven steps from first release to a fan base that pays every month — each one gated on your real numbers.
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-stage' . (!empty($_GET['demo']) ? '&demo=1' : ''))); ?>" style="font-size:11px;font-weight:700;color:#E58BBD !important;text-decoration:none;white-space:nowrap;">Open the full ladder →</a>
+                </div>
             </div>
             <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;">
                 <div style="flex:0 0 250px;min-width:220px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;">
@@ -187,4 +383,224 @@ function lmeg_si_stage_text($st) {
     $t = 'STAGE ' . (int) $st['stage'] . ' OF 7 · ' . $st['name'] . ' (' . (int) $st['score'] . '/100)';
     if ($st['bottleneck']) $t .= "\nHolding you back: " . $st['bottleneck']['label'] . ' — ' . $st['bottleneck']['value'] . ', needs ' . $st['bottleneck']['target'];
     return $t;
+}
+
+/* ---------------------------------------------------------------------------
+ * The Stage page (Fanloop → Social → Stage): the whole ladder, one row per
+ * stage with every gate's value, target and progress; the playbook for the
+ * stage you're working on; how each number is measured; and the day-by-day
+ * history. ?demo=1 previews with sample data. Registered in lmeg_admin_menu.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_admin_stage() {
+    if (!current_user_can('manage_options')) return;
+    try {
+        $demo = !empty($_GET['demo']) && function_exists('lmeg_s4a_demo_rows');
+        $c = lmeg_si_stage_compute($demo);
+        if ($demo && !$c) { $demo = false; $c = lmeg_si_stage_compute(false); }
+        $t = function_exists('lmeg_si_tokens') ? lmeg_si_tokens() : [];
+        $card = $t['card'] ?? 'background:linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;color:#F4F5F7;';
+        $lbl  = $t['lbl']  ?? 'font:600 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#8B90A0;';
+        if ($c && !$demo) lmeg_si_stage_log_maybe($c);       // first live view of the day writes today's reading
+        $log = $demo ? lmeg_si_stage_demo_log() : lmeg_si_stage_log_get();
+        echo lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo);
+    } catch (\Throwable $e) {
+        echo '<div class="notice notice-error" style="max-width:1040px;margin:14px 0;"><p><strong>The Stage page hit an error while rendering.</strong><br>'
+           . '<code>' . esc_html(get_class($e) . ': ' . $e->getMessage()) . '</code><br><span style="opacity:.75;">' . esc_html(basename($e->getFile()) . ':' . $e->getLine()) . '</span></p></div>';
+    }
+}
+
+/** A gate row: ✓/○, label, value vs target, progress bar (or pass/fail only). Pure. */
+function lmeg_si_stage_gate_row($g, $compact = false) {
+    $pass = !empty($g['pass']); $p = $g['progress'];
+    $bar = '';
+    if (!$compact && $p !== null) {
+        $w = max(2, min(100, (int) $p));
+        $bar = '<div style="height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:6px;overflow:hidden;"><div style="height:100%;width:' . $w . '%;border-radius:3px;background:' . ($pass ? '#34D399' : 'linear-gradient(90deg,#D05FA2,#7C6CF6)') . ';"></div></div>';
+    }
+    $right = $pass ? '<span style="font-size:11px;font-weight:700;color:#34D399;white-space:nowrap;">Passed</span>'
+           : ($p !== null ? '<span style="font-size:11px;font-weight:700;color:#F4F5F7;white-space:nowrap;">' . (int) $p . '%</span>' : '<span style="font-size:11px;font-weight:700;color:#F87171;white-space:nowrap;">Not yet</span>');
+    return '<div style="display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;' . ($compact ? '' : 'padding:8px 0;border-top:1px solid rgba(255,255,255,.06);') . '">'
+         . '<span style="color:' . ($pass ? '#34D399' : '#F87171') . ';font-weight:800;font-size:13px;">' . ($pass ? '✓' : '○') . '</span>'
+         . '<div><div style="font-size:' . ($compact ? '12' : '13') . 'px;color:' . ($pass && !$compact ? '#C9CCD6' : '#F4F5F7') . ';font-weight:' . ($compact ? '500' : '600') . ';">' . esc_html($g['label'])
+         . ' <span style="color:#8B90A0;font-weight:500;">— ' . esc_html($g['value']) . ($pass ? '' : ', needs ' . esc_html($g['target'])) . '</span></div>' . $bar . '</div>'
+         . $right . '</div>';
+}
+
+/** The full Stage page markup. $c from lmeg_si_stage_compute (or null), $log the history map. */
+function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
+    $st = ($c && !empty($c['stage'])) ? $c['stage'] : lmeg_si_stage([], []);
+    $stage = (int) $st['stage']; $next = $st['next']; $b = $st['bottleneck'];
+    $PB = lmeg_si_stage_playbook();
+    $run = lmeg_si_stage_run($log, $stage);
+    $changes = array_slice(array_reverse(lmeg_si_stage_changes($log)), 0, 5);
+    $L = lmeg_si_stage_ladder();
+    $captured = ($c && !empty($c['snap']) && !empty($c['snap']->captured_date)) ? (string) $c['snap']->captured_date : '';
+    $in = $st['inputs'] ?? [];
+    $nf = function ($k) { return $k === null ? '—' : (function_exists('number_format_i18n') ? number_format_i18n((int) $k) : number_format((int) $k)); };
+    $sf = function ($k) { return $k === null ? '—' : (($k > 0 ? '+' : ($k < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs((float) $k), 1), '0'), '.') . '%'); };
+    $pill = function ($a, $strong = false) {
+        return '<a href="' . esc_url(lmeg_si_stage_action_href($a)) . '" style="font-size:11px;font-weight:700;color:#F4F5F7 !important;background:' . ($strong ? 'linear-gradient(135deg,#D05FA2,#7C6CF6)' : 'rgba(255,255,255,.06)') . ';border:1px solid rgba(255,255,255,' . ($strong ? '.28' : '.16') . ');border-radius:999px;padding:5px 11px;text-decoration:none;line-height:1.2;white-space:nowrap;">' . esc_html($a['label']) . '</a>';
+    };
+    $ins_url = admin_url('admin.php?page=lmeg-spotify-insights' . ($demo ? '&demo=1' : ''));
+    $done_gates = $next ? count($next['gates']) - count($st['failing']) : 0;
+    ob_start(); ?>
+    <div class="wrap lmeg-admin">
+        <h1>Fanloop — Stage</h1>
+        <?php if ($demo && function_exists('lmeg_demo_banner')) echo lmeg_demo_banner('lmeg-stage'); ?>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 4px;">
+            <a class="button" href="<?php echo esc_url($ins_url); ?>">← Spotify Insights</a>
+            <?php if (!$demo && function_exists('lmeg_demo_preview_button') && function_exists('lmeg_s4a_demo_rows')) echo str_replace(['<p>', '</p>'], '', lmeg_demo_preview_button('lmeg-stage')); ?>
+        </div>
+
+        <!-- HERO: where you are + the one thing to work on ------------------->
+        <div style="<?php echo $card; ?>max-width:1040px;margin:12px 0 14px;">
+            <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;">
+                <div style="flex:1 1 300px;min-width:260px;background:linear-gradient(120deg,rgba(208,95,162,.18),rgba(124,108,246,.18)),linear-gradient(160deg,#161826,#1C1F2E);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:16px 18px;">
+                    <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#C9CCD6;">Stage <?php echo $stage; ?> of 7</div>
+                    <div style="font:800 30px/1.1 var(--lmegA-font,inherit);color:#F4F5F7;margin:6px 0 4px;"><?php echo esc_html($st['name']); ?></div>
+                    <div style="font-size:13px;color:#C9CCD6;line-height:1.45;max-width:520px;"><?php echo esc_html($st['blurb']); ?></div>
+                    <div style="margin-top:14px;display:flex;justify-content:space-between;font-size:11px;color:#C9CCD6;"><span>Ladder progress</span><span style="color:#F4F5F7;font-weight:700;"><?php echo (int) $st['score']; ?>/100</span></div>
+                    <div style="position:relative;height:8px;border-radius:4px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;">
+                        <div style="height:100%;width:<?php echo (int) $st['score']; ?>%;background:linear-gradient(90deg,#D05FA2,#7C6CF6);border-radius:4px;"></div>
+                        <?php for ($i = 1; $i <= 6; $i++) : ?><div style="position:absolute;top:0;bottom:0;left:<?php echo round($i / 7 * 100, 2); ?>%;width:2px;background:rgba(14,15,22,.85);"></div><?php endfor; ?>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#8B90A0;">
+                        <span><?php if ($next) : ?><?php echo (int) $done_gates; ?> of <?php echo count($next['gates']); ?> gate<?php echo count($next['gates']) === 1 ? '' : 's'; ?> to stage <?php echo (int) $next['n']; ?> · <?php echo esc_html($next['name']); ?><?php else : ?>Every gate on the ladder passes<?php endif; ?></span>
+                        <span><?php if ($run) : ?>At this stage <?php echo $run['days'] === 1 ? 'since today' : 'for ' . (int) $run['days'] . ' days'; ?><?php echo $run['from_start'] && $run['days'] > 1 ? ' (as far back as we’ve tracked)' : ''; ?><?php else : ?>History starts with today’s reading<?php endif; ?></span>
+                    </div>
+                </div>
+                <div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:10px;">
+                    <?php if ($next && $b) : ?>
+                    <div style="background:#0E0F16;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px 16px;flex:1;">
+                        <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;margin-bottom:8px;">This week’s one thing</div>
+                        <div style="font-size:16px;font-weight:800;color:#F4F5F7;line-height:1.25;"><?php echo esc_html($b['label']); ?></div>
+                        <div style="font-size:13px;color:#C9CCD6;margin-top:4px;"><span style="color:#F87171;font-weight:700;"><?php echo esc_html($b['value']); ?></span> · needs <?php echo esc_html($b['target']); ?></div>
+                        <?php if ($b['progress'] !== null) : ?>
+                        <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:10px;overflow:hidden;"><div style="height:100%;width:<?php echo max(2, (int) $b['progress']); ?>%;border-radius:3px;background:linear-gradient(90deg,#D05FA2,#7C6CF6);"></div></div>
+                        <div style="font-size:11px;color:#8B90A0;margin-top:4px;"><?php echo (int) $b['progress']; ?>% of the way there</div>
+                        <?php endif; ?>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;">
+                            <?php $k = 0; foreach ($b['actions'] as $a) echo $pill($a, $k++ === 0); ?>
+                        </div>
+                        <?php if (count($st['failing']) > 1) : ?>
+                        <div style="font-size:11px;color:#8B90A0;margin-top:10px;">Then: <?php echo esc_html(implode(' · ', array_map(function ($g) { return $g['label']; }, array_slice($st['failing'], 1)))); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <?php else : ?>
+                    <div style="background:#0E0F16;border:1px solid rgba(52,211,153,.35);border-radius:12px;padding:14px 16px;flex:1;">
+                        <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#34D399;margin-bottom:8px;">Top of the ladder</div>
+                        <div style="font-size:14px;color:#F4F5F7;line-height:1.5;">Members, list and streams are all growing together. Keep the rhythm: a release, a send and a drop every cycle.</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;"><?php foreach ($PB[7]['moves'] as $a) echo $pill($a); ?></div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- THE LADDER: every stage, every gate ------------------------------->
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;">
+                <div style="<?php echo $lbl; ?>">The ladder · all seven stages</div>
+                <div style="font-size:11px;color:#8B90A0;">You sit at the highest stage whose gates all pass, with every stage below it passing too. Unknown numbers never count as a pass.</div>
+            </div>
+            <?php foreach ($st['stages'] as $s) : $n = (int) $s['n']; $passed = $n <= $stage; $cur = $n === $stage + 1; $future = $n > $stage + 1;
+                $circle = $passed ? 'background:rgba(52,211,153,.18);border:1px solid rgba(52,211,153,.5);color:#34D399;'
+                        : ($cur ? 'background:linear-gradient(135deg,#D05FA2,#7C6CF6);border:1px solid rgba(255,255,255,.28);color:#fff;box-shadow:0 6px 18px rgba(124,108,246,.35);'
+                        : 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);color:#8B90A0;');
+                $status = $passed ? '<span style="font-size:11px;font-weight:700;color:#34D399;">✓ Passed</span>'
+                        : ($cur ? '<span style="font-size:11px;font-weight:700;color:#fff;background:linear-gradient(135deg,#D05FA2,#7C6CF6);border-radius:999px;padding:3px 9px;">→ Working on it · ' . (int) $done_gates . ' of ' . count($s['gates']) . ' gate' . (count($s['gates']) === 1 ? '' : 's') . '</span>'
+                        : '<span style="font-size:11px;font-weight:700;color:#8B90A0;">Later</span>');
+                $pb = $PB[$n] ?? null; ?>
+            <div style="display:grid;grid-template-columns:44px 1fr;gap:0 12px;">
+                <div style="display:flex;flex-direction:column;align-items:center;">
+                    <div style="<?php echo $circle; ?>width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:0 0 auto;"><?php echo $passed ? '✓' : $n; ?></div>
+                    <?php if ($n < 7) : ?><div style="width:2px;flex:1;min-height:14px;background:<?php echo $n < $stage ? 'rgba(52,211,153,.4)' : 'rgba(255,255,255,.1)'; ?>;margin:4px 0;"></div><?php endif; ?>
+                </div>
+                <div style="padding:6px 0 <?php echo $n < 7 ? '16' : '0'; ?>px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">
+                        <div style="font:800 <?php echo $cur ? '18' : '15'; ?>px/1.2 var(--lmegA-font,inherit);color:<?php echo $future ? '#C9CCD6' : '#F4F5F7'; ?>;">Stage <?php echo $n; ?> · <?php echo esc_html($s['name']); ?></div>
+                        <?php echo $status; ?>
+                    </div>
+                    <div style="font-size:12px;color:#C9CCD6;margin-top:3px;line-height:1.45;"><?php echo esc_html($s['blurb']); ?></div>
+                    <?php if ($passed) : ?>
+                    <div style="display:flex;flex-direction:column;gap:3px;margin-top:8px;"><?php foreach ($s['gates'] as $g) echo lmeg_si_stage_gate_row($g, true); ?></div>
+                    <?php else : ?>
+                    <div style="background:#0E0F16;border:1px solid rgba(255,255,255,<?php echo $cur ? '.14' : '.08'; ?>);border-radius:12px;padding:6px 14px 10px;margin-top:10px;">
+                        <?php foreach ($s['gates'] as $i => $g) echo str_replace('border-top:1px solid rgba(255,255,255,.06);', $i === 0 ? '' : 'border-top:1px solid rgba(255,255,255,.06);', lmeg_si_stage_gate_row($g, false)); ?>
+                        <?php if ($pb) : ?>
+                        <?php if ($cur) : ?>
+                        <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:6px;padding-top:10px;">
+                            <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;margin-bottom:6px;">Playbook for stage <?php echo $n; ?></div>
+                            <div style="font-size:13px;color:#F4F5F7;line-height:1.5;max-width:640px;"><?php echo esc_html($pb['why']); ?></div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><?php $k = 0; foreach ($pb['moves'] as $a) echo $pill($a, $k++ === 0); ?></div>
+                        </div>
+                        <?php else : ?>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;"><span style="font-size:11px;color:#8B90A0;font-weight:600;">Playbook:</span><?php foreach ($pb['moves'] as $a) echo $pill($a); ?></div>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;max-width:1040px;margin-bottom:14px;">
+            <!-- HISTORY ----------------------------------------------------->
+            <div style="<?php echo $card; ?>">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px;">
+                    <div style="<?php echo $lbl; ?>">Your progress · day by day</div>
+                    <div style="font-size:11px;color:#8B90A0;"><?php echo $demo ? 'Sample history' : 'One reading a day, after the morning Spotify pull'; ?></div>
+                </div>
+                <?php if ($log) : ?>
+                <?php echo lmeg_si_stage_history_svg($log); ?>
+                <div style="font-size:11px;color:#8B90A0;margin-top:4px;">Ladder progress out of 100 · guide lines mark each stage · dots mark a stage change</div>
+                <div style="margin-top:10px;font-size:13px;color:#F4F5F7;">
+                    <?php if ($run && $run['days'] > 1) : ?>At stage <?php echo $stage; ?> for <strong><?php echo (int) $run['days']; ?> days</strong>, since <?php echo esc_html(date_i18n('M j', strtotime($run['since']))); ?>.
+                    <?php elseif ($run) : ?>Today is the first reading at stage <?php echo $stage; ?>.
+                    <?php else : ?>Tracking started <?php echo esc_html(date_i18n('M j', strtotime(array_key_first($log)))); ?>.<?php endif; ?>
+                </div>
+                <?php if ($changes) : ?>
+                <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+                    <?php foreach ($changes as $ch) : $up = $ch['to'] > $ch['from']; ?>
+                    <div style="font-size:12px;color:#C9CCD6;"><span style="color:<?php echo $up ? '#34D399' : '#F87171'; ?>;font-weight:800;"><?php echo $up ? '↑' : '↓'; ?></span> <?php echo $up ? 'Reached' : 'Slipped to'; ?> stage <?php echo (int) $ch['to']; ?> · <?php echo esc_html($L[$ch['to']]['name'] ?? ''); ?> <span style="color:#8B90A0;">— <?php echo esc_html(date_i18n('M j', strtotime($ch['date']))); ?></span></div>
+                    <?php endforeach; ?>
+                </div>
+                <?php elseif (count($log) > 1) : ?>
+                <div style="font-size:12px;color:#8B90A0;margin-top:6px;">No stage change yet in this window.</div>
+                <?php endif; ?>
+                <?php else : ?>
+                <div style="font-size:13px;color:#F4F5F7;line-height:1.5;">No readings yet. The first one lands after this morning’s Spotify pull (or the next time this page is opened after 9am), and the chart builds from there, one point a day.</div>
+                <?php endif; ?>
+            </div>
+            <!-- HOW IT'S MEASURED ------------------------------------------->
+            <div style="<?php echo $card; ?>">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px;">
+                    <div style="<?php echo $lbl; ?>">The numbers behind the gates</div>
+                    <div style="font-size:11px;color:#8B90A0;"><?php echo $captured ? ($demo ? 'Sample data' : 'Spotify captured ' . esc_html($captured)) : 'No Spotify for Artists snapshot yet'; ?></div>
+                </div>
+                <?php $rows = [
+                    ['Monthly listeners', $nf($in['listeners'] ?? null), 'Spotify for Artists, last 28 days'],
+                    ['Spotify followers', $nf($in['sp_followers'] ?? null), 'Spotify for Artists daily series, else the public Spotify API'],
+                    ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . ')'],
+                    ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store'],
+                    ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers'],
+                    ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify'],
+                    ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list'],
+                    ['28-day streams vs the 28 before', $sf($in['streams_pct'] ?? null), 'Spotify for Artists, this capture vs the previous one'],
+                ]; ?>
+                <div style="display:flex;flex-direction:column;">
+                    <?php foreach ($rows as $i => $r) : ?>
+                    <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:7px 0;<?php echo $i ? 'border-top:1px solid rgba(255,255,255,.06);' : ''; ?>">
+                        <div><div style="font-size:13px;color:#F4F5F7;font-weight:600;"><?php echo esc_html($r[0]); ?></div><div style="font-size:11px;color:#8B90A0;"><?php echo esc_html($r[2]); ?></div></div>
+                        <div style="font:700 15px/1 var(--lmegA-font,inherit);color:<?php echo $r[1] === '—' ? '#8B90A0' : '#F4F5F7'; ?>;white-space:nowrap;"><?php echo esc_html($r[1]); ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <div style="font-size:11px;color:#8B90A0;margin-top:8px;line-height:1.5;">A ring that isn’t connected shows “—” and fails its gate rather than pretending to pass. Ladder progress = stages passed plus the share of the next stage’s gates you’ve cleared, out of 7.</div>
+            </div>
+        </div>
+    </div>
+    <?php return ob_get_clean();
 }
