@@ -46,6 +46,7 @@ function lmeg_si_stage($n, $x = []) {
     $releases = (isset($x['releases']) && $x['releases'] !== null) ? (int) $x['releases'] : null;
     $sends30  = (isset($x['sends_30d']) && $x['sends_30d'] !== null) ? (int) $x['sends_30d'] : null;
     $spct     = (isset($x['streams_pct']) && $x['streams_pct'] !== null && $x['streams_pct'] !== '') ? (float) $x['streams_pct'] : null;
+    $sbase    = !empty($x['streams_base']) ? (string) $x['streams_base'] : 'the last capture';
     // Send rhythm (optional inputs): when was the last send, how many in 90
     // days, the average gap between send days. $x['today'] pins the clock for tests.
     $sends90   = (isset($x['sends_90d']) && $x['sends_90d'] !== null) ? (int) $x['sends_90d'] : null;
@@ -104,7 +105,7 @@ function lmeg_si_stage($n, $x = []) {
         7 => [
             $gate('members_100', 'Paying members', $members !== null && $members >= 100, $nf($members), '100+', 'members', [$go('lmeg-tiers', 'Grow your tiers'), $compose('lift', 'Invite your superfans', 'superfans')], $pr($members, 100)),
             $gate('list_share_5', 'Listeners who join your list', $list_pct !== null && $list_pct >= 5, $pf($list_pct), '5%', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop')], $pr($list_pct, 5)),
-            $gate('streams_hold', '28-day streams holding or growing', $spct !== null && $spct >= 0, $sf($spct) . ' vs the 28 days before', '0% or better', 'listeners', [$go('lmeg-releases', 'Plan a release')]),
+            $gate('streams_hold', '28-day streams holding or growing', $spct !== null && $spct >= 0, $sf($spct) . ' vs ' . $sbase, '0% or better', 'listeners', [$go('lmeg-releases', 'Plan a release')]),
         ],
     ];
     // Distance + pace: for every gate that isn't passing, how many are still
@@ -206,7 +207,7 @@ function lmeg_si_stage($n, $x = []) {
         'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
-                     'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
+                     'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct, 'streams_base' => $sbase,
                      'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new,
                      'list_new_organic' => $list_org, 'list_imported_28d' => $imported,
                      'list_bounced' => $bounced_n, 'list_reachable' => ($list !== null && $bounced_n !== null) ? max(0, $list - $bounced_n) : null],
@@ -444,6 +445,17 @@ function lmeg_si_stage_compute($demo = false) {
     }
     $pct = function ($a, $b) { return ($a !== null && $b !== null && (int) $b > 0) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
     $sp  = ($snap && $prev) ? $pct($snap->streams, $prev->streams) : null;
+    $sp_base = 'the last capture';
+    // A real baseline for the streams direction: the capture 28 days back
+    // (else 7) from the daily series; the previous capture only as a fallback.
+    if (!$demo && $snap && function_exists('lmeg_s4a_series')) {
+        $ser = (array) lmeg_s4a_series('streams', $sel, $snap->window, 400);
+        foreach ([28 => '28 days ago', 7 => '7 days ago'] as $days => $label) {
+            $target = date('Y-m-d', strtotime($snap->captured_date) - $days * 86400);
+            $best = null; foreach ($ser as $r) { if ((string) $r->captured_date <= $target) $best = $r; }
+            if ($best && (int) $best->v > 0 && (string) $best->captured_date < (string) $snap->captured_date) { $sp = $pct($snap->streams, $best->v); $sp_base = $label; break; }
+        }
+    }
     $mlp = ($snap && $prev) ? $pct($snap->monthly_listeners, $prev->monthly_listeners) : null;
     $raw = null;
     if ($demo) { $raw = lmeg_si_stage_demo_raw($snap, $mlp); $rings = lmeg_si_fan_rings_shape($raw); }
@@ -467,7 +479,7 @@ function lmeg_si_stage_compute($demo = false) {
     foreach (['members_delta' => 'm', 'listeners_delta' => 'l', 'sp_followers_delta' => 'f', 'list_new' => 'ls', 'customers_new' => 'c'] as $rk => $lk) {
         if (!isset($raw[$rk]) || $raw[$rk] === null) { $r = lmeg_si_stage_log_rate($hl, $lk); if ($r !== null) { $raw[$rk] = $r; $raw[$rk . '_src'] = 'log'; } }
     }
-    $extra = lmeg_si_stage_extra($snap, $ov, ['streams' => $sp], $demo);
+    $extra = lmeg_si_stage_extra($snap, $ov, ['streams' => $sp, 'streams_base' => $sp_base], $demo);
     $stage = lmeg_si_stage($raw, $extra);
     return compact('sel', 'snap', 'prev', 'ov', 'sp', 'mlp', 'raw', 'rings', 'extra', 'stage', 'demo');
 }
@@ -686,7 +698,11 @@ function lmeg_si_stage_extra($snap, $ov, $changes = [], $demo = false) {
         if (count($days90) >= 2) { sort($days90); $gap = (int) round((end($days90) - $days90[0]) / 86400 / (count($days90) - 1)); }
     }
     $sp = (isset($changes['streams']) && $changes['streams'] !== null && $changes['streams'] !== '') ? (float) $changes['streams'] : null;
-    return ['releases' => $releases, 'sends_30d' => $sends, 'streams_pct' => $sp, 'sends_90d' => $sends90, 'last_send' => $last ? date('Y-m-d', $last) : null, 'send_gap' => $gap];
+    // What the streams % is measured against: callers that only have the
+    // previous capture leave it blank → "the last capture"; compute() sets
+    // "28 days ago" / "7 days ago" when the history has a real baseline.
+    $sbase = !empty($changes['streams_base']) ? (string) $changes['streams_base'] : 'the last capture';
+    return ['releases' => $releases, 'sends_30d' => $sends, 'streams_pct' => $sp, 'streams_base' => $sbase, 'sends_90d' => $sends90, 'last_send' => $last ? date('Y-m-d', $last) : null, 'send_gap' => $gap];
 }
 
 /** Resolve a gate action to an href (admin page or external). */
@@ -1159,7 +1175,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers', 'm'],
                     ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify', null],
                     ['Sends in the last 30 days', $nf($in['sends_30d'] ?? null), 'Completed broadcasts to your list' . (!empty($st['rhythm']['label']) ? ' · ' . $st['rhythm']['label'] : '') . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . ($st['rhythm']['days_since'] === 0 ? 'today' : ($st['rhythm']['days_since'] === 1 ? 'yesterday' : (int) $st['rhythm']['days_since'] . ' days ago')) : ''), 's'],
-                    ['28-day streams vs the 28 before', $sf($in['streams_pct'] ?? null), 'Spotify for Artists, this capture vs the previous one', null],
+                    ['28-day streams vs ' . ($in['streams_base'] ?? 'the last capture'), $sf($in['streams_pct'] ?? null), 'Spotify for Artists rolling 28-day total, compared with the capture ' . ($in['streams_base'] ?? 'before'), null],
                 ]; ?>
                 <div style="display:flex;flex-direction:column;">
                     <?php foreach ($rows as $i => $r) : $sk = $r[3]; $spark = ($sk && !empty($tr[$sk])) ? lmeg_si_stage_spark($tr[$sk]) : ''; ?>
