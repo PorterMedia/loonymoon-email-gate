@@ -584,6 +584,11 @@ function lmeg_si_digest_html() {
                . '<td style="padding:6px 0;font-weight:600;">' . $r[2] . '</td></tr>';
     }
     $html .= '</table>';
+    // The ladder: stage, score, this week's one thing (stage.php; light data path).
+    if (function_exists('lmeg_si_stage_compute') && function_exists('lmeg_si_stage_digest_html')) {
+        $lc = lmeg_si_stage_compute(false);
+        if ($lc && !empty($lc['stage'])) $html .= lmeg_si_stage_digest_html($lc['stage']);
+    }
     $F = array_slice(lmeg_si_analyze($ctx), 0, 3);
     if ($F) {
         $html .= '<p style="margin:14px 0 6px;font-weight:600;">What to do</p><ul style="margin:0;padding-left:18px;">';

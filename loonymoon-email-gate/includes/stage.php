@@ -606,6 +606,31 @@ function lmeg_si_render_stage_strip($st, $card, $lbl) {
     <?php return ob_get_clean();
 }
 
+/**
+ * The Monday owner digest's ladder block (light inbox HTML, inline styles,
+ * dark text): stage + score, this week's one thing with distance and pace,
+ * the first action and a link to the Ladder page. Pure apart from admin_url.
+ */
+function lmeg_si_stage_digest_html($st) {
+    if (!$st) return '';
+    $stage = (int) $st['stage']; $b = $st['bottleneck']; $next = $st['next'];
+    $h  = '<p style="margin:14px 0 6px;font-weight:600;">Your stage · Fanloop ladder</p>';
+    $h .= '<p style="margin:0 0 6px;"><strong>Stage ' . $stage . ' of 7 · ' . esc_html($st['name']) . '</strong> — ' . (int) $st['score'] . '/100 on the ladder. ' . esc_html($st['blurb']) . '</p>';
+    if ($next && $b) {
+        $bits = [esc_html($b['value']) . ', needs ' . esc_html($b['target'])];
+        if (!empty($b['need_label'])) $bits[] = '<strong>' . esc_html($b['need_label']) . '</strong>';
+        if (!empty($b['rate_label'])) $bits[] = esc_html($b['rate_label']);
+        if (!empty($b['eta_label']))  $bits[] = esc_html($b['eta_label']);
+        $links = [];
+        foreach (array_slice((array) $b['actions'], 0, 2) as $a) $links[] = '<a href="' . esc_url(lmeg_si_stage_action_href($a)) . '">' . esc_html($a['label']) . '</a>';
+        $links[] = '<a href="' . esc_url(admin_url('admin.php?page=lmeg-ladder')) . '">See the full ladder →</a>';
+        $h .= '<p style="margin:0;">This week, to reach stage ' . (int) $next['n'] . ': <strong>' . esc_html($b['label']) . '</strong> — ' . implode(' · ', $bits) . '. <span style="white-space:nowrap;">' . implode(' · ', $links) . '</span></p>';
+    } else {
+        $h .= '<p style="margin:0;">Top of the ladder — members, list and streams are all growing together. Keep the rhythm: a release, a send and a drop every cycle. <a href="' . esc_url(admin_url('admin.php?page=lmeg-ladder')) . '">See the full ladder →</a></p>';
+    }
+    return $h;
+}
+
 /** Plain-text line for the brief's text alternative. */
 function lmeg_si_stage_text($st) {
     if (!$st) return '';
