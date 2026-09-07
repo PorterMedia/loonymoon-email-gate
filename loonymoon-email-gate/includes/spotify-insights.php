@@ -488,13 +488,21 @@ function lmeg_si_demo_marks() {
  * pass: snapshot + previous, decoded meta, headline rows, launches and the full
  * analysis-engine context (same inputs as the Insights page). null without S4A.
  */
-function lmeg_si_quick_context() {
+function lmeg_si_quick_context($demo = false) {
     if (!function_exists('lmeg_s4a_latest')) return null;
     $sel  = lmeg_artist();
-    $snap = lmeg_s4a_latest($sel);
-    if (!$snap) return null;
+    // $demo: build from the synthetic snapshot pair (same as the page's ?demo=1)
+    // so the digest/brief can be previewed without a real capture.
+    if ($demo) {
+        $dr = function_exists('lmeg_s4a_demo_rows') ? lmeg_s4a_demo_rows($sel) : [];
+        if (!$dr) return null;
+        $snap = (object) end($dr); $prev = (object) $dr[0];
+    } else {
+        $snap = lmeg_s4a_latest($sel);
+        if (!$snap) return null;
+        $prev = function_exists('lmeg_s4a_prev') ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
+    }
     $meta = $snap->meta ? (array) json_decode((string) $snap->meta, true) : [];
-    $prev = function_exists('lmeg_s4a_prev') ? lmeg_s4a_prev($sel, $snap->window, $snap->captured_date) : null;
     $pct  = function ($a, $b) { return ($b !== null && (int) $b > 0 && $a !== null) ? round(((int) $a - (int) $b) / (int) $b * 100, 1) : null; };
     $chg  = function ($v) { return $v === null ? '' : ' <span style="color:' . ($v >= 0 ? '#1f9d63' : '#d9534f') . ';font-weight:600;">' . ($v >= 0 ? '+' : '') . $v . '%</span>'; };
     $sp   = $prev ? $pct($snap->streams, $prev->streams) : null;
@@ -518,12 +526,12 @@ function lmeg_si_quick_context() {
     }
     $daily = (array) ($meta['daily'] ?? []);
     if (!empty($daily['dates']) && function_exists('lmeg_si_campaign_marks')) {
-        $lift = lmeg_si_campaign_lift($daily['dates'], (array) ($daily['streams'] ?? []), lmeg_si_campaign_marks(14));
+        $lift = lmeg_si_campaign_lift($daily['dates'], (array) ($daily['streams'] ?? []), $demo ? lmeg_si_demo_marks() : lmeg_si_campaign_marks(14));
         if ($lift) { $L = end($lift); $rows[] = ['✉️', 'Last send → streams', esc_html($L['subject']) . ' — ' . ($L['pct'] >= 0 ? '+' : '') . $L['pct'] . '% over the 3 days after']; }
     }
     // A recent launch (≤35 days) gets its own line: first 7 / first 28 days.
     $sd_entries = (array) ($meta['song_daily'] ?? []);
-    $ovd = function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null; if (is_wp_error($ovd)) $ovd = null;
+    $ovd = $demo ? lmeg_si_demo_overview($sel) : (function_exists('lmeg_spotify_overview') ? lmeg_spotify_overview() : null); if (is_wp_error($ovd)) $ovd = null;
     $launch = lmeg_si_launch_compare((is_array($ovd) && !empty($ovd['releases'])) ? $ovd['releases'] : [], $map);
     if ($launch && (int) $launch[0]['days'] <= 35) {
         $L0 = $launch[0];
@@ -533,7 +541,7 @@ function lmeg_si_quick_context() {
     $cm = lmeg_si_catalogue_monthly($sd_entries);
     $moves = null; $mdays = 0;
     if (!empty($meta['countries']) && function_exists('lmeg_s4a_at')) {
-        $base = lmeg_s4a_at($sel, $snap->window, date('Y-m-d', strtotime($snap->captured_date . ' -7 days')));
+        $base = $demo ? null : lmeg_s4a_at($sel, $snap->window, date('Y-m-d', strtotime($snap->captured_date . ' -7 days')));
         if ((!$base || $base->captured_date >= $snap->captured_date) && $prev) { $pm = (array) json_decode((string) $prev->meta, true); $base = (object) ['captured_date' => $prev->captured_date, 'countries' => wp_json_encode($pm['countries'] ?? [])]; }
         if ($base && $base->captured_date < $snap->captured_date) { $moves = lmeg_si_country_movers($meta['countries'], json_decode((string) $base->countries, true)); $mdays = max(1, (int) round((strtotime($snap->captured_date) - strtotime($base->captured_date)) / 86400)); }
     }
@@ -1474,6 +1482,16 @@ function lmeg_admin_spotify_insights_render() {
         $to_ = !empty($s_['digest_email']) && is_email($s_['digest_email']) ? $s_['digest_email'] : get_option('admin_email');
         $si_notice = '<div class="notice notice-success is-dismissible"><p>Digest sent to <strong>' . esc_html($to_) . '</strong>. The Monday version goes out automatically when "weekly summary" is on in Settings.</p></div>';
     }
+    // "Email me today's brief" — the daily Spotify brief (daily-brief.php), to
+    // the address typed (defaults to the person clicking), right now.
+    if (($_POST['lmeg_si_action'] ?? '') === 'brief' && check_admin_referer('lmeg_si_brief', 'lmeg_si_brief_nonce') && function_exists('lmeg_send_daily_brief')) {
+        $to_ = sanitize_email(wp_unslash($_POST['brief_to'] ?? ''));
+        if (!is_email($to_)) $to_ = (string) wp_get_current_user()->user_email;
+        $r_ = lmeg_send_daily_brief($to_);
+        $si_notice = is_wp_error($r_)
+            ? '<div class="notice notice-error is-dismissible"><p>Couldn’t send the brief: ' . esc_html($r_->get_error_message()) . '</p></div>'
+            : '<div class="notice notice-success is-dismissible"><p>Today’s brief sent to <strong>' . esc_html($to_) . '</strong>. It goes out every morning once the Spotify for Artists pull lands — address + on/off in Settings → Daily brief.</p></div>';
+    }
 
     // ---- gather from both sources (each optional) ----------------------------
     // Per-site isolation: this Fanloop site shows ONLY its own artist — no
@@ -1664,6 +1682,15 @@ function lmeg_admin_spotify_insights_render() {
                 <?php wp_nonce_field('lmeg_si_digest', 'lmeg_si_digest_nonce'); ?>
                 <input type="hidden" name="lmeg_si_action" value="digest">
                 <button class="button" title="Sends the weekly owner digest — with a Spotify section — to your digest address now">Email me this week’s digest</button>
+            </form>
+            <?php endif; ?>
+            <?php if ($has_s4a && function_exists('lmeg_send_daily_brief')) : ?>
+            <form method="post" style="margin:0;display:flex;gap:6px;align-items:center;">
+                <?php wp_nonce_field('lmeg_si_brief', 'lmeg_si_brief_nonce'); ?>
+                <input type="hidden" name="lmeg_si_action" value="brief">
+                <input type="email" name="brief_to" value="<?php echo esc_attr(wp_get_current_user()->user_email); ?>" placeholder="you@example.com" style="width:220px;" title="Where to send this preview">
+                <button class="button" title="Sends today’s daily Spotify brief to that address now">Email me today’s brief</button>
+                <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify-insights&lmeg_brief_preview=1')); ?>" target="_blank" rel="noopener" title="Open today’s brief as a page">Preview in browser ↗</a>
             </form>
             <?php endif; ?>
         </div>
