@@ -415,7 +415,9 @@ function lmeg_si_stage_log_maybe($c = null) {
     return lmeg_si_stage_log_record($c['stage'], $today, $cap);
 }
 
-add_action('lmeg_broadcast_tick', 'lmeg_si_stage_log_tick', 72);
+// Priority 70: ahead of the daily brief (71) so the brief's "since yesterday"
+// line compares today's fresh reading with yesterday's.
+add_action('lmeg_broadcast_tick', 'lmeg_si_stage_log_tick', 70);
 function lmeg_si_stage_log_tick() { lmeg_si_stage_log_maybe(); }
 
 /** The continuous run of days at $stage ending at the latest entry: since, days, whether it spans the whole log. */
@@ -555,6 +557,9 @@ function lmeg_si_render_stage($st, $card, $lbl) {
                     <div style="background:#0E0F16;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;">
                         <div style="font:700 11px/1 var(--lmegA-font,inherit);letter-spacing:.06em;text-transform:uppercase;color:#E58BBD;margin-bottom:6px;">What’s holding you at stage <?php echo $stage; ?></div>
                         <div style="font-size:14px;font-weight:700;color:#F4F5F7;"><?php echo esc_html($b['label']); ?>: <span style="color:#F87171;"><?php echo esc_html($b['value']); ?></span> <span style="color:#8B90A0;font-weight:500;">· needs <?php echo esc_html($b['target']); ?></span></div>
+                        <?php if (!empty($b['need_label'])) : ?>
+                        <div style="font-size:12px;color:#C9CCD6;margin-top:3px;"><strong style="color:#F4F5F7;"><?php echo esc_html($b['need_label']); ?></strong><?php if (!empty($b['rate_label'])) echo ' · ' . esc_html($b['rate_label']); ?><?php if (!empty($b['eta_label'])) echo ' · ' . esc_html($b['eta_label']); ?></div>
+                        <?php endif; ?>
                         <div style="font-size:12px;color:#C9CCD6;margin-top:4px;">To reach stage <?php echo (int) $next['n']; ?> · <?php echo esc_html($next['name']); ?>:</div>
                         <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">
                             <?php foreach ($next['gates'] as $g) : ?>

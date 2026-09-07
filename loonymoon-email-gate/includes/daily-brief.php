@@ -86,6 +86,13 @@ function lmeg_si_brief_data($demo = false) {
         foreach ($d['stage']['bottleneck']['actions'] as &$a) $a['href'] = lmeg_si_stage_action_href($a);
         unset($a);
     }
+    // Since yesterday: today's ladder reading vs the one before (the history
+    // tick runs ahead of the brief tick). Sample history in demo.
+    $d['stage_delta'] = null;
+    if ($d['stage'] && function_exists('lmeg_si_stage_log_delta')) {
+        $log = $demo ? (function_exists('lmeg_si_stage_demo_log') ? lmeg_si_stage_demo_log() : []) : (function_exists('lmeg_si_stage_log_get') ? lmeg_si_stage_log_get() : []);
+        $d['stage_delta'] = $log ? lmeg_si_stage_log_delta($log) : null;
+    }
 
     // Songs — top 5 by last-7-day streams from the real day-by-day data, else
     // the 28-day list. Each carries its own 14-day mini series.
@@ -339,6 +346,14 @@ function lmeg_si_brief_html($d) {
         .     '<div style="font-size:12px;line-height:1.45;color:#C9CCD6;">' . esc_html($st['blurb']) . '</div>'
         .     '<div style="margin-top:10px;font-size:11px;color:#C9CCD6;">Ladder progress <span style="color:' . $TEXT . ';font-weight:700;">' . (int) $st['score'] . '/100</span></div>'
         .     lmeg_si_brief_bar((int) $st['score'], $PINK, '#0E0F16', 6, 5)
+        .     ((!empty($d['stage_delta']) && is_array($d['stage_delta'])) ? (function ($dl) use ($GREEN, $RED, $TEXT) {
+                  $c = function ($v) use ($GREEN, $RED, $TEXT) { return $v > 0 ? $GREEN : ($v < 0 ? $RED : $TEXT); };
+                  $pf = function ($v) { return rtrim(rtrim(number_format((float) $v, 2), '0'), '.') . '%'; };
+                  $s = '<div style="font-size:11px;color:#C9CCD6;margin-top:6px;">Since ' . esc_html(date_i18n('M j', strtotime($dl['from']))) . ': <span style="color:' . $c($dl['score']) . ';font-weight:700;">' . ($dl['score'] > 0 ? '+' : '') . (int) $dl['score'] . ' progress</span>';
+                  if ($dl['list_pct'] !== null) $s .= ' · list share ' . $pf($dl['list_pct_from']) . ' → <span style="color:' . $c($dl['list_pct']) . ';font-weight:700;">' . $pf($dl['list_pct_to']) . '</span>';
+                  if ($dl['stage'] !== 0) $s .= ' · <span style="color:' . $c($dl['stage']) . ';font-weight:700;">stage ' . ($dl['stage'] > 0 ? 'up' : 'down') . '</span>';
+                  return $s . '</div>';
+              })($d['stage_delta']) : '')
         .   '</td></tr></table>'
         . '</td>'
         . '<td class="lmeg-col" style="vertical-align:top;padding:0;">';
