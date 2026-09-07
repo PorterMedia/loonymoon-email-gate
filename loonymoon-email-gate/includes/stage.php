@@ -53,10 +53,13 @@ function lmeg_si_stage($n, $x = []) {
     $send_gap  = (isset($x['send_gap']) && $x['send_gap'] !== null) ? (int) $x['send_gap'] : null;
     $today_s   = !empty($x['today']) ? (string) $x['today'] : (function_exists('current_time') ? current_time('Y-m-d') : date('Y-m-d'));
     $since     = $last_send ? max(0, (int) floor((strtotime($today_s) - strtotime($last_send)) / 86400)) : null;
-    $rhythm = ['last_send' => $last_send, 'days_since' => $since, 'sends_90d' => $sends90, 'gap' => $send_gap,
+    // A cadence is only quoted while it is current (the last send is within
+    // ~1.5 gaps); a July burst followed by silence reads as a count, not a rhythm.
+    $current = ($send_gap && $since !== null && $since <= max(14, (int) round($send_gap * 1.5)));
+    $rhythm = ['last_send' => $last_send, 'days_since' => $since, 'sends_90d' => $sends90, 'gap' => $send_gap, 'current' => $current,
                'label' => $sends90 === null ? '' : ($sends90 === 0 ? 'No sends in the last 90 days'
-                        : ($send_gap ? 'About one send every ' . $send_gap . ' days over the last 90 days'
-                        : ($sends90 === 1 ? 'One send in the last 90 days' : $sends90 . ' sends on one day in the last 90 days')))];
+                        : ($current ? 'About one send every ' . $send_gap . ' days over the last 90 days'
+                        : ($sends90 === 1 ? 'One send in the last 90 days' : number_format($sends90) . ' sends in the last 90 days')))];
     $superfans = (isset($n['superfans']) && $n['superfans'] !== null && $n['superfans'] !== '') ? max(0, (int) $n['superfans']) : null;
     $pct = function ($a, $b) { return ($a !== null && $b !== null && $b > 0) ? $a / $b * 100 : null; };
     $list_pct = $pct($list, $listeners); $cust_pct = $pct($customers, $list); $fol_pct = $pct($sp, $listeners);
