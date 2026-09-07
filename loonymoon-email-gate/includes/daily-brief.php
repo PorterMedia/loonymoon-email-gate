@@ -181,7 +181,7 @@ function lmeg_si_brief_html($d) {
         return '<a href="' . esc_url($href) . '" style="display:inline-block;font-family:' . $F . ';font-size:11px;font-weight:700;color:' . $TEXT . ';background-color:#262A3D;border:1px solid #3A3F57;border-radius:999px;padding:5px 11px;text-decoration:none;margin:6px 6px 0 0;">' . esc_html($label) . '</a>';
     };
     $sec = function ($title, $inner, $note = '') use ($card, $lbl, $F, $MUTED) {
-        return '<tr><td style="padding:0 0 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="' . $card . '"><tr><td style="padding:16px 18px;">'
+        return '<tr><td style="padding:0 0 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="' . $card . '"><tr><td class="lmeg-card-pad" style="padding:16px 18px;">'
              . '<div style="' . $lbl . 'margin-bottom:' . ($note ? '2' : '10') . 'px;">' . $title . '</div>'
              . ($note ? '<div style="font-family:' . $F . ';font-size:12px;color:' . $MUTED . ';margin-bottom:10px;">' . $note . '</div>' : '')
              . $inner . '</td></tr></table></td></tr>';
@@ -194,10 +194,35 @@ function lmeg_si_brief_html($d) {
     if ($d['demo']) $fc = $VIOLET;
 
     ob_start(); ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title><?php echo $h(lmeg_si_brief_subject($d)); ?></title>
+<style>
+  /* Mobile: rings + the 28-day strip stack into one column, chevrons hide,
+     the outer padding tightens. Gmail/Apple Mail/iOS honour head styles. */
+  @media only screen and (max-width:600px) {
+    .lmeg-wrap { padding:16px 8px !important; }
+    .lmeg-ring { display:block !important; width:100% !important; padding:0 0 8px !important; }
+    .lmeg-ring .lmeg-ring-v { font-size:24px !important; }
+    .lmeg-ring .lmeg-ring-l { font-size:11px !important; }
+    .lmeg-ring .lmeg-ring-s { font-size:12px !important; }
+    .lmeg-chev { display:none !important; }
+    .lmeg-col { display:block !important; width:100% !important; border-left:0 !important; padding:10px 0 0 !important; }
+    .lmeg-hero-n { font-size:36px !important; }
+    .lmeg-card-pad { padding:14px 14px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:<?php echo $BG; ?>;">
 <div style="margin:0;padding:0;background-color:<?php echo $BG; ?>;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:<?php echo $BG; ?>;">
-<tr><td align="center" style="padding:28px 12px;">
+<tr><td align="center" class="lmeg-wrap" style="padding:28px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
 
   <!-- header -->
@@ -207,7 +232,7 @@ function lmeg_si_brief_html($d) {
         <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background-color:<?php echo $PINK; ?>;background-image:linear-gradient(135deg,<?php echo $PINK; ?>,<?php echo $VIOLET; ?>);vertical-align:middle;margin:-2px 8px 0 0;"></span>Fanloop
         <span style="font-weight:600;color:<?php echo $MUTED; ?>;">· Daily brief</span>
       </td>
-      <td align="right" style="font-family:<?php echo $F; ?>;font-size:12px;color:<?php echo $MUTED; ?>;vertical-align:middle;white-space:nowrap;">
+      <td align="right" style="font-family:<?php echo $F; ?>;font-size:12px;color:<?php echo $MUTED; ?>;vertical-align:middle;white-space:nowrap;padding-left:12px;">
         <?php echo $h($d['today_label']); ?> &nbsp;<span style="display:inline-block;color:<?php echo $fc; ?>;border:1px solid <?php echo $fc; ?>;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;"><?php echo $h($ft); ?></span>
       </td>
     </tr></table>
@@ -219,7 +244,7 @@ function lmeg_si_brief_html($d) {
     <tr><td style="padding:20px 20px 16px;">
       <div style="<?php echo $lbl; ?>color:#C9CCD6;"><?php echo $h($d['artist']); ?> · <?php echo $y ? 'Yesterday · ' . $h($y['label']) : 'Last 28 days'; ?></div>
       <?php if ($y) : ?>
-      <div style="font-family:<?php echo $F; ?>;font-size:44px;line-height:1.05;font-weight:800;color:<?php echo $TEXT; ?>;margin:8px 0 2px;"><?php echo $n($y['streams']); ?></div>
+      <div class="lmeg-hero-n" style="font-family:<?php echo $F; ?>;font-size:44px;line-height:1.05;font-weight:800;color:<?php echo $TEXT; ?>;margin:8px 0 2px;"><?php echo $n($y['streams']); ?></div>
       <div style="font-family:<?php echo $F; ?>;font-size:14px;color:#C9CCD6;margin-bottom:10px;">streams yesterday<?php if ($y['listeners']) echo ' · ' . $n($y['listeners']) . ' listeners'; ?><?php if ($y['saves']) echo ' · ' . $n($y['saves']) . ' saves'; ?><?php if ($y['best14']) echo ' · <span style="color:' . $PINK . ';font-weight:700;">best day in two weeks</span>'; ?></div>
       <div><?php echo $chip($y['vs_prev'], 'vs the day before') . $chip($y['vs_avg7'], 'vs your 7-day average' . ($y['avg7'] ? ' (' . $n($y['avg7']) . ')' : '')); ?></div>
       <?php else : ?>
@@ -257,15 +282,15 @@ function lmeg_si_brief_html($d) {
       <!-- 28-day strip -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;border-top:1px solid #3A3556;">
         <tr>
-          <td width="33%" style="padding:12px 8px 0 0;font-family:<?php echo $F; ?>;">
+          <td width="33%" class="lmeg-col" style="padding:12px 8px 0 0;font-family:<?php echo $F; ?>;">
             <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:<?php echo $MUTED; ?>;">28-day streams</div>
             <div style="font-size:18px;font-weight:800;color:<?php echo $TEXT; ?>;margin-top:3px;"><?php echo $n($k['streams']); ?> <span style="font-size:12px;font-weight:700;color:<?php echo ($k['streams_pct'] ?? 0) > 0 ? $GREEN : (($k['streams_pct'] ?? 0) < 0 ? $RED : $MUTED); ?>;"><?php echo $h(lmeg_si_brief_pct($k['streams_pct'])); ?></span></div>
           </td>
-          <td width="34%" style="padding:12px 8px 0;font-family:<?php echo $F; ?>;border-left:1px solid #3A3556;">
+          <td width="34%" class="lmeg-col" style="padding:12px 8px 0;font-family:<?php echo $F; ?>;border-left:1px solid #3A3556;">
             <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:<?php echo $MUTED; ?>;">Monthly listeners</div>
             <div style="font-size:18px;font-weight:800;color:<?php echo $TEXT; ?>;margin-top:3px;"><?php echo $n($k['listeners']); ?> <span style="font-size:12px;font-weight:700;color:<?php echo ($k['listeners_pct'] ?? 0) > 0 ? $GREEN : (($k['listeners_pct'] ?? 0) < 0 ? $RED : $MUTED); ?>;"><?php echo $h(lmeg_si_brief_pct($k['listeners_pct'])); ?></span></div>
           </td>
-          <td width="33%" style="padding:12px 0 0 8px;font-family:<?php echo $F; ?>;border-left:1px solid #3A3556;">
+          <td width="33%" class="lmeg-col" style="padding:12px 0 0 8px;font-family:<?php echo $F; ?>;border-left:1px solid #3A3556;">
             <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:<?php echo $MUTED; ?>;">Spotify followers</div>
             <div style="font-size:18px;font-weight:800;color:<?php echo $TEXT; ?>;margin-top:3px;"><?php echo $k['followers'] !== null ? $n($k['followers']) : '—'; ?> <?php if ($k['followers_delta'] !== null) : ?><span style="font-size:12px;font-weight:700;color:<?php echo $k['followers_delta'] > 0 ? $GREEN : ($k['followers_delta'] < 0 ? $RED : $MUTED); ?>;"><?php echo $k['followers_delta'] > 0 ? '+' : ($k['followers_delta'] < 0 ? '−' : ''); ?><?php echo $n(abs($k['followers_delta'])); ?></span><?php endif; ?></div>
           </td>
@@ -281,12 +306,12 @@ function lmeg_si_brief_html($d) {
     $rings = $d['rings']; $inner = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:0;"><tr>';
     foreach ($rings as $i => $r) {
         $tone = (string) $r['tone']; $deep = lmeg_si_shade($tone, 0.62); $val = $r['value'];
-        if ($i > 0) $inner .= '<td width="14" align="center" style="font-family:' . $F . ';font-size:16px;font-weight:800;color:' . $TEXT . ';vertical-align:middle;">›</td>';
-        $inner .= '<td style="vertical-align:top;padding:0;">'
+        if ($i > 0) $inner .= '<td width="14" align="center" class="lmeg-chev" style="font-family:' . $F . ';font-size:16px;font-weight:800;color:' . $TEXT . ';vertical-align:middle;">›</td>';
+        $inner .= '<td class="lmeg-ring" style="vertical-align:top;padding:0;">'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' . $tone . ';background-image:linear-gradient(135deg,' . $tone . ' 0%,' . $deep . ' 100%);border:1px solid rgba(255,255,255,.22);border-radius:12px;"><tr><td style="padding:10px 7px 9px;font-family:' . $F . ';color:#ffffff;">'
-            . '<div style="font-size:17px;line-height:1.1;font-weight:800;color:#ffffff;letter-spacing:-.01em;white-space:nowrap;">' . ($val === null ? '—' : $n($val)) . '</div>'
-            . '<div style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#ffffff;margin:6px 0 3px;line-height:1.25;">' . esc_html($r['label']) . '</div>'
-            . '<div style="font-size:10px;line-height:1.35;color:rgba(255,255,255,.92);">' . esc_html($r['sub']) . '</div>'
+            . '<div class="lmeg-ring-v" style="font-size:17px;line-height:1.1;font-weight:800;color:#ffffff;letter-spacing:-.01em;white-space:nowrap;">' . ($val === null ? '—' : $n($val)) . '</div>'
+            . '<div class="lmeg-ring-l" style="font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#ffffff;margin:6px 0 3px;line-height:1.25;">' . esc_html($r['label']) . '</div>'
+            . '<div class="lmeg-ring-s" style="font-size:10px;line-height:1.35;color:rgba(255,255,255,.92);">' . esc_html($r['sub']) . '</div>'
             . (!empty($r['change']) ? '<div style="margin-top:6px;display:inline-block;font-size:10px;line-height:1.3;font-weight:700;color:#ffffff;background-color:rgba(0,0,0,.28);border-radius:8px;padding:2px 6px;">' . ((int) $r['change'][1] > 0 ? '▲ ' : ((int) $r['change'][1] < 0 ? '▼ ' : '→ ')) . esc_html($r['change'][0]) . '</div>' : '')
             . ($r['pct'] !== null ? '<div style="margin-top:6px;font-size:10px;font-weight:800;color:#ffffff;">' . esc_html(rtrim(rtrim(number_format($r['pct'], 2), '0'), '.')) . '% <span style="font-weight:500;color:rgba(255,255,255,.85);">of ' . esc_html($r['pct_of']) . '</span></div>' : '')
             . '</td></tr></table></td>';
@@ -382,6 +407,8 @@ function lmeg_si_brief_html($d) {
 </td></tr>
 </table>
 </div>
+</body>
+</html>
     <?php return ob_get_clean();
 }
 
@@ -472,8 +499,8 @@ function lmeg_daily_brief_preview() {
     if (empty($_GET['lmeg_brief_preview']) || !current_user_can('manage_options')) return;
     $d = lmeg_si_brief_data(!empty($_GET['demo']));
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . esc_html($d ? lmeg_si_brief_subject($d) : 'Daily brief') . '</title></head><body style="margin:0;background:#0E0F16;">';
-    echo $d ? lmeg_si_brief_html($d) : '<p style="font-family:sans-serif;padding:24px;color:#F4F5F7;">No Spotify for Artists snapshot yet — nothing to brief. Add <code>&amp;demo=1</code> to preview with sample data.</p>';
-    echo '</body></html>';
+    // The brief is a complete document (head styles carry the mobile rules).
+    echo $d ? lmeg_si_brief_html($d)
+            : '<!doctype html><html><head><meta charset="utf-8"><title>Daily brief</title></head><body style="margin:0;background:#0E0F16;"><p style="font-family:sans-serif;padding:24px;color:#F4F5F7;">No Spotify for Artists snapshot yet — nothing to brief. Add <code>&amp;demo=1</code> to preview with sample data.</p></body></html>';
     exit;
 }
