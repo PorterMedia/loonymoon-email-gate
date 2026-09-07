@@ -92,7 +92,7 @@ function lmeg_si_stage($n, $x = []) {
             $gate('list_share', 'Listeners who join your list', $list_pct !== null && ($list_pct >= 1 || $list >= 1000), $pf($list_pct) . ' of monthly listeners', '1% (or 1,000 fans)', 'list', [$go('lmeg-presaves', 'Set up a pre-save'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest')], max((float) $pr($list_pct, 1), (float) $pr($list, 1000))),
             $gate('sends', 'Sent to your list in the last 30 days', $sends30 !== null && $sends30 >= 1,
                   $nf($sends30) . ' send' . ($sends30 === 1 ? '' : 's') . (($sends30 === 0 && $since !== null) ? ' · last one ' . ($since === 0 ? 'today' : ($since === 1 ? 'yesterday' : $since . ' days ago')) : ''),
-                  '1 or more', 'list', [$go('lmeg-compose', 'Send to your list')], $pr($sends30, 1)),
+                  '1 or more', 'list', [$compose('checkin', 'Send a check-in'), $go('lmeg-compose', 'Write your own')], $pr($sends30, 1)),
         ],
         5 => [
             $gate('customers', 'Fans who have bought', $customers !== null && $customers >= 10, $nf($customers), '10+', 'customers', [$go('lmeg-products', 'Add something to sell'), $compose('lift', 'Tell your superfans', 'superfans')], $pr($customers, 10)),
@@ -313,7 +313,7 @@ function lmeg_si_stage_playbook() {
         3 => ['why'   => 'Listeners live on Spotify; a list is people you can reach directly. The first hundred names usually come from one signup placed where the music already is.',
               'moves' => [$go('lmeg-releases', 'Put a signup on every release page'), $go('lmeg-drops', 'Run a drop'), $go('lmeg-contests', 'Run a contest'), $go('lmeg-bio', 'Set up your Smart Bio')]],
         4 => ['why'   => 'One in a hundred listeners on your list, and a send every month, is where a message starts to move streams. Rhythm beats volume.',
-              'moves' => [$go('lmeg-compose', 'Send to your list'), $go('lmeg-sequences', 'Set up a welcome sequence'), $go('lmeg-deliverability', 'Check deliverability')]],
+              'moves' => [$compose('checkin', 'Send a check-in'), $go('lmeg-sequences', 'Set up a welcome sequence'), $go('lmeg-deliverability', 'Check deliverability')]],
         5 => ['why'   => 'Ten buyers proves people will pay; two in a hundred of your list buying is a solid rate for a fan store. Superfans go first.',
               'moves' => [$go('lmeg-products', 'Add something to sell'), $go('lmeg-store-promos', 'Run a promotion'), $compose('lift', 'Tell your superfans', 'superfans')]],
         6 => ['why'   => 'Monthly members are the steadiest income an independent artist has. Ten is the first cohort; invite the people who already buy.',

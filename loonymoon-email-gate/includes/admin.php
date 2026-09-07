@@ -1843,6 +1843,8 @@ function lmeg_admin_compose() {
             'listen'  => ['Take it to Spotify with me', '<p>You’re here, which means the world. The best way to help right now: press play on Spotify and save what you love.</p>' . $link('Open Spotify'), 'Best way to help right now: press play on Spotify + save what you love 🖤 ' . $url],
             'follow'  => ['One tap: follow me on Spotify', '<p>Following on Spotify means every new release lands in your Release Radar on day one — and it tells Spotify to show me to more people.</p>' . $link('Follow on Spotify'), 'One tap: follow me on Spotify — every release lands in your Release Radar 🖤 ' . $url],
             'feature' => ['Have you heard ' . $q . '?', '<p>If you only listen to one thing from me this week, make it ' . esc_html($q) . '.</p>' . $link('Listen on Spotify') . '<p>Tell me what it does to you. 🖤</p>', 'If you only hear one thing from me this week, make it ' . $q . ' 🖤 ' . $url],
+            // From the Ladder: the list has gone quiet — a plain check-in clears the stage-4 sends gate.
+            'checkin' => ['It’s been a minute', '<p>It’s been a while since I wrote — thank you for still being here.</p><p>Here’s what’s been happening: (what you’ve been working on, what’s coming next, and one thing they can do this week).</p>' . $link('Listen on Spotify') . '<p>More soon. 🖤</p>', 'It’s been a minute — thank you for still being here. More soon 🖤 ' . $url],
         ];
         $c = $copy[$angle] ?? $copy['listen'];
         $vals['subject']         = $c[0];
@@ -1876,7 +1878,7 @@ function lmeg_admin_compose() {
                 $aud_note = ' Audience: fans in <strong>' . esc_html($cname) . '</strong> — ' . count($cids) . ' tagged <code>country-' . esc_html(strtolower($cc)) . '</code> just now' . (count($cids) ? '' : ' (no fans have that country on file yet)') . '.';
             }
         }
-        $notice = '<div class="notice notice-info"><p><strong>Drafted from a Spotify Insights finding</strong>' . ($song !== '' ? ' about ' . esc_html($q) : '') . '.' . $aud_note . ' Review the copy + audience below, then send.</p></div>';
+        $notice = '<div class="notice notice-info"><p><strong>' . ($angle === 'checkin' ? 'Drafted from the Ladder — a check-in clears the stage-4 “sent in the last 30 days” gate' : 'Drafted from a Spotify Insights finding' . ($song !== '' ? ' about ' . esc_html($q) : '')) . '</strong>.' . $aud_note . ' Review the copy + audience below, then send.</p></div>';
     }
 
     // Deep-link prefill: "Announce presale" from a tour date with a presale link.
