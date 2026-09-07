@@ -109,14 +109,16 @@ function lmeg_si_stage($n, $x = []) {
     // Distance + pace: for every gate that isn't passing, how many are still
     // needed (using whichever alternative target is closer), what the last 28
     // days added, and the ETA at that pace — honest, never a promise.
+    $sd = function ($k) use ($n) { return (isset($n[$k]) && $n[$k] !== null && $n[$k] !== '') ? (int) $n[$k] : null; }; // signed delta
     $list_new = $v('list_new'); $cust_new = $v('customers_new');
-    $spd = (isset($n['sp_followers_delta']) && $n['sp_followers_delta'] !== null && $n['sp_followers_delta'] !== '') ? (int) $n['sp_followers_delta'] : null;
+    $spd = $sd('sp_followers_delta'); $mem_d = $sd('members_delta'); $lis_d = $sd('listeners_delta');
+    $approx = function ($k) use ($n) { return !empty($n[$k . '_src']) && $n[$k . '_src'] === 'log'; };   // rate derived from the history log
     $pool = ($superfans !== null && $superfans > 0) ? number_format($superfans) . ' superfan' . ($superfans === 1 ? '' : 's') . ' to ask first' : null;
-    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd, $pool, $rhythm) {
+    $dist = function ($key) use ($listeners, $sp, $list, $customers, $members, $releases, $sends30, $list_new, $cust_new, $spd, $mem_d, $lis_d, $pool, $rhythm) {
         $c = function ($x) { return $x === null ? null : (int) ceil($x); };
         switch ($key) {
             case 'releases':     return [$releases === null ? null : max(0, 1 - $releases), 'release', null, null];
-            case 'listeners':    return [$listeners === null ? null : max(0, 1000 - $listeners), 'listener', null, null];
+            case 'listeners':    return [$listeners === null ? null : max(0, 1000 - $listeners), 'listener', $lis_d, null];
             case 'followers':    return [$sp === null ? null : max(0, 100 - $sp), 'follower', $spd, null];
             case 'list':         return [$list === null ? null : max(0, 100 - $list), 'fan', $list_new, null];
             case 'list_share':
@@ -128,8 +130,8 @@ function lmeg_si_stage($n, $x = []) {
             case 'sends':        return [$sends30 === null ? null : max(0, 1 - $sends30), 'send', null, $rhythm['label'] !== '' ? $rhythm['label'] : null];
             case 'customers':    return [$customers === null ? null : max(0, 10 - $customers), 'buyer', $cust_new, $pool];
             case 'cust_share':   return [($customers === null || $list === null) ? null : max(0, $c($list * 0.02) - $customers), 'buyer', $cust_new, $pool];
-            case 'members':      return [$members === null ? null : max(0, 10 - $members), 'member', null, $pool];
-            case 'members_100':  return [$members === null ? null : max(0, 100 - $members), 'member', null, $pool];
+            case 'members':      return [$members === null ? null : max(0, 10 - $members), 'member', $mem_d, $pool];
+            case 'members_100':  return [$members === null ? null : max(0, 100 - $members), 'member', $mem_d, $pool];
             case 'list_share_5': return [($list === null || $listeners === null) ? null : max(0, $c($listeners * 0.05) - $list), 'fan', $list_new, null];
         }
         return [null, '', null, null];
@@ -143,8 +145,10 @@ function lmeg_si_stage($n, $x = []) {
             $plural = function ($k, $u) { return number_format($k) . ' ' . $u . ($k === 1 ? '' : 's'); };
             $S[$i][$j]['need_n'] = $need; $S[$i][$j]['need_label'] = '+' . $plural($need, $unit) . ' to go'; $S[$i][$j]['alt'] = $alt;
             if ($rate !== null) {
+                $src = ['listeners' => 'listeners_delta', 'followers' => 'sp_followers_delta', 'list' => 'list_new', 'list_share' => 'list_new', 'list_share_5' => 'list_new',
+                        'customers' => 'customers_new', 'cust_share' => 'customers_new', 'members' => 'members_delta', 'members_100' => 'members_delta'][$g['key']] ?? '';
                 $S[$i][$j]['rate_n'] = $rate;
-                $S[$i][$j]['rate_label'] = ($rate > 0 ? '+' : ($rate < 0 ? '−' : '')) . number_format(abs($rate)) . ' in the last 28 days';
+                $S[$i][$j]['rate_label'] = ($rate > 0 ? '+' : ($rate < 0 ? '−' : '')) . number_format(abs($rate)) . (($src && $approx($src)) ? ' per 28 days at the recent pace' : ' in the last 28 days');
                 if ($rate > 0) { $days = (int) ceil($need / ($rate / 28)); $S[$i][$j]['eta_days'] = $days; $S[$i][$j]['eta_label'] = lmeg_si_stage_eta_label($days) . ' at that pace'; }
                 else $S[$i][$j]['eta_label'] = 'no growth at the current pace';
             }
@@ -316,6 +320,12 @@ function lmeg_si_stage_compute($demo = false) {
     $raw = null;
     if ($demo) { $raw = lmeg_si_stage_demo_raw($snap, $mlp); $rings = lmeg_si_fan_rings_shape($raw); }
     else { $rings = lmeg_si_fan_rings_data($snap, $ov, is_array($ov), ['monthly_listeners' => $mlp], $raw); if (!is_array($raw)) $raw = []; }
+    // Paces the rings can't give (members, listeners) — and any missing one —
+    // come from the history log's own readings once they span a week.
+    $hl = $demo ? (function_exists('lmeg_si_stage_demo_log') ? lmeg_si_stage_demo_log() : []) : lmeg_si_stage_log_get();
+    foreach (['members_delta' => 'm', 'listeners_delta' => 'l', 'sp_followers_delta' => 'f', 'list_new' => 'ls', 'customers_new' => 'c'] as $rk => $lk) {
+        if (!isset($raw[$rk]) || $raw[$rk] === null) { $r = lmeg_si_stage_log_rate($hl, $lk); if ($r !== null) { $raw[$rk] = $r; $raw[$rk . '_src'] = 'log'; } }
+    }
     $extra = lmeg_si_stage_extra($snap, $ov, ['streams' => $sp], $demo);
     $stage = lmeg_si_stage($raw, $extra);
     return compact('sel', 'snap', 'prev', 'ov', 'sp', 'mlp', 'raw', 'rings', 'extra', 'stage', 'demo');
@@ -382,6 +392,26 @@ function lmeg_si_stage_trends($log, $days = 30) {
     }
     foreach ($out as $k => $vals) if (count($vals) < 3) unset($out[$k]);
     return $out;
+}
+
+/**
+ * A 28-day rate for one input derived from the history log: (last − first) over
+ * the span of readings that carry that input, scaled to 28 days. null until the
+ * readings span at least $min_days. Fills the pace for gates with no native
+ * 28-day delta (members, listeners) and backs up the others. Pure.
+ */
+function lmeg_si_stage_log_rate($log, $key, $min_days = 7) {
+    $first = null; $last = null;
+    foreach ((array) $log as $d => $e) {
+        if (!isset($e['in'][$key]) || $e['in'][$key] === null) continue;
+        $pt = [strtotime($d), (int) $e['in'][$key]];
+        if ($first === null) $first = $pt;
+        $last = $pt;
+    }
+    if (!$first || !$last) return null;
+    $span = ($last[0] - $first[0]) / 86400;
+    if ($span < $min_days) return null;
+    return (int) round(($last[1] - $first[1]) / $span * 28);
 }
 
 /** Min–max scaled sparkline (a flat series sits mid-height); green up, red down, muted flat. '' with <3 points. Pure. */
