@@ -140,9 +140,25 @@ function lmeg_si_stage($n, $x = []) {
         }
         return [null, '', null, null];
     };
+    // Where signups came from (last 28 days): evidence line for the list gates,
+    // and their action pills re-ranked so the tool that brought the most
+    // organic signups comes first. Imports are shown but never rank a tool.
+    $sources = (isset($n['signup_sources']) && is_array($n['signup_sources'])) ? $n['signup_sources'] : null;
+    $evidence = ''; $rank = [];
+    if ($sources) {
+        $meta = lmeg_si_stage_source_meta(); $bits = [];
+        $fams = array_filter($sources, function ($v, $k) { return $k !== 'total' && (int) $v > 0; }, ARRAY_FILTER_USE_BOTH);
+        arsort($fams);
+        foreach ($fams as $k => $v) { if (isset($meta[$k])) { $bits[] = $meta[$k][0] . ' ' . number_format((int) $v); if ($meta[$k][1] && $k !== 'imports') $rank[$meta[$k][1]] = (int) $v; } }
+        $evidence = $bits ? implode(' · ', $bits) : '';
+    }
     foreach ($S as $i => $gates) {
         foreach ($gates as $j => $g) {
-            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null];
+            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => ''];
+            if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && $evidence !== '') {
+                $S[$i][$j]['evidence'] = $evidence;
+                if ($rank) { $acts = $S[$i][$j]['actions']; usort($acts, function ($a, $b) use ($rank) { return ($rank[$b['page'] ?? ''] ?? 0) <=> ($rank[$a['page'] ?? ''] ?? 0); }); $S[$i][$j]['actions'] = $acts; }
+            }
             if ($g['pass']) continue;
             list($need, $unit, $rate, $alt) = $dist($g['key']);
             if ($need === null || $need <= 0) continue;
@@ -175,7 +191,7 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
-        'rhythm' => $rhythm,
+        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
@@ -297,7 +313,8 @@ function lmeg_si_stage_playbook() {
 /** Sample ring counts used by every demo preview of the ladder (matches the Insights demo strip). */
 function lmeg_si_stage_demo_raw($snap, $mlp = null) {
     return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
-            'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41];
+            'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41,
+            'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184]];
 }
 
 /**
@@ -318,6 +335,52 @@ function lmeg_si_stage_list_bursts($days = 28, $min = 25) {
     if ($wpdb->last_error) { $wpdb->last_error = ''; return null; }
     $n = 0; foreach ((array) $rows as $r) $n += (int) ($r['c'] ?? 0);
     return $n;
+}
+
+/**
+ * Where the last $days of signups came from, by Fanloop tool: drops (drop:*
+ * tags), contests (entries), pre-saves (saves), Instagram (instagram /
+ * story-mention tags), imports (source:* tags, or the burst count when larger),
+ * store (product:* tags) and "site" = new fans in none of those (the gate and
+ * release pages). A fan can sit in several families; site is a true remainder.
+ * null when the subscriber table can't be read; a missing tool table counts 0.
+ */
+function lmeg_si_stage_signup_sources($days = 28, $bursts = 0) {
+    global $wpdb;
+    if (empty($wpdb) || !defined('LMEG_TABLE')) return null;
+    $p = $wpdb->prefix; $subs = $p . LMEG_TABLE; $tags = $p . 'lmeg_tags'; $st = $p . 'lmeg_subscriber_tags';
+    $ce = $p . 'lmeg_contest_entries'; $ps = $p . 'lmeg_presaves'; $days = (int) $days;
+    $q = function ($sql) use ($wpdb) { $v = $wpdb->get_var($sql); if ($wpdb->last_error) { $wpdb->last_error = ''; return null; } return $v === null ? null : (int) $v; };
+    $win = "s.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY) AND s.unsubscribed_at IS NULL";
+    $total = $q("SELECT COUNT(*) FROM $subs s WHERE $win");
+    if ($total === null) return null;
+    $fam = function ($where) use ($q, $subs, $tags, $st, $win) {
+        return (int) $q("SELECT COUNT(DISTINCT s.id) FROM $subs s JOIN $st x ON x.subscriber_id = s.id JOIN $tags t ON t.id = x.tag_id WHERE $win AND ($where)");
+    };
+    $out = [
+        'drops'     => $fam("t.slug LIKE 'drop:%'"),
+        'contests'  => (int) $q("SELECT COUNT(DISTINCT s.id) FROM $subs s JOIN $ce e ON e.subscriber_id = s.id WHERE $win"),
+        'presaves'  => (int) $q("SELECT COUNT(DISTINCT s.id) FROM $subs s JOIN $ps v ON v.subscriber_id = s.id WHERE $win"),
+        'instagram' => $fam("t.slug IN ('instagram','story-mention')"),
+        'imports'   => $fam("t.slug LIKE 'source:%'"),
+        'store'     => $fam("t.slug LIKE 'product:%'"),
+    ];
+    $any = $q("SELECT COUNT(DISTINCT s.id) FROM $subs s WHERE $win AND (
+        EXISTS (SELECT 1 FROM $st x JOIN $tags t ON t.id = x.tag_id WHERE x.subscriber_id = s.id AND (t.slug LIKE 'drop:%' OR t.slug LIKE 'source:%' OR t.slug LIKE 'product:%' OR t.slug IN ('instagram','story-mention')))
+        OR EXISTS (SELECT 1 FROM $ce e WHERE e.subscriber_id = s.id) OR EXISTS (SELECT 1 FROM $ps v WHERE v.subscriber_id = s.id))");
+    $site = $any === null ? max(0, $total - array_sum($out)) : max(0, $total - (int) $any);
+    // Untagged imports (detected as a burst) are not "site" signups.
+    $untagged_imports = max(0, (int) $bursts - $out['imports']);
+    $out['imports'] = max($out['imports'], (int) $bursts);
+    $out['site'] = max(0, $site - $untagged_imports);
+    $out['total'] = $total;
+    return $out;
+}
+
+/** Family key → label + the admin page whose action pill it ranks. */
+function lmeg_si_stage_source_meta() {
+    return ['drops' => ['Drops', 'lmeg-drops'], 'contests' => ['Contests', 'lmeg-contests'], 'presaves' => ['Pre-saves', 'lmeg-presaves'],
+            'instagram' => ['Instagram', 'lmeg-instagram'], 'site' => ['Site & release pages', 'lmeg-releases'], 'store' => ['Store', 'lmeg-products'], 'imports' => ['Imports', '']];
 }
 
 /**
@@ -353,6 +416,8 @@ function lmeg_si_stage_compute($demo = false) {
         if (isset($raw['list_new']) && $raw['list_new'] !== null) {
             $imp = lmeg_si_stage_list_bursts(28);
             if ($imp !== null) { $raw['list_imported_28d'] = $imp; $raw['list_new_organic'] = max(0, (int) $raw['list_new'] - $imp); }
+            $srcs = lmeg_si_stage_signup_sources(28, (int) $imp);
+            if ($srcs !== null) $raw['signup_sources'] = $srcs;
         }
     }
     // Paces the rings can't give (members, listeners) — and any missing one —
@@ -850,6 +915,7 @@ function lmeg_si_stage_gate_row($g, $compact = false) {
         if (!empty($g['eta_label']))  $bits[] = '<span style="color:' . (($g['eta_days'] !== null && $g['eta_days'] <= 90) ? '#34D399' : '#E58BBD') . ';">' . esc_html($g['eta_label']) . '</span>';
         $pace = '<div style="font-size:11px;color:#8B90A0;margin-top:5px;">' . implode(' · ', $bits) . (!empty($g['alt']) ? ' <span title="' . esc_attr($g['alt']) . '" style="cursor:help;">ⓘ</span>' : '') . '</div>';
     }
+    if (!$compact && !$pass && !empty($g['evidence'])) $pace .= '<div style="font-size:11px;color:#8B90A0;margin-top:3px;">Signups in the last 28 days: <span style="color:#C9CCD6;">' . esc_html($g['evidence']) . '</span></div>';
     return '<div style="display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;' . ($compact ? '' : 'padding:8px 0;border-top:1px solid rgba(255,255,255,.06);') . '">'
          . '<span style="color:' . ($pass ? '#34D399' : '#F87171') . ';font-weight:800;font-size:13px;">' . ($pass ? '✓' : '○') . '</span>'
          . '<div><div style="font-size:' . ($compact ? '12' : '13') . 'px;color:' . ($pass && !$compact ? '#C9CCD6' : '#F4F5F7') . ';font-weight:' . ($compact ? '500' : '600') . ';">' . esc_html($g['label'])
@@ -923,7 +989,10 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                             <?php if (!empty($b['rate_label'])) : ?><br><?php echo esc_html($b['rate_label']); ?><?php if (!empty($b['eta_label'])) : ?> · <span style="color:<?php echo ($b['eta_days'] !== null && $b['eta_days'] <= 90) ? '#34D399' : '#E58BBD'; ?>;font-weight:700;"><?php echo esc_html($b['eta_label']); ?></span><?php endif; ?><?php if ($b['eta_days'] === null || $b['eta_days'] > 90) : ?> <span style="color:#8B90A0;">— the moves below change the pace.</span><?php endif; ?><?php endif; ?>
                         </div>
                         <?php endif; ?>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;">
+                        <?php if (!empty($b['evidence'])) : ?>
+                        <div style="font-size:11px;color:#8B90A0;margin-top:10px;">Where your last 28 days of signups came from: <span style="color:#F4F5F7;font-weight:600;"><?php echo esc_html($b['evidence']); ?></span> — the tool that brought the most is first below.</div>
+                        <?php endif; ?>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:<?php echo !empty($b['evidence']) ? '8' : '12'; ?>px;">
                             <?php $k = 0; foreach ($b['actions'] as $a) echo $pill($a, $k++ === 0); ?>
                         </div>
                         <?php if (count($st['failing']) > 1) : ?>
