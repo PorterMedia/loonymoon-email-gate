@@ -152,9 +152,15 @@ function lmeg_si_stage($n, $x = []) {
         foreach ($fams as $k => $v) { if (isset($meta[$k])) { $bits[] = $meta[$k][0] . ' ' . number_format((int) $v); if ($meta[$k][1] && $k !== 'imports') $rank[$meta[$k][1]] = (int) $v; } }
         $evidence = $bits ? implode(' · ', $bits) : '';
     }
+    // Release pages with no signup on them — the most concrete list move there is.
+    $gaps = (isset($n['release_gaps']) && is_array($n['release_gaps'])) ? $n['release_gaps'] : null;
+    $gap_hint = ($gaps && (int) $gaps['no_drop'] > 0)
+        ? number_format((int) $gaps['no_drop']) . ' of your ' . number_format((int) $gaps['total']) . ' release page' . ((int) $gaps['total'] === 1 ? '' : 's') . ' ' . ((int) $gaps['no_drop'] === 1 ? 'has' : 'have') . ' no signup — attach a drop and it captures fans where the music already is'
+        : '';
     foreach ($S as $i => $gates) {
         foreach ($gates as $j => $g) {
-            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => '', 'ranked' => false];
+            $S[$i][$j] += ['need_n' => null, 'need_label' => '', 'rate_n' => null, 'rate_label' => '', 'eta_days' => null, 'eta_label' => '', 'alt' => null, 'evidence' => '', 'ranked' => false, 'hint' => ''];
+            if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && !$g['pass'] && $gap_hint !== '') $S[$i][$j]['hint'] = $gap_hint;
             if (in_array($g['key'], ['list', 'list_share', 'list_share_5'], true) && $evidence !== '') {
                 $S[$i][$j]['evidence'] = $evidence;
                 if ($rank) {
@@ -196,7 +202,7 @@ function lmeg_si_stage($n, $x = []) {
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
         'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
-        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank),
+        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct,
@@ -319,7 +325,8 @@ function lmeg_si_stage_playbook() {
 function lmeg_si_stage_demo_raw($snap, $mlp = null) {
     return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
             'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41,
-            'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184]];
+            'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184],
+            'release_gaps' => ['total' => 5, 'no_drop' => 2]];
 }
 
 /**
@@ -382,6 +389,20 @@ function lmeg_si_stage_signup_sources($days = 28, $bursts = 0) {
     return $out;
 }
 
+/**
+ * Published release pages with no drop attached — i.e. pages the music already
+ * lives on that capture no fans. ['total' => published, 'no_drop' => without a
+ * drop]; null when the releases layer isn't installed or can't be read.
+ */
+function lmeg_si_stage_release_gaps() {
+    global $wpdb;
+    if (empty($wpdb) || !function_exists('lmeg_releases_table')) return null;
+    $t = lmeg_releases_table();
+    $row = $wpdb->get_row("SELECT COUNT(*) total, SUM(CASE WHEN drop_id IS NULL OR drop_id = 0 THEN 1 ELSE 0 END) no_drop FROM $t WHERE status = 'published'", ARRAY_A);
+    if ($wpdb->last_error || !is_array($row)) { $wpdb->last_error = ''; return null; }
+    return ['total' => (int) $row['total'], 'no_drop' => (int) $row['no_drop']];
+}
+
 /** Family key → label + the admin page whose action pill it ranks. */
 function lmeg_si_stage_source_meta() {
     return ['drops' => ['Drops', 'lmeg-drops'], 'contests' => ['Contests', 'lmeg-contests'], 'presaves' => ['Pre-saves', 'lmeg-presaves'],
@@ -424,6 +445,8 @@ function lmeg_si_stage_compute($demo = false) {
             $srcs = lmeg_si_stage_signup_sources(28, (int) $imp);
             if ($srcs !== null) $raw['signup_sources'] = $srcs;
         }
+        $gaps = lmeg_si_stage_release_gaps();
+        if ($gaps !== null) $raw['release_gaps'] = $gaps;
     }
     // Paces the rings can't give (members, listeners) — and any missing one —
     // come from the history log's own readings once they span a week.
@@ -843,6 +866,7 @@ function lmeg_si_stage_ai_summary($st) {
     $out .= ' Conversion: ' . $pf($r['fol_pct'] ?? null) . ' of monthly listeners follow on Spotify, ' . $pf($r['list_pct'] ?? null) . ' are on the list, ' . $pf($r['cust_pct'] ?? null) . ' of the list have bought.';
     if (!empty($st['rhythm']['label'])) $out .= ' Send rhythm: ' . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ', last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '') . '.';
     if (!empty($st['signup_evidence'])) $out .= ' New fans in the last 28 days by source: ' . $st['signup_evidence'] . ' (imports are migrated lists, not growth).';
+    if ($b && !empty($b['hint'])) $out .= ' Concrete gap: ' . $b['hint'] . '.';
     if ($next && $b) {
         $acts = array_map(function ($a) { return $a['label']; }, array_slice((array) $b['actions'], 0, 3));
         $out .= ' The single best move this week: ' . strtolower($b['label']) . (!empty($b['alt']) ? ' (' . $b['alt'] . ')' : '') . ($acts ? ' — Fanloop tools: ' . implode(', ', $acts) : '') . '.';
@@ -923,6 +947,7 @@ function lmeg_si_stage_gate_row($g, $compact = false) {
         $pace = '<div style="font-size:11px;color:#8B90A0;margin-top:5px;">' . implode(' · ', $bits) . (!empty($g['alt']) ? ' <span title="' . esc_attr($g['alt']) . '" style="cursor:help;">ⓘ</span>' : '') . '</div>';
     }
     if (!$compact && !$pass && !empty($g['evidence'])) $pace .= '<div style="font-size:11px;color:#8B90A0;margin-top:3px;">Signups in the last 28 days: <span style="color:#C9CCD6;">' . esc_html($g['evidence']) . '</span></div>';
+    if (!$compact && !$pass && !empty($g['hint'])) $pace .= '<div style="font-size:11px;color:#E58BBD;margin-top:3px;">' . esc_html($g['hint']) . '</div>';
     return '<div style="display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;' . ($compact ? '' : 'padding:8px 0;border-top:1px solid rgba(255,255,255,.06);') . '">'
          . '<span style="color:' . ($pass ? '#34D399' : '#F87171') . ';font-weight:800;font-size:13px;">' . ($pass ? '✓' : '○') . '</span>'
          . '<div><div style="font-size:' . ($compact ? '12' : '13') . 'px;color:' . ($pass && !$compact ? '#C9CCD6' : '#F4F5F7') . ';font-weight:' . ($compact ? '500' : '600') . ';">' . esc_html($g['label'])
@@ -995,6 +1020,9 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                             <?php if (!empty($b['alt'])) : ?><span style="color:#8B90A0;"> · <?php echo esc_html($b['alt']); ?></span><?php endif; ?>
                             <?php if (!empty($b['rate_label'])) : ?><br><?php echo esc_html($b['rate_label']); ?><?php if (!empty($b['eta_label'])) : ?> · <span style="color:<?php echo ($b['eta_days'] !== null && $b['eta_days'] <= 90) ? '#34D399' : '#E58BBD'; ?>;font-weight:700;"><?php echo esc_html($b['eta_label']); ?></span><?php endif; ?><?php if ($b['eta_days'] === null || $b['eta_days'] > 90) : ?> <span style="color:#8B90A0;">— the moves below change the pace.</span><?php endif; ?><?php endif; ?>
                         </div>
+                        <?php endif; ?>
+                        <?php if (!empty($b['hint'])) : ?>
+                        <div style="font-size:12px;color:#F4F5F7;margin-top:10px;padding:8px 11px;background:rgba(208,95,162,.12);border:1px solid rgba(208,95,162,.35);border-radius:9px;line-height:1.45;"><?php echo esc_html($b['hint']); ?> <a href="<?php echo esc_url(admin_url('admin.php?page=lmeg-releases')); ?>" style="color:#E58BBD !important;font-weight:700;text-decoration:none;white-space:nowrap;">Open Releases →</a></div>
                         <?php endif; ?>
                         <?php if (!empty($b['evidence'])) : ?>
                         <div style="font-size:11px;color:#8B90A0;margin-top:10px;">Where your last 28 days of signups came from: <span style="color:#F4F5F7;font-weight:600;"><?php echo esc_html($b['evidence']); ?></span><?php echo !empty($b['ranked']) ? ' — the tool that brought the most is first below.' : ' — none of the tools below has brought fans yet; any of them starts the count.'; ?></div>
