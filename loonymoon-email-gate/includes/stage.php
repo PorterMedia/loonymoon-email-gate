@@ -63,10 +63,18 @@ function lmeg_si_stage($n, $x = []) {
                         : ($sends90 === 1 ? 'One send in the last 90 days' : number_format($sends90) . ' sends in the last 90 days')))];
     $superfans = (isset($n['superfans']) && $n['superfans'] !== null && $n['superfans'] !== '') ? max(0, (int) $n['superfans']) : null;
     $bounced_n = $v('list_bounced');   // read early: $v is a closure and must not be shadowed later
+    $active_n = $v('list_active'); $atrisk_n = $v('list_atrisk'); $dormant_n = $v('list_dormant');   // list warmth (Fanbase groups)
     $pct = function ($a, $b) { return ($a !== null && $b !== null && $b > 0) ? $a / $b * 100 : null; };
     $list_pct = $pct($list, $listeners); $cust_pct = $pct($customers, $list); $fol_pct = $pct($sp, $listeners);
     $nf = function ($k) { return $k === null ? '—' : (function_exists('number_format_i18n') ? number_format_i18n((int) $k) : number_format((int) $k)); };
     $pf = function ($k) { return $k === null ? '—' : rtrim(rtrim(number_format((float) $k, $k < 1 ? 2 : 1), '0'), '.') . '%'; };
+    // List warmth — how much of the list is actually listening: active in the
+    // last 30 days (opened, clicked or visited), going quiet (engaged before,
+    // nothing in 60+ days), never engaged. Not a gate; it qualifies the list.
+    $active_pct = $pct($active_n, $list);
+    $warmth = ['active' => $active_n, 'active_pct' => $active_pct, 'atrisk' => $atrisk_n, 'dormant' => $dormant_n,
+               'label' => $active_n === null ? '' : $nf($active_n) . ' active in the last 30 days' . ($active_pct !== null ? ' (' . $pf($active_pct) . ' of your list)' : '')
+                        . ($atrisk_n ? ' · ' . $nf($atrisk_n) . ' going quiet' : '') . ($dormant_n ? ' · ' . $nf($dormant_n) . ' never engaged' : '')];
     $sf = function ($k) { return $k === null ? '—' : (($k > 0 ? '+' : ($k < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs((float) $k), 1), '0'), '.') . '%'); };
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
     $compose = function ($angle, $label, $group = null) { $a = ['prefill' => 'insight', 'angle' => $angle]; if ($group) $a['group'] = $group; return ['label' => $label, 'page' => 'lmeg-compose', 'args' => $a]; };
@@ -214,14 +222,15 @@ function lmeg_si_stage($n, $x = []) {
     return [
         'stage' => $stage, 'name' => $stage ? $L[$stage]['name'] : 'Getting started', 'blurb' => $stage ? $L[$stage]['blurb'] : 'Connect Spotify and add a release to start the ladder.',
         'score' => max(0, min(100, $score)), 'stages' => $stages, 'next' => $next, 'bottleneck' => $bottleneck, 'failing' => $failing,
-        'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct],
-        'rhythm' => $rhythm, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps, 'tiers' => $tiers, 'store' => $store,
+        'ratios' => ['list_pct' => $list_pct, 'cust_pct' => $cust_pct, 'fol_pct' => $fol_pct, 'active_pct' => $active_pct],
+        'rhythm' => $rhythm, 'warmth' => $warmth, 'signup_sources' => $sources, 'signup_evidence' => $evidence, 'signup_ranked' => !empty($rank), 'release_gaps' => $gaps, 'tiers' => $tiers, 'store' => $store,
         // the raw inputs, for the Stage page's "how it's measured" table
         'inputs' => ['listeners' => $listeners, 'sp_followers' => $sp, 'list' => $list, 'superfans' => $superfans, 'customers' => $customers, 'members' => $members,
                      'releases' => $releases, 'sends_30d' => $sends30, 'streams_pct' => $spct, 'streams_base' => $sbase,
                      'sp_followers_delta' => $spd, 'list_new' => $list_new, 'customers_new' => $cust_new,
                      'list_new_organic' => $list_org, 'list_imported_28d' => $imported,
-                     'list_bounced' => $bounced_n, 'list_reachable' => ($list !== null && $bounced_n !== null) ? max(0, $list - $bounced_n) : null],
+                     'list_bounced' => $bounced_n, 'list_reachable' => ($list !== null && $bounced_n !== null) ? max(0, $list - $bounced_n) : null,
+                     'list_active' => $active_n, 'list_atrisk' => $atrisk_n, 'list_dormant' => $dormant_n],
     ];
 }
 
@@ -340,7 +349,8 @@ function lmeg_si_stage_demo_raw($snap, $mlp = null) {
     return ['listeners' => $snap ? (int) $snap->monthly_listeners : 61400, 'listeners_pct' => $mlp, 'sp_followers' => 8240, 'sp_followers_delta' => 162, 'ig_followers' => 12480, 'ig_followers_delta' => 310,
             'list' => 2140, 'superfans' => 96, 'list_new' => 184, 'customers' => 312, 'customers_new' => 27, 'members' => 41,
             'signup_sources' => ['drops' => 62, 'contests' => 41, 'presaves' => 28, 'instagram' => 19, 'imports' => 0, 'store' => 9, 'site' => 25, 'total' => 184],
-            'release_gaps' => ['total' => 5, 'no_drop' => 2], 'list_bounced' => 14, 'tiers' => ['active' => 2, 'total' => 2], 'store' => ['active' => 6]];
+            'release_gaps' => ['total' => 5, 'no_drop' => 2], 'list_bounced' => 14, 'tiers' => ['active' => 2, 'total' => 2], 'store' => ['active' => 6],
+            'list_active' => 1310, 'list_atrisk' => 236, 'list_dormant' => 402];
 }
 
 /**
@@ -562,8 +572,8 @@ function lmeg_si_stage_log_entry($st, $captured = '') {
     $iv = function ($k) use ($in) { return (isset($in[$k]) && $in[$k] !== null) ? (int) $in[$k] : null; };
     return ['stage' => (int) $st['stage'], 'score' => (int) $st['score'], 'gate' => (string) ($st['bottleneck']['key'] ?? ''),
             'list_pct' => $lp !== null ? round((float) $lp, 2) : null, 'captured' => (string) $captured,
-            // the six gate inputs, so each one gets a trend line as the log grows
-            'in' => ['l' => $iv('listeners'), 'f' => $iv('sp_followers'), 'ls' => $iv('list'), 'c' => $iv('customers'), 'm' => $iv('members'), 's' => $iv('sends_30d')]];
+            // the six gate inputs + active fans, so each one gets a trend line as the log grows
+            'in' => ['l' => $iv('listeners'), 'f' => $iv('sp_followers'), 'ls' => $iv('list'), 'c' => $iv('customers'), 'm' => $iv('members'), 's' => $iv('sends_30d'), 'a' => $iv('list_active')]];
 }
 
 /** Write today's reading unless one exists (a pre-v3.237 reading without inputs is enriched in place). Returns true when written. */
@@ -689,7 +699,7 @@ function lmeg_si_stage_demo_log() {
         elseif ($k < 46)  { $stage = 6; $score = 86; $gate = 'members_100'; }
         else              { $stage = 6; $score = 90; $gate = 'members_100'; }
         $log[$d] = ['stage' => $stage, 'score' => $score, 'gate' => $gate, 'list_pct' => round(2.1 + $k * 0.024, 2), 'captured' => $d,
-                    'in' => ['l' => 58000 + $k * 57 + (($k * 37) % 11) * 40, 'f' => 7900 + (int) round($k * 5.8), 'ls' => 1800 + (int) round($k * 5.8), 'c' => 260 + (int) round($k * 0.9), 'm' => 30 + (int) round($k * 0.19), 's' => $k < 22 ? 1 : 2]];
+                    'in' => ['l' => 58000 + $k * 57 + (($k * 37) % 11) * 40, 'f' => 7900 + (int) round($k * 5.8), 'ls' => 1800 + (int) round($k * 5.8), 'c' => 260 + (int) round($k * 0.9), 'm' => 30 + (int) round($k * 0.19), 's' => $k < 22 ? 1 : 2, 'a' => 1100 + (int) round($k * 3.4)]];
     }
     return $log;
 }
@@ -851,6 +861,16 @@ function lmeg_si_stage_attention($st) {
                 'href'   => lmeg_si_stage_action_href($sends['actions'][0] ?? ['page' => 'lmeg-compose'])];
         }
     }
+    // Going quiet: fans who used to engage but haven't in 60+ days. Only when
+    // the artist IS sending (a silent list is the warning above, and drift is
+    // its consequence) and the drift is material — a fifth of a list of 50+.
+    // The link opens a check-in draft to just those fans (Compose tags the group).
+    $w = $st['warmth'] ?? []; $list_n = (int) ($st['inputs']['list'] ?? 0);
+    if ($stage >= 3 && !$items && ($w['atrisk'] ?? null) !== null && $list_n >= 50 && $w['atrisk'] >= 10 && $w['atrisk'] / $list_n >= 0.2) {
+        $items[] = ['tone' => 'info', 'label' => number_format((int) $w['atrisk']) . ' fans are going quiet',
+            'detail' => 'Engaged before, nothing in 60+ days (' . (int) round($w['atrisk'] / $list_n * 100) . '% of your list) · a check-in to just them brings some back',
+            'href'   => lmeg_si_stage_action_href(['page' => 'lmeg-compose', 'args' => ['prefill' => 'insight', 'angle' => 'checkin', 'group' => 'atrisk']])];
+    }
     if ($next && $b && $b['progress'] !== null && $b['progress'] >= 85 && !empty($b['need_label']) && $b['key'] !== 'sends') {
         $detail = 'Stage ' . (int) $next['n'] . ' · ' . $next['name'];
         if (!empty($b['eta_label']) && $b['eta_days'] !== null && $b['eta_days'] <= 90) $detail .= ' · ' . $b['eta_label'];
@@ -954,6 +974,7 @@ function lmeg_si_stage_ai_summary($st) {
     $pf = function ($k) { return $k === null ? 'unknown' : rtrim(rtrim(number_format((float) $k, $k < 1 ? 2 : 1), '0'), '.') . '%'; };
     $out .= ' Conversion: ' . $pf($r['fol_pct'] ?? null) . ' of monthly listeners follow on Spotify, ' . $pf($r['list_pct'] ?? null) . ' are on the list, ' . $pf($r['cust_pct'] ?? null) . ' of the list have bought.';
     if (!empty($st['rhythm']['label'])) $out .= ' Send rhythm: ' . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ', last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '') . '.';
+    if (!empty($st['warmth']['label'])) $out .= ' List warmth: ' . $st['warmth']['label'] . ' (active = opened, clicked or visited; going quiet = engaged before, nothing in 60+ days).';
     if (!empty($st['signup_evidence'])) $out .= ' New fans in the last 28 days by source: ' . $st['signup_evidence'] . ' (imports are migrated lists, not growth).';
     if ($b && !empty($b['hint'])) $out .= ' Concrete gap: ' . $b['hint'] . '.';
     if ($next && $b) {
@@ -975,6 +996,7 @@ function lmeg_si_stage_text($st) {
         if (!empty($b['alt'])) $t .= "\n" . $b['alt'];
     }
     if (!empty($st['rhythm']['label'])) $t .= "\nSends: " . $st['rhythm']['label'] . (($st['rhythm']['days_since'] ?? null) !== null ? ' · last send ' . (int) $st['rhythm']['days_since'] . ' days ago' : '');
+    if (!empty($st['warmth']['label'])) $t .= "\nList: " . $st['warmth']['label'];
     return $t;
 }
 
@@ -1232,6 +1254,10 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     ['Monthly listeners', $nf($in['listeners'] ?? null), 'Spotify for Artists, last 28 days', 'l'],
                     ['Spotify followers', $nf($in['sp_followers'] ?? null), 'Spotify for Artists daily series, else the public Spotify API', 'f'],
                     ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . (($in['list_bounced'] ?? null) !== null && (int) $in['list_bounced'] > 0 ? ' · ' . $nf($in['list_bounced']) . ' bouncing, ' . $nf($in['list_reachable']) . ' reachable' : '') . ')', 'ls'],
+                    ['Engaged fans', $nf($in['list_active'] ?? null), 'Opened, clicked or visited in the last 30 days'
+                        . ((($st['warmth']['active_pct'] ?? null) !== null) ? ' · ' . rtrim(rtrim(number_format((float) $st['warmth']['active_pct'], $st['warmth']['active_pct'] < 1 ? 2 : 1), '0'), '.') . '% of your list' : '')
+                        . (!empty($in['list_atrisk']) ? ' · ' . $nf($in['list_atrisk']) . ' going quiet (engaged before, nothing in 60+ days)' : '')
+                        . (!empty($in['list_dormant']) ? ' · ' . $nf($in['list_dormant']) . ' never engaged' : ''), 'a'],
                     ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store', 'c'],
                     ['Paying members', $nf($in['members'] ?? null), 'Active paid tiers', 'm'],
                     ['Releases', $nf($in['releases'] ?? null), 'Your catalogue on Spotify', null],

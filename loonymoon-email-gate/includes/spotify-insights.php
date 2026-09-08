@@ -321,6 +321,10 @@ function lmeg_si_fan_rings_data($snap, $ov, $has_api, $changes = [], &$raw = nul
         $c = lmeg_fanbase_counts();
         $n['list'] = (int) ($c['total'] ?? 0); $n['superfans'] = (int) ($c['superfans'] ?? 0); $n['members'] = (int) ($c['members'] ?? 0);
         $n['list_new'] = isset($c['new']) ? (int) $c['new'] : null;
+        // List warmth for the ladder: the Fanbase groups already count who is
+        // active (30 days), going quiet (engaged before, nothing in 60+ days)
+        // and never engaged — same query, no extra cost.
+        foreach (['active' => 'list_active', 'atrisk' => 'list_atrisk', 'dormant' => 'list_dormant'] as $ck => $nk) $n[$nk] = isset($c[$ck]) ? (int) $c[$ck] : null;
     }
     if (defined('LMEG_TABLE')) {
         $subs = $wpdb->prefix . LMEG_TABLE; $orders = $wpdb->prefix . 'lmeg_shop_orders'; $store = $wpdb->prefix . 'lmeg_product_purchases';
