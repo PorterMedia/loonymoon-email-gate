@@ -72,8 +72,12 @@ function lmeg_si_stage($n, $x = []) {
     // last 30 days (opened, clicked or visited), going quiet (engaged before,
     // nothing in 60+ days), never engaged. Not a gate; it qualifies the list.
     $active_pct = $pct($active_n, $list);
-    $warmth = ['active' => $active_n, 'active_pct' => $active_pct, 'atrisk' => $atrisk_n, 'dormant' => $dormant_n,
+    // A list nobody has written to in 30 days can't show opens or clicks yet —
+    // say so instead of printing a bare "0% of your list" (a fresh import).
+    $warm_note = ($active_n === 0 && $list && $sends30 === 0) ? 'nothing sent in the last 30 days, so opens and clicks can’t show yet' : '';
+    $warmth = ['active' => $active_n, 'active_pct' => $active_pct, 'atrisk' => $atrisk_n, 'dormant' => $dormant_n, 'note' => $warm_note,
                'label' => $active_n === null ? '' : $nf($active_n) . ' active in the last 30 days' . ($active_pct !== null ? ' (' . $pf($active_pct) . ' of your list)' : '')
+                        . ($warm_note ? ' · ' . $warm_note : '')
                         . ($atrisk_n ? ' · ' . $nf($atrisk_n) . ' going quiet' : '') . ($dormant_n ? ' · ' . $nf($dormant_n) . ' never engaged' : '')];
     $sf = function ($k) { return $k === null ? '—' : (($k > 0 ? '+' : ($k < 0 ? '−' : '')) . rtrim(rtrim(number_format(abs((float) $k), 1), '0'), '.') . '%'); };
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
@@ -928,6 +932,7 @@ function lmeg_si_stage_digest_html($st) {
     $stage = (int) $st['stage']; $b = $st['bottleneck']; $next = $st['next'];
     $h  = '<p style="margin:14px 0 6px;font-weight:600;">Your stage · Fanloop ladder</p>';
     $h .= '<p style="margin:0 0 6px;"><strong>Stage ' . $stage . ' of 7 · ' . esc_html($st['name']) . '</strong> — ' . (int) $st['score'] . '/100 on the ladder. ' . esc_html($st['blurb']) . '</p>';
+    if (!empty($st['warmth']['label'])) $h .= '<p style="margin:0 0 6px;font-size:13px;">Your list right now: ' . esc_html($st['warmth']['label']) . '.</p>';
     if ($next && $b) {
         $bits = [esc_html($b['value']) . ', needs ' . esc_html($b['target'])];
         if (!empty($b['need_label'])) $bits[] = '<strong>' . esc_html($b['need_label']) . '</strong>';
@@ -1256,6 +1261,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                     ['Fans on your list', $nf($in['list'] ?? null), 'Fanloop subscribers (superfans: ' . $nf($in['superfans'] ?? null) . (($in['list_bounced'] ?? null) !== null && (int) $in['list_bounced'] > 0 ? ' · ' . $nf($in['list_bounced']) . ' bouncing, ' . $nf($in['list_reachable']) . ' reachable' : '') . ')', 'ls'],
                     ['Engaged fans', $nf($in['list_active'] ?? null), 'Opened, clicked or visited in the last 30 days'
                         . ((($st['warmth']['active_pct'] ?? null) !== null) ? ' · ' . rtrim(rtrim(number_format((float) $st['warmth']['active_pct'], $st['warmth']['active_pct'] < 1 ? 2 : 1), '0'), '.') . '% of your list' : '')
+                        . (!empty($st['warmth']['note']) ? ' · ' . $st['warmth']['note'] : '')
                         . (!empty($in['list_atrisk']) ? ' · ' . $nf($in['list_atrisk']) . ' going quiet (engaged before, nothing in 60+ days)' : '')
                         . (!empty($in['list_dormant']) ? ' · ' . $nf($in['list_dormant']) . ' never engaged' : ''), 'a'],
                     ['Fans who have bought', $nf($in['customers'] ?? null), 'Distinct buyers across Shopify and the Fanloop store', 'c'],
