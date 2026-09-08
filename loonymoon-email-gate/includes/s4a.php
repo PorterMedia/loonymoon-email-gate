@@ -293,14 +293,22 @@ function lmeg_s4a_parse($data) {
 function lmeg_s4a_store($rows, $source = 'paste') {
     global $wpdb;
     $rows = (array) $rows;
+    $mine = function_exists('lmeg_artist') ? (string) lmeg_artist() : '';
     // Multi-tenant isolation: each Fanloop site stores ONLY its own artist. A
     // multi-artist import (e.g. a whole-roster push) is filtered down to this
     // site's artist; a single-artist import is always accepted as-is.
-    if (count($rows) > 1 && function_exists('lmeg_artist')) {
-        $mine = (string) lmeg_artist();
+    if (count($rows) > 1 && $mine !== '') {
         $rows = array_values(array_filter($rows, function ($r) use ($mine) {
             return isset($r['artist']) && strcasecmp((string) $r['artist'], $mine) === 0;
         }));
+    }
+    // A single-artist import under a foreign NAME but THIS site's Spotify id is
+    // the scraper mislabelling the artist (S4A's nav links share the artist URL
+    // and "Video & Visuals Beta" arrived as the name on 2026-09-08). Snapshots
+    // are keyed by name, so a wrong name strands the day's data — rename it.
+    if ($mine !== '' && count($rows) === 1 && isset($rows[0]['artist']) && strcasecmp((string) $rows[0]['artist'], $mine) !== 0) {
+        $in_id = lmeg_s4a_row_spotify_id($rows[0]);
+        if ($in_id !== '' && $in_id === lmeg_s4a_known_spotify_id($mine)) $rows[0]['artist'] = $mine;
     }
     $t = lmeg_s4a_table();
     $n = 0;
@@ -315,8 +323,36 @@ function lmeg_s4a_store($rows, $source = 'paste') {
         if ($exists) { $wpdb->update($t, $r, ['id' => (int) $exists]); }
         else { $wpdb->insert($t, $r); }
         $n++;
+        // Self-heal: a same-day row stored under another name but carrying this
+        // artist's Spotify id is a mislabelled duplicate (see above) — drop it so
+        // it can't linger as a phantom artist in the switcher.
+        $sid = lmeg_s4a_row_spotify_id($r);
+        if ($sid !== '' && $mine !== '' && strcasecmp((string) $r['artist'], $mine) === 0) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM $t WHERE artist <> %s AND captured_date = %s AND window = %s AND meta LIKE %s",
+                $r['artist'], $r['captured_date'], $r['window'], '%' . $wpdb->esc_like('"spotify_artist_id":"' . $sid . '"') . '%'
+            ));
+        }
     }
     return $n;
+}
+
+/** The Spotify artist id a parsed snapshot row carries in its meta ('' when none). */
+function lmeg_s4a_row_spotify_id($r) {
+    $m = isset($r['meta']) ? (is_array($r['meta']) ? $r['meta'] : json_decode((string) $r['meta'], true)) : null;
+    return (is_array($m) && !empty($m['spotify_artist_id'])) ? (string) $m['spotify_artist_id'] : '';
+}
+
+/** The Spotify artist id this site's artist is already known by (latest snapshot carrying one); '' when none yet. */
+function lmeg_s4a_known_spotify_id($artist) {
+    global $wpdb;
+    if (empty($wpdb)) return '';
+    $t = lmeg_s4a_table();
+    $meta = $wpdb->get_var($wpdb->prepare(
+        "SELECT meta FROM $t WHERE artist = %s AND meta LIKE %s ORDER BY captured_date DESC, id DESC LIMIT 1",
+        $artist, '%' . $wpdb->esc_like('"spotify_artist_id":"') . '%'
+    ));
+    return lmeg_s4a_row_spotify_id(['meta' => $meta]);
 }
 
 /* ---------------------------------------------------------------------------
