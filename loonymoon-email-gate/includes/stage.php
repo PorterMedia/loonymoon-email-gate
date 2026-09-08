@@ -326,6 +326,13 @@ function lmeg_si_stage_log_delta($log) {
             'gap_days' => max(1, (int) round((strtotime($dates[$n - 1]) - strtotime($dates[$n - 2])) / 86400))];
 }
 
+/** Words for a score change between two readings: "+7 on the score", "−3 on the score", "score unchanged". */
+function lmeg_si_stage_delta_words($score) {
+    $s = (int) $score;
+    if ($s === 0) return 'score unchanged';
+    return ($s > 0 ? '+' . $s : '−' . abs($s)) . ' on the score';
+}
+
 /** Per-stage playbook: why the stage matters + the Fanloop moves that get you through it. */
 function lmeg_si_stage_playbook() {
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
@@ -1230,7 +1237,7 @@ function lmeg_si_render_stage_page($c, $log, $card, $lbl, $demo = false) {
                 </div>
                 <?php $dl = lmeg_si_stage_log_delta($log); if ($dl) : ?>
                 <div style="font-size:12px;color:#C9CCD6;margin-top:6px;">Since <?php echo esc_html(date_i18n('M j', strtotime($dl['from']))); ?>:
-                    <span style="color:<?php echo $dl['score'] > 0 ? '#34D399' : ($dl['score'] < 0 ? '#F87171' : '#F4F5F7'); ?>;font-weight:700;"><?php echo $dl['score'] > 0 ? '+' : ''; ?><?php echo (int) $dl['score']; ?> progress</span>
+                    <span style="color:<?php echo $dl['score'] > 0 ? '#34D399' : ($dl['score'] < 0 ? '#F87171' : '#F4F5F7'); ?>;font-weight:700;"><?php echo esc_html(lmeg_si_stage_delta_words($dl['score'])); ?></span>
                     <?php if ($dl['list_pct'] !== null) : ?> · list share <?php echo esc_html(rtrim(rtrim(number_format((float) $dl['list_pct_from'], 2), '0'), '.')); ?>% → <span style="color:<?php echo $dl['list_pct'] > 0 ? '#34D399' : ($dl['list_pct'] < 0 ? '#F87171' : '#F4F5F7'); ?>;font-weight:700;"><?php echo esc_html(rtrim(rtrim(number_format((float) $dl['list_pct_to'], 2), '0'), '.')); ?>%</span><?php endif; ?>
                     <?php if ($dl['stage'] !== 0) : ?> · <span style="color:<?php echo $dl['stage'] > 0 ? '#34D399' : '#F87171'; ?>;font-weight:700;">stage <?php echo $dl['stage'] > 0 ? 'up' : 'down'; ?></span><?php endif; ?>
                 </div>

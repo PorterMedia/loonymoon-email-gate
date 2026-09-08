@@ -354,7 +354,7 @@ function lmeg_si_brief_html($d) {
         .     ((!empty($d['stage_delta']) && is_array($d['stage_delta'])) ? (function ($dl) use ($GREEN, $RED, $TEXT) {
                   $c = function ($v) use ($GREEN, $RED, $TEXT) { return $v > 0 ? $GREEN : ($v < 0 ? $RED : $TEXT); };
                   $pf = function ($v) { return rtrim(rtrim(number_format((float) $v, 2), '0'), '.') . '%'; };
-                  $s = '<div style="font-size:11px;color:#C9CCD6;margin-top:6px;">Since ' . esc_html(date_i18n('M j', strtotime($dl['from']))) . ': <span style="color:' . $c($dl['score']) . ';font-weight:700;">' . ($dl['score'] > 0 ? '+' : '') . (int) $dl['score'] . ' progress</span>';
+                  $s = '<div style="font-size:11px;color:#C9CCD6;margin-top:6px;">Since ' . esc_html(date_i18n('M j', strtotime($dl['from']))) . ': <span style="color:' . $c($dl['score']) . ';font-weight:700;">' . esc_html(lmeg_si_stage_delta_words($dl['score'])) . '</span>';
                   if ($dl['list_pct'] !== null) $s .= ' · list share ' . $pf($dl['list_pct_from']) . ' → <span style="color:' . $c($dl['list_pct']) . ';font-weight:700;">' . $pf($dl['list_pct_to']) . '</span>';
                   if ($dl['stage'] !== 0) $s .= ' · <span style="color:' . $c($dl['stage']) . ';font-weight:700;">stage ' . ($dl['stage'] > 0 ? 'up' : 'down') . '</span>';
                   return $s . '</div>';
