@@ -1494,7 +1494,7 @@ function lmeg_product_card_html($p, $link = true, $solo = false, $opts = []) {
     $show_ships = !array_key_exists('ships', $opts) || $opts['ships'];
     $cur      = $p->currency ?: 'USD';
     $fmt      = function ($c) use ($cur) { return function_exists('lmeg_format_price') ? lmeg_format_price((int) $c, $cur) : ('$' . number_format($c / 100, 2)); };
-    $price    = $fmt($p->price_cents);
+    $price    = $fmt($p->price_cents) ?: 'Free'; // a $0 item read "Add ·" with nothing after the dot
     $pwyw     = lmeg_product_is_pwyw($p);
     $on_sale  = lmeg_product_on_sale($p);
     $sale_pct = $on_sale ? lmeg_product_sale_pct($p) : 0;
@@ -1708,7 +1708,7 @@ function lmeg_product_sticky_bar_html($p) {
     $vlist    = function_exists('lmeg_product_variants') ? lmeg_product_variants($p) : [];
     $sold_out = function_exists('lmeg_product_is_available') ? !lmeg_product_is_available($p) : false;
     $simple   = !$sold_out && !$pwyw && empty($vlist);
-    $price    = $pwyw ? 'Name your price' : $fmt($p->price_cents);
+    $price    = $pwyw ? 'Name your price' : ($fmt($p->price_cents) ?: 'Free');
 
     $data = 'data-id="' . (int) $p->id . '" data-slug="' . esc_attr($p->slug)
           . '" data-title="' . esc_attr($p->title) . '" data-cover="' . esc_attr($p->cover_url)
