@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version: 3.256.0
+ * Version: 3.257.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.256.0');
+define('LMEG_VERSION',     '3.257.0');
 define('LMEG_DB_VERSION',  '3.105.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -2106,10 +2106,20 @@ function lmeg_subscribers_import_csv($file, $source_tag = '') {
         'postal_code'     => ['postal_code', 'postal', 'zip', 'zip_code', 'zipcode', 'postcode'],
         'unsubscribed_at' => ['unsubscribed_at', 'unsubscribed', 'opt_out', 'optout', 'opted_out_at'],
     ];
+    // Unicode-aware trim. A list pasted out of a web page, Word or Numbers
+    // carries NO-BREAK SPACE (U+00A0) instead of a plain space, and plain
+    // trim() leaves it attached — "fan@example.com\xC2\xA0" then fails
+    // is_email() and the row is skipped, silently losing most of a list.
+    // Also drops zero-width space / joiner and a mid-file BOM.
+    $utrim = function ($v) {
+        $s = (string) $v;
+        $t = preg_replace('/^[\s\x{00A0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]+|[\s\x{00A0}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]+$/u', '', $s);
+        return $t === null ? trim($s) : $t; // preg_replace returns null on invalid UTF-8
+    };
     // Normalise headers to snake form so "Created At", "user ip", "E-Mail" and
     // "Enter your email" all reduce to created_at / user_ip / e_mail / enter_your_email.
-    $normh = function ($h) {
-        $h = strtolower(trim(str_replace("\xEF\xBB\xBF", '', (string) $h)));
+    $normh = function ($h) use ($utrim) {
+        $h = strtolower($utrim(str_replace("\xEF\xBB\xBF", '', (string) $h)));
         return trim(preg_replace('/[^a-z0-9]+/', '_', $h), '_');
     };
     $col = [];
@@ -2147,8 +2157,8 @@ function lmeg_subscribers_import_csv($file, $source_tag = '') {
         $tag = lmeg_get_or_create_tag('source:' . sanitize_title($src), 'Source: ' . $src, false);
     }
 
-    $get = function ($row, $field) use ($col) {
-        return isset($col[$field], $row[$col[$field]]) ? trim((string) $row[$col[$field]]) : '';
+    $get = function ($row, $field) use ($col, $utrim) {
+        return isset($col[$field], $row[$col[$field]]) ? $utrim($row[$col[$field]]) : '';
     };
     $to_mysql = function ($v) {
         $v = trim((string) $v);
@@ -2160,7 +2170,7 @@ function lmeg_subscribers_import_csv($file, $source_tag = '') {
 
     while (($row = fgetcsv($fh, 0, ',', '"', '\\')) !== false) {
         if ($out['total'] >= 200000) { $out['errors'][] = 'Stopped at 200,000 rows (safety cap).'; break; }
-        if (count(array_filter($row, function ($c) { return trim((string) $c) !== ''; })) === 0) continue;
+        if (count(array_filter($row, function ($c) use ($utrim) { return $utrim($c) !== ''; })) === 0) continue;
         $out['total']++;
 
         $email = strtolower($get($row, 'email'));
