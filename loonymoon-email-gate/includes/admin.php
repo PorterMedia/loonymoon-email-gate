@@ -3209,8 +3209,8 @@ function lmeg_admin_settings() {
             'welcome_subject'     => sanitize_text_field(wp_unslash($_POST['welcome_subject'] ?? '')),
             'welcome_body'        => wp_kses_post(wp_unslash($_POST['welcome_body'] ?? '')),
             // Tracking
-            'tracking_opens'      => !empty($_POST['tracking_opens']) ? 1 : 0,
-            'tracking_clicks'     => !empty($_POST['tracking_clicks']) ? 1 : 0,
+            'tracking_opens'      => 1, // always on since v3.258.0 (no off switch; see lmeg_apply_tracking)
+            'tracking_clicks'     => 1,
             // Stripe / paid membership
             'stripe_mode'             => ($_POST['stripe_mode'] ?? 'test') === 'live' ? 'live' : 'test',
             'stripe_test_pk'          => sanitize_text_field(wp_unslash($_POST['stripe_test_pk'] ?? '')),
@@ -3862,10 +3862,9 @@ function lmeg_admin_settings() {
 
             <h2>Tracking</h2>
             <table class="form-table" role="presentation">
-                <tr><th>Open tracking</th>
-                    <td><label><input type="checkbox" name="tracking_opens" value="1" <?php checked($s['tracking_opens']); ?> /> Embed a 1×1 pixel in broadcast emails to detect opens</label></td></tr>
-                <tr><th>Click tracking</th>
-                    <td><label><input type="checkbox" name="tracking_clicks" value="1" <?php checked($s['tracking_clicks']); ?> /> Rewrite links in broadcast emails to record clicks (then redirect)</label></td></tr>
+                <tr><th>Opens &amp; clicks</th>
+                    <td>Always on. Every broadcast carries a 1×1 pixel to detect opens, and its links are rewritten through this site to record clicks before redirecting.
+                        <p class="description">There is no off switch: a site that had these turned off reported 0% opens and 0% clicks on a real send.</p></td></tr>
             </table>
 
             <h2>Stripe (paid membership)</h2>

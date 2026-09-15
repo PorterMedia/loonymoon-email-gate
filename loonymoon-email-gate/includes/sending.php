@@ -164,7 +164,10 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id, $source = 'br
     $campaign = $source === 'broadcast' ? 'broadcast-' . (int) $broadcast_id
               : ($source === 'sequence' ? 'sequence-' . (int) $ref : 'welcome');
 
-    if (!empty($s['tracking_clicks'])) {
+    // Opens and clicks are ALWAYS tracked (v3.258.0). They used to be gated by the
+    // tracking_clicks / tracking_opens settings; LOONY's 2026-09-15 broadcast went
+    // out with both saved off and its report read 0% while fans opened and clicked.
+    {
         $utm_source = sanitize_title($s['utm_source'] ?? '') ?: (sanitize_title(lmeg_community()) ?: 'fanloop');
         $html = preg_replace_callback(
             '/href\s*=\s*(["\'])(https?:\/\/[^"\']+)\1/i',
@@ -190,7 +193,7 @@ function lmeg_apply_tracking($html, $broadcast_id, $subscriber_id, $source = 'br
         );
     }
 
-    if (!empty($s['tracking_opens'])) {
+    { // open pixel, always
         $html .= '<img src="' . esc_url(lmeg_track_open_url($broadcast_id, $subscriber_id, $source, $ref)) . '" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />';
     }
 
