@@ -1724,6 +1724,12 @@ function lmeg_admin_spotify_insights_render() {
                 <button class="button" title="Sends today’s daily Spotify brief to that address now">Email me today’s brief</button>
                 <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-spotify-insights&lmeg_brief_preview=1')); ?>" target="_blank" rel="noopener" title="Open today’s brief as a page">Preview in browser ↗</a>
             </form>
+            <?php $br = get_option('lmeg_brief_result'); if (is_array($br) && !empty($br['date'])) : ?>
+            <span style="font-size:12px;">Automatic brief <?php echo esc_html($br['date'] === current_time('Y-m-d') ? 'today' : date_i18n('M j', strtotime($br['date']))); ?>:
+                <?php if (!empty($br['ok'])) : ?>sent <?php echo esc_html(wp_date('g:i a', (int) $br['at'])); ?>
+                <?php else : ?><strong style="color:#F87171;">failed</strong> <?php echo esc_html(wp_date('g:i a', (int) $br['at'])); ?> (try <?php echo (int) $br['tries']; ?> of 3): <?php echo esc_html($br['error']); ?><?php endif; ?>
+            </span>
+            <?php endif; ?>
             <?php endif; ?>
         </div>
         <?php endif; ?>

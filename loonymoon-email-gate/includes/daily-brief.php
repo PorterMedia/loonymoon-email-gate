@@ -565,7 +565,35 @@ function lmeg_daily_brief_tick() {
     $snap = lmeg_s4a_latest();
     if (!$snap || (string) $snap->captured_date !== $today) return; // wait for today's pull
     if (!lmeg_brief_claim_day($today)) return; // the cron tick and the S4A ingest can both get here
-    lmeg_send_daily_brief();
+    lmeg_brief_run_and_record($today);
+}
+
+/**
+ * Send today's brief and remember how it went (option lmeg_brief_result), so a
+ * failure with nobody watching, in cron or during the S4A ingest, shows on the
+ * Insights page instead of vanishing. A failed send gives the day back so the
+ * next tick retries, up to three tries a day.
+ */
+function lmeg_brief_run_and_record($today) {
+    $prev  = get_option('lmeg_brief_result', []);
+    $tries = (is_array($prev) && ($prev['date'] ?? '') === $today) ? (int) ($prev['tries'] ?? 0) : 0;
+    try {
+        $r = lmeg_send_daily_brief();
+    } catch (\Throwable $e) {
+        $r = new WP_Error('lmeg_brief_exception', get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+    }
+    $ok = !is_wp_error($r) && $r !== false;
+    $tries++;
+    update_option('lmeg_brief_result', [
+        'date'  => $today,
+        'at'    => time(),
+        'ok'    => $ok,
+        'tries' => $tries,
+        'error' => $ok ? '' : (is_wp_error($r) ? $r->get_error_message() : 'the mailer returned false'),
+        'via'   => (function_exists('wp_doing_cron') && wp_doing_cron()) ? 'cron' : 'ingest',
+    ], false);
+    if (!$ok && $tries < 3) update_option('lmeg_brief_last', '', false);
+    return $r;
 }
 
 /**
