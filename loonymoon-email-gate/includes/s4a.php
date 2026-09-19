@@ -579,7 +579,23 @@ function lmeg_s4a_router() {
     nocache_headers();
     header('Content-Type: application/json; charset=utf-8');
     echo wp_json_encode(['ok' => true, 'stored' => $n]);
+    lmeg_s4a_after_ingest();
     exit;
+}
+
+/**
+ * Write today's stage reading and send the daily brief as soon as the pull lands,
+ * instead of waiting for the minute tick. On some hosts WP-Cron never runs
+ * (tauromusic.com on Nestify: nothing ran from 2026-08-29 on), so the brief never
+ * went out. The response is flushed first so the pusher isn't kept waiting;
+ * lmeg_brief_claim_day() stops a concurrent cron tick from sending it twice.
+ */
+function lmeg_s4a_after_ingest() {
+    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+    elseif (function_exists('litespeed_finish_request')) litespeed_finish_request();
+    else flush();
+    if (function_exists('lmeg_si_stage_log_tick')) lmeg_si_stage_log_tick();
+    if (function_exists('lmeg_daily_brief_tick')) lmeg_daily_brief_tick();
 }
 
 /* ---------------------------------------------------------------------------

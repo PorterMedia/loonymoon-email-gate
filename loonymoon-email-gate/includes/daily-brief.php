@@ -564,8 +564,25 @@ function lmeg_daily_brief_tick() {
     if (get_option('lmeg_brief_last') === $today) return;
     $snap = lmeg_s4a_latest();
     if (!$snap || (string) $snap->captured_date !== $today) return; // wait for today's pull
-    update_option('lmeg_brief_last', $today, false);
+    if (!lmeg_brief_claim_day($today)) return; // the cron tick and the S4A ingest can both get here
     lmeg_send_daily_brief();
+}
+
+/**
+ * Mark today's brief as taken; true only for the one request that flips it. The
+ * conditional UPDATE is atomic, so a cron tick and an ingest request racing on
+ * the same morning can't both send.
+ */
+function lmeg_brief_claim_day($today) {
+    global $wpdb;
+    $n = $wpdb->query($wpdb->prepare(
+        "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = 'lmeg_brief_last' AND option_value <> %s",
+        $today, $today
+    ));
+    wp_cache_delete('lmeg_brief_last', 'options');
+    if ($n) return true;
+    if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = 'lmeg_brief_last'")) return false;
+    return (bool) add_option('lmeg_brief_last', $today, '', 'no');
 }
 
 /** Admin-only browser preview: …/wp-admin/admin.php?lmeg_brief_preview=1[&demo=1]. */
