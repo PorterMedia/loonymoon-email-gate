@@ -727,6 +727,19 @@ function lmeg_cron_schedules($s) {
 }
 
 /**
+ * Keep the minute tick scheduled. It used to be scheduled only on activation and
+ * when a broadcast was queued, so a site that lost the event and had never sent
+ * a broadcast never got it back: tauromusic.com ran no daily brief, stage log,
+ * fan-type refresh or sequences for over a week (found 2026-09-19).
+ */
+add_action('init', 'lmeg_ensure_broadcast_tick');
+function lmeg_ensure_broadcast_tick() {
+    if (!wp_next_scheduled('lmeg_broadcast_tick')) {
+        wp_schedule_event(time() + 60, 'lmeg_minute', 'lmeg_broadcast_tick');
+    }
+}
+
+/**
  * Per-tick batch size. Twilio Trial accounts cap throughput; Brevo handles
  * far more — but we keep both modest so a single PHP cron tick stays fast.
  */
