@@ -94,6 +94,7 @@ function lmeg_plan_context($demo = false) {
         'social' => [],
         'has'    => [],
         'findings' => [],
+        'brief'  => function_exists('lmeg_plan_brief') ? lmeg_plan_brief() : [],
     ];
 
     // Ladder: stage, bottleneck, ratios, and the raw ring inputs.
@@ -324,6 +325,9 @@ function lmeg_plan_rules($ctx) {
     $social  = (array) ($ctx['social'] ?? []);
     $has     = (array) ($ctx['has'] ?? []);
     $stage   = (array) ($ctx['stage'] ?? []);
+    $brief   = (array) ($ctx['brief'] ?? []);
+    $excl    = function_exists('lmeg_plan_brief_exclusions') ? lmeg_plan_brief_exclusions($brief) : [];
+    $goal    = (string) ($brief['goal'] ?? '');
     $n       = function ($v) { return number_format_i18n((int) $v); };
     $out     = [];
 
@@ -335,13 +339,57 @@ function lmeg_plan_rules($ctx) {
     };
     $go = function ($page, $label) { return ['label' => $label, 'page' => $page, 'args' => []]; };
 
-    /* --- 1. The release rollout, anchored to the real date ---------------- */
+    /* --- 1. Anchored campaigns: every dated thing lays its own runway ----
+     * Sources: a Drop or Release record, and the dates the artist gave in the
+     * Plan brief (a date in the brief is enough — the record can come later).
+     * ------------------------------------------------------------------- */
+    $campaigns = [];
     $days_out = $rel['days_out'] ?? null;
     if (!empty($rel['next']) && $days_out !== null && $days_out <= 45) {
-        $rd    = (string) $rel['next']['date'];
-        $title = trim((string) ($rel['next']['title'] ?? '')) ?: 'the release';
-        $page  = (string) ($rel['next']['page'] ?? 'lmeg-drops');
-        $steps = [
+        $campaigns[] = ['kind' => 'release', 'date' => (string) $rel['next']['date'],
+                        'title' => trim((string) ($rel['next']['title'] ?? '')) ?: 'the release',
+                        'page' => (string) ($rel['next']['page'] ?? 'lmeg-drops')];
+    }
+    foreach ((array) ($brief['dates'] ?? []) as $bd) {
+        $bdate = substr((string) ($bd['date'] ?? ''), 0, 10);
+        if (!$bdate || $bdate < $today) continue;
+        if ((int) floor((strtotime($bdate) - strtotime($today)) / 86400) > 45) continue;
+        $kind = (string) ($bd['type'] ?? 'other');
+        $dupe = false;
+        foreach ($campaigns as $c) if ($c['date'] === $bdate) { $dupe = true; break; }
+        if ($dupe) continue;
+        $campaigns[] = ['kind' => $kind === 'other' ? 'release' : $kind, 'date' => $bdate,
+                        'title' => trim((string) ($bd['name'] ?? '')) ?: ($kind === 'merch' ? 'the drop' : 'it'),
+                        'page' => $kind === 'merch' ? 'lmeg-products' : ($kind === 'tour' ? 'lmeg-store-shows' : 'lmeg-drops')];
+    }
+
+    foreach ($campaigns as $cp) {
+        $rd    = (string) $cp['date'];
+        $title = (string) $cp['title'];
+        $page  = (string) $cp['page'];
+        $kind  = (string) $cp['kind'];
+        $sfx   = '-' . $rd;
+        if ($kind === 'merch') {
+            $steps = [
+                ['key' => 'merch-tease' . $sfx,  'at' => 7, 'title' => 'Show ' . $title . ' before it goes up',  'channel' => 'social', 'effort' => 'quick', 'metric' => 'people waiting on launch day',    'action' => $go('lmeg-instagram', 'Post it'), 'score' => 86],
+                ['key' => 'merch-launch' . $sfx, 'at' => 0, 'title' => $title . ' goes live — tell the list',    'channel' => 'email',  'effort' => 'quick', 'metric' => 'orders in the first 48 hours',     'action' => $compose('lift', 'Draft the launch'), 'score' => 93],
+                ['key' => 'merch-last' . $sfx,   'at' => -5,'title' => 'Last call on ' . $title,                 'channel' => 'email',  'effort' => 'quick', 'metric' => 'the second order spike',           'action' => $compose('lift', 'Draft last call', 'active'), 'score' => 78],
+            ];
+        } elseif ($kind === 'tour') {
+            $steps = [
+                ['key' => 'show-announce' . $sfx, 'at' => 21, 'title' => 'Announce ' . $title,                   'channel' => 'email',  'effort' => 'quick', 'metric' => 'ticket clicks from your own list', 'action' => $go('lmeg-store-shows', 'Add the show'), 'score' => 92],
+                ['key' => 'show-local' . $sfx,    'at' => 10, 'title' => 'Email only the fans near ' . $title,   'channel' => 'email',  'effort' => 'quick', 'metric' => 'tickets from the local segment',   'action' => $compose('listen', 'Draft the local email'), 'score' => 88],
+                ['key' => 'show-remind' . $sfx,   'at' => 1,  'title' => 'Doors tomorrow — remind them',         'channel' => 'social', 'effort' => 'quick', 'metric' => 'walk-ups',                         'action' => $go('lmeg-instagram', 'Post it'), 'score' => 90],
+                ['key' => 'show-thanks' . $sfx,   'at' => -2, 'title' => 'Say thanks and collect the photos',    'channel' => 'social', 'effort' => 'quick', 'metric' => 'fan photos you can repost',        'action' => $go('lmeg-collect', 'Open a collection'), 'score' => 70],
+            ];
+        } elseif ($kind === 'video') {
+            $steps = [
+                ['key' => 'vid-tease' . $sfx,   'at' => 3,  'title' => 'Tease the ' . $title . ' video',         'channel' => 'social', 'effort' => 'quick', 'metric' => 'saves on the teaser',              'action' => $go('lmeg-instagram', 'Post the tease'), 'score' => 84],
+                ['key' => 'vid-premiere' . $sfx,'at' => 0,  'title' => $title . ' video is out — post it',       'channel' => 'social', 'effort' => 'quick', 'metric' => 'first-day views',                  'action' => $go('lmeg-instagram', 'Post it'), 'score' => 89],
+                ['key' => 'vid-list' . $sfx,    'at' => -2, 'title' => 'Send the video to your list',            'channel' => 'email',  'effort' => 'quick', 'metric' => 'clicks through to the video',      'action' => $compose('lift', 'Draft it'), 'score' => 82],
+            ];
+        } else {
+            $steps = [
             ['key' => 'roll-presave',  'at' => 28, 'title' => 'Put the pre-save up for ' . $title,      'channel' => 'release', 'effort' => 'medium', 'metric' => 'pre-saves collected before release day', 'action' => $go('lmeg-presaves', 'Set up the pre-save'), 'score' => 96],
             ['key' => 'roll-announce', 'at' => 21, 'title' => 'Announce ' . $title . ' to your list',   'channel' => 'email',   'effort' => 'quick',  'metric' => 'opens and pre-saves from the list',      'action' => $compose('release', 'Draft the announce'), 'score' => 94],
             ['key' => 'roll-teaser',   'at' => 14, 'title' => 'Give superfans the first listen',         'channel' => 'email',   'effort' => 'quick',  'metric' => 'clicks from superfans',                   'action' => $compose('release', 'Draft the first-listen note', 'superfans'), 'score' => 92],
@@ -351,11 +399,13 @@ function lmeg_plan_rules($ctx) {
             ['key' => 'roll-save',     'at' => -3, 'title' => 'Ask the people who listened to save it',  'channel' => 'email',   'effort' => 'quick',  'metric' => 'save rate on the new song',               'action' => $compose('save', 'Draft the save ask', 'active'), 'score' => 88],
             ['key' => 'roll-focus',    'at' => -10,'title' => 'Push the track that took hold',           'channel' => 'social',  'effort' => 'medium','metric' => 'week-two streams instead of a week-one spike', 'action' => $go('lmeg-instagram', 'Post about it'), 'score' => 84],
         ];
+        }
+        $noun = $kind === 'merch' ? $title : ($kind === 'tour' ? $title : $title);
         foreach ($steps as $s) {
             $due = date('Y-m-d', strtotime($rd . ' -' . (int) $s['at'] . ' days'));
             $late = false;
             if ($due < $today) {
-                // The window has passed but the release hasn't: still worth doing,
+                // The window has passed but the date hasn't: still worth doing,
                 // so it moves to today and says so rather than disappearing.
                 if ((int) $s['at'] <= 0) continue;
                 $due = $today; $late = true;
@@ -363,14 +413,15 @@ function lmeg_plan_rules($ctx) {
             $add([
                 'key' => $s['key'], 'title' => $s['title'], 'channel' => $s['channel'], 'effort' => $s['effort'],
                 'metric' => $s['metric'], 'score' => (int) $s['score'] + ($late ? 3 : 0), 'due' => $due, 'late' => $late,
-                'why' => $title . ' lands ' . lmeg_plan_when($rd, $today) . ($late ? ' — this step was due ' . lmeg_plan_when(date('Y-m-d', strtotime($rd . ' -' . (int) $s['at'] . ' days')), $today) : ''),
-                'action' => $s['action'], 'anchor' => true,
+                'why' => $noun . ' lands ' . lmeg_plan_when($rd, $today) . ($late ? ' — this step was due ' . lmeg_plan_when(date('Y-m-d', strtotime($rd . ' -' . (int) $s['at'] . ' days')), $today) : ''),
+                'action' => $s['action'], 'anchor' => true, 'campaign' => $kind,
             ]);
         }
     }
+    $has_campaign = !empty($campaigns);
 
     /* --- 2. No release in sight ------------------------------------------ */
-    if (empty($rel['next']) && ($rel['days_since'] ?? null) !== null && (int) $rel['days_since'] >= 60) {
+    if (!$has_campaign && ($rel['days_since'] ?? null) !== null && (int) $rel['days_since'] >= 60) {
         $add(['key' => 'book-release', 'title' => 'Put a date on the next release', 'channel' => 'release', 'effort' => 'deep', 'offset' => 2, 'score' => 86,
               'why' => (int) $rel['days_since'] . ' days since your last release, and nothing dated yet. The rollout above only writes itself once a date exists.',
               'metric' => 'a dated release with a pre-save behind it', 'action' => $go('lmeg-releases', 'Plan the release')]);
@@ -378,7 +429,7 @@ function lmeg_plan_rules($ctx) {
 
     /* --- 3. Send rhythm -------------------------------------------------- */
     $gap = $sends['gap_days'] ?? null;
-    if ($gap !== null && $gap >= 21 && empty($rel['next'])) {
+    if ($gap !== null && $gap >= 21 && !$has_campaign) {
         $add(['key' => 'send-checkin', 'title' => 'Send a check-in to your list', 'channel' => 'email', 'effort' => 'quick', 'offset' => 1, 'score' => 82,
               'why' => $gap . ' days since your last send' . (($list['total'] ?? null) ? ', to ' . $n($list['total']) . ' people who asked to hear from you' : '') . '. A list cools quietly.',
               'metric' => 'open rate holding above your average', 'action' => $compose('checkin', 'Draft the check-in')]);
@@ -393,13 +444,13 @@ function lmeg_plan_rules($ctx) {
         $s = $songs['up'][0];
         $add(['key' => 'song-mover', 'title' => 'Put weight behind "' . $s['title'] . '"', 'channel' => 'email', 'effort' => 'quick', 'offset' => 3, 'score' => 78,
               'why' => '"' . $s['title'] . '" is up ' . (float) $s['wow'] . '% week over week (' . $n($s['last7']) . ' streams in 7 days). Something is already working; this is the cheapest week to add to it.',
-              'metric' => 'a second week of growth rather than a spike', 'action' => $compose('mover', 'Draft it', null, ['song' => $s['title'], 'uri' => (string) ($s['uri'] ?? '')])]);
+              'metric' => 'a second week of growth rather than a spike', 'goals' => ['streams'], 'action' => $compose('mover', 'Draft it', null, ['song' => $s['title'], 'uri' => (string) ($s['uri'] ?? '')])]);
     }
-    if (!empty($songs['down'][0]) && empty($rel['next'])) {
+    if (!empty($songs['down'][0]) && !$has_campaign) {
         $s = $songs['down'][0];
         $add(['key' => 'song-cooling', 'title' => 'Give "' . $s['title'] . '" a second life', 'channel' => 'email', 'effort' => 'quick', 'offset' => 10, 'score' => 62,
               'why' => '"' . $s['title'] . '" cooled ' . abs((float) $s['wow']) . '% this week (' . $n($s['last7']) . ' streams, from ' . $n($s['prior7']) . '). A re-push to people who already clicked it beats starting cold.',
-              'metric' => 'streams flattening out instead of sliding', 'action' => $compose('repush', 'Draft the re-push', 'active', ['song' => $s['title'], 'uri' => (string) ($s['uri'] ?? '')])]);
+              'metric' => 'streams flattening out instead of sliding', 'goals' => ['streams'], 'action' => $compose('repush', 'Draft the re-push', 'active', ['song' => $s['title'], 'uri' => (string) ($s['uri'] ?? '')])]);
     }
 
     /* --- 5. The list: who is cooling, who never warmed up ---------------- */
@@ -407,17 +458,17 @@ function lmeg_plan_rules($ctx) {
     if ($total && !empty($list['atrisk']) && $list['atrisk'] >= max(5, (int) round($total * 0.05))) {
         $add(['key' => 'winback', 'title' => 'Win back the ' . $n($list['atrisk']) . ' going quiet', 'channel' => 'email', 'effort' => 'quick', 'offset' => 6, 'score' => 74,
               'why' => $n($list['atrisk']) . ' fans engaged before and have gone 60+ days without opening, clicking or visiting — ' . lmeg_plan_pct($list['atrisk'], $total) . ' of your list.',
-              'metric' => 'how many of them open this one', 'action' => $compose('listen', 'Draft the win-back', 'atrisk')]);
+              'metric' => 'how many of them open this one', 'goals' => ['list'], 'action' => $compose('listen', 'Draft the win-back', 'atrisk')]);
     }
     if ($total && !empty($list['dormant']) && $list['dormant'] >= max(10, (int) round($total * 0.2))) {
         $add(['key' => 'dormant-first-value', 'title' => 'Give the never-engaged a reason', 'channel' => 'email', 'effort' => 'medium', 'offset' => 13, 'score' => 58,
               'why' => $n($list['dormant']) . ' people (' . lmeg_plan_pct($list['dormant'], $total) . ' of the list) have never opened, clicked or visited. Most joined for one thing and never got it.',
-              'metric' => 'first opens from people who have never opened', 'action' => $compose('listen', 'Draft the reintroduction')]);
+              'metric' => 'first opens from people who have never opened', 'goals' => ['list'], 'action' => $compose('listen', 'Draft the reintroduction')]);
     }
     if (!empty($list['new']) && $list['new'] >= 10 && empty($has['welcome_sequence'])) {
         $add(['key' => 'welcome-seq', 'title' => 'Build the welcome sequence once', 'channel' => 'admin', 'effort' => 'deep', 'offset' => 4, 'score' => 76,
               'why' => $n($list['new']) . ' fans joined in the last 30 days and nothing greets them. This is the one job that keeps paying without you.',
-              'metric' => 'every new fan hearing from you in week one', 'action' => $go('lmeg-sequences', 'Build the sequence')]);
+              'metric' => 'every new fan hearing from you in week one', 'goals' => ['list'], 'action' => $go('lmeg-sequences', 'Build the sequence')]);
     }
     if (!empty($list['bounced']) && $list['bounced'] >= 5) {
         $add(['key' => 'clean-bounces', 'title' => 'Clear ' . $n($list['bounced']) . ' bouncing addresses', 'channel' => 'admin', 'effort' => 'quick', 'offset' => 5, 'score' => 54,
@@ -431,13 +482,13 @@ function lmeg_plan_rules($ctx) {
     if ($lis && $lis >= 500 && $lpct !== null && $lpct < 1) {
         $add(['key' => 'list-drive', 'title' => 'Turn listeners into a list you own', 'channel' => 'social', 'effort' => 'medium', 'offset' => 8, 'score' => 80,
               'why' => $n($lis) . ' monthly listeners and ' . ($total ? $n($total) : '0') . ' on your list — ' . rtrim(rtrim(number_format((float) $lpct, 2), '0'), '.') . '%. Streaming platforms rent you that audience; the list is the part you keep.',
-              'metric' => 'sign-ups per week from the link in your bio', 'action' => $go('lmeg-signups', 'Get your sign-up link')]);
+              'metric' => 'sign-ups per week from the link in your bio', 'goals' => ['list'], 'action' => $go('lmeg-signups', 'Get your sign-up link')]);
     }
     $sr = $streams['save_rate'] ?? null;
     if ($sr !== null && $sr < 3 && $lis && $lis >= 500) {
         $add(['key' => 'save-ask', 'title' => 'Ask your list to save the music', 'channel' => 'email', 'effort' => 'quick', 'offset' => 9, 'score' => 66,
               'why' => 'Your save rate is ' . rtrim(rtrim(number_format((float) $sr, 2), '0'), '.') . '% of monthly listeners. Saves are what put you back in someone\'s rotation without a post.',
-              'metric' => 'saves per 1,000 listeners', 'action' => $compose('save', 'Draft the save ask', 'active')]);
+              'metric' => 'saves per 1,000 listeners', 'goals' => ['streams'], 'action' => $compose('save', 'Draft the save ask', 'active')]);
     }
 
     /* --- 7. Geography: where they already are ---------------------------- */
@@ -445,14 +496,14 @@ function lmeg_plan_rules($ctx) {
         $city = (string) $geo['top_city']['name'];
         $add(['key' => 'city-play', 'title' => 'Do something real in ' . $city, 'channel' => 'social', 'effort' => 'deep', 'offset' => 16, 'score' => 56,
               'why' => $city . ' is your biggest city by streams' . (!empty($geo['top_city']['streams']) ? ' (' . $n($geo['top_city']['streams']) . ' in 28 days)' : '') . '. A show, an in-store, a local feature — density is what makes those work.',
-              'metric' => 'sign-ups and sales from that city', 'action' => $go('lmeg-store-shows', 'Add a show')]);
+              'metric' => 'sign-ups and sales from that city', 'goals' => ['shows'], 'action' => $go('lmeg-store-shows', 'Add a show')]);
     }
     if (!empty($geo['riser']['cc']) && !empty($geo['riser']['pct']) && (float) $geo['riser']['pct'] >= 15) {
         $cc = (string) $geo['riser']['cc'];
         $name = function_exists('lmeg_si_country_name') ? lmeg_si_country_name($cc) : $cc;
         $add(['key' => 'riser-market', 'title' => 'Follow the growth in ' . $name, 'channel' => 'email', 'effort' => 'quick', 'offset' => 12, 'score' => 60,
               'why' => $name . ' is up ' . round((float) $geo['riser']['pct']) . '% on streams. New markets are cheapest to serve while they are still moving on their own.',
-              'metric' => 'streams and follows from that market', 'action' => $compose('listen', 'Email fans there', null, ['country' => $cc])]);
+              'metric' => 'streams and follows from that market', 'goals' => ['streams'], 'action' => $compose('listen', 'Email fans there', null, ['country' => $cc])]);
     }
 
     /* --- 8. The store ---------------------------------------------------- */
@@ -460,16 +511,16 @@ function lmeg_plan_rules($ctx) {
     if ($prods !== null && $prods === 0 && $total && $total >= 50) {
         $add(['key' => 'store-first', 'title' => 'Put one thing in the store', 'channel' => 'store', 'effort' => 'medium', 'offset' => 11, 'score' => 64,
               'why' => $n($total) . ' people on your list and nothing to buy. One item — a shirt, a download, a signed thing — turns a list into a living.',
-              'metric' => 'first orders in a week', 'action' => $go('lmeg-products', 'Add a product')]);
+              'metric' => 'first orders in a week', 'goals' => ['sales'], 'action' => $go('lmeg-products', 'Add a product')]);
     } elseif ($prods && empty($store['orders_30d'])) {
         $add(['key' => 'store-tell', 'title' => 'Tell your list what is in the store', 'channel' => 'email', 'effort' => 'quick', 'offset' => 14, 'score' => 57,
               'why' => $prods . ' active ' . ($prods === 1 ? 'product' : 'products') . ' and no orders in 30 days. Most fans have never seen the store page.',
-              'metric' => 'orders and revenue in the week after', 'action' => $compose('lift', 'Draft the store note', 'active')]);
+              'metric' => 'orders and revenue in the week after', 'goals' => ['sales'], 'action' => $compose('lift', 'Draft the store note', 'active')]);
     }
     if (!empty($store['abandoned'])) {
         $add(['key' => 'carts', 'title' => 'Chase ' . $n($store['abandoned']) . ' unfinished ' . ((int) $store['abandoned'] === 1 ? 'cart' : 'carts'), 'channel' => 'store', 'effort' => 'quick', 'offset' => 2, 'score' => 70,
               'why' => $n($store['abandoned']) . ' ' . ((int) $store['abandoned'] === 1 ? 'person' : 'people') . ' put something in the cart in the last two weeks and left. They are the warmest buyers you have.',
-              'metric' => 'carts recovered', 'action' => $go('lmeg-orders', 'Open orders')]);
+              'metric' => 'carts recovered', 'goals' => ['sales'], 'action' => $go('lmeg-orders', 'Open orders')]);
     }
     if (!empty($store['lowstock'])) {
         $add(['key' => 'lowstock', 'title' => 'Decide on the low-stock items', 'channel' => 'store', 'effort' => 'quick', 'offset' => 7, 'score' => 50,
@@ -479,7 +530,7 @@ function lmeg_plan_rules($ctx) {
     if (!empty($store['tiers']) && !empty($list['superfans']) && $list['superfans'] >= 20 && (int) ($list['members'] ?? 0) < 10) {
         $add(['key' => 'member-invite', 'title' => 'Invite your superfans in by name', 'channel' => 'email', 'effort' => 'quick', 'offset' => 15, 'score' => 68,
               'why' => $n($list['superfans']) . ' superfans and ' . (int) ($list['members'] ?? 0) . ' paying members. The people who already buy and click are the only ones worth asking first.',
-              'metric' => 'members joining from that one send', 'action' => $compose('lift', 'Draft the invite', 'superfans')]);
+              'metric' => 'members joining from that one send', 'goals' => ['members'], 'action' => $compose('lift', 'Draft the invite', 'superfans')]);
     }
 
     /* --- 9. Social ------------------------------------------------------- */
@@ -503,6 +554,120 @@ function lmeg_plan_rules($ctx) {
           'why' => 'Replies are the cheapest loyalty there is, and Fanloop captures the people you talk to as fans.',
           'metric' => 'DM replies turning into list sign-ups', 'action' => $go('lmeg-instagram', 'Open the inbox'), 'cadence' => 'weekly']);
 
+    /* --- 11. Paid, only with money behind it (brief question 5) --------- */
+    $budget = (string) ($brief['budget'] ?? '');
+    if ($budget !== '' && $budget !== 'none' && !empty($sends['best']['subject'])) {
+        $amount = ['low' => 'the little you have', 'mid' => 'a few hundred', 'high' => 'real money'][$budget] ?? 'your budget';
+        $add(['key' => 'paid-boost', 'title' => 'Put ' . $amount . ' behind the post that already works', 'channel' => 'social', 'effort' => 'medium', 'offset' => 9, 'score' => 61, 'goals' => ['streams', 'list'],
+              'why' => 'You have budget for the quarter, and you already know what lands: "' . $sends['best']['subject'] . '" pulled ' . $sends['best']['open_rate'] . '% open. Promote the thing with proof, never a cold post.',
+              'metric' => 'cost per new fan on your list', 'action' => $go('lmeg-instagram', 'Find the post')]);
+    }
+
+    /* --- 12. Sync pitching (brief question 8) --------------------------- */
+    if ((string) ($brief['sync'] ?? '') === '1') {
+        $lead = !empty($songs['lead']['title']) ? '"' . $songs['lead']['title'] . '"' : 'your strongest track';
+        $add(['key' => 'sync-pitch', 'title' => 'Pitch ' . $lead . ' for placements', 'channel' => 'admin', 'effort' => 'deep', 'offset' => 17, 'score' => 52, 'goals' => ['sync'],
+              'why' => 'You said you want placements. Send the WAV, an instrumental, a 30-second clip and one line on the mood — supervisors need all four, and most artists send one.',
+              'metric' => 'replies from libraries and supervisors', 'action' => $go('lmeg-releases', 'Get the assets')]);
+    }
+
+    /* --- Brief question 2: the stated goal jumps the queue -------------- */
+    if ($goal !== '') {
+        foreach ($out as &$m) {
+            if (!empty($m['goals']) && in_array($goal, (array) $m['goals'], true)) $m['score'] = (int) $m['score'] + 14;
+        }
+        unset($m);
+    }
+
+    /* --- Brief question 4: anything they refuse never reaches the plan -- */
+    if ($excl) {
+        $out = array_values(array_filter($out, function ($m) use ($excl) {
+            return !lmeg_plan_brief_blocked(($m['title'] ?? '') . ' ' . ($m['why'] ?? ''), $excl);
+        }));
+    }
+
+    return $out;
+}
+
+/**
+ * Content slots — the calendar half of the plan.
+ *
+ * Posts per week comes from the brief (two when unanswered, none when they say
+ * zero). Ideas rotate through the pillars the data earned, a campaign week
+ * borrows release-shaped beats instead, and anything they said they won't do
+ * is dropped. Pure.
+ */
+function lmeg_plan_content_slots($ctx, $weeks = 4) {
+    $today  = (string) ($ctx['today'] ?? date('Y-m-d'));
+    $brief  = (array) ($ctx['brief'] ?? []);
+    $excl   = function_exists('lmeg_plan_brief_exclusions') ? lmeg_plan_brief_exclusions($brief) : [];
+    $per    = ($brief['posts_per_week'] ?? '') === '' ? 2 : max(0, min(7, (int) $brief['posts_per_week']));
+    if ($per < 1) return [];
+    $video  = (string) ($brief['video_ok'] ?? '');
+    $pillars = lmeg_plan_pillars($ctx);
+    $start  = lmeg_plan_week_start($today);
+
+    // Campaign dates in play, so a release week gets release-week content.
+    $dates = [];
+    if (!empty($ctx['release']['next']['date'])) $dates[] = ['date' => (string) $ctx['release']['next']['date'], 'name' => (string) ($ctx['release']['next']['title'] ?? 'the release')];
+    foreach ((array) ($brief['dates'] ?? []) as $d) if (!empty($d['date']) && $d['date'] >= $today) $dates[] = ['date' => substr((string) $d['date'], 0, 10), 'name' => trim((string) ($d['name'] ?? '')) ?: 'it'];
+
+    $ideas = [];
+    foreach ($pillars as $p) foreach ((array) ($p['ideas'] ?? []) as $i) $ideas[] = ['idea' => (string) $i, 'pillar' => (string) $p['label'], 'why' => (string) $p['why']];
+    if (!$ideas) {
+        $ideas = [
+            ['idea' => 'play thirty seconds of something unreleased', 'pillar' => 'Your world', 'why' => 'No performance data yet, so start with the thing only you have.'],
+            ['idea' => 'the story behind a song you already put out',  'pillar' => 'Your world', 'why' => 'No performance data yet, so start with the thing only you have.'],
+            ['idea' => 'answer a question a fan actually asked',       'pillar' => 'Your world', 'why' => 'No performance data yet, so start with the thing only you have.'],
+        ];
+    }
+    // Video ideas come out when they've said no to video.
+    if ($video === '0') {
+        $ideas = array_values(array_filter($ideas, function ($i) {
+            return !preg_match('/\b(video|clip|shoot|film|reel|footage)\b/i', $i['idea']);
+        }));
+        if (!$ideas) $ideas = [['idea' => 'write the story behind the song', 'pillar' => 'Your world', 'why' => 'No video, so the words carry it.']];
+    }
+    if ($excl) {
+        $ideas = array_values(array_filter($ideas, function ($i) use ($excl) { return !lmeg_plan_brief_blocked($i['idea'] . ' ' . $i['pillar'], $excl); }));
+        if (!$ideas) return [];
+    }
+
+    // Two posts a week land Wednesday/Saturday; more fill outward from there.
+    $spread = [[3], [3, 6], [2, 4, 6], [1, 3, 5, 6], [1, 2, 4, 5, 6], [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6, 7]];
+    $days = $spread[min(6, $per - 1)];
+    $hour = isset($ctx['social']['best_hour']) ? (int) $ctx['social']['best_hour'] : null;
+    $out = []; $k = 0;
+    for ($w = 0; $w < (int) $weeks; $w++) {
+        $ws = date('Y-m-d', strtotime($start . ' +' . ($w * 7) . ' days'));
+        $we = date('Y-m-d', strtotime($ws . ' +6 days'));
+        $camp = null;
+        foreach ($dates as $d) if ($d['date'] >= $ws && $d['date'] <= date('Y-m-d', strtotime($we . ' +3 days'))) { $camp = $d; break; }
+        $beats = $camp ? [
+            ['idea' => 'a snippet of ' . $camp['name'] . ', no explanation', 'pillar' => 'Release week', 'why' => $camp['name'] . ' lands ' . lmeg_plan_when($camp['date'], $today) . '.'],
+            ['idea' => 'one line from it as text on screen',                'pillar' => 'Release week', 'why' => $camp['name'] . ' lands ' . lmeg_plan_when($camp['date'], $today) . '.'],
+            ['idea' => 'where it was made, and why',                        'pillar' => 'Release week', 'why' => $camp['name'] . ' lands ' . lmeg_plan_when($camp['date'], $today) . '.'],
+            ['idea' => 'it is out — say only that, and link it',            'pillar' => 'Release week', 'why' => $camp['name'] . ' lands ' . lmeg_plan_when($camp['date'], $today) . '.'],
+        ] : null;
+        if ($beats && $video === '0') $beats = array_values(array_filter($beats, function ($b) { return strpos($b['idea'], 'snippet') === false; }));
+        if ($beats && $excl) $beats = array_values(array_filter($beats, function ($b) use ($excl) { return !lmeg_plan_brief_blocked($b['idea'], $excl); }));
+        $pool = $beats ?: $ideas;
+        if (!$pool) continue;
+        foreach ($days as $i => $dow) {
+            $due = date('Y-m-d', strtotime($ws . ' +' . ((int) $dow - 1) . ' days'));
+            if ($due < $today) continue;
+            $pick = $pool[($k++) % count($pool)];
+            $out[] = [
+                'key' => 'content-' . $due . '-' . ($i + 1),
+                'title' => ucfirst($pick['idea']),
+                'why' => $pick['pillar'] . ' — ' . $pick['why'],
+                'channel' => 'content', 'effort' => 'quick',
+                'metric' => 'saves and shares, not likes' . ($hour !== null ? ' · best around ' . date('ga', mktime($hour, 0)) : ''),
+                'score' => 30, 'due' => $due, 'week_start' => $ws, 'anchor' => true,
+                'action' => ['label' => 'Open Instagram', 'page' => 'lmeg-instagram', 'args' => []],
+            ];
+        }
+    }
     return $out;
 }
 
@@ -710,7 +875,7 @@ function lmeg_plan_generate($weeks = 4) {
     lmeg_plan_maybe_install();
     $t = lmeg_plan_table();
     $ctx   = lmeg_plan_context(false);
-    $moves = lmeg_plan_schedule(lmeg_plan_rules($ctx), (string) $ctx['today'], (int) $weeks);
+    $moves = lmeg_plan_build($ctx, (int) $weeks);
     $now   = current_time('mysql');
     $today = (string) $ctx['today'];
     $keep  = [];
@@ -755,6 +920,24 @@ function lmeg_plan_generate($weeks = 4) {
     }
     update_option('lmeg_plan_generated', ['at' => time(), 'run' => $today, 'moves' => count($moves), 'captured' => (string) ($ctx['streams']['captured'] ?? '')], false);
     return count($moves);
+}
+
+/**
+ * Rules + content, scheduled with the brief's own capacity. Emails a month
+ * becomes the per-week send cap, so a plan never asks for more sending than
+ * the artist agreed to. Pure given a context.
+ */
+function lmeg_plan_build($ctx, $weeks = 4) {
+    $brief = (array) ($ctx['brief'] ?? []);
+    $spm   = ($brief['sends_per_month'] ?? '') === '' ? null : max(0, min(8, (int) $brief['sends_per_month']));
+    $emails = $spm === null ? 2 : max(0, min(3, (int) ceil($spm / 4)));
+    $moves = lmeg_plan_schedule(lmeg_plan_rules($ctx), (string) $ctx['today'], (int) $weeks, 4, $emails);
+    foreach (lmeg_plan_content_slots($ctx, (int) $weeks) as $c) $moves[] = $c;
+    usort($moves, function ($a, $b) {
+        if ((string) $a['due'] !== (string) $b['due']) return strcmp((string) $a['due'], (string) $b['due']);
+        return (int) $b['score'] <=> (int) $a['score'];
+    });
+    return $moves;
 }
 
 /** Rows between two dates (inclusive), oldest first. */
@@ -871,6 +1054,7 @@ function lmeg_plan_channel($k) {
         'social'  => ['Social',  '#7C6CF6'],
         'release' => ['Release', '#34D399'],
         'store'   => ['Store',   '#FBBF24'],
+        'content' => ['Post',    '#E58BBD'],
         'admin'   => ['Setup',   '#8B90A0'],
     ];
     return $m[(string) $k] ?? ['Move', '#8B90A0'];
@@ -968,7 +1152,7 @@ function lmeg_admin_plan() {
 
     $ctx = lmeg_plan_context($demo);
     if ($demo) {
-        $moves = lmeg_plan_schedule(lmeg_plan_rules($ctx), (string) $ctx['today']);
+        $moves = lmeg_plan_build($ctx);
         $rows  = lmeg_plan_fake_rows($moves);
         $weeks = [];
         for ($w = 0; $w < 4; $w++) {
@@ -1007,6 +1191,8 @@ function lmeg_admin_plan() {
                 <input type="hidden" name="lmeg_action" value="regen">
                 <button class="button button-primary" title="Rebuild from today's data. Done and skipped moves are kept.">Rebuild the plan</button>
             </form>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-plan&lmeg_plan_print=1')); ?>" target="_blank" rel="noopener" title="A printable plan you can save as PDF">Export the plan ↗</a>
+            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-plan-brief')); ?>">Plan brief</a>
             <?php if (function_exists('lmeg_demo_preview_button')) echo str_replace(['<p>', '</p>'], '', lmeg_demo_preview_button('lmeg-plan')); ?>
             <?php endif; ?>
             <span style="font-size:12px;color:#8B90A0;">
@@ -1015,6 +1201,20 @@ function lmeg_admin_plan() {
                 <?php if (!$demo) : ?> · <?php echo (int) $prog['done']; ?> done, <?php echo (int) $prog['todo']; ?> open<?php if (!empty($prog['past_due'])) : ?>, <?php echo (int) $prog['past_due']; ?> past due<?php endif; ?> in 28 days<?php endif; ?>
             </span>
         </div>
+
+        <?php $bm = function_exists('lmeg_plan_brief_missing') ? lmeg_plan_brief_missing() : null; ?>
+        <?php if ($bm && $bm['missing']) : ?>
+        <div style="<?php echo $card; ?>background:linear-gradient(135deg,rgba(124,108,246,.16),rgba(208,95,162,.12));max-width:900px;margin:0 0 18px;">
+            <div style="<?php echo $lbl; ?>">The plan is missing <?php echo count($bm['missing']); ?> of <?php echo (int) $bm['total']; ?> answers</div>
+            <div style="font-size:13px;color:#F4F5F7;margin-top:7px;">Everything above is built from your data. These are the things data can't tell me:</div>
+            <ul style="margin:9px 0 0;padding:0 0 0 17px;font-size:12.5px;color:#C9CCD6;line-height:1.65;">
+                <?php foreach (array_slice($bm['missing'], 0, 4) as $m2) : ?>
+                <li><strong style="color:#F4F5F7;"><?php echo esc_html($m2['label']); ?></strong> — <?php echo esc_html($m2['changes']); ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <p style="margin:12px 0 0;"><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-plan-brief')); ?>">Answer them</a></p>
+        </div>
+        <?php endif; ?>
 
         <?php if ($note !== '') : ?>
         <div style="<?php echo $card; ?>background:linear-gradient(135deg,rgba(208,95,162,.16),rgba(124,108,246,.16));max-width:900px;margin:0 0 18px;">
@@ -1028,6 +1228,7 @@ function lmeg_admin_plan() {
                 <div style="font:700 15px/1.2 var(--lmegA-font,inherit);">This week</div>
                 <div style="font-size:11.5px;color:#8B90A0;"><?php echo esc_html(date_i18n('M j', strtotime((string) $this_week['start'])) . ' – ' . date_i18n('M j', strtotime((string) $this_week['end']))); ?></div>
             </div>
+            <?php $tw = array_values(array_filter((array) $this_week['moves'], function ($r) { return (string) $r->channel !== 'content'; })); $this_week['moves'] = $tw; ?>
             <?php if (empty($this_week['moves'])) : ?>
                 <div style="font-size:13px;color:#8B90A0;padding:14px 0 2px;">Nothing scheduled this week. Rebuild the plan, or add a release date and the rollout writes itself.</div>
             <?php else : foreach ($this_week['moves'] as $r) echo lmeg_plan_render_move($r, !$demo); endif; ?>
@@ -1037,11 +1238,19 @@ function lmeg_admin_plan() {
             <?php foreach (array_slice($ws, 1) as $k) : $w = $weeks[$k]; ?>
             <div style="<?php echo $card; ?>">
                 <div style="<?php echo $lbl; ?>"><?php echo esc_html(date_i18n('M j', strtotime((string) $w['start'])) . ' – ' . date_i18n('M j', strtotime((string) $w['end']))); ?></div>
+                <?php $w['moves'] = array_values(array_filter((array) $w['moves'], function ($r) { return (string) $r->channel !== 'content'; })); ?>
                 <?php if (empty($w['moves'])) : ?>
                     <div style="font-size:12.5px;color:#8B90A0;padding:12px 0 2px;">Open week.</div>
                 <?php else : foreach ($w['moves'] as $r) echo lmeg_plan_render_move($r, !$demo, true); endif; ?>
             </div>
             <?php endforeach; ?>
+        </div>
+
+        <h2 style="margin:6px 0 10px;font-size:16px;">The calendar</h2>
+        <p style="font-size:12.5px;color:#8B90A0;margin:0 0 12px;max-width:760px;">Four weeks, posts and sends together. Content slots come from how much you said you can post.</p>
+        <div style="<?php echo $card; ?>max-width:1040px;overflow-x:auto;margin-bottom:22px;">
+            <?php echo lmeg_plan_calendar_html($weeks); ?>
+            <?php echo lmeg_plan_legend_html(); ?>
         </div>
 
         <?php if ($pill) : ?>
@@ -1108,6 +1317,69 @@ function lmeg_admin_plan() {
         The plan rebuilds itself every Monday morning, and you can rebuild it any time.</p>
     </div>
     <?php
+}
+
+
+/**
+ * The calendar — four weeks as a grid, moves and content together. Shared by
+ * the admin page (dark) and the printable plan (light).
+ */
+function lmeg_plan_calendar_html($weeks, $light = false) {
+    if (!$weeks) return '';
+    $ink    = $light ? '#14151c' : '#F4F5F7';
+    $muted  = $light ? '#6b6f7d' : '#8B90A0';
+    $line   = $light ? '#e3e1e6' : 'rgba(255,255,255,.08)';
+    $head   = $light ? '#8a8e9b' : '#8B90A0';
+    $today  = current_time('Y-m-d');
+    $todaybg = $light ? '#faf4f8' : 'rgba(208,95,162,.10)';
+    $dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    $h = '<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px;">';
+    $h .= '<thead><tr>';
+    foreach ($dows as $d) {
+        $h .= '<th style="padding:0 4px 6px;text-align:left;font:700 9.5px/1 var(--lmegA-font,inherit);letter-spacing:.07em;text-transform:uppercase;color:' . $head . ';">' . $d . '</th>';
+    }
+    $h .= '</tr></thead><tbody>';
+    foreach ($weeks as $w) {
+        $h .= '<tr>';
+        for ($i = 0; $i < 7; $i++) {
+            $day = date('Y-m-d', strtotime((string) $w['start'] . ' +' . $i . ' days'));
+            $items = array_values(array_filter((array) $w['moves'], function ($r) use ($day) { return (string) $r->due_date === $day; }));
+            $is_today = $day === $today;
+            $h .= '<td style="vertical-align:top;border:1px solid ' . $line . ';padding:5px 6px 8px;height:78px;' . ($is_today ? 'background:' . $todaybg . ';' : '') . '">';
+            $h .= '<div style="font:700 11px/1 var(--lmegA-font,inherit);color:' . ($is_today ? ($light ? '#b3237c' : '#D05FA2') : $muted) . ';margin-bottom:4px;">' . esc_html(date_i18n('j', strtotime($day))) . '</div>';
+            foreach ($items as $r) {
+                list($cl, $tone) = lmeg_plan_channel($r->channel ?? '');
+                $done = (string) ($r->status ?? '') === 'done';
+                $skip = (string) ($r->status ?? '') === 'skipped';
+                $h .= '<div style="display:flex;gap:4px;align-items:flex-start;margin:0 0 3px;line-height:1.3;' . ($done || $skip ? 'opacity:.45;' : '') . '">'
+                    . '<span style="flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:' . $tone . ';margin-top:4px;"></span>'
+                    . '<span style="color:' . $ink . ';' . ($done ? 'text-decoration:line-through;' : '') . '">' . esc_html(lmeg_plan_shorten((string) $r->title, 46)) . '</span></div>';
+            }
+            $h .= '</td>';
+        }
+        $h .= '</tr>';
+    }
+    return $h . '</tbody></table>';
+}
+
+/** Trim to a word boundary with an ellipsis. Pure. */
+function lmeg_plan_shorten($s, $len) {
+    $s = trim((string) $s);
+    if (function_exists('mb_strlen') ? mb_strlen($s) <= $len : strlen($s) <= $len) return $s;
+    $cut = function_exists('mb_substr') ? mb_substr($s, 0, $len) : substr($s, 0, $len);
+    $sp = strrpos($cut, ' ');
+    return rtrim(($sp !== false && $sp >= $len * 0.5) ? substr($cut, 0, $sp) : $cut, " ,.;:") . '…';
+}
+
+/** Channel legend, shared by page and print. */
+function lmeg_plan_legend_html($light = false) {
+    $muted = $light ? '#6b6f7d' : '#8B90A0';
+    $out = '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:' . $muted . ';margin:8px 0 0;">';
+    foreach (['email', 'content', 'social', 'release', 'store', 'admin'] as $c) {
+        list($label, $tone) = lmeg_plan_channel($c);
+        $out .= '<span style="display:inline-flex;gap:5px;align-items:center;"><span style="width:6px;height:6px;border-radius:50%;background:' . $tone . ';display:inline-block;"></span>' . esc_html($label) . '</span>';
+    }
+    return $out . '</div>';
 }
 
 /** Three moves for the Monday owner digest. '' when the plan is empty. */
