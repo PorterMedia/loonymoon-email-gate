@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 function lmeg_admin_hub_map() {
     return [
         'overview'  => ['label' => 'Overview',  'pages' => [
-            ['lmeg-overview', 'Overview'],
+            ['lmeg-overview', 'Overview'], ['lmeg-plan', 'Plan'],
         ]],
         'audience'  => ['label' => 'Audience',  'pages' => [
             ['lmeg', 'Subscribers'], ['lmeg-audience', 'Audience'], ['lmeg-fanbase', 'Fanbase'], ['lmeg-signups', 'Signups'], ['lmeg-tags', 'Tags'],

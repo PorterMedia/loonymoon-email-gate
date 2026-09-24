@@ -1054,6 +1054,7 @@ function lmeg_send_owner_digest() {
     // Spotify this week — streams/listeners/followers deltas, the real mover,
     // last send's lift, top findings with their actions (spotify-insights.php).
     if (function_exists('lmeg_si_digest_html')) $body .= lmeg_si_digest_html();
+    if (function_exists('lmeg_plan_digest_html')) $body .= lmeg_plan_digest_html();
 
     // AI read — best-effort, never blocks the digest.
     if (function_exists('lmeg_ai_ask')) {
