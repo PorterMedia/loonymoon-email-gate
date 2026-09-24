@@ -182,19 +182,36 @@ function lmeg_plan_context($demo = false) {
 
     if ($demo) return lmeg_plan_context_demo($ctx);
 
-    // Send performance: the best of the last eight completed sends.
+    // Send performance: the best-opened of the last eight completed sends.
+    // Opens come from the per-recipient log AND the event spine, whichever
+    // knows more — sends from before tracking was always on (v3.258.0) have
+    // no events at all, and a send with no opens recorded is left out
+    // entirely rather than reported as 0%.
     global $wpdb;
     $bt = $wpdb->prefix . 'lmeg_broadcasts';
+    $bl = $wpdb->prefix . 'lmeg_broadcast_log';
     if (lmeg_plan_has_table($bt)) {
         $rows = $wpdb->get_results("SELECT id, subject, sent FROM $bt WHERE status='completed' AND sent > 0 ORDER BY id DESC LIMIT 8", ARRAY_A);
         $best = null;
         foreach ((array) $rows as $r) {
-            if (!function_exists('lmeg_email_engagement')) break;
-            $e = (array) lmeg_email_engagement('broadcast', (int) $r['id']);
+            $id = (int) $r['id'];
             $sent = max(1, (int) $r['sent']);
-            $open = round((int) ($e['opens'] ?? 0) / $sent * 100, 1);
-            $click = round((int) ($e['clicks'] ?? 0) / $sent * 100, 1);
-            if ($best === null || $open > $best['open_rate']) $best = ['subject' => (string) $r['subject'], 'open_rate' => $open, 'click_rate' => $click, 'sent' => $sent];
+            $opens = 0; $clicks = 0;
+            if (lmeg_plan_has_table($bl)) {
+                $l = $wpdb->get_row($wpdb->prepare(
+                    "SELECT SUM(opened_at IS NOT NULL) o, SUM(first_clicked_at IS NOT NULL) c FROM $bl WHERE broadcast_id = %d", $id), ARRAY_A);
+                $opens = (int) ($l['o'] ?? 0); $clicks = (int) ($l['c'] ?? 0);
+            }
+            if (function_exists('lmeg_email_engagement')) {
+                $e = (array) lmeg_email_engagement('broadcast', $id);
+                $opens = max($opens, (int) ($e['opens'] ?? 0));
+                $clicks = max($clicks, (int) ($e['clicks'] ?? 0));
+            }
+            if ($opens < 1) continue;
+            $open = round($opens / $sent * 100, 1);
+            if ($best === null || $open > $best['open_rate']) {
+                $best = ['subject' => (string) $r['subject'], 'open_rate' => $open, 'click_rate' => round($clicks / $sent * 100, 1), 'sent' => $sent];
+            }
         }
         $ctx['sends']['best'] = $best;
         $ctx['sends']['total'] = (int) $wpdb->get_var("SELECT COUNT(*) FROM $bt WHERE status='completed'");
@@ -671,7 +688,7 @@ function lmeg_plan_pillars($ctx) {
         $out[] = ['label' => $geo['top_city']['name'] . ' and the map', 'why' => 'Your densest city by streams. Naming places makes the people in them feel found.',
                   'ideas' => ['shout the city by name', 'ask where to play next', 'a local landmark in a shot']];
     }
-    if (!empty($sends['best']['subject'])) {
+    if (!empty($sends['best']['subject']) && !empty($sends['best']['open_rate'])) {
         $b = $sends['best'];
         $out[] = ['label' => 'More like "' . $b['subject'] . '"', 'why' => 'Your best-opened send at ' . $b['open_rate'] . '% open' . ($b['click_rate'] ? ' and ' . $b['click_rate'] . '% click' : '') . '. Whatever that tone was, it is the one they answer.',
                   'ideas' => ['same voice, new week', 'reply-bait: ask them one question', 'the thing you almost didn\'t say']];
