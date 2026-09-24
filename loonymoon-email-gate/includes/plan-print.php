@@ -140,6 +140,32 @@ function lmeg_plan_print_html($demo = false) {
     <p class="meta" style="margin-top:14px;">Next gate on the ladder: <?php echo esc_html((string) ($b['label'] ?? '')); ?><?php if (!empty($b['value']) && !empty($b['target'])) : ?> — <?php echo esc_html((string) $b['value']); ?> against <?php echo esc_html((string) $b['target']); ?><?php endif; ?><?php if (!empty($b['need_label'])) : ?>. <?php echo esc_html((string) $b['need_label']); ?><?php endif; ?>.</p>
     <?php endif; ?>
 
+    <?php
+    $all_rows = [];
+    foreach ($weeks as $w2) foreach ((array) $w2['moves'] as $r2) $all_rows[] = $r2;
+    $cs = function_exists('lmeg_plan_cost_summary') ? lmeg_plan_cost_summary($all_rows, $brief) : null;
+    $ec = function_exists('lmeg_plan_economics') ? lmeg_plan_economics() : [];
+    ?>
+    <?php if ($cs && !$cs['free']) : ?>
+    <div class="box" style="margin-top:16px;">
+        <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;">
+            <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Four weeks, typical</div>
+                 <div style="font-size:22px;font-weight:700;"><?php echo esc_html(lmeg_plan_money($cs['typical'])); ?></div></div>
+            <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Range</div>
+                 <div style="font-size:14px;"><?php echo esc_html(lmeg_plan_money($cs['low'])); ?> – <?php echo esc_html(lmeg_plan_money($cs['high'])); ?></div></div>
+            <?php if ($cs['budget_window'] !== null) : ?>
+            <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Your budget for this stretch</div>
+                 <div style="font-size:14px;<?php echo $cs['over'] ? 'color:#a15c00;' : ''; ?>"><?php echo esc_html(lmeg_plan_money($cs['budget_window'])); ?><?php echo $cs['over'] ? ' — the plan asks for more' : ''; ?></div></div>
+            <?php endif; ?>
+            <?php if (!empty($ec['aov_cents'])) : ?>
+            <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Your average order</div>
+                 <div style="font-size:14px;"><?php echo esc_html(lmeg_plan_money((int) $ec['aov_cents'])); ?></div></div>
+            <?php endif; ?>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:9px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves cost money; the rest are your list, your catalogue and your time. Streams valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000, false)); ?> per thousand.</div>
+    </div>
+    <?php endif; ?>
+
     <h3>This week · <?php echo esc_html(date_i18n('M j', strtotime((string) $first['start'])) . ' – ' . date_i18n('M j', strtotime((string) $first['end']))); ?></h3>
     <?php echo lmeg_plan_print_moves((array) $first['moves']); ?>
     <div class="foot">Nothing in this plan sends by itself. Fanloop · <?php echo esc_html(date_i18n('M j, Y')); ?></div>
@@ -243,6 +269,9 @@ function lmeg_plan_print_moves($moves, $compact = false) {
               . '</div>';
         if (!empty($r->why))    $out .= '<div class="w">' . esc_html((string) $r->why) . '</div>';
         if (!$compact && !empty($r->metric)) $out .= '<div class="m">Watch: ' . esc_html((string) $r->metric) . '</div>';
+        if (!empty($r->cost_cents) && function_exists('lmeg_plan_money')) {
+            $out .= '<div class="m">Typically ' . esc_html(lmeg_plan_money((int) $r->cost_cents)) . (!empty($r->breakeven) ? ' · ' . esc_html((string) $r->breakeven) : '') . '</div>';
+        }
         $out .= '</div></div>';
     }
     return $out;

@@ -29,7 +29,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!defined('LMEG_PLAN_DB_VERSION')) define('LMEG_PLAN_DB_VERSION', '1');
+if (!defined('LMEG_PLAN_DB_VERSION')) define('LMEG_PLAN_DB_VERSION', '2');
 
 function lmeg_plan_table() {
     global $wpdb;
@@ -59,6 +59,8 @@ function lmeg_plan_maybe_install() {
         action_page VARCHAR(60) NOT NULL DEFAULT '',
         action_args TEXT NULL,
         action_href VARCHAR(600) NOT NULL DEFAULT '',
+        cost_cents INT NOT NULL DEFAULT 0,
+        breakeven VARCHAR(190) NOT NULL DEFAULT '',
         status VARCHAR(10) NOT NULL DEFAULT 'todo',
         plan_run DATE NULL,
         created_at DATETIME NOT NULL,
@@ -571,6 +573,21 @@ function lmeg_plan_rules($ctx) {
               'metric' => 'replies from libraries and supervisors', 'action' => $go('lmeg-releases', 'Get the assets')]);
     }
 
+    /* --- 13. Funding, while there is still lead time -------------------- */
+    $far = null;
+    foreach ((array) ($brief['dates'] ?? []) as $bd) {
+        $bdate = substr((string) ($bd['date'] ?? ''), 0, 10);
+        if (!$bdate || $bdate <= $today) continue;
+        if ((string) ($bd['type'] ?? '') !== 'release') continue;
+        $d = (int) floor((strtotime($bdate) - strtotime($today)) / 86400);
+        if ($d >= 45 && ($far === null || $d < $far[0])) $far = [$d, $bdate, trim((string) ($bd['name'] ?? '')) ?: 'the release'];
+    }
+    if ($far && in_array((string) ($brief['budget'] ?? ''), ['', 'none', 'low'], true)) {
+        $add(['key' => 'funding-apply', 'title' => 'Apply for funding before you spend anything', 'channel' => 'admin', 'effort' => 'deep', 'offset' => 4, 'score' => 72, 'goals' => ['streams', 'sales', 'shows'],
+              'why' => $far[2] . ' is ' . $far[0] . ' days out, which is the only window where grant money is still possible. Marketing and video grants are decided weeks ahead and paid later, so the application has to come before the spend, not after it.',
+              'metric' => 'a decision letter before you commit a dollar', 'action' => $go('lmeg-releases', 'Check the date')]);
+    }
+
     /* --- Brief question 2: the stated goal jumps the queue -------------- */
     if ($goal !== '') {
         foreach ($out as &$m) {
@@ -879,9 +896,17 @@ function lmeg_plan_generate($weeks = 4) {
     $now   = current_time('mysql');
     $today = (string) $ctx['today'];
     $keep  = [];
+    $econ  = function_exists('lmeg_plan_economics') ? lmeg_plan_economics() : [];
+    $ctable = function_exists('lmeg_plan_cost_table') ? lmeg_plan_cost_table() : [];
 
     foreach ($moves as $m) {
         $a = (array) ($m['action'] ?? []);
+        $cost = 0; $be = '';
+        if (function_exists('lmeg_plan_move_cost')) {
+            list($cl, $ct, $ch2) = lmeg_plan_move_cost((string) $m['key'], (string) ($m['channel'] ?? ''), $ctable);
+            $cost = (int) $ct;
+            if ($cost > 0 && function_exists('lmeg_plan_breakeven')) $be = (string) lmeg_plan_breakeven($cost, $econ);
+        }
         $row = [
             'mkey'         => substr((string) $m['key'], 0, 80),
             'due_date'     => (string) $m['due'],
@@ -896,6 +921,8 @@ function lmeg_plan_generate($weeks = 4) {
             'action_page'  => substr((string) ($a['page'] ?? ''), 0, 60),
             'action_args'  => !empty($a['args']) ? (string) wp_json_encode($a['args']) : '',
             'action_href'  => substr((string) ($a['href'] ?? ''), 0, 600),
+            'cost_cents'   => (int) $cost,
+            'breakeven'    => substr($be, 0, 190),
             'plan_run'     => $today,
             'updated_at'   => $now,
         ];
@@ -1088,6 +1115,9 @@ function lmeg_plan_render_move($r, $live = true, $compact = false) {
             <?php if (!empty($r->metric)) : ?>
             <div style="font-size:11.5px;color:#8B90A0;margin-top:5px;">Watch: <?php echo esc_html((string) $r->metric); ?></div>
             <?php endif; ?>
+            <?php if (!empty($r->cost_cents) && function_exists('lmeg_plan_money')) : ?>
+            <div style="font-size:11.5px;color:#C9CCD6;margin-top:5px;">Typically <?php echo esc_html(lmeg_plan_money((int) $r->cost_cents)); ?><?php if (!empty($r->breakeven)) : ?> · <?php echo esc_html((string) $r->breakeven); ?><?php endif; ?></div>
+            <?php endif; ?>
         </div>
         <div style="flex:0 0 auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:240px;">
             <?php if ($href && !$done && !$skip) : ?>
@@ -1245,6 +1275,50 @@ function lmeg_admin_plan() {
             </div>
             <?php endforeach; ?>
         </div>
+
+        <?php
+        $all_rows = [];
+        foreach ($weeks as $w2) foreach ((array) $w2['moves'] as $r2) $all_rows[] = $r2;
+        $cs = function_exists('lmeg_plan_cost_summary') ? lmeg_plan_cost_summary($all_rows, (array) ($ctx['brief'] ?? [])) : null;
+        $ec = function_exists('lmeg_plan_economics') ? lmeg_plan_economics() : [];
+        ?>
+        <?php if ($cs) : ?>
+        <h2 style="margin:6px 0 10px;font-size:16px;">What it costs</h2>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:22px;">
+            <?php if ($cs['free']) : ?>
+                <div style="font-size:13.5px;color:#F4F5F7;">Nothing in these four weeks needs money. Every move is your own list, your own catalogue or your own time.</div>
+            <?php else : ?>
+                <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;">
+                    <div>
+                        <div style="<?php echo $lbl; ?>">Four weeks, typical</div>
+                        <div style="font:800 26px/1 var(--lmegA-font,inherit);color:#F4F5F7;margin-top:6px;"><?php echo esc_html(lmeg_plan_money($cs['typical'])); ?></div>
+                        <div style="font-size:11.5px;color:#8B90A0;margin-top:5px;"><?php echo esc_html(lmeg_plan_money($cs['low'])); ?> if you do it all yourself · <?php echo esc_html(lmeg_plan_money($cs['high'])); ?> if you hire it out</div>
+                    </div>
+                    <?php if ($cs['budget_window'] !== null) : ?>
+                    <div>
+                        <div style="<?php echo $lbl; ?>">Your budget for this stretch</div>
+                        <div style="font:800 26px/1 var(--lmegA-font,inherit);color:<?php echo $cs['over'] ? '#FBBF24' : '#34D399'; ?>;margin-top:6px;"><?php echo esc_html(lmeg_plan_money($cs['budget_window'])); ?></div>
+                        <div style="font-size:11.5px;color:#8B90A0;margin-top:5px;">a third of the <?php echo esc_html(lmeg_plan_money($cs['budget_90d'])); ?> you gave for 90 days</div>
+                    </div>
+                    <?php endif; ?>
+                    <div style="flex:1 1 240px;min-width:220px;">
+                        <div style="<?php echo $lbl; ?>">What one sale is worth to you</div>
+                        <div style="font-size:13px;color:#C9CCD6;margin-top:6px;line-height:1.5;">
+                            <?php if (!empty($ec['aov_cents'])) : ?>
+                                <?php echo esc_html(lmeg_plan_money((int) $ec['aov_cents'])); ?> average order, from <?php echo (int) $ec['orders']; ?> paid <?php echo (int) $ec['orders'] === 1 ? 'order' : 'orders'; ?> in 90 days<?php if (!empty($ec['rev_per_fan_cents'])) : ?> · <?php echo esc_html(lmeg_plan_money((float) $ec['rev_per_fan_cents'], true)); ?> per fan on your list<?php endif; ?>.
+                            <?php else : ?>
+                                No paid orders in 90 days, so break-even is shown in streams only.
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php if ($cs['over']) : ?>
+                <div style="font-size:12.5px;color:#FBBF24;margin-top:14px;">This stretch asks for more than the budget you gave. Skip the priced moves, or do the cheap version — the list, catalogue and content moves cost nothing but time.</div>
+                <?php endif; ?>
+                <div style="font-size:11.5px;color:#8B90A0;margin-top:12px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves cost money. Prices are typical independent rates, editable in code; streams are valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000, false)); ?> per thousand.</div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <h2 style="margin:6px 0 10px;font-size:16px;">The calendar</h2>
         <p style="font-size:12.5px;color:#8B90A0;margin:0 0 12px;max-width:760px;">Four weeks, posts and sends together. Content slots come from how much you said you can post.</p>
