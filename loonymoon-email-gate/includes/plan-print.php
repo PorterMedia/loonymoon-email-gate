@@ -162,7 +162,7 @@ function lmeg_plan_print_html($demo = false) {
                  <div style="font-size:14px;"><?php echo esc_html(lmeg_plan_money((int) $ec['aov_cents'])); ?></div></div>
             <?php endif; ?>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:9px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves cost money; the rest are your list, your catalogue and your time. Streams valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000, false)); ?> per thousand.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:9px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves can cost money; the rest are your list, your catalogue and your time. Streams valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000)); ?> per thousand.</div>
     </div>
     <?php endif; ?>
 

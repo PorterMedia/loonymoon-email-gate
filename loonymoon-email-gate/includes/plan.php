@@ -1315,7 +1315,7 @@ function lmeg_admin_plan() {
                 <?php if ($cs['over']) : ?>
                 <div style="font-size:12.5px;color:#FBBF24;margin-top:14px;">This stretch asks for more than the budget you gave. Skip the priced moves, or do the cheap version — the list, catalogue and content moves cost nothing but time.</div>
                 <?php endif; ?>
-                <div style="font-size:11.5px;color:#8B90A0;margin-top:12px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves cost money. Prices are typical independent rates, editable in code; streams are valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000, false)); ?> per thousand.</div>
+                <div style="font-size:11.5px;color:#8B90A0;margin-top:12px;"><?php echo (int) $cs['priced']; ?> of <?php echo count($all_rows); ?> moves can cost money. Prices are typical independent rates, editable in code; streams are valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000)); ?> per thousand.</div>
             <?php endif; ?>
         </div>
         <?php endif; ?>
