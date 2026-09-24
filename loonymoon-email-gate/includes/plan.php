@@ -1096,8 +1096,9 @@ function lmeg_admin_plan() {
             <div style="<?php echo $lbl; ?>">What the plan is aiming at</div>
             <div style="font-size:13.5px;line-height:1.55;color:#F4F5F7;margin-top:7px;">
                 Stage <?php echo (int) $ctx['stage']['stage']; ?> of 7 — <?php echo esc_html((string) $ctx['stage']['name']); ?>.
-                Next gate: <?php echo esc_html((string) ($b['label'] ?? '')); ?><?php if (isset($b['value'], $b['target']) && $b['value'] !== null && $b['target'] !== null) : ?>
-                    — <?php echo esc_html(number_format_i18n((float) $b['value'])); ?> of <?php echo esc_html(number_format_i18n((float) $b['target'])); ?><?php endif; ?>.
+                Next gate: <?php echo esc_html((string) ($b['label'] ?? '')); ?><?php if (!empty($b['value']) && !empty($b['target'])) : ?>
+                    — <?php echo esc_html((string) $b['value']); ?> against <?php echo esc_html((string) $b['target']); ?><?php endif; ?>.
+                <?php if (!empty($b['need_label'])) : ?><?php echo esc_html((string) $b['need_label']); ?>.<?php endif; ?>
             </div>
             <p style="margin:10px 0 0;"><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lmeg-ladder')); ?>">Open the ladder</a></p>
         </div>
