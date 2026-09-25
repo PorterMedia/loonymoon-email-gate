@@ -25,6 +25,8 @@ function lmeg_plan_brief_defaults() {
         'video_ok'        => '',     // '' unknown | '1' | '0'
         'wont_do'         => '',
         'budget'          => '',     // none | low | mid | high
+        'budget_amount'   => '',     // dollars over 90 days, if they know the number
+        'funding_expected'=> '',     // grant money applied for or confirmed, in dollars
         'known_for'       => '',
         'cities'          => '',
         'sync'            => '',     // '' | '1' | '0'
@@ -145,6 +147,8 @@ function lmeg_admin_plan_brief() {
             'video_ok'        => in_array((string) ($_POST['video_ok'] ?? ''), ['0', '1'], true) ? (string) $_POST['video_ok'] : '',
             'wont_do'         => sanitize_textarea_field(wp_unslash((string) ($_POST['wont_do'] ?? ''))),
             'budget'          => array_key_exists($bud, lmeg_plan_brief_budgets()) ? $bud : '',
+            'budget_amount'   => ($_POST['budget_amount'] ?? '') === '' ? '' : max(0, (int) $_POST['budget_amount']),
+            'funding_expected'=> ($_POST['funding_expected'] ?? '') === '' ? '' : max(0, (int) $_POST['funding_expected']),
             'known_for'       => sanitize_textarea_field(wp_unslash((string) ($_POST['known_for'] ?? ''))),
             'cities'          => sanitize_text_field(wp_unslash((string) ($_POST['cities'] ?? ''))),
             'sync'            => in_array((string) ($_POST['sync'] ?? ''), ['0', '1'], true) ? (string) $_POST['sync'] : '',
@@ -245,6 +249,15 @@ function lmeg_admin_plan_brief() {
                     <option value="<?php echo esc_attr($k); ?>" <?php selected((string) $b['budget'], $k); ?>><?php echo esc_html($v); ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
+                    <label style="font-size:13px;">Or the actual number, if you know it ($)<br>
+                        <input type="number" name="budget_amount" min="0" step="50" value="<?php echo esc_attr((string) $b['budget_amount']); ?>" placeholder="1500" style="width:140px;">
+                    </label>
+                    <label style="font-size:13px;">Grant money applied for or confirmed ($)<br>
+                        <input type="number" name="funding_expected" min="0" step="50" value="<?php echo esc_attr((string) $b['funding_expected']); ?>" placeholder="0" style="width:140px;">
+                    </label>
+                </div>
+                <div style="font-size:11.5px;color:#8B90A0;margin-top:10px;">A real number gets you an allocation across assets, content, paid reach, publicity, live and merch instead of a band. Grant money is subtracted to show what actually leaves your account.</div>
             </div>
 
             <div style="<?php echo $card; ?>margin:0 0 14px;">

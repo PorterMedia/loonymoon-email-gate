@@ -140,11 +140,33 @@ function lmeg_plan_money($cents, $with_cents = null) {
     return '$' . number_format_i18n($dollars, $with_cents ? 2 : 0);
 }
 
-/** What the brief's budget answer means in cents over 90 days. Pure. */
+/**
+ * The 90-day budget in cents: the real number when they gave one, otherwise
+ * the midpoint of the band they picked, otherwise null. Pure.
+ */
 function lmeg_plan_budget_cents($brief) {
+    $amt = $brief['budget_amount'] ?? '';
+    if ($amt !== '' && (int) $amt > 0) return (int) $amt * 100;
+    if ($amt !== '' && (int) $amt === 0) return 0;
     $map = ['none' => 0, 'low' => 15000, 'mid' => 62500, 'high' => 200000];
     $b = (string) ($brief['budget'] ?? '');
     return array_key_exists($b, $map) ? $map[$b] : null;
+}
+
+/** Grant money expected, in cents. Pure. */
+function lmeg_plan_funding_cents($brief) {
+    $f = $brief['funding_expected'] ?? '';
+    return ($f === '') ? 0 : max(0, (int) $f) * 100;
+}
+
+/** Budget, funding and what actually leaves the account. Pure. */
+function lmeg_plan_budget_split($brief) {
+    $total = lmeg_plan_budget_cents($brief);
+    if ($total === null) return null;
+    $fund = lmeg_plan_funding_cents($brief);
+    $fund = min($fund, $total);
+    return ['total' => $total, 'funding' => $fund, 'out_of_pocket' => max(0, $total - $fund),
+            'funded_pct' => $total > 0 ? (int) round($fund / $total * 100) : 0];
 }
 
 /**
@@ -171,4 +193,153 @@ function lmeg_plan_cost_summary($rows, $brief = []) {
         'over' => ($window !== null && $typ > $window),
         'free' => ($typ === 0 && $high === 0),
     ];
+}
+
+/* ---------------------------------------------------------------------------
+ * How a budget is shaped.
+ *
+ * A marketing budget that works is not a single number, it is an allocation
+ * across the same handful of categories every time — what the record looks
+ * like, what there is to watch, who is told, who is paid to tell people, and
+ * what fans can buy — with a slice held back for the thing you didn't foresee.
+ *
+ * Two rules of thumb hold across scales, and both are in the weights below:
+ * the smaller the budget, the more of it belongs in assets and content the
+ * artist keeps and reuses; paid reach and publicity only earn a bigger share
+ * once there is something proven to point them at. What shifts the mix from
+ * there is the artist's own stage, their stated goal and whether a release is
+ * actually in flight.
+ *
+ * Nothing here is any one company's figures — it is the shape, applied to
+ * whatever number the artist says they have, and every weight is filterable.
+ * ------------------------------------------------------------------------- */
+
+function lmeg_plan_budget_categories() {
+    return [
+        'assets'  => ['Assets',      'photos, artwork, a bio, the things every other line needs'],
+        'content' => ['Content',     'video, visualizers, clips — what there is to watch'],
+        'paid'    => ['Paid reach',  'ads and platform placements, pointed at what already works'],
+        'pr'      => ['Publicity',   'someone whose job is getting you covered'],
+        'live'    => ['Live',        'the room, the gear, getting there'],
+        'promo'   => ['Merch',       'stock to sell and things to give away'],
+    ];
+}
+
+/**
+ * Recommended allocation of a total budget. Pure.
+ * Returns ['total','contingency','rows'[key,label,desc,pct,cents,why],'notes'[]].
+ */
+function lmeg_plan_budget_shape($total_cents, $ctx = []) {
+    $total = max(0, (int) $total_cents);
+    $cats  = lmeg_plan_budget_categories();
+    $stage = (int) ($ctx['stage']['stage'] ?? 0);
+    $goal  = (string) ($ctx['brief']['goal'] ?? '');
+    $days  = $ctx['release']['days_out'] ?? null;
+    $in_flight = ($days !== null && (int) $days <= 45);
+    $why = [];
+
+    if ($stage <= 2) {
+        $w = ['assets' => 30, 'content' => 30, 'paid' => 20, 'pr' => 10, 'live' => 5, 'promo' => 5];
+        $why['assets'] = 'early on, the photos and artwork get reused by every other line';
+    } elseif ($stage <= 4) {
+        $w = ['assets' => 22, 'content' => 28, 'paid' => 25, 'pr' => 15, 'live' => 5, 'promo' => 5];
+        $why['paid'] = 'you have enough proof now to pay to show it to more people';
+    } else {
+        $w = ['assets' => 18, 'content' => 25, 'paid' => 22, 'pr' => 20, 'live' => 8, 'promo' => 7];
+        $why['pr'] = 'at your stage coverage compounds — it is worth paying someone to chase it';
+    }
+
+    $shift = function (&$w, $key, $n) { $w[$key] = max(0, (int) ($w[$key] ?? 0) + (int) $n); };
+    switch ($goal) {
+        case 'shows':   $shift($w, 'live', 12); $shift($w, 'paid', -6); $shift($w, 'pr', -6); $why['live'] = 'you said the next 90 days are about playing'; break;
+        case 'sales':   $shift($w, 'promo', 10); $shift($w, 'pr', -6); $shift($w, 'content', -4); $why['promo'] = 'you said the next 90 days are about selling'; break;
+        case 'sync':    $shift($w, 'pr', 8); $shift($w, 'assets', 4); $shift($w, 'paid', -12); $why['pr'] = 'placements come from relationships and clean assets, not from ads'; break;
+        case 'list':    $shift($w, 'paid', 8); $shift($w, 'content', 4); $shift($w, 'pr', -8); $shift($w, 'live', -4); $why['paid'] = 'paid reach is the fastest way to put a sign-up in front of strangers'; break;
+        case 'streams': $shift($w, 'paid', 6); $shift($w, 'content', 5); $shift($w, 'pr', -7); $shift($w, 'live', -4); $why['content'] = 'streams follow something to watch'; break;
+        case 'members': $shift($w, 'content', 6); $shift($w, 'promo', 4); $shift($w, 'paid', -6); $shift($w, 'pr', -4); $why['content'] = 'people pay monthly for access to more, so there has to be more'; break;
+    }
+    if ($in_flight) {
+        $shift($w, 'assets', 5); $shift($w, 'content', 5); $shift($w, 'paid', 4);
+        $shift($w, 'live', -7); $shift($w, 'promo', -7);
+        $why['content'] = 'a release inside six weeks needs something to watch more than anything else';
+    }
+
+    // A category pushed to nothing is dropped, but never silently.
+    $parked = [];
+    foreach ($w as $k => $pct) if ($pct <= 0) $parked[] = $cats[$k][0];
+
+    // 10% held back — every real budget that survives contact keeps a remainder.
+    $hold = (int) round($total * 0.10);
+    $spendable = max(0, $total - $hold);
+    $sum = array_sum($w) ?: 1;
+    $rows = [];
+    foreach ($w as $k => $pct) {
+        if ($pct <= 0) continue;
+        $rows[] = [
+            'key' => $k, 'label' => $cats[$k][0], 'desc' => $cats[$k][1],
+            'pct' => (int) round($pct / $sum * 100),
+            'cents' => (int) round($spendable * $pct / $sum),
+            'why' => (string) ($why[$k] ?? ''),
+        ];
+    }
+    usort($rows, function ($a, $b) { return $b['cents'] <=> $a['cents']; });
+
+    // What the allocation can't fix, said plainly.
+    $notes = [];
+    if ($parked && $total > 0) {
+        $notes[] = ($in_flight ? 'While the release is in flight, ' : 'For this stretch, ')
+                 . strtolower(implode(' and ', $parked)) . ' ' . (count($parked) === 1 ? 'gets' : 'get')
+                 . ' nothing. Park ' . (count($parked) === 1 ? 'it' : 'them') . ' until the record is out, then reallocate.';
+    }
+    if ($total > 0 && $total < 30000) {
+        $notes[] = 'Under $300 there is no point splitting six ways. Put it into one thing you keep — photos, or one video — and spend the rest of the plan on your own list.';
+    }
+    if (empty($ctx['store']['products']) && $total > 0) {
+        $notes[] = 'There is nothing in the store yet, so the merch slice has nowhere to land. Move it to content until there is something to sell.';
+    }
+    if (($ctx['list']['total'] ?? 0) < 100 && $total > 0) {
+        $notes[] = 'With a list this small, paid reach should buy sign-ups rather than streams — the list is the thing that keeps paying after the money stops.';
+    }
+    return ['total' => $total, 'contingency' => $hold, 'rows' => $rows, 'notes' => $notes, 'in_flight' => $in_flight];
+}
+
+/**
+ * Three 90-day scenarios, built from the artist's own last 28 days, and
+ * whether the planned spend comes back. Pure given $ctx + $econ.
+ *
+ * Conservative is "nothing changes" — that's the baseline the spend has to
+ * beat, so what matters is the INCREMENTAL return, not the gross.
+ */
+function lmeg_plan_scenarios($ctx, $spend_cents, $econ) {
+    $rate = (float) ($econ['stream_rate_cents'] ?? 0);
+    $aov  = (int) ($econ['aov_cents'] ?? 0);
+    $s28  = (int) ($ctx['streams']['streams'] ?? 0);
+    $ord90 = (int) ($econ['orders'] ?? 0);
+    if ($s28 < 1 && $ord90 < 1) return null;
+
+    $streams90 = (int) round($s28 / 28 * 90);
+    $defs = [
+        ['key' => 'flat',     'label' => 'If nothing changes', 'sm' => 1.00, 'om' => 1.00],
+        ['key' => 'expected', 'label' => 'If the plan lands',  'sm' => 1.25, 'om' => 1.50],
+        ['key' => 'strong',   'label' => 'If it really works', 'sm' => 1.60, 'om' => 2.00],
+    ];
+    $rows = []; $base = null;
+    foreach ($defs as $d) {
+        $st = (int) round($streams90 * $d['sm']);
+        $or = (int) round($ord90 * $d['om']);
+        $rev = (int) round($st * $rate) + $or * $aov;
+        if ($base === null) $base = $rev;
+        $rows[] = [
+            'key' => $d['key'], 'label' => $d['label'], 'streams' => $st, 'orders' => $or,
+            'revenue' => $rev, 'incremental' => $rev - $base,
+            'recoups' => ($spend_cents > 0) ? (($rev - $base) >= (int) $spend_cents) : null,
+        ];
+    }
+    $needed = [];
+    if ($spend_cents > 0) {
+        if ($rate > 0) $needed['streams'] = (int) round($spend_cents / $rate / 1000) * 1000;
+        if ($aov > 0)  $needed['orders']  = (int) ceil($spend_cents / $aov);
+    }
+    return ['rows' => $rows, 'spend' => (int) $spend_cents, 'needed' => $needed,
+            'window' => '90 days', 'from' => $s28 > 0 ? 'your last 28 days of streams' : 'your order history'];
 }

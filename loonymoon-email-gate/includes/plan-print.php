@@ -179,6 +179,78 @@ function lmeg_plan_print_html($demo = false) {
     <?php echo lmeg_plan_legend_html(true); ?>
 </div>
 
+<!-- Sheet 2b: the money -->
+<?php
+$split = function_exists('lmeg_plan_budget_split') ? lmeg_plan_budget_split($brief) : null;
+$shape = ($split && $split['total'] > 0 && function_exists('lmeg_plan_budget_shape')) ? lmeg_plan_budget_shape($split['total'], $ctx) : null;
+$scen  = function_exists('lmeg_plan_scenarios') ? lmeg_plan_scenarios($ctx, $split ? $split['out_of_pocket'] : (($cs ?? null) ? $cs['typical'] : 0), $ec) : null;
+?>
+<?php if ($shape || $scen) : ?>
+<div class="sheet">
+    <h2>The money</h2>
+    <?php if ($shape) : ?>
+    <p class="meta">An allocation, not a total — weighted for stage <?php echo (int) ($st['stage'] ?? 0); ?><?php if ($goal !== '') echo ', the goal you named'; ?><?php if (!empty($shape['in_flight'])) echo ', and a release inside six weeks'; ?>.</p>
+    <div class="facts" style="grid-template-columns:repeat(4,1fr);">
+        <div class="fact"><b><?php echo esc_html(lmeg_plan_money($split['total'])); ?></b><span>Budget, 90 days</span></div>
+        <?php if ($split['funding'] > 0) : ?>
+        <div class="fact"><b>−<?php echo esc_html(lmeg_plan_money($split['funding'])); ?></b><span>Grant money (<?php echo (int) $split['funded_pct']; ?>%)</span></div>
+        <div class="fact"><b><?php echo esc_html(lmeg_plan_money($split['out_of_pocket'])); ?></b><span>Out of your account</span></div>
+        <?php endif; ?>
+        <div class="fact"><b><?php echo esc_html(lmeg_plan_money($shape['contingency'])); ?></b><span>Held back</span></div>
+    </div>
+    <table class="data" style="margin-top:16px;">
+        <thead><tr><th>Category</th><th class="num">Amount</th><th class="num">Share</th><th>What it's for</th></tr></thead>
+        <tbody>
+        <?php foreach ($shape['rows'] as $r3) : ?>
+            <tr>
+                <td style="font-weight:600;white-space:nowrap;"><?php echo esc_html($r3['label']); ?></td>
+                <td class="num"><?php echo esc_html(lmeg_plan_money($r3['cents'])); ?></td>
+                <td class="num"><?php echo (int) $r3['pct']; ?>%</td>
+                <td><?php echo esc_html($r3['desc']); ?><?php if (!empty($r3['why'])) : ?> — <?php echo esc_html($r3['why']); ?><?php endif; ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php foreach ($shape['notes'] as $nt) : ?>
+    <p style="font-size:12px;color:#a15c00;margin-top:10px;"><?php echo esc_html($nt); ?></p>
+    <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php if ($scen) : ?>
+    <h3 style="margin-top:<?php echo $shape ? '26px' : '6px'; ?>;">Does it come back?</h3>
+    <p class="meta">Ninety days projected from <?php echo esc_html($scen['from']); ?>. The first row is the do-nothing baseline, so the column that matters is what each case adds on top of it.</p>
+    <table class="data" style="margin-top:12px;">
+        <thead><tr><th>Case</th><th class="num">Streams</th><th class="num">Orders</th><th class="num">Revenue</th><th class="num">On top</th><th>Against <?php echo esc_html(lmeg_plan_money($scen['spend'])); ?></th></tr></thead>
+        <tbody>
+        <?php foreach ($scen['rows'] as $r4) : ?>
+            <tr>
+                <td style="font-weight:600;"><?php echo esc_html($r4['label']); ?></td>
+                <td class="num"><?php echo esc_html(number_format_i18n((int) $r4['streams'])); ?></td>
+                <td class="num"><?php echo esc_html(number_format_i18n((int) $r4['orders'])); ?></td>
+                <td class="num"><?php echo esc_html(lmeg_plan_money((int) $r4['revenue'])); ?></td>
+                <td class="num"><?php echo $r4['incremental'] > 0 ? '+' . esc_html(lmeg_plan_money((int) $r4['incremental'])) : '—'; ?></td>
+                <td><?php
+                    if ($r4['recoups'] === null) echo 'nothing to recoup';
+                    elseif ($r4['key'] === 'flat') echo 'the case where the money was wasted';
+                    else echo $r4['recoups'] ? 'pays for itself' : 'still short';
+                ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php if (!empty($scen['needed'])) : ?>
+    <p class="meta" style="margin-top:10px;">Break-even needs <?php
+        $bits = [];
+        if (!empty($scen['needed']['streams'])) $bits[] = number_format_i18n((int) $scen['needed']['streams']) . ' extra streams';
+        if (!empty($scen['needed']['orders'])) $bits[] = (int) $scen['needed']['orders'] . ' extra orders';
+        echo esc_html(implode(', or ', $bits));
+    ?>.</p>
+    <?php endif; ?>
+    <?php endif; ?>
+    <div class="foot">Prices are typical independent rates, not quotes. Streams are valued at <?php echo esc_html(lmeg_plan_money((float) ($ec['stream_rate_cents'] ?? 0) * 1000)); ?> per thousand, which a manager can set per artist.</div>
+</div>
+<?php endif; ?>
+
 <!-- Sheet 3: the four weeks in full -->
 <div class="sheet">
     <h2>Week by week</h2>

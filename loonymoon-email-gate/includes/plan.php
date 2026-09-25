@@ -1320,6 +1320,82 @@ function lmeg_admin_plan() {
         </div>
         <?php endif; ?>
 
+        <?php
+        $split = function_exists('lmeg_plan_budget_split') ? lmeg_plan_budget_split((array) ($ctx['brief'] ?? [])) : null;
+        $shape = ($split && $split['total'] > 0 && function_exists('lmeg_plan_budget_shape')) ? lmeg_plan_budget_shape($split['total'], $ctx) : null;
+        $scen  = function_exists('lmeg_plan_scenarios') ? lmeg_plan_scenarios($ctx, $split ? $split['out_of_pocket'] : ($cs ? $cs['typical'] : 0), $ec) : null;
+        ?>
+        <?php if ($shape) : ?>
+        <h2 style="margin:6px 0 10px;font-size:16px;">Where the budget goes</h2>
+        <p style="font-size:12.5px;color:#8B90A0;margin:0 0 12px;max-width:760px;">An allocation, not a total. Weighted for stage <?php echo (int) ($ctx['stage']['stage'] ?? 0); ?><?php if (!empty($ctx['brief']['goal'])) echo ', your stated goal'; ?><?php if (!empty($shape['in_flight'])) echo ', and a release inside six weeks'; ?>.</p>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:22px;">
+            <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px;">
+                <div><div style="<?php echo $lbl; ?>">Budget, 90 days</div><div style="font:800 22px/1 var(--lmegA-font,inherit);margin-top:6px;"><?php echo esc_html(lmeg_plan_money($split['total'])); ?></div></div>
+                <?php if ($split['funding'] > 0) : ?>
+                <div><div style="<?php echo $lbl; ?>">Grant money</div><div style="font:800 22px/1 var(--lmegA-font,inherit);color:#34D399;margin-top:6px;">−<?php echo esc_html(lmeg_plan_money($split['funding'])); ?></div><div style="font-size:11px;color:#8B90A0;margin-top:4px;"><?php echo (int) $split['funded_pct']; ?>% of the budget</div></div>
+                <div><div style="<?php echo $lbl; ?>">Out of your account</div><div style="font:800 22px/1 var(--lmegA-font,inherit);margin-top:6px;"><?php echo esc_html(lmeg_plan_money($split['out_of_pocket'])); ?></div></div>
+                <?php endif; ?>
+                <div><div style="<?php echo $lbl; ?>">Held back</div><div style="font:800 22px/1 var(--lmegA-font,inherit);margin-top:6px;"><?php echo esc_html(lmeg_plan_money($shape['contingency'])); ?></div><div style="font-size:11px;color:#8B90A0;margin-top:4px;">for what you didn't see coming</div></div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
+                <tbody>
+                <?php foreach ($shape['rows'] as $r3) : ?>
+                <tr style="border-top:1px solid rgba(255,255,255,.07);">
+                    <td style="padding:9px 10px 9px 0;font-weight:600;color:#F4F5F7;white-space:nowrap;"><?php echo esc_html($r3['label']); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;"><?php echo esc_html(lmeg_plan_money($r3['cents'])); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;color:#8B90A0;white-space:nowrap;"><?php echo (int) $r3['pct']; ?>%</td>
+                    <td style="padding:9px 0;color:#C9CCD6;"><?php echo esc_html($r3['desc']); ?><?php if (!empty($r3['why'])) : ?> <span style="color:#8B90A0;">— <?php echo esc_html($r3['why']); ?></span><?php endif; ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php foreach ($shape['notes'] as $nt) : ?>
+            <div style="font-size:12.5px;color:#FBBF24;margin-top:12px;"><?php echo esc_html($nt); ?></div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($scen) : ?>
+        <h2 style="margin:6px 0 10px;font-size:16px;">Does it come back?</h2>
+        <p style="font-size:12.5px;color:#8B90A0;margin:0 0 12px;max-width:760px;">Ninety days projected from <?php echo esc_html($scen['from']); ?>. "If nothing changes" is the baseline the spend has to beat, so the column that matters is what each case adds on top of it.</p>
+        <div style="<?php echo $card; ?>max-width:1040px;margin-bottom:22px;overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="text-align:left;color:#8B90A0;font-size:11px;letter-spacing:.06em;text-transform:uppercase;">
+                    <th style="padding:0 10px 8px 0;font-weight:600;">Case</th>
+                    <th style="padding:0 10px 8px 0;font-weight:600;text-align:right;">Streams</th>
+                    <th style="padding:0 10px 8px 0;font-weight:600;text-align:right;">Orders</th>
+                    <th style="padding:0 10px 8px 0;font-weight:600;text-align:right;">Revenue</th>
+                    <th style="padding:0 10px 8px 0;font-weight:600;text-align:right;">On top of baseline</th>
+                    <th style="padding:0 0 8px;font-weight:600;">Against <?php echo esc_html(lmeg_plan_money($scen['spend'])); ?> spend</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($scen['rows'] as $r4) : ?>
+                <tr style="border-top:1px solid rgba(255,255,255,.07);">
+                    <td style="padding:9px 10px 9px 0;font-weight:600;color:#F4F5F7;"><?php echo esc_html($r4['label']); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;font-variant-numeric:tabular-nums;"><?php echo esc_html(number_format_i18n((int) $r4['streams'])); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;font-variant-numeric:tabular-nums;"><?php echo esc_html(number_format_i18n((int) $r4['orders'])); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;font-variant-numeric:tabular-nums;"><?php echo esc_html(lmeg_plan_money((int) $r4['revenue'])); ?></td>
+                    <td style="padding:9px 10px 9px 0;text-align:right;font-variant-numeric:tabular-nums;color:<?php echo $r4['incremental'] > 0 ? '#34D399' : '#8B90A0'; ?>;"><?php echo $r4['incremental'] > 0 ? '+' . esc_html(lmeg_plan_money((int) $r4['incremental'])) : '—'; ?></td>
+                    <td style="padding:9px 0;color:#C9CCD6;"><?php
+                        if ($r4['recoups'] === null) echo 'nothing to recoup';
+                        elseif ($r4['key'] === 'flat') echo 'the case where the money was wasted';
+                        else echo $r4['recoups'] ? 'pays for itself' : 'still short';
+                    ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php if (!empty($scen['needed'])) : ?>
+            <div style="font-size:12px;color:#8B90A0;margin-top:12px;">To break even the spend has to produce <?php
+                $bits = [];
+                if (!empty($scen['needed']['streams'])) $bits[] = number_format_i18n((int) $scen['needed']['streams']) . ' extra streams';
+                if (!empty($scen['needed']['orders'])) $bits[] = (int) $scen['needed']['orders'] . ' extra orders';
+                echo esc_html(implode(', or ', $bits));
+            ?>.</div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <h2 style="margin:6px 0 10px;font-size:16px;">The calendar</h2>
         <p style="font-size:12.5px;color:#8B90A0;margin:0 0 12px;max-width:760px;">Four weeks, posts and sends together. Content slots come from how much you said you can post.</p>
         <div style="<?php echo $card; ?>max-width:1040px;overflow-x:auto;margin-bottom:22px;">
