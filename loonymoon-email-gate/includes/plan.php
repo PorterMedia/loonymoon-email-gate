@@ -296,6 +296,13 @@ function lmeg_plan_context_demo($ctx) {
     $ctx['store'] = ['products' => 2, 'orders_30d' => 3, 'revenue_30d' => 10500, 'abandoned' => 2, 'lowstock' => 1, 'tiers' => 0];
     $ctx['social'] = ['ig_followers' => 12480, 'ig_delta' => 310];
     $ctx['has'] = ['welcome_sequence' => false, 'contest' => false, 'collect' => false];
+    // A filled-in brief too, so ?demo=1 shows the rollout, the allocation and
+    // the recoupment cases rather than three empty sections.
+    $ctx['brief'] = array_merge(function_exists('lmeg_plan_brief_defaults') ? lmeg_plan_brief_defaults() : [], [
+        'goal' => 'list', 'posts_per_week' => 3, 'sends_per_month' => 4, 'video_ok' => '1',
+        'budget_amount' => 1500, 'funding_expected' => 500, 'cities' => 'Toronto',
+        'dates' => [['type' => 'release', 'name' => 'Sometimes', 'date' => date('Y-m-d', strtotime($today . ' +24 days'))]],
+    ]);
     return $ctx;
 }
 
