@@ -435,9 +435,15 @@ function lmeg_admin_shortcodes() {
         [
             'code'  => '[fanloop_premium]',
             'title' => 'Paid membership tiers',
-            'desc'  => 'Shows your paid tiers with subscribe buttons (Stripe). Configure tiers under Tiers (Paid).',
-            'attrs' => [],
-            'examples' => ['[fanloop_premium]'],
+            'desc'  => 'Shows your tiers with subscribe buttons (Stripe). Configure tiers under Tiers (Paid).',
+            'attrs' => [
+                'free'    => 'free="no" shows only tiers that cost something, so a free tier stays out of a paid-only page',
+                'tiers'   => 'comma-separated tier ids, in case you want specific ones (e.g. tiers="2,3")',
+                'style'   => 'card (default) or minimal',
+                'heading' => 'heading above the tiers',
+                'message' => 'a line of copy under the heading',
+            ],
+            'examples' => ['[fanloop_premium]', '[fanloop_premium free="no"]', '[fanloop_premium free="no" heading="Support the record" style="minimal"]'],
         ],
         [
             'code'  => '[fanloop_bio]',

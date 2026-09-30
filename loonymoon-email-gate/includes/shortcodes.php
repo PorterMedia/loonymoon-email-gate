@@ -261,6 +261,7 @@ function lmeg_shortcode_premium($atts = []) {
         'message' => '',
         'style'   => 'card',
         'tiers'   => '',
+        'free'    => 'yes',   // free="no" drops tiers that cost nothing
     ], $atts, 'lmeg_premium');
 
     if (!function_exists('lmeg_all_tiers')) {
@@ -277,8 +278,20 @@ function lmeg_shortcode_premium($atts = []) {
         }
     }
 
+    // free="no": show only tiers with a price on them, so a free tier can live
+    // in the members area without appearing on a paid-only page.
+    $paid_only = in_array(strtolower(trim((string) $atts['free'])), ['no', '0', 'false', 'hide', 'none'], true);
+    if ($paid_only) {
+        $all_tiers = array_values(array_filter($all_tiers, function ($t) {
+            return ((int) ($t->price_monthly ?? 0) > 0) || ((int) ($t->price_annual ?? 0) > 0);
+        }));
+    }
+
     if (empty($all_tiers)) {
-        return '<div class="lmeg-embed lmeg-embed--card lmeg-embed--premium"><em>No paid tiers configured yet. Add one at Fanloop → Tiers (Paid).</em></div>';
+        return '<div class="lmeg-embed lmeg-embed--card lmeg-embed--premium"><em>'
+             . ($paid_only ? 'No paid tiers to show yet — every active tier is free, or none is set up. Add one at Fanloop → Tiers (Paid).'
+                           : 'No paid tiers configured yet. Add one at Fanloop → Tiers (Paid).')
+             . '</em></div>';
     }
 
     $member = function_exists('lmeg_current_member') ? lmeg_current_member() : null;
