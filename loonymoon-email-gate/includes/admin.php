@@ -5015,7 +5015,7 @@ function lmeg_admin_tiers() {
         <h2>Webhook endpoint</h2>
         <p>Point Stripe's webhook at:</p>
         <p><code><?php echo esc_url(add_query_arg('lmeg_member','webhook', home_url('/'))); ?></code></p>
-        <p>Listen for: <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>. Paste the signing secret into Settings.</p>
+        <p>Listen for: <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code> and <code>invoice.paid</code> — the last one records each renewal against that fan, so leaving it out means a member's revenue stops at their first payment. Paste the signing secret into Settings (a test endpoint gives a test secret, a live one a live secret).</p>
     </div>
     <?php
 }
