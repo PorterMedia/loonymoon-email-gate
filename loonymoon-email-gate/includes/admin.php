@@ -3884,7 +3884,9 @@ function lmeg_admin_settings() {
                 <tr><th>Live webhook secret</th><td><input type="password" name="stripe_live_webhook_sec" class="regular-text" value="<?php echo esc_attr($s['stripe_live_webhook_sec']); ?>" placeholder="whsec_..." autocomplete="off" /></td></tr>
                 <tr><th>Webhook endpoint URL</th><td>
                     <input type="text" readonly class="regular-text" value="<?php echo esc_attr(add_query_arg('lmeg_member','webhook', home_url('/'))); ?>" onclick="this.select();" />
-                    <p class="description">Paste this into Stripe → Developers → Webhooks. Listen for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>.</p>
+                    <p class="description">Paste this into Stripe → Developers → Webhooks, then copy the <code>whsec_…</code> signing secret back into the matching field above (test endpoints give a test secret, live endpoints a live one).<br>
+                    Listen for <code>checkout.session.completed</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code> and <code>invoice.paid</code>.
+                    The first three run the membership itself; <code>invoice.paid</code> is what adds each renewal to that fan's revenue, so without it a member's lifetime value stops at their first payment and Top Fans, Fanbase scoring and the Plan's break-even all under-count.</p>
                 </td></tr>
             </table>
 
