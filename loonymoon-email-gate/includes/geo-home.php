@@ -483,7 +483,8 @@ function lmeg_home_mismatch_stats() {
     global $wpdb;
     $t = lmeg_fan_home_table();
     $subs = $wpdb->prefix . LMEG_TABLE;
-    $out = ['placed' => 0, 'derived' => 0, 'stated' => 0, 'signup_only' => 0, 'disagree' => 0, 'pending' => 0];
+    $out = ['placed' => 0, 'derived' => 0, 'stated' => 0, 'signup_only' => 0, 'disagree' => 0,
+            'fallback' => 0, 'pending' => 0];
     if (!lmeg_home_has_table($t)) return $out;
 
     $row = $wpdb->get_row(
@@ -497,6 +498,12 @@ function lmeg_home_mismatch_stats() {
     foreach (['placed', 'derived', 'stated', 'signup_only', 'disagree'] as $k) {
         $out[$k] = (int) ($row[$k] ?? 0);
     }
+    // Fans we have never seen engage from anywhere: no location row, but a
+    // signup city a local send can still fall back to.
+    $out['fallback'] = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM $subs s LEFT JOIN $t h ON h.subscriber_id = s.id
+          WHERE s.unsubscribed_at IS NULL AND s.city <> '' AND h.subscriber_id IS NULL");
+
     // Events still waiting for the resolver — tells you whether to trust the above yet.
     $ev = $wpdb->prefix . 'lmeg_broadcast_events';
     $cursor = (int) get_option('lmeg_home_event_cursor', 0);

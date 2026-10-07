@@ -1160,10 +1160,13 @@ function lmeg_admin_signups() {
         <div style="<?php echo $card; ?>max-width:1040px;margin:0 0 16px;">
             <div style="<?php echo $lbl; ?>">Where your fans actually are</div>
             <div style="font-size:13.5px;line-height:1.6;margin-top:8px;color:#F4F5F7;">
-                <?php echo esc_html(number_format_i18n($hm['placed'])); ?> fans placed —
+                <?php echo esc_html(number_format_i18n($hm['derived'] + $hm['stated'])); ?> fans have a location we trust —
                 <?php echo esc_html(number_format_i18n($hm['derived'])); ?> from repeat visits,
-                <?php echo esc_html(number_format_i18n($hm['stated'])); ?> they told us,
-                <?php echo esc_html(number_format_i18n($hm['signup_only'])); ?> only from where they signed up.
+                <?php echo esc_html(number_format_i18n($hm['stated'])); ?> because they told us.
+                <?php if (($hm['signup_only'] + $hm['fallback']) > 0) : ?>
+                Another <?php echo esc_html(number_format_i18n($hm['signup_only'] + $hm['fallback'])); ?>
+                are known only by the city they signed up in, which a local send will use but shouldn't be mistaken for an address.
+                <?php endif; ?>
                 <?php if ($hm['disagree'] > 0) : ?>
                 <br><strong style="color:#FBBF24;"><?php echo esc_html(number_format_i18n($hm['disagree'])); ?></strong>
                 engage from a different city than they signed up in — people who travelled, moved, or sit behind an ISP hub. Local sends use the city they actually use.
