@@ -521,7 +521,7 @@ function lmeg_queue_broadcast($args) {
         'body_email'     => '',
         'body_sms'       => '',
         'tag_filter'     => null,   // ['tag_ids' => int[], 'match' => 'any'|'all']
-        'radius_filter'  => null,   // ['km' => float, 'city' => string] — only fans within km of city
+        'radius_filter'  => null,   // ['km'=>float,'city'=>string,'country'=>?,'include_signup_only'=>bool]
         'recipient_ids'  => null,   // explicit subscriber ids (resend flows) — skips the tag/radius filters
         'smart_timing'   => false,  // per-fan send_after at their most-active hour
         'scheduled_for'  => null,   // MySQL datetime in site timezone, or null = send immediately
@@ -587,14 +587,32 @@ function lmeg_queue_broadcast($args) {
         if (!$center) {
             return new WP_Error('lmeg_geo_center', 'Could not locate "' . $r_city . '" on the map — check the spelling (add the country in Compose if it\'s ambiguous).');
         }
-        $rows = array_values(array_filter($rows, function ($r) use ($center, $r_km) {
-            if (empty($r->city)) return false;
-            $c = lmeg_geo_city_coords($r->city, (string) ($r->region ?? ''), (string) ($r->country ?? ''));
+        // Which city counts: a fan's derived or stated home when we have one,
+        // otherwise the city they signed up in — which may only be where they
+        // were standing that day. include_signup_only=false drops those rather
+        // than mailing a guess.
+        $home_map = function_exists('lmeg_home_places_for_ids')
+            ? lmeg_home_places_for_ids(array_map(function ($r) { return (int) $r->id; }, $rows)) : [];
+        $allow_signup = !isset($args['radius_filter']['include_signup_only'])
+            || !empty($args['radius_filter']['include_signup_only']);
+        $hit_places = [];
+        $rows = array_values(array_filter($rows, function ($r) use ($center, $r_km, $home_map, $allow_signup, &$hit_places) {
+            $place = function_exists('lmeg_home_place_for_row') ? lmeg_home_place_for_row($r, $home_map) : null;
+            if (!$place) return false;
+            if (!$allow_signup && (string) $place['basis'] === 'signup') return false;
+            $c = lmeg_geo_city_coords($place['city'], (string) $place['region'], (string) $place['country']);
             if (!$c) return false;
-            return lmeg_geo_distance_km($center['lat'], $center['lng'], $c['lat'], $c['lng']) <= $r_km;
+            if (lmeg_geo_distance_km($center['lat'], $center['lng'], $c['lat'], $c['lng']) > $r_km) return false;
+            $hit_places[] = $place;
+            return true;
         }));
+        if (function_exists('lmeg_home_basis_tally')) {
+            // Recorded so the broadcast can say what its geography rested on.
+            do_action('lmeg_radius_audience_basis', lmeg_home_basis_tally($hit_places), $r_city, $r_km);
+        }
         if (!$rows) {
-            return new WP_Error('lmeg_no_recipients', 'No subscribers with a city on file within ' . $r_km . ' km of ' . $r_city . '.');
+            return new WP_Error('lmeg_no_recipients', 'Nobody we can place within ' . $r_km . ' km of ' . $r_city . '.'
+                . ($allow_signup ? '' : ' Signup-only locations were excluded — allow them to widen this.'));
         }
     }
 

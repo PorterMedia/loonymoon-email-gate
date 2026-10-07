@@ -1155,6 +1155,26 @@ function lmeg_admin_signups() {
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;max-width:1000px;">
+        <?php $hm = function_exists('lmeg_home_mismatch_stats') ? lmeg_home_mismatch_stats() : null; ?>
+        <?php if ($hm && $hm['placed'] > 0) : ?>
+        <div style="<?php echo $card; ?>max-width:1040px;margin:0 0 16px;">
+            <div style="<?php echo $lbl; ?>">Where your fans actually are</div>
+            <div style="font-size:13.5px;line-height:1.6;margin-top:8px;color:#F4F5F7;">
+                <?php echo esc_html(number_format_i18n($hm['placed'])); ?> fans placed —
+                <?php echo esc_html(number_format_i18n($hm['derived'])); ?> from repeat visits,
+                <?php echo esc_html(number_format_i18n($hm['stated'])); ?> they told us,
+                <?php echo esc_html(number_format_i18n($hm['signup_only'])); ?> only from where they signed up.
+                <?php if ($hm['disagree'] > 0) : ?>
+                <br><strong style="color:#FBBF24;"><?php echo esc_html(number_format_i18n($hm['disagree'])); ?></strong>
+                engage from a different city than they signed up in — people who travelled, moved, or sit behind an ISP hub. Local sends use the city they actually use.
+                <?php endif; ?>
+            </div>
+            <?php if ($hm['pending'] > 0) : ?>
+            <div style="font-size:11.5px;color:#8B90A0;margin-top:8px;"><?php echo esc_html(number_format_i18n($hm['pending'])); ?> past opens and clicks still to be placed — this fills in on the minute tick.</div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
             <div style="<?php echo $card; ?>">
                 <div style="<?php echo $lbl; ?>margin-bottom:10px;">Where signups come from</div>
                 <?php echo $ref_hosts ? $bars($ref_hosts, function ($h) { return esc_html($h); }) : '<p style="color:#8B90A0;font-size:13px;margin:0;">No referrer data yet.</p>'; ?>

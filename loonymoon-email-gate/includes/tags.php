@@ -306,7 +306,9 @@ function lmeg_audience_radius_count($filter, $require, $center, $km) {
 
     list($audience_sql, $audience_params) = lmeg_audience_where($filter);
 
-    $where  = ['unsubscribed_at IS NULL', "city IS NOT NULL AND city <> ''"];
+    // A fan with no signup city can still have a derived home, so the city
+    // column is no longer a precondition — placement is decided per fan below.
+    $where  = ['unsubscribed_at IS NULL'];
     $params = [];
     if ($audience_sql) {
         $where[]  = $audience_sql;
@@ -319,18 +321,31 @@ function lmeg_audience_radius_count($filter, $require, $center, $km) {
         $where[] = '(' . implode(' OR ', $channel_clauses) . ')';
     }
 
-    $sql  = "SELECT city, region, country FROM $subs WHERE " . implode(' AND ', $where);
+    $sql  = "SELECT id, city, region, country FROM $subs WHERE " . implode(' AND ', $where);
     $rows = $params
         ? $wpdb->get_results($wpdb->prepare($sql, $params))
         : $wpdb->get_results($sql);
 
     $km = (float) $km;
     $n  = 0;
+    $places = [];
+    $home_map = function_exists('lmeg_home_places_for_ids')
+        ? lmeg_home_places_for_ids(array_map(function ($r) { return (int) $r->id; }, (array) $rows)) : [];
+    $allow_signup = !isset($require['include_signup_only']) || !empty($require['include_signup_only']);
     foreach ((array) $rows as $r) {
-        $c = lmeg_geo_city_coords($r->city, (string) ($r->region ?? ''), (string) ($r->country ?? ''));
+        $place = function_exists('lmeg_home_place_for_row') ? lmeg_home_place_for_row($r, $home_map) : null;
+        if (!$place) continue;
+        if (!$allow_signup && (string) $place['basis'] === 'signup') continue;
+        $c = lmeg_geo_city_coords($place['city'], (string) $place['region'], (string) $place['country']);
         if ($c && lmeg_geo_distance_km($center['lat'], $center['lng'], $c['lat'], $c['lng']) <= $km) {
             $n++;
+            $places[] = $place;
         }
+    }
+    // Side-channel for the UI: what the count rests on, without changing the
+    // return type every caller depends on.
+    if (function_exists('lmeg_home_basis_tally')) {
+        $GLOBALS['lmeg_radius_last_basis'] = lmeg_home_basis_tally($places);
     }
     return $n;
 }

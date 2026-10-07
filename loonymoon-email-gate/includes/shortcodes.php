@@ -37,6 +37,8 @@ function lmeg_shortcode_signup($atts = []) {
         'divider'  => 'or',         // text shown between free button and tier cards
         'contest'  => '',           // contest ID to auto-enter after signup
         'wallet'   => 'no',         // yes = offer the Apple/Google Wallet pass on the success panel
+        'language'  => 'auto',      // auto = ask when the site has more than one language; yes = always ask; no = never
+        'lang_label' => '',         // override the question above the choices
     ], $atts, 'lmeg_signup');
 
     // Default button label follows the current language when the embed didn't set one.
@@ -140,7 +142,7 @@ function lmeg_shortcode_signup($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
-            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_detect_lang() ?: lmeg_current_lang()); ?>" />
+            <?php echo lmeg_signup_lang_field($atts); ?>
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
@@ -326,7 +328,7 @@ function lmeg_shortcode_premium($atts = []) {
             <input type="hidden" name="redirect"          value="<?php echo esc_url($redirect); ?>" />
             <input type="hidden" name="contact_type"      value="email" />
             <input type="hidden" name="phone_country_iso" value="<?php echo esc_attr(lmeg_default_country()); ?>" />
-            <input type="hidden" name="lmeg_lang"          value="<?php echo esc_attr(lmeg_detect_lang() ?: lmeg_current_lang()); ?>" />
+            <?php echo lmeg_signup_lang_field($atts); ?>
 
             <div class="lmeg-hp-wrap" aria-hidden="true">
                 <label>Leave this empty<input type="text" name="lmeg_hp" value="" tabindex="-1" autocomplete="off" /></label>
@@ -390,4 +392,49 @@ function lmeg_shortcode_premium($atts = []) {
     </div>
     <?php
     return ob_get_clean();
+}
+
+/**
+ * The language a fan wants to hear from the artist in.
+ *
+ * The site's own language is a fine default, but it only works if there is a
+ * page per language and a link per page. A bilingual artist wants ONE link
+ * they can put in a bio, an ad or a QR code, so the fan says which language
+ * they read and that is what every later send uses — lmeg_signup_lang()
+ * already prefers a posted choice over detection.
+ *
+ * Renders a hidden field (unchanged behaviour) when there is nothing to ask:
+ * one language enabled, or language="no".
+ */
+function lmeg_signup_lang_field($atts = []) {
+    $detected = function_exists('lmeg_detect_lang')
+        ? (lmeg_detect_lang() ?: (function_exists('lmeg_current_lang') ? lmeg_current_lang() : 'en')) : 'en';
+    $mode = strtolower(trim((string) ($atts['language'] ?? 'auto')));
+    $ask  = ($mode === 'yes' || $mode === 'ask' || $mode === '1');
+    if (!$ask && in_array($mode, ['no', '0', 'none', 'hide'], true)) $ask = false;
+    elseif (!$ask) {
+        // auto: ask only when this site actually has more than one language on.
+        $ask = function_exists('lmeg_multilang_on') ? lmeg_multilang_on() : false;
+    }
+
+    $langs = function_exists('lmeg_enabled_langs') ? (array) lmeg_enabled_langs() : ['en'];
+    $names = function_exists('lmeg_known_langs') ? (array) lmeg_known_langs() : ['en' => 'English'];
+    if (!$ask || count($langs) < 2) {
+        return '<input type="hidden" name="lmeg_lang" value="' . esc_attr($detected) . '" />';
+    }
+
+    $label = trim((string) ($atts['lang_label'] ?? ''));
+    if ($label === '') $label = function_exists('lmeg_t') ? lmeg_t('lang_choice') : '';
+    if ($label === '' || $label === 'lang_choice') $label = 'Which language should we write to you in?';
+
+    $out  = '<div class="lmeg-field lmeg-field--lang"><span class="lmeg-label">' . esc_html($label) . '</span>';
+    $out .= '<span class="lmeg-lang-choices" style="display:inline-flex;gap:14px;flex-wrap:wrap;margin-top:4px;">';
+    foreach ($langs as $code) {
+        $code = strtolower(substr((string) $code, 0, 2));
+        $name = (string) ($names[$code] ?? strtoupper($code));
+        $out .= '<label style="display:inline-flex;gap:5px;align-items:center;font-weight:400;">'
+              . '<input type="radio" name="lmeg_lang" value="' . esc_attr($code) . '"'
+              . checked($detected, $code, false) . ' /> ' . esc_html($name) . '</label>';
+    }
+    return $out . '</span></div>';
 }

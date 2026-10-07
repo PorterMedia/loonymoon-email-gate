@@ -429,8 +429,9 @@ function lmeg_admin_shortcodes() {
                 'contest'  => 'a contest ID — entrants are auto-entered on signup',
                 'redirect' => 'URL to send them to after signup',
                 'success'  => 'override the per-embed thank-you message',
+                'language' => 'auto asks which language they read when this site has more than one on, so one link serves every language; yes always asks, no never does',
             ],
-            'examples' => ['[fanloop_signup]', '[fanloop_signup style="inline" phone="yes"]', '[fanloop_signup heading="Join the club" button="Count me in"]'],
+            'examples' => ['[fanloop_signup]', '[fanloop_signup style="inline" phone="yes"]', '[fanloop_signup heading="Join the club" button="Count me in"]', '[fanloop_signup language="yes"]'],
         ],
         [
             'code'  => '[fanloop_premium]',
@@ -5466,6 +5467,8 @@ function lmeg_admin_fan_profile($fan_id) {
     $ltv      = function_exists('lmeg_fan_ltv_breakdown') ? lmeg_fan_ltv_breakdown($fan_id) : ['shop' => 0, 'membership' => 0, 'total' => 0];
     $engage   = function_exists('lmeg_fan_engagement') ? lmeg_fan_engagement($fan_id) : ['opens' => 0, 'clicks' => 0];
     $timeline = function_exists('lmeg_fan_timeline') ? lmeg_fan_timeline($fan_id) : [];
+    $place    = function_exists('lmeg_home_place') ? lmeg_home_place($fan_id) : null;
+    $places   = function_exists('lmeg_home_history') ? lmeg_home_history($fan_id) : [];
     $tier     = ($sub->member_tier_id && function_exists('lmeg_tier')) ? lmeg_tier($sub->member_tier_id) : null;
     $code     = function_exists('lmeg_get_fan_code') ? lmeg_get_fan_code($fan_id) : '';
     $referred = (int) $wpdb->get_var($wpdb->prepare(
@@ -5492,6 +5495,12 @@ function lmeg_admin_fan_profile($fan_id) {
             <div class="lmeg-stat"><div class="lmeg-stat__label">Engagement</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo (int) $engage['opens']; ?> <span style="font-size:12px;opacity:.6;">opens</span> · <?php echo (int) $engage['clicks']; ?> <span style="font-size:12px;opacity:.6;">clicks</span></div>
                 <div class="lmeg-stat__hint">across all broadcasts</div></div>
+            <?php if ($place) : ?>
+            <div class="lmeg-stat"><div class="lmeg-stat__label">Where they are</div>
+                <div class="lmeg-stat__value" style="font-size:18px;"><?php echo esc_html($place['city'] . ($place['country'] ? ', ' . $place['country'] : '')); ?></div>
+                <div class="lmeg-stat__hint"><?php echo esc_html(function_exists('lmeg_home_basis_label') ? lmeg_home_basis_label($place) : ''); ?><?php
+                    if ((string) $place['basis'] === 'derived') echo ' · ' . (int) $place['confidence'] . '% of their activity'; ?></div></div>
+            <?php endif; ?>
             <?php $ix = function_exists('lmeg_fan_interactions') ? lmeg_fan_interactions($fan_id) : null; if ($ix) : ?>
             <div class="lmeg-stat"><div class="lmeg-stat__label">Site interactions</div>
                 <div class="lmeg-stat__value" style="font-size:18px;"><?php echo (int) $ix['pageviews_30d']; ?> <span style="font-size:12px;opacity:.6;">visits 30d</span> · <?php echo (int) $ix['presale']; ?> <span style="font-size:12px;opacity:.6;">presale</span></div>
