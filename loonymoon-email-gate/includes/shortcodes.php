@@ -194,6 +194,7 @@ function lmeg_shortcode_signup($atts = []) {
                         </div>
                     <?php endif; ?>
 
+                    <?php echo lmeg_signup_lang_choices($atts); ?>
                     <button type="submit" name="lmeg_after" value="free" class="lmeg-button lmeg-embed__button"><?php echo esc_html($atts['button']); ?></button>
                 </div>
             <?php endif; ?>
@@ -202,7 +203,8 @@ function lmeg_shortcode_signup($atts = []) {
                 <?php if (!$member) : ?>
                     <div class="lmeg-embed__divider"><span><?php echo esc_html($atts['divider']); ?></span></div>
                 <?php endif; ?>
-                <div class="lmeg-tiers lmeg-tiers--grid">
+
+            <div class="lmeg-tiers lmeg-tiers--grid">
                     <?php foreach ($tier_list as $t) : ?>
                         <div class="lmeg-tier">
                             <div class="lmeg-tier__name"><?php echo esc_html($t->name); ?></div>
@@ -264,6 +266,8 @@ function lmeg_shortcode_premium($atts = []) {
         'style'   => 'card',
         'tiers'   => '',
         'free'    => 'yes',   // free="no" drops tiers that cost nothing
+        'language'   => 'auto',
+        'lang_label' => '',
     ], $atts, 'lmeg_premium');
 
     if (!function_exists('lmeg_all_tiers')) {
@@ -352,6 +356,7 @@ function lmeg_shortcode_premium($atts = []) {
                 </p>
             <?php endif; ?>
 
+            <?php echo lmeg_signup_lang_choices($atts); ?>
             <div class="lmeg-tiers lmeg-tiers--grid">
                 <?php foreach ($all_tiers as $t) : ?>
                     <div class="lmeg-tier">
@@ -406,22 +411,40 @@ function lmeg_shortcode_premium($atts = []) {
  * Renders a hidden field (unchanged behaviour) when there is nothing to ask:
  * one language enabled, or language="no".
  */
-function lmeg_signup_lang_field($atts = []) {
-    $detected = function_exists('lmeg_detect_lang')
+function lmeg_signup_lang_detected() {
+    return function_exists('lmeg_detect_lang')
         ? (lmeg_detect_lang() ?: (function_exists('lmeg_current_lang') ? lmeg_current_lang() : 'en')) : 'en';
-    $mode = strtolower(trim((string) ($atts['language'] ?? 'auto')));
-    $ask  = ($mode === 'yes' || $mode === 'ask' || $mode === '1');
-    if (!$ask && in_array($mode, ['no', '0', 'none', 'hide'], true)) $ask = false;
-    elseif (!$ask) {
-        // auto: ask only when this site actually has more than one language on.
-        $ask = function_exists('lmeg_multilang_on') ? lmeg_multilang_on() : false;
-    }
+}
 
+/** Whether this embed should ask at all. Pure-ish (reads site settings). */
+function lmeg_signup_lang_should_ask($atts = []) {
+    $mode = strtolower(trim((string) ($atts['language'] ?? 'auto')));
+    if (in_array($mode, ['no', '0', 'none', 'hide'], true)) return false;
+    $langs = function_exists('lmeg_enabled_langs') ? (array) lmeg_enabled_langs() : ['en'];
+    if (count($langs) < 2) return false;                       // nothing to choose between
+    if (in_array($mode, ['yes', 'ask', '1'], true)) return true;
+    return function_exists('lmeg_multilang_on') ? lmeg_multilang_on() : false;  // auto
+}
+
+/**
+ * The hidden carrier. Returns '' when the visible choices will carry the value
+ * instead, so a form never posts lmeg_lang twice.
+ */
+function lmeg_signup_lang_field($atts = []) {
+    if (lmeg_signup_lang_should_ask($atts)) return '';
+    return '<input type="hidden" name="lmeg_lang" value="' . esc_attr(lmeg_signup_lang_detected()) . '" />';
+}
+
+/**
+ * The visible choice, rendered next to the button rather than at the top of
+ * the form: the email address is what the fan came to give, and a language
+ * question above it reads like a toll gate.
+ */
+function lmeg_signup_lang_choices($atts = []) {
+    if (!lmeg_signup_lang_should_ask($atts)) return '';
+    $detected = lmeg_signup_lang_detected();
     $langs = function_exists('lmeg_enabled_langs') ? (array) lmeg_enabled_langs() : ['en'];
     $names = function_exists('lmeg_known_langs') ? (array) lmeg_known_langs() : ['en' => 'English'];
-    if (!$ask || count($langs) < 2) {
-        return '<input type="hidden" name="lmeg_lang" value="' . esc_attr($detected) . '" />';
-    }
 
     $label = trim((string) ($atts['lang_label'] ?? ''));
     if ($label === '') $label = function_exists('lmeg_t') ? lmeg_t('lang_choice') : '';
