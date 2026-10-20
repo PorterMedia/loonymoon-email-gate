@@ -479,8 +479,11 @@ function lmeg_admin_shortcodes() {
         [
             'code'  => '[fanloop_tour]',
             'title' => 'Tour dates',
-            'desc'  => 'Lists your upcoming shows with presale (members-only optional) and ticket buttons — both click-tracked to fan timelines. Manage dates under Tour.',
+            'desc'  => 'Lists your upcoming shows with presale (members-only optional) and ticket buttons — both click-tracked to fan timelines. Dates with nothing on sale yet collect the fans who want that city. Manage dates under Tour.',
             'attrs' => [
+                'signup' => 'auto offers "get first access" on any date with no ticket link and no presale the visitor can open, tagging whoever signs up to that show; yes always offers it, no never does',
+                'signup_label' => 'button text, default "Get first access"',
+                'phone' => 'yes lets those per-date signups come in by SMS as well as email',
                 'past'  => 'yes to include past dates',
                 'limit' => 'max dates to show (default 50)',
             ],

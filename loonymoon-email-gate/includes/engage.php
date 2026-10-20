@@ -14,8 +14,71 @@ if (!defined('ABSPATH')) {
 
 add_shortcode('lmeg_tour', 'lmeg_shortcode_tour');
 add_shortcode('fanloop_tour', 'lmeg_shortcode_tour');
+/**
+ * Per-show interest: "tell me when tickets go on sale for THIS date".
+ *
+ * A tour page that only links to ticket vendors converts attention into their
+ * CRM, not the artist's. Capturing per date means a presale email can go to
+ * exactly the people who asked about that room, instead of blasting a country.
+ * The tag is readable on purpose — show:2027-02-27-new-york — so it can be
+ * picked by hand in Compose without looking anything up.
+ */
+function lmeg_tour_show_slug($d) {
+    $date = substr((string) ($d->show_date ?? ''), 0, 10);
+    $city = strtolower(trim((string) ($d->city ?? '')));
+    $city = preg_replace('/[^a-z0-9]+/', '-', $city);
+    $city = trim((string) $city, '-');
+    $bits = array_filter([$date, $city]);
+    return 'show:' . ($bits ? implode('-', $bits) : 'date-' . (int) ($d->id ?? 0));
+}
+
+/** Human label for that tag, e.g. "Show · New York, NY · Feb 27, 2027". */
+function lmeg_tour_show_label($d) {
+    $loc = trim((string) ($d->city ?? '')) . (!empty($d->region) ? ', ' . $d->region : '');
+    $when = !empty($d->show_date) ? date_i18n('M j, Y', strtotime((string) $d->show_date)) : '';
+    return 'Show · ' . ($loc ?: 'TBA') . ($when ? ' · ' . $when : '');
+}
+
+/** Tag a fan to one show. Called from the signup handler via lmeg_tour_notify. */
+function lmeg_tour_notify_tag($subscriber_id, $date_id) {
+    global $wpdb;
+    $subscriber_id = (int) $subscriber_id;
+    $date_id = (int) $date_id;
+    if (!$subscriber_id || !$date_id) return false;
+    if (!function_exists('lmeg_get_or_create_tag') || !function_exists('lmeg_attach_tag')) return false;
+    $d = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}lmeg_tour_dates WHERE id = %d", $date_id));
+    if (!$d) return false;
+    $tag = lmeg_get_or_create_tag(lmeg_tour_show_slug($d), lmeg_tour_show_label($d), 1, '#7C6CF6');
+    if (!$tag) return false;
+    lmeg_attach_tag($subscriber_id, (int) $tag->id);
+    return true;
+}
+
+/** [date_id => how many asked] for the admin list. */
+function lmeg_tour_notify_counts() {
+    global $wpdb;
+    $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}lmeg_tour_dates");
+    if (!$rows) return [];
+    $out = [];
+    foreach ($rows as $d) {
+        $slug = lmeg_tour_show_slug($d);
+        $out[(int) $d->id] = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(DISTINCT st.subscriber_id)
+               FROM {$wpdb->prefix}lmeg_subscriber_tags st
+               INNER JOIN {$wpdb->prefix}lmeg_tags t ON t.id = st.tag_id
+              WHERE t.slug = %s", $slug));
+    }
+    return $out;
+}
+
 function lmeg_shortcode_tour($atts = []) {
-    $atts = shortcode_atts(['past' => 'no', 'limit' => 50], $atts, 'lmeg_tour');
+    $atts = shortcode_atts([
+        'past'   => 'no',
+        'limit'  => 50,
+        'signup' => 'auto',          // auto = offer it on any date with nothing to click yet; yes = always; no = never
+        'signup_label' => '',        // button text, default "Get first access"
+        'phone'  => 'no',            // yes = the signup form offers SMS as well as email
+    ], $atts, 'lmeg_tour');
     global $wpdb;
     $tbl   = $wpdb->prefix . 'lmeg_tour_dates';
     $today = current_time('Y-m-d');
@@ -38,6 +101,17 @@ function lmeg_shortcode_tour($atts = []) {
                     <div class="lmeg-tour__venue"><?php echo esc_html($d->venue); ?></div>
                     <div class="lmeg-tour__city"><?php echo esc_html($loc); ?></div>
                 </div>
+                <?php
+                // Nothing to click yet? Then the row can still do work: collect
+                // the people who want this date. "auto" only offers it when a
+                // date has no public ticket link and no presale this visitor
+                // can open, so it never competes with a real buy button.
+                $sign_mode = strtolower((string) $atts['signup']);
+                $can_presale = $d->presale_url && (!$d->presale_members_only || $member);
+                $offer_signup = $d->status !== 'soldout' && (
+                    $sign_mode === 'yes' || ($sign_mode !== 'no' && !$d->ticket_url && !$can_presale)
+                );
+                ?>
                 <div class="lmeg-tour__cta">
                     <?php if ($d->status === 'soldout') : ?>
                         <span class="lmeg-tour__soldout">Sold out</span>
@@ -54,6 +128,22 @@ function lmeg_shortcode_tour($atts = []) {
                         <?php endif; ?>
                     <?php endif; ?>
                 </div>
+                <?php if ($offer_signup && function_exists('lmeg_shortcode_signup')) : ?>
+                    <details class="lmeg-tour__notify" id="lmeg-show-<?php echo (int) $d->id; ?>">
+                        <summary class="lmeg-button lmeg-button--outline lmeg-tour__btn"><?php
+                            echo esc_html(trim((string) $atts['signup_label']) ?: 'Get first access'); ?></summary>
+                        <div class="lmeg-tour__notify-form">
+                            <?php echo lmeg_shortcode_signup([
+                                'style'       => 'inline',
+                                'button'      => 'Notify me',
+                                'phone'       => $atts['phone'],
+                                'tour_notify' => (int) $d->id,
+                                'message'     => esc_html($d->venue . ' · ' . $loc),
+                                'redirect'    => home_url(add_query_arg(null, null)) . '#lmeg-show-' . (int) $d->id,
+                            ]); ?>
+                        </div>
+                    </details>
+                <?php endif; ?>
             </div>
         <?php endforeach; endif; ?>
     </div>
@@ -575,11 +665,12 @@ function lmeg_admin_tour() {
             <p><button type="submit" class="button button-primary">Add date</button></p>
         </form>
 
+        <?php $notify_counts = function_exists('lmeg_tour_notify_counts') ? lmeg_tour_notify_counts() : []; ?>
         <table class="widefat striped">
-            <thead><tr><th>Date</th><th>Venue</th><th>City</th><th>Links</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Venue</th><th>City</th><th>Links</th><th>Asked for access</th><th>Status</th><th></th></tr></thead>
             <tbody>
             <?php if (empty($rows)) : ?>
-                <tr><td colspan="6">No dates yet.</td></tr>
+                <tr><td colspan="7">No dates yet.</td></tr>
             <?php else : foreach ($rows as $d) : ?>
                 <tr>
                     <td><?php echo esc_html($d->show_date); ?></td>
@@ -588,6 +679,15 @@ function lmeg_admin_tour() {
                     <td>
                         <?php if ($d->ticket_url) : ?><a href="<?php echo esc_url($d->ticket_url); ?>" target="_blank" rel="noopener">tickets</a><?php endif; ?>
                         <?php if ($d->presale_url) : ?> · <a href="<?php echo esc_url($d->presale_url); ?>" target="_blank" rel="noopener">presale<?php echo $d->presale_members_only ? ' 🔒' : ''; ?></a><?php endif; ?>
+                    </td>
+                    <td>
+                        <?php $asked = (int) ($notify_counts[(int) $d->id] ?? 0); ?>
+                        <?php if ($asked) : ?>
+                            <strong><?php echo esc_html(number_format_i18n($asked)); ?></strong>
+                            <div style="font-size:11px;opacity:.65;">tag <code><?php echo esc_html(lmeg_tour_show_slug($d)); ?></code></div>
+                        <?php else : ?>
+                            <span style="opacity:.5;">—</span>
+                        <?php endif; ?>
                     </td>
                     <td><?php echo $d->status === 'soldout' ? '<span style="color:#F87171;">Sold out</span>' : '<span style="color:#34D399;">On sale</span>'; ?></td>
                     <td>

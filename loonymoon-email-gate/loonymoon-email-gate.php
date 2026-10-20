@@ -3,7 +3,7 @@
  * Plugin Name: Fanloop
  * Plugin URI:  https://loonymoonchild.com/
  * Description: Gate post content behind an email or phone opt-in. Captures address fields, broadcasts to subscribers via Brevo (email) and Twilio (SMS).
- * Version: 3.267.2
+ * Version: 3.268.0
  * Author:      Porter Media
  * License:     GPL-2.0+
  * Text Domain: loonymoon-email-gate
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LMEG_VERSION',     '3.267.2');
+define('LMEG_VERSION',     '3.268.0');
 define('LMEG_DB_VERSION',  '3.105.0');
 define('LMEG_TABLE',       'lmeg_subscribers');
 define('LMEG_OPTION',      'lmeg_settings');
@@ -1839,6 +1839,9 @@ function lmeg_handle_submit() {
         if (!empty($_POST['lmeg_contest_join']) && function_exists('lmeg_contest_enter_subscriber')) {
             lmeg_contest_enter_subscriber((int) $existing_member->id, (int) $_POST['lmeg_contest_join']);
         }
+        if (!empty($_POST['lmeg_tour_notify']) && function_exists('lmeg_tour_notify_tag')) {
+            lmeg_tour_notify_tag((int) $existing_member->id, (int) $_POST['lmeg_tour_notify']);
+        }
         wp_safe_redirect($redirect);
         exit;
     }
@@ -1946,6 +1949,12 @@ function lmeg_handle_submit() {
     // lmeg_contest_join) enters the fan into that contest right after they join.
     if ($found && !empty($_POST['lmeg_contest_join']) && function_exists('lmeg_contest_enter_subscriber')) {
         lmeg_contest_enter_subscriber((int) $found->id, (int) $_POST['lmeg_contest_join']);
+    }
+
+    // Tour notify — a signup made from one date on the tour embed tags the fan
+    // to that show, so the presale email goes to the room that asked for it.
+    if ($found && !empty($_POST['lmeg_tour_notify']) && function_exists('lmeg_tour_notify_tag')) {
+        lmeg_tour_notify_tag((int) $found->id, (int) $_POST['lmeg_tour_notify']);
     }
 
     // Honor lmeg_after intent: paywall form can request Stripe checkout or a

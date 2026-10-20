@@ -37,6 +37,7 @@ function lmeg_shortcode_signup($atts = []) {
         'divider'  => 'or',         // text shown between free button and tier cards
         'contest'  => '',           // contest ID to auto-enter after signup
         'wallet'   => 'no',         // yes = offer the Apple/Google Wallet pass on the success panel
+        'tour_notify' => '',        // a tour-date id: tags whoever signs up to that show
         'language'  => 'auto',      // auto = ask when the site has more than one language; yes = always ask; no = never
         'lang_label' => '',         // override the question above the choices
     ], $atts, 'lmeg_signup');
@@ -153,6 +154,7 @@ function lmeg_shortcode_signup($atts = []) {
                     ✓ You&rsquo;re on the list as <strong><?php echo esc_html($member->email ?: $member->phone); ?></strong>.
                     <a href="?lmeg_member=logout" style="opacity:.7;">Not you?</a>
                 </p>
+                <?php if ((int) $atts['tour_notify']) : ?><input type="hidden" name="lmeg_tour_notify" value="<?php echo (int) $atts['tour_notify']; ?>" /><?php endif; ?>
                 <?php if ($member->email) : ?><input type="hidden" name="email" value="<?php echo esc_attr($member->email); ?>" /><?php endif; ?>
                 <?php if ($contest_join) : ?>
                     <input type="hidden" name="lmeg_contest_join" value="<?php echo (int) $contest_join; ?>" />
@@ -167,6 +169,7 @@ function lmeg_shortcode_signup($atts = []) {
                 <?php endif; ?>
 
                 <?php if ($contest_join) : ?><input type="hidden" name="lmeg_contest_join" value="<?php echo (int) $contest_join; ?>" /><?php endif; ?>
+                <?php if ((int) $atts['tour_notify']) : ?><input type="hidden" name="lmeg_tour_notify" value="<?php echo (int) $atts['tour_notify']; ?>" /><?php endif; ?>
                 <div class="lmeg-embed__row">
                     <div class="lmeg-field lmeg-field-email">
                         <label class="lmeg-embed__label" for="<?php echo esc_attr($id); ?>-email"><?php echo esc_html(lmeg_t('email')); ?></label>
