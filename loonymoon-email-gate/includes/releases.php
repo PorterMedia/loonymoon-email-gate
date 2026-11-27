@@ -424,7 +424,9 @@ function lmeg_shortcode_releases($atts = []) {
         'limit' => 12, 'heading' => '', 'info' => 'basic', 'desktop' => 5, 'mobile' => 2,
         'date' => 'true', 'icons' => 'colour', 'card' => 'true', 'link' => 'true', 'arrows' => 'sides', 'loop' => 'true',
         'layout' => 'carousel', 'columns' => 4, 'kind' => 'all', 'preview' => 'false', 'radius' => '14px', 'order' => 'newest',
+        'exclude' => '',
     ], $atts, 'fanloop_releases');
+    $exclude = array_filter(array_map('intval', explode(',', (string) $atts['exclude'])));
     $on   = function ($v) { return !in_array(strtolower(trim((string) $v)), ['0', 'false', 'no', 'off', 'none', 'hide'], true); };
     $full = strtolower(trim((string) $atts['info'])) === 'full';
     $grid = strtolower(trim((string) $atts['layout'])) === 'grid';
@@ -447,7 +449,8 @@ function lmeg_shortcode_releases($atts = []) {
     $t = lmeg_releases_table();
     $limit = max(1, (int) $atts['limit']);
     $rows = $wpdb->get_results(
-        "SELECT * FROM $t WHERE artwork_url <> '' AND status <> 'draft'
+        "SELECT * FROM $t WHERE artwork_url <> '' AND status <> 'draft'"
+        . ($exclude ? ' AND id NOT IN (' . implode(',', $exclude) . ')' : '') . "
          ORDER BY COALESCE(release_at, created_at) " . ($oldest ? 'ASC' : 'DESC') . " LIMIT " . ($kind === 'albums' || $kind === 'singles' ? 500 : $limit)
     );
     if ($kind === 'albums' || $kind === 'singles') {
@@ -619,6 +622,33 @@ function lmeg_shortcode_releases($atts = []) {
     <?php endif; ?>
     <?php
     return ob_get_clean();
+}
+
+/* ---------------------------------------------------------------------------
+ * "More releases" under a release page: the rest of the catalogue, drawn with
+ * the same grid as [fanloop_releases], so a fan keeps browsing. Off unless the
+ * site switches it on:
+ *   add_filter('lmeg_release_more', '__return_true');
+ *   add_filter('lmeg_release_more_atts', fn($a) => $a + ['icons' => 'black']);   // any [fanloop_releases] attribute
+ *   add_filter('lmeg_release_more_heading', fn() => 'More from the band');
+ * ------------------------------------------------------------------------- */
+add_action('lmeg_drop_after', 'lmeg_release_more_releases', 20, 2);
+function lmeg_release_more_releases($drop, $released) {
+    if (!apply_filters('lmeg_release_more', false, $drop)) return;
+    $current = function_exists('lmeg_release_for_drop') ? lmeg_release_for_drop((int) $drop->id) : null;
+    $atts = apply_filters('lmeg_release_more_atts', [
+        'layout' => 'grid', 'info' => 'full', 'columns' => 4, 'mobile' => 2, 'date' => 'false', 'card' => 'false',
+        'preview' => 'true', 'link' => 'true', 'heading' => 'none', 'limit' => 60,
+    ], $drop);
+    if ($current) $atts['exclude'] = (string) $current->id;
+    $heading = (string) apply_filters('lmeg_release_more_heading', 'More releases', $drop);
+    $grid = lmeg_shortcode_releases($atts);
+    if ($grid === '') return;
+    echo '<section class="lmeg-more-releases" aria-label="' . esc_attr($heading) . '">'
+        . ($heading !== '' ? '<h2 class="lmeg-more-releases__h">' . esc_html($heading) . '</h2>' : '')
+        . $grid . '</section>';
+    static $css = false;
+    if (!$css) { $css = true; echo '<style>.lmeg-more-releases{max-width:1180px;margin:56px auto 72px;padding:0 20px}.lmeg-more-releases__h{text-align:center;margin:0 0 20px;font-size:26px;letter-spacing:.02em;text-transform:uppercase}</style>'; }
 }
 
 /** Small coloured status pill for the admin list. */

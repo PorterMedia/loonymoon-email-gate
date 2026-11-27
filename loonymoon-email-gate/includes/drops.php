@@ -488,8 +488,11 @@ function lmeg_shortcode_drop($atts = []) {
                     <div class="lmeg-drop__links">
                         <?php foreach ($links as $i => $l) :
                             // Route through the local click tracker (logs click + IP) when available; plain link otherwise.
-                            $href = function_exists('lmeg_link_click_url') ? lmeg_link_click_url($drop->id, $i) : $l['url']; ?>
-                            <a class="lmeg-drop__link" href="<?php echo esc_url($href); ?>" target="_blank" rel="noopener nofollow"><?php echo esc_html($l['label']); ?></a>
+                            $href = function_exists('lmeg_link_click_url') ? lmeg_link_click_url($drop->id, $i) : $l['url'];
+                            // the platform's own mark in front of its name (Spotify, Apple Music, YouTube...)
+                            $glyph = function_exists('lmeg_release_service_icon_raw') ? lmeg_release_service_icon_raw($l['label']) : null;
+                            $icon  = ($glyph && !empty($glyph[2]) && strtolower($glyph[0]) !== 'link') ? '<svg class="lmeg-drop__ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $glyph[2] . '</svg>' : ''; ?>
+                            <a class="lmeg-drop__link" href="<?php echo esc_url($href); ?>" target="_blank" rel="noopener nofollow"><?php echo $icon; ?><span><?php echo esc_html($l['label']); ?></span></a>
                         <?php endforeach; ?>
                     </div>
                 <?php else : ?>
@@ -499,6 +502,7 @@ function lmeg_shortcode_drop($atts = []) {
             <?php do_action('lmeg_drop_after_body', $drop, $released); ?>
         </div>
     </div>
+    <?php do_action('lmeg_drop_after', $drop, $released); // below the card: e.g. the "more releases" grid (releases.php) ?>
     <?php
     echo lmeg_drop_styles();
     if (!$released) echo lmeg_drop_countdown_js();
@@ -551,8 +555,10 @@ function lmeg_drop_styles() {
     .lmeg-drop__form button:hover{filter:brightness(1.06);}
     .lmeg-drop__ok{margin-top:16px;padding:14px 16px;background:#ecfdf3;border:1px solid #bbf7d0;border-radius:12px;color:#166534;font-size:14px;}
     .lmeg-drop__links{display:flex;flex-direction:column;gap:10px;margin-top:6px;}
-    .lmeg-drop__link{display:block;padding:14px 16px;border-radius:12px;background:#2f2a2c;color:#fff;text-decoration:none;text-align:center;font-weight:600;font-size:15px;transition:transform .12s ease;}
+    .lmeg-drop__link{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 16px;border-radius:12px;background:#2f2a2c;color:#fff;text-decoration:none;text-align:center;font-weight:600;font-size:15px;transition:transform .12s ease;}
     .lmeg-drop__link:hover{transform:translateY(-1px);}
+    .lmeg-drop__ico{width:20px;height:20px;flex:0 0 auto;}
+    @media(max-width:520px){.lmeg-drop{margin-left:16px;margin-right:16px;}}
     .lmeg-hp-wrap{position:absolute;left:-9999px;height:0;overflow:hidden;}
     </style>';
 }

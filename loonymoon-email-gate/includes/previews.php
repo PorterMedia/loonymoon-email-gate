@@ -244,7 +244,11 @@ function lmeg_preview_shared_js() {
         . 'document.querySelectorAll(".flp-preview-audio").forEach(function(a){if(a!==au){a.pause();var ww=a.closest(".flp-preview"),bb=ww&&ww.querySelector(".flp-preview-btn");if(bb)setp(bb,false);}});'
         . 'if(au.paused){var pr=au.play();if(pr&&pr.catch)pr.catch(function(){});setp(b,true);}else{au.pause();setp(b,false);}});'
         . 'document.addEventListener("timeupdate",function(e){var au=e.target;if(!au.classList||!au.classList.contains("flp-preview-audio"))return;var w=au.closest(".flp-preview"),f=w&&w.querySelector(".flp-preview-fill");if(f&&au.duration)f.style.width=(au.currentTime/au.duration*100)+"%";},true);'
-        . 'document.addEventListener("ended",function(e){var au=e.target;if(!au.classList||!au.classList.contains("flp-preview-audio"))return;var w=au.closest(".flp-preview"),b=w&&w.querySelector(".flp-preview-btn"),f=w&&w.querySelector(".flp-preview-fill");if(b)setp(b,false);if(f)f.style.width="0%";},true);'
+        . 'document.addEventListener("ended",function(e){var au=e.target;if(!au.classList||!au.classList.contains("flp-preview-audio"))return;var w=au.closest(".flp-preview"),b=w&&w.querySelector(".flp-preview-btn"),f=w&&w.querySelector(".flp-preview-fill");if(b)setp(b,false);if(f)f.style.width="0%";'
+        // in a tracklist, the next track that has a preview plays on its own
+        . 'var list=au.closest(".lmeg-tracklist");if(list){var all=Array.prototype.slice.call(list.querySelectorAll(".flp-preview-audio")),i=all.indexOf(au),nx=all[i+1];if(nx){var nw=nx.closest(".flp-preview"),nb=nw&&nw.querySelector(".flp-preview-btn");var pr=nx.play();if(pr&&pr.catch)pr.catch(function(){});if(nb)setp(nb,true);}}},true);'
+        // the track name toggles its preview, same as the button
+        . 'document.addEventListener("click",function(e){var t=e.target.closest&&e.target.closest(".lmeg-track__title");if(!t)return;var row=t.closest(".lmeg-track.flp-preview"),b=row&&row.querySelector(".flp-preview-btn");if(b){e.preventDefault();b.click();}});'
         . '})();</script>';
 }
 
@@ -304,6 +308,8 @@ function lmeg_release_tracklist_html($tracks, $accent = '#E15FA8') {
             . '.lmeg-track__btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:0;background:' . $accent . ';color:#fff;cursor:pointer;display:grid;place-items:center;padding:0}'
             . '.lmeg-track__n{flex:0 0 auto;width:30px;text-align:center;font-size:12px;opacity:.5;font-variant-numeric:tabular-nums}'
             . '.lmeg-track__title{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+            . '.lmeg-track.flp-preview .lmeg-track__title{cursor:pointer}'
+            . '.lmeg-track.flp-preview .lmeg-track__title:hover{text-decoration:underline;text-underline-offset:3px}'
             . '.lmeg-track__dur{flex:0 0 auto;font-size:12px;opacity:.55;font-variant-numeric:tabular-nums}'
             . '.lmeg-track .flp-preview-fill{position:absolute;left:0;bottom:0;height:2px;width:0;background:' . $accent . ';transition:width .15s linear}'
             . '</style>';
