@@ -548,7 +548,7 @@ function lmeg_shortcode_releases($atts = []) {
                         . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($pv_url) . '"></audio></span>';
                 }
                 $inner = '<div class="lmeg-rc__art' . ($pv ? ' flp-preview' : '') . '"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
-                       . ($url && !$pv ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . ($pv ? '<div class="flp-preview-fill"></div>' : '') . '</div>'
+                       . ($url && !$pv ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . ($pv ? $pv . '<div class="flp-preview-fill"></div>' : '') . '</div>'
                        . '<div class="lmeg-rc__t">' . esc_html($r->title) . '</div>'
                        . ($date ? '<div class="lmeg-rc__d">' . esc_html($date) . '</div>' : '');
                 if ($full) :
