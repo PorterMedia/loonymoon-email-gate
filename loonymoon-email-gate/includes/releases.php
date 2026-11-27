@@ -530,10 +530,16 @@ function lmeg_shortcode_releases($atts = []) {
                 $url  = lmeg_release_public_url($r);
                 $date = ($show_date && !empty($r->release_at)) ? date_i18n('M j, Y', strtotime($r->release_at)) : '';
                 $pv = '';
-                if ($with_prev && !empty($r->preview_url) && filter_var($r->preview_url, FILTER_VALIDATE_URL)) {
+                $pv_url = trim((string) ($r->preview_url ?? ''));
+                if ($with_prev && $pv_url === '' && !empty($r->tracks)) {
+                    // no release preview set: the first track that has one stands in
+                    $tl = json_decode((string) $r->tracks, true);
+                    foreach ((array) $tl as $t) { if (!empty($t['preview'])) { $pv_url = (string) $t['preview']; break; } }
+                }
+                if ($with_prev && $pv_url !== '' && filter_var($pv_url, FILTER_VALIDATE_URL)) {
                     $ic = function_exists('lmeg_store_icon') ? lmeg_store_icon('play', 16, ['fill' => true, 'style' => 'margin-left:2px']) : '&#9654;';
                     $pv = '<span class="lmeg-rc__pv flp-preview"><button type="button" class="flp-preview-btn" aria-label="' . esc_attr('Play a preview of ' . $r->title) . '" aria-pressed="false">' . $ic . '</button>'
-                        . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($r->preview_url) . '"></audio></span>';
+                        . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($pv_url) . '"></audio></span>';
                 }
                 $inner = '<div class="lmeg-rc__art' . ($pv ? ' flp-preview' : '') . '"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
                        . ($url && !$pv ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . ($pv ? '<div class="flp-preview-fill"></div>' : '') . '</div>'
