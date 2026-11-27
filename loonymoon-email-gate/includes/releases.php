@@ -367,6 +367,15 @@ function lmeg_release_public_url($rel) {
  *   arrows   — "sides" (centred left/right, default) or "top" (beside the heading)
  *   heading  — set to "none" to hide the heading row entirely
  *   loop     — true/false: infinite wrap-around in both directions (default true)
+ *   layout   — "carousel" (default) or "grid": every release laid out in rows, no
+ *              arrows, no scrolling — the full catalogue on a Music page
+ *   columns  — grid columns on desktop (default 4; phones use `mobile`)
+ *   kind     — "all" (default), "albums" (7+ tracks) or "singles" (fewer): split a
+ *              catalogue into an Albums grid and a Singles & EPs grid
+ *   preview  — true/false: a play button on the artwork that plays the release's
+ *              30-second preview in place (default false)
+ *   radius   — corner radius of the artwork and cards, e.g. "0" for square (default 14px)
+ *   order    — "newest" (default) or "oldest"
  * ------------------------------------------------------------------------- */
 add_shortcode('fanloop_releases', 'lmeg_shortcode_releases');
 add_shortcode('fanloop_carousel', 'lmeg_shortcode_releases');
@@ -414,11 +423,18 @@ function lmeg_shortcode_releases($atts = []) {
     $atts = shortcode_atts([
         'limit' => 12, 'heading' => '', 'info' => 'basic', 'desktop' => 5, 'mobile' => 2,
         'date' => 'true', 'icons' => 'colour', 'card' => 'true', 'link' => 'true', 'arrows' => 'sides', 'loop' => 'true',
+        'layout' => 'carousel', 'columns' => 4, 'kind' => 'all', 'preview' => 'false', 'radius' => '14px', 'order' => 'newest',
     ], $atts, 'fanloop_releases');
     $on   = function ($v) { return !in_array(strtolower(trim((string) $v)), ['0', 'false', 'no', 'off', 'none', 'hide'], true); };
     $full = strtolower(trim((string) $atts['info'])) === 'full';
-    $dn = max(1, min(8, (int) $atts['desktop']));
+    $grid = strtolower(trim((string) $atts['layout'])) === 'grid';
+    $dn = $grid ? max(1, min(8, (int) $atts['columns'])) : max(1, min(8, (int) $atts['desktop']));
     $mn = max(1, min(4, (int) $atts['mobile']));
+    $kind      = strtolower(trim((string) $atts['kind']));
+    $with_prev = $on($atts['preview']);
+    $radius    = preg_match('/^\d+(\.\d+)?(px|rem|em|%)?$/', trim((string) $atts['radius'])) ? trim((string) $atts['radius']) : '14px';
+    if (preg_match('/^\d+(\.\d+)?$/', $radius)) $radius .= 'px';
+    $oldest    = strtolower(trim((string) $atts['order'])) === 'oldest';
     $show_date = $on($atts['date']);
     $show_link = $on($atts['link']);
     $card_on   = $on($atts['card']);
@@ -429,12 +445,22 @@ function lmeg_shortcode_releases($atts = []) {
     $show_head = strtolower(trim($heading)) !== 'none';
     global $wpdb;
     $t = lmeg_releases_table();
-    $rows = $wpdb->get_results($wpdb->prepare(
+    $limit = max(1, (int) $atts['limit']);
+    $rows = $wpdb->get_results(
         "SELECT * FROM $t WHERE artwork_url <> '' AND status <> 'draft'
-         ORDER BY COALESCE(release_at, created_at) DESC LIMIT %d", max(1, (int) $atts['limit'])
-    ));
+         ORDER BY COALESCE(release_at, created_at) " . ($oldest ? 'ASC' : 'DESC') . " LIMIT " . ($kind === 'albums' || $kind === 'singles' ? 500 : $limit)
+    );
+    if ($kind === 'albums' || $kind === 'singles') {
+        // an album is anything with seven or more tracks; everything else is a single or an EP
+        $rows = array_values(array_filter((array) $rows, function ($r) use ($kind) {
+            $tl = json_decode((string) ($r->tracks ?? ''), true);
+            $n  = is_array($tl) ? count($tl) : 0;
+            return $kind === 'albums' ? $n >= 7 : $n < 7;
+        }));
+        $rows = array_slice($rows, 0, $limit);
+    }
     if (!$rows) return '';
-    $loop = $on($atts['loop']) && count($rows) > 1;
+    $loop = !$grid && $on($atts['loop']) && count($rows) > 1;
 
     static $n = 0; $n++; $id = 'lmeg-rc-' . $n;
     static $css_done = false;
@@ -476,23 +502,41 @@ function lmeg_shortcode_releases($atts = []) {
       .lmeg-rc__more{display:inline-block;margin:10px 0 0;font-size:12.5px;font-weight:600;opacity:.75;text-decoration:none;color:inherit;}
       .lmeg-rc__more:hover{opacity:1;}
       @media(max-width:640px){.lmeg-rc{--rc-gap:12px;}.lmeg-rc__item{width:calc((100% - (var(--rc-m) - 1) * var(--rc-gap)) / var(--rc-m));}.lmeg-rc--sides .lmeg-rc__body{padding:0 16px;}.lmeg-rc--sides .lmeg-rc__btn{width:34px;height:34px;}}
+      .lmeg-rc__art,.lmeg-rc--full.lmeg-rc--card .lmeg-rc__item{border-radius:var(--rc-r,14px);}
+      .lmeg-rc--grid .lmeg-rc__body{padding:0;}
+      .lmeg-rc--grid .lmeg-rc__track{display:grid;grid-template-columns:repeat(var(--rc-n),minmax(0,1fr));gap:calc(var(--rc-gap) + 10px) var(--rc-gap);overflow:visible;scroll-snap-type:none;padding:4px 0 8px;}
+      .lmeg-rc--grid .lmeg-rc__item{width:auto;}
+      @media(max-width:640px){.lmeg-rc--grid .lmeg-rc__track{grid-template-columns:repeat(var(--rc-m),minmax(0,1fr));}}
+      .lmeg-rc__pv{position:absolute;right:10px;bottom:10px;z-index:2;}
+      .lmeg-rc__pv .flp-preview-btn{width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.94);color:#111;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 6px 18px rgba(0,0,0,.3);transition:transform .15s;}
+      .lmeg-rc__pv .flp-preview-btn:hover{transform:scale(1.08);}
+      .lmeg-rc__pv .flp-preview-btn svg{width:16px;height:16px;}
+      .lmeg-rc__pv .flp-preview-fill{position:absolute;left:0;right:0;bottom:-10px;height:3px;width:0;background:#fff;}
+      .lmeg-rc--pv .lmeg-rc__play{display:none;}
+      .lmeg-rc__art .flp-preview-fill{position:absolute;left:0;bottom:0;height:3px;width:0;background:#fff;transition:width .15s linear;}
     </style>
     <?php endif; ?>
-    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'; ?>" id="<?php echo esc_attr($id); ?>" data-loop="<?php echo $loop ? '1' : '0'; ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;">
-        <?php if ($show_head || !$sides) : ?>
+    <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $grid ? ' lmeg-rc--grid' : ($sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'); echo $with_prev ? ' lmeg-rc--pv' : ''; ?>" id="<?php echo esc_attr($id); ?>" data-loop="<?php echo $loop ? '1' : '0'; ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;--rc-r:<?php echo esc_attr($radius); ?>;">
+        <?php if ($show_head || (!$sides && !$grid)) : ?>
         <div class="lmeg-rc__head">
             <h3><?php echo $show_head ? esc_html($heading !== '' ? $heading : 'Releases') : ''; ?></h3>
-            <?php if (!$sides) : ?><div class="lmeg-rc__nav"><?php echo $nav; ?></div><?php endif; ?>
+            <?php if (!$sides && !$grid) : ?><div class="lmeg-rc__nav"><?php echo $nav; ?></div><?php endif; ?>
         </div>
         <?php endif; ?>
         <div class="lmeg-rc__body">
-        <?php if ($sides) echo $nav; ?>
+        <?php if ($sides && !$grid) echo $nav; ?>
         <div class="lmeg-rc__track">
             <?php foreach ($rows as $r) :
                 $url  = lmeg_release_public_url($r);
                 $date = ($show_date && !empty($r->release_at)) ? date_i18n('M j, Y', strtotime($r->release_at)) : '';
-                $inner = '<div class="lmeg-rc__art"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
-                       . ($url ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . '</div>'
+                $pv = '';
+                if ($with_prev && !empty($r->preview_url) && filter_var($r->preview_url, FILTER_VALIDATE_URL)) {
+                    $ic = function_exists('lmeg_store_icon') ? lmeg_store_icon('play', 16, ['fill' => true, 'style' => 'margin-left:2px']) : '&#9654;';
+                    $pv = '<span class="lmeg-rc__pv flp-preview"><button type="button" class="flp-preview-btn" aria-label="' . esc_attr('Play a preview of ' . $r->title) . '" aria-pressed="false">' . $ic . '</button>'
+                        . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($r->preview_url) . '"></audio></span>';
+                }
+                $inner = '<div class="lmeg-rc__art' . ($pv ? ' flp-preview' : '') . '"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
+                       . ($url && !$pv ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . ($pv ? '<div class="flp-preview-fill"></div>' : '') . '</div>'
                        . '<div class="lmeg-rc__t">' . esc_html($r->title) . '</div>'
                        . ($date ? '<div class="lmeg-rc__d">' . esc_html($date) . '</div>' : '');
                 if ($full) :
@@ -520,6 +564,8 @@ function lmeg_shortcode_releases($atts = []) {
         </div>
         </div>
     </div>
+    <?php if ($with_prev && function_exists('lmeg_preview_shared_js')) echo lmeg_preview_shared_js(); ?>
+    <?php if (!$grid) : ?>
     <script>
     (function(){
         var root=document.getElementById('<?php echo esc_js($id); ?>'); if(!root)return;
@@ -554,6 +600,7 @@ function lmeg_shortcode_releases($atts = []) {
         track.addEventListener('scroll',sync,{passive:true}); window.addEventListener('resize',sync); sync();
     })();
     </script>
+    <?php endif; ?>
     <?php
     return ob_get_clean();
 }
