@@ -547,7 +547,11 @@ function lmeg_shortcode_releases($atts = []) {
                     $pv = '<span class="lmeg-rc__pv flp-preview"><button type="button" class="flp-preview-btn" aria-label="' . esc_attr('Play a preview of ' . $r->title) . '" aria-pressed="false">' . $ic . '</button>'
                         . '<audio class="flp-preview-audio" preload="none" src="' . esc_url($pv_url) . '"></audio></span>';
                 }
-                $inner = '<div class="lmeg-rc__art' . ($pv ? ' flp-preview' : '') . '"><img src="' . esc_url($r->artwork_url) . '" alt="' . esc_attr($r->title) . '" loading="lazy" />'
+                // Apple artwork comes as 600x600; a 400px copy is plenty for a card, the 600 serves sharp screens
+                $art  = (string) $r->artwork_url;
+                $art4 = preg_replace('#/600x600bb\.(jpe?g|png)$#i', '/400x400bb.$1', $art);
+                $srcset = ($art4 !== $art) ? ' srcset="' . esc_url($art4) . ' 400w, ' . esc_url($art) . ' 600w" sizes="(max-width: 640px) 50vw, ' . (int) round(100 / max(1, $dn)) . 'vw"' : '';
+                $inner = '<div class="lmeg-rc__art' . ($pv ? ' flp-preview' : '') . '"><img src="' . esc_url($art4 !== $art ? $art4 : $art) . '"' . $srcset . ' alt="' . esc_attr($r->title) . '" loading="lazy" decoding="async" width="600" height="600" />'
                        . ($url && !$pv ? '<div class="lmeg-rc__play"><span>&#9654;</span></div>' : '') . ($pv ? $pv . '<div class="flp-preview-fill"></div>' : '') . '</div>'
                        . '<div class="lmeg-rc__t">' . esc_html($r->title) . '</div>'
                        . ($date ? '<div class="lmeg-rc__d">' . esc_html($date) . '</div>' : '');
