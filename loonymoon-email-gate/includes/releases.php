@@ -516,6 +516,7 @@ function lmeg_shortcode_releases($atts = []) {
       .lmeg-rc__art .flp-preview-fill{position:absolute;left:0;bottom:0;height:3px;width:0;background:#fff;transition:width .15s linear;}
     </style>
     <?php endif; ?>
+    <!-- fanloop releases <?php echo esc_html(LMEG_VERSION); ?> -->
     <div class="lmeg-rc<?php echo $full ? ' lmeg-rc--full' : ''; echo $card_on ? ' lmeg-rc--card' : ' lmeg-rc--nocard'; echo $grid ? ' lmeg-rc--grid' : ($sides ? ' lmeg-rc--sides' : ' lmeg-rc--top'); echo $with_prev ? ' lmeg-rc--pv' : ''; ?>" id="<?php echo esc_attr($id); ?>" data-loop="<?php echo $loop ? '1' : '0'; ?>" style="--rc-n:<?php echo (int) $dn; ?>;--rc-m:<?php echo (int) $mn; ?>;--rc-r:<?php echo esc_attr($radius); ?>;">
         <?php if ($show_head || (!$sides && !$grid)) : ?>
         <div class="lmeg-rc__head">
@@ -534,7 +535,12 @@ function lmeg_shortcode_releases($atts = []) {
                 if ($with_prev && $pv_url === '' && !empty($r->tracks)) {
                     // no release preview set: the first track that has one stands in
                     $tl = json_decode((string) $r->tracks, true);
-                    foreach ((array) $tl as $t) { if (!empty($t['preview'])) { $pv_url = (string) $t['preview']; break; } }
+                    if (!is_array($tl)) $tl = json_decode(stripslashes((string) $r->tracks), true);
+                    foreach ((array) $tl as $t) {
+                        $cand = is_array($t) ? (string) ($t['preview'] ?? $t['preview_url'] ?? '') : '';
+                        if ($cand !== '') { $pv_url = $cand; break; }
+                    }
+                    if (isset($_GET['fl_debug'])) echo '<!-- fl tracks: ' . esc_html(substr((string) $r->tracks, 0, 160)) . ' | pv: ' . esc_html($pv_url) . ' -->';
                 }
                 if ($with_prev && $pv_url !== '' && filter_var($pv_url, FILTER_VALIDATE_URL)) {
                     $ic = function_exists('lmeg_store_icon') ? lmeg_store_icon('play', 16, ['fill' => true, 'style' => 'margin-left:2px']) : '&#9654;';
