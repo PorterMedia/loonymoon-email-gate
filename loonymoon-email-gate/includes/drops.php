@@ -458,7 +458,8 @@ function lmeg_shortcode_drop($atts = []) {
     ?>
     <div id="<?php echo esc_attr($inst); ?>" class="lmeg-drop" style="--lmeg-accent:<?php echo esc_attr($accent); ?>;">
         <?php if ($drop->cover_url) : ?>
-            <div class="lmeg-drop__cover"><img src="<?php echo esc_url($drop->cover_url); ?>" alt="<?php echo esc_attr($drop->title); ?>" loading="lazy" /></div>
+            <?php // width/height reserve the square before the picture arrives (no layout jump); it is the first thing on the page, so no lazy-load ?>
+            <div class="lmeg-drop__cover"><img src="<?php echo esc_url($drop->cover_url); ?>" alt="<?php echo esc_attr($drop->title); ?>" width="600" height="600" decoding="async" fetchpriority="high" /></div>
         <?php endif; ?>
         <div class="lmeg-drop__body">
             <div class="lmeg-drop__eyebrow"><?php echo $released ? 'Out now' : 'Coming soon'; ?></div>
